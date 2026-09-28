@@ -1,37 +1,43 @@
 import 'package:flutter/material.dart';
-import 'package:hugeicons/hugeicons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../data/cartas_store.dart';
 import '../data/insumos_store.dart';
+import '../data/categorias_store.dart';
+import '../data/configuracion_store.dart';
+import '../data/incidencias_store.dart';
 import '../data/mesas_store.dart';
-import '../data/mock_cartas.dart';
-import '../data/mock_categorias.dart';
-import '../data/mock_medios_pago.dart';
-import '../data/mock_presentaciones.dart';
+import '../data/presentaciones_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
+import '../models/app_role.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
+import '../models/incidencia.dart';
 import '../models/medio_pago.dart';
 import '../models/mesa.dart';
+import '../models/mock_user.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
+import '../utils/blur_dialog.dart';
 import '../utils/carta_visuals.dart';
 import 'app_toast.dart';
+import 'producto_opciones_dialog.dart';
+import 'reportar_problema_dialog.dart';
 
-// Panel de pedido de una mesa, embebido dentro de MesasScreen.
-// Según el estado de la mesa muestra:
-// - libre: armar un pedido nuevo (carta + carrito + confirmar).
-// - ocupada: el pedido activo (items + resumen de pago + cobrar), con opción
-//   de agregar más ítems al mismo pedido.
+// Panel de pedido de una mesa: si está libre arma un pedido nuevo; si está
+// ocupada muestra el pedido activo (`pedidos` + `pedidos_detalle`) y su cobro.
 class PanelPedidoMesa extends StatefulWidget {
   final Mesa mesa;
+  final MockUser usuario;
   final VoidCallback onCerrar;
   final VoidCallback onCambio;
 
   const PanelPedidoMesa({
     super.key,
     required this.mesa,
+    required this.usuario,
     required this.onCerrar,
     required this.onCambio,
   });
@@ -45,19 +51,22 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
   final List<PedidoLine> _carrito = [];
   bool _agregandoItems = false;
   String _tipoPedido = 'mesa'; // 'llevar' | 'mesa' | 'delivery'
-  // Mobile: alterna entre ver la grilla de productos y ver el carrito/orden
-  // (en vez de mostrarlos lado a lado como en escritorio).
+  // Mobile: alterna grilla de productos y carrito (no van lado a lado).
   bool _mostrarCarritoMobile = false;
 
   final _busquedaProductoController = TextEditingController();
   String _busquedaProducto = '';
   final _nombreClienteController = TextEditingController();
   final _telefonoController = TextEditingController();
+  final _direccionController = TextEditingController();
+  final _notasController = TextEditingController();
   final _propinaController = TextEditingController(text: '0');
   final _descuentoController = TextEditingController(text: '0');
 
   // Cobro inline (sin modal aparte): medio de pago + monto + propina.
-  MedioPago _medioPagoCobro = medioEfectivo;
+  MedioPago _medioPagoCobro = mediosPagoActivos.isEmpty
+      ? medioEfectivo
+      : mediosPagoActivos.first;
   final _montoCobroController = TextEditingController();
   final _propinaCobroController = TextEditingController();
 
@@ -76,6 +85,8 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     _busquedaProductoController.dispose();
     _nombreClienteController.dispose();
     _telefonoController.dispose();
+    _direccionController.dispose();
+    _notasController.dispose();
     _propinaController.dispose();
     _descuentoController.dispose();
     _montoCobroController.dispose();
@@ -108,8 +119,8 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
 
   List<CartaItem> get _cartaFiltrada {
     final base = _categoriaSeleccionada == null
-        ? mockCartas
-        : mockCartas
+        ? cartasNotifier.value
+        : cartasNotifier.value
               .where((c) => c.categoriaId == _categoriaSeleccionada!.id)
               .toList();
     final termino = _busquedaProducto.trim().toLowerCase();
@@ -119,16 +130,16 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
         .toList();
   }
 
-  List<List<dynamic>> _iconoCategoria(String categoriaId) =>
-      iconoDeCategoria(categoriaId);
+  IconData _iconoCategoria(String categoriaId) => iconoDeCategoria(categoriaId);
 
-  int? get _parejaUnion => parejaDe(widget.mesa.numero);
+  List<int> get _mesasUnidas => otrasUnidas(widget.mesa.numero);
 
   String get _tituloMesa {
-    final pareja = _parejaUnion;
-    return pareja == null
+    if (widget.mesa.numero == 0) return 'Delivery';
+    final otras = _mesasUnidas;
+    return otras.isEmpty
         ? 'Mesa ${widget.mesa.numero}'
-        : 'Mesa ${widget.mesa.numero} + $pareja';
+        : 'Mesa ${widget.mesa.numero} + ${otras.join(' + ')}';
   }
 
   Pedido? get _pedidoActivo {
@@ -141,9 +152,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     return null;
   }
 
-  // Línea por defecto al agregar un producto con un solo toque: cantidad 1,
-  // sin modificadores/taper/comentario, con la presentación más económica si
-  // el ítem se vende por presentaciones (ej. bebidas).
+  // Línea por defecto (cantidad 1, sin extras) para `pedidos_detalle`.
   PedidoLine _lineaPorDefecto(CartaItem item) {
     final presentaciones = mockPresentaciones
         .where((p) => p.cartaId == item.id)
@@ -195,9 +204,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
       linea.taper == null &&
       linea.comentario == null;
 
-  // Un toque en "+" agrega 1 unidad directo al pedido (sin abrir un modal de
-  // personalización): si ya hay una línea simple del mismo producto, suma la
-  // cantidad; si no, crea una línea nueva.
+  // "+" suma 1 unidad directo (junta con la línea igual si ya existe).
   void _agregarItem(CartaItem item) {
     registrarConsumoAutomaticoDeLinea(_lineaPorDefecto(item));
     setState(() {
@@ -215,36 +222,29 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     });
   }
 
-  void _agregarItemAPedidoExistente(CartaItem item, Pedido pedido) {
-    registrarConsumoAutomaticoDeLinea(_lineaPorDefecto(item));
-    final existentes = detallesPorPedido[pedido.id] ?? [];
-    final index = existentes.indexWhere(
-      (l) => _mismoProductoSinPersonalizar(l, item),
-    );
-    if (index != -1) {
-      final actualizadas = List<PedidoLine>.from(existentes);
-      actualizadas[index] = _lineaConCantidad(
-        actualizadas[index],
-        actualizadas[index].cantidad + 1,
-      );
-      detallesPorPedido[pedido.id] = actualizadas;
-    } else {
-      detallesPorPedido[pedido.id] = [...existentes, _lineaPorDefecto(item)];
-    }
-    widget.onCambio();
-    setState(() {});
-  }
-
   void _quitarLinea(int index) => setState(() => _carrito.removeAt(index));
 
   void _confirmarPedido() {
-    final pareja = _parejaUnion;
     final pedido = Pedido(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
+      numeroPedido: siguienteNumeroPedido(),
       mesaNumero: widget.mesa.numero,
-      mesasUnidas: pareja == null ? const [] : [pareja],
+      mesasUnidas: _mesasUnidas,
       tipoPedido: _tipoPedido,
       fechaPedido: DateTime.now(),
+      clienteNombre: _nombreClienteController.text.trim().isEmpty
+          ? null
+          : _nombreClienteController.text.trim(),
+      clienteCelular: _telefonoController.text.trim().isEmpty
+          ? null
+          : _telefonoController.text.trim(),
+      direccionDelivery: _direccionController.text.trim().isEmpty
+          ? null
+          : _direccionController.text.trim(),
+      notas: _notasController.text.trim().isEmpty
+          ? null
+          : _notasController.text.trim(),
+      usuarioId: widget.usuario.id,
     );
     registrarPedido(pedido, List.of(_carrito));
     for (final linea in _carrito) {
@@ -259,6 +259,10 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
       _propinaController.text = '0';
       _descuentoController.text = '0';
       _tipoPedido = 'mesa';
+      _nombreClienteController.clear();
+      _telefonoController.clear();
+      _direccionController.clear();
+      _notasController.clear();
     });
     widget.onCambio();
     showAppToast(
@@ -337,22 +341,13 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
   Widget build(BuildContext context) {
     final ocupada = widget.mesa.estado == 'ocupada';
     final catalogo = !ocupada || _agregandoItems;
-    // El modal tiene el ancho de su contenido: partido en dos (detalle +
-    // cobro) para ver un pedido existente, ancho para el catálogo (rail +
-    // grilla + panel de orden). El cobro vive en el mismo modal, nunca en
-    // uno aparte.
     final pedidoActivo = _pedidoActivo;
     final esMobile = AppBreakpoints.esMobile(context);
 
     late final Widget contenido;
     if (catalogo) {
-      final onAgregar = ocupada
-          ? (CartaItem item) =>
-                _agregarItemAPedidoExistente(item, _pedidoActivo!)
-          : _agregarItem;
       if (esMobile) {
-        // Mobile: la grilla y el carrito/orden no van lado a lado (no caben);
-        // se alternan, con una barra inferior para saltar al carrito.
+        // Mobile: alterna grilla y carrito en vez de mostrarlos lado a lado.
         contenido = _mostrarCarritoMobile
             ? _panelOrden(
                 ocupada: ocupada,
@@ -367,11 +362,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
                   const SizedBox(height: 14),
                   const Divider(height: 1),
                   Expanded(
-                    child: _panelCatalogo(
-                      ocupada: ocupada,
-                      esMobile: true,
-                      onAgregar: onAgregar,
-                    ),
+                    child: _panelCatalogo(ocupada: ocupada, esMobile: true),
                   ),
                   _barraVerCarrito(),
                 ],
@@ -380,9 +371,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
         contenido = Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: _panelCatalogo(ocupada: ocupada, onAgregar: onAgregar),
-            ),
+            Expanded(child: _panelCatalogo(ocupada: ocupada)),
             _panelOrden(ocupada: ocupada),
           ],
         );
@@ -392,7 +381,6 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _encabezado(ocupada),
-          const Divider(height: 1),
           Expanded(
             child: pedidoActivo == null
                 ? const Center(child: Text('Sin pedido activo para esta mesa'))
@@ -445,9 +433,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // Barra flotante inferior (mobile, vista de catálogo): resumen del
-  // carrito/orden en curso; toca para pasar a verlo/confirmarlo. Oculta si
-  // aún no hay ítems agregados.
+  // Barra inferior (mobile) con el resumen del carrito; toca para verlo.
   Widget _barraVerCarrito() {
     final ocupada = widget.mesa.estado == 'ocupada';
     final agregandoAExistente = ocupada && _agregandoItems;
@@ -574,15 +560,11 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // --- Catálogo: armar pedido nuevo (mesa libre) o agregar más ítems ---
-  // Buscador (fondo blanco, más ancho y bajo) + tabs de categoría (icono
-  // arriba, etiqueta abajo) con una franja inferior verde de 1.5 en la
-  // seleccionada, arriba de la grilla de productos.
+  // --- Catálogo: armar pedido nuevo o agregar más ítems ---
 
   Widget _panelCatalogo({
     required bool ocupada,
     bool esMobile = false,
-    required ValueChanged<CartaItem> onAgregar,
   }) {
     final buscador = TextField(
       controller: _busquedaProductoController,
@@ -624,26 +606,20 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
         const SizedBox(height: 4),
         Divider(height: 1, color: Colors.grey.shade200),
         Expanded(
-          child: _gridProductos(
-            ocupada: ocupada,
-            esMobile: esMobile,
-            onAgregar: onAgregar,
-          ),
+          child: _gridProductos(ocupada: ocupada, esMobile: esMobile),
         ),
       ],
     );
   }
 
-  // Los tabs no se estiran a lo ancho de la fila: cada uno ocupa solo el
-  // espacio de su contenido y quedan alineados a la izquierda; scrollable en
-  // horizontal para que no se desborden en pantallas angostas (mobile).
+  // Tabs de categoría, scrollables en horizontal.
   Widget _tabsCategorias() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _tabCategoria(null, 'Todo', HugeIcons.strokeRoundedGridView),
+          _tabCategoria(null, 'Todo', LucideIcons.layoutGrid),
           for (final cat in mockCategorias)
             _tabCategoria(cat, cat.categoria, _iconoCategoria(cat.id)),
         ],
@@ -651,15 +627,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // Los íconos de los tabs no cambian de color al seleccionar: solo el
-  // texto y la franja inferior indican la categoría activa. El InkWell lleva
-  // su propio borderRadius para que el sombreado gris de pulsar/pasar el
-  // cursor sea un recuadro redondeado, no un rectángulo a filo.
-  Widget _tabCategoria(
-    CategoriaComida? cat,
-    String label,
-    List<List<dynamic>> icono,
-  ) {
+  Widget _tabCategoria(CategoriaComida? cat, String label, IconData icono) {
     final seleccionado = _categoriaSeleccionada?.id == cat?.id;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -679,7 +647,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            HugeIcon(icon: icono, size: 20, color: Colors.grey.shade700),
+            Icon(icono, size: 20, color: Colors.grey.shade700),
             const SizedBox(height: 4),
             Text(
               label,
@@ -700,7 +668,6 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
   Widget _gridProductos({
     required bool ocupada,
     bool esMobile = false,
-    required ValueChanged<CartaItem> onAgregar,
   }) {
     final items = _cartaFiltrada;
     if (items.isEmpty) {
@@ -722,23 +689,13 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
       itemCount: items.length,
       itemBuilder: (context, index) => KeyedSubtree(
         key: ValueKey(items[index].id),
-        child: _tarjetaProducto(items[index], onAgregar, ocupada),
+        child: _tarjetaProducto(items[index], ocupada),
       ),
     );
   }
 
-  // Imagen real solo para algunos productos de muestra; el resto usa un
-  // ícono de categoría como placeholder.
+  // Imagen del producto (`productos.imagen_url`); si no hay, ícono de categoría.
   String? _imagenDe(String cartaId) => imagenDeCarta(cartaId);
-
-  int _cantidadEnCarritoDe(CartaItem item, bool ocupada) {
-    final lineas = ocupada
-        ? (detallesPorPedido[_pedidoActivo?.id] ?? const <PedidoLine>[])
-        : _carrito;
-    return lineas
-        .where((l) => _mismoProductoSinPersonalizar(l, item))
-        .fold(0, (s, l) => s + l.cantidad);
-  }
 
   void _quitarUno(CartaItem item, bool ocupada) {
     if (ocupada) {
@@ -776,52 +733,33 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     }
   }
 
-  Widget _tarjetaProducto(
-    CartaItem item,
-    ValueChanged<CartaItem> onAgregar,
-    bool ocupada,
-  ) {
+  // Tarjeta de producto: abre el modal de opciones (tamaño/extras/nota).
+  Widget _tarjetaProducto(CartaItem item, bool ocupada) {
     final desdePrecio = item.precioCliente == null;
-    final cantidad = _cantidadEnCarritoDe(item, ocupada);
-    final seleccionado = cantidad > 0;
     final imagen = _imagenDe(item.id);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      padding: const EdgeInsets.all(12),
+    return Container(
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: seleccionado ? AppColors.primaryGreen : Colors.grey.shade200,
-          width: seleccionado ? 2 : 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // La foto ocupa todo el alto disponible que sobra tras el
-          // nombre/precio/cantidad, en vez de un alto fijo que dejaba un
-          // vacío en blanco debajo cuando la card es alta.
           Expanded(
             child: SizedBox(
               width: double.infinity,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 child: Container(
                   color: const Color(0xFFF1F3F0),
                   child: imagen != null
                       ? Image.asset(imagen, fit: BoxFit.cover)
                       : Center(
-                          child: HugeIcon(
-                            icon: _iconoCategoria(item.categoriaId),
-                            size: 34,
+                          child: Icon(
+                            _iconoCategoria(item.categoriaId),
+                            size: 30,
                             color: Colors.grey.shade400,
                           ),
                         ),
@@ -834,84 +772,79 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
             item.nombrePlato,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            desdePrecio
+                ? 'Desde S/ ${_precioMinimoPresentacion(item.id).toStringAsFixed(2)}'
+                : 'S/ ${item.precioCliente!.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryGreen,
+            ),
           ),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  desdePrecio
-                      ? 'S/ ${_precioMinimoPresentacion(item.id).toStringAsFixed(2)}'
-                      : 'S/ ${item.precioCliente!.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
+          SizedBox(
+            height: 34,
+            child: FilledButton.icon(
+              onPressed: () => _abrirOpcionesProducto(item, ocupada),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              _stepperProducto(item, cantidad, ocupada, onAgregar),
-            ],
+              icon: const Icon(Icons.add, size: 15),
+              label: const Text(
+                'Agregar al pedido',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _stepperProducto(
-    CartaItem item,
-    int cantidad,
-    bool ocupada,
-    ValueChanged<CartaItem> onAgregar,
-  ) {
-    final activo = cantidad > 0;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      decoration: BoxDecoration(
-        color: activo
-            ? AppColors.primaryGreen.withValues(alpha: 0.12)
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: activo ? () => _quitarUno(item, ocupada) : null,
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Icon(
-                Icons.remove,
-                size: 14,
-                color: activo ? AppColors.primaryGreen : Colors.grey.shade400,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 18,
-            child: Text(
-              '$cantidad',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-            ),
-          ),
-          InkWell(
-            onTap: () => onAgregar(item),
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Icon(
-                Icons.add,
-                size: 14,
-                color: activo ? AppColors.primaryGreen : Colors.grey.shade700,
-              ),
-            ),
-          ),
-        ],
-      ),
+  bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
+
+  // Al confirmar el modal, suma la línea al carrito o al pedido existente.
+  Future<void> _abrirOpcionesProducto(CartaItem item, bool ocupada) async {
+    final resultado = await showBlurDialog<ProductoConfigurado>(
+      context: context,
+      builder: (_) => ProductoOpcionesDialog(item: item, esAdmin: _esAdmin),
     );
+    if (resultado == null || !mounted) return;
+    final linea = PedidoLine(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      cartaId: item.id,
+      nombrePlato: item.nombrePlato,
+      cantidad: resultado.cantidad,
+      modificadores: resultado.modificadores,
+      presentacion: resultado.presentacion,
+      taper: null,
+      promocion: null,
+      comentario: resultado.comentario,
+      precioUnitario: resultado.precioUnitario,
+      descuentoAplicado: 0,
+      precioTotalLinea: resultado.precioUnitario * resultado.cantidad,
+    );
+    registrarConsumoAutomaticoDeLinea(linea);
+    if (ocupada) {
+      final pedido = _pedidoActivo;
+      if (pedido == null) return;
+      detallesPorPedido[pedido.id] = [
+        ...detallesPorPedido[pedido.id] ?? const [],
+        linea,
+      ];
+      widget.onCambio();
+      setState(() {});
+    } else {
+      setState(() => _carrito.add(linea));
+    }
   }
 
   // --- Panel derecho: tipo de pedido + carrito + confirmar ---
@@ -939,7 +872,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
               icono: Icons.person_outline,
             ),
           ),
-          if (_tipoPedido == 'delivery')
+          if (_tipoPedido == 'delivery') ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
               child: _campoTexto(
@@ -948,6 +881,23 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
                 icono: Icons.phone_outlined,
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+              child: _campoTexto(
+                controller: _direccionController,
+                hint: 'Dirección de entrega',
+                icono: Icons.location_on_outlined,
+              ),
+            ),
+          ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            child: _campoTexto(
+              controller: _notasController,
+              hint: 'Notas del pedido (opcional)',
+              icono: Icons.notes_outlined,
+            ),
+          ),
         ],
         const SizedBox(height: 12),
         Expanded(
@@ -1134,11 +1084,11 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     final detalles = pedido == null
         ? const []
         : detallesPorPedido[pedido.id] ?? const [];
-    if (detalles.isEmpty) return _carritoVacio();
+    if (detalles.isEmpty || pedido == null) return _carritoVacio();
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       itemCount: detalles.length,
-      itemBuilder: (context, index) => _filaItem(detalles[index]),
+      itemBuilder: (context, index) => _filaItem(detalles[index], pedido),
     );
   }
 
@@ -1156,24 +1106,62 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
+  CartaItem? _cartaItemDe(String cartaId) {
+    for (final c in cartasNotifier.value) {
+      if (c.id == cartaId) return c;
+    }
+    return null;
+  }
+
+  // Línea del carrito (pedido aún sin confirmar): cantidad, precio y eliminar.
   Widget _filaCarrito(int index) {
     final linea = _carrito[index];
+    final item = _cartaItemDe(linea.cartaId);
     final desc = _descripcionLinea(linea);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    final imagen = _imagenDe(linea.cartaId);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _badgeCantidad(linea.cantidad),
-          const SizedBox(width: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 64,
+              height: 64,
+              color: const Color(0xFFF1F3F0),
+              child: imagen != null
+                  ? Image.asset(imagen, fit: BoxFit.cover)
+                  : Icon(
+                      Icons.restaurant_outlined,
+                      color: Colors.grey.shade400,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   linea.nombrePlato,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
                 ),
@@ -1182,27 +1170,107 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       desc,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.grey.shade600,
                       ),
                     ),
                   ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: AppColors.primaryGreen,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'x${linea.cantidad}',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _stepperLinea(
+                  cantidad: linea.cantidad,
+                  onQuitarUno: item == null
+                      ? null
+                      : () => _quitarUno(item, false),
+                  onAgregarUno: item == null ? null : () => _agregarItem(item),
+                ),
               ],
             ),
           ),
-          Text(
-            'S/ ${linea.precioTotalLinea.toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-          ),
           IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
+            icon: Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: Colors.grey.shade400,
+            ),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             onPressed: () => _quitarLinea(index),
           ),
         ],
       ),
+    );
+  }
+
+  // Botones de +/- cantidad.
+  Widget _stepperLinea({
+    required int cantidad,
+    required VoidCallback? onQuitarUno,
+    required VoidCallback? onAgregarUno,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onQuitarUno,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.remove, size: 14, color: Colors.grey.shade700),
+          ),
+        ),
+        SizedBox(
+          width: 28,
+          child: Text(
+            '$cantidad',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+        ),
+        InkWell(
+          onTap: onAgregarUno,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Colors.black87,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.add, size: 14, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1376,7 +1444,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // --- Mesa ocupada: pedido activo (estilo captura) ---
+  // --- Mesa ocupada: pedido activo ---
 
   Widget _vistaPedidoExistente() {
     final pedido = _pedidoActivo;
@@ -1394,9 +1462,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // Contenido puro (sin scroll/borde propios) para poder reutilizarlo tanto
-  // en el panel de escritorio como apilado dentro de un único scroll en
-  // mobile (junto con el cobro, ver build()).
+  // Contenido del pedido activo, reutilizado en escritorio y mobile.
   Widget _contenidoPedidoExistente(Pedido pedido) {
     final detalles = detallesPorPedido[pedido.id] ?? [];
     final subtotal = detalles.fold(
@@ -1408,12 +1474,21 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     final saldo = saldoPendienteDePedido(pedido.id);
     final pagado = total - saldo;
 
+    final tieneDatosCliente =
+        pedido.clienteNombre != null ||
+        pedido.clienteCelular != null ||
+        pedido.direccionDelivery != null ||
+        pedido.notas != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _tarjetaInfoPedido(pedido),
+        if (tieneDatosCliente) ...[
+          const SizedBox(height: 12),
+          _tarjetaDatosCliente(pedido),
+        ],
         const SizedBox(height: 20),
-        _tituloSeccion('ÍTEMS DEL PEDIDO'),
+        _tituloSeccion(_tituloItemsConChecklist(detalles)),
         const SizedBox(height: 8),
         if (detalles.isEmpty)
           Padding(
@@ -1424,16 +1499,20 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
             ),
           )
         else
-          ...detalles.map(_filaItem),
+          ...detalles.map((l) => _filaItem(l, pedido)),
         const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () => setState(() => _agregandoItems = true),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Agregar ítems'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        Center(
+          child: FilledButton.icon(
+            onPressed: () => setState(() => _agregandoItems = true),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Agregar producto'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryGreen,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -1473,7 +1552,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
             height: 42,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.loginInputAccent,
+              color: AppColors.primaryGreen,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -1520,6 +1599,58 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
+  // Datos de cliente/entrega (`pedidos.cliente_nombre/celular/direccion_delivery`).
+  Widget _tarjetaDatosCliente(Pedido pedido) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (pedido.clienteNombre != null)
+            _filaDatoCliente(Icons.person_outline, pedido.clienteNombre!),
+          if (pedido.clienteCelular != null) ...[
+            const SizedBox(height: 6),
+            _filaDatoCliente(Icons.phone_outlined, pedido.clienteCelular!),
+          ],
+          if (pedido.direccionDelivery != null) ...[
+            const SizedBox(height: 6),
+            _filaDatoCliente(
+              Icons.location_on_outlined,
+              pedido.direccionDelivery!,
+            ),
+          ],
+          if (pedido.notas != null) ...[
+            const SizedBox(height: 6),
+            _filaDatoCliente(Icons.notes_outlined, pedido.notas!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _filaDatoCliente(IconData icono, String texto) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icono, size: 16, color: Colors.grey.shade600),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            texto,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _badgeTipoPedido(String tipo, String texto) {
     final icono = switch (tipo) {
       'llevar' => Icons.shopping_bag_outlined,
@@ -1556,7 +1687,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     Color borde;
     Color tinta;
     switch (estado) {
-      case 'en_preparacion':
+      case 'preparando':
         fondo = const Color(0xFFE3F2FD);
         borde = const Color(0xFF1976D2);
         tinta = const Color(0xFF0D47A1);
@@ -1594,61 +1725,234 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  Widget _filaItem(PedidoLine linea) {
+  // Tarjeta de un producto del pedido (`pedidos_detalle`).
+  Widget _filaItem(PedidoLine linea, Pedido pedido) {
     final pagadoLinea = montoPagadoDeLinea(linea.id);
     final desc = _descripcionLinea(linea);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final esCargoDelivery =
+        linea.cartaId == cartaIdCargoDelivery || linea.cartaId == cartaIdAjuste;
+    final incidencia = linea.estado == 'incidencia'
+        ? incidenciaDeLinea(linea.id)
+        : null;
+    final entregado = !esCargoDelivery && lineasEntregadas.contains(linea.id);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _badgeCantidad(linea.cantidad),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  linea.nombrePlato,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                if (!esCargoDelivery)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 2),
+                    child: Tooltip(
+                      message: entregado
+                          ? 'Marcar como pendiente de entrega'
+                          : 'Marcar como entregado',
+                      child: Checkbox(
+                        value: entregado,
+                        onChanged: (_) =>
+                            setState(() => alternarLineaEntregada(linea.id)),
+                        activeColor: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        linea.nombrePlato,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          decoration: entregado ? TextDecoration.lineThrough : null,
+                          color: entregado ? Colors.grey.shade500 : null,
+                        ),
+                      ),
+                      if (desc.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            desc,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      if (pagadoLinea > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Pagado S/ ${pagadoLinea.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                if (desc.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      desc,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'S/ ${linea.precioTotalLinea.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
                       ),
                     ),
-                  ),
-                if (pagadoLinea > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      'Pagado S/ ${pagadoLinea.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                    const SizedBox(height: 6),
+                    _badgeCantidad(linea.cantidad),
+                  ],
+                ),
+                if (!esCargoDelivery) ...[
+                  const SizedBox(width: 6),
+                  _botonImprimirProducto(linea),
+                ],
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            'S/ ${linea.precioTotalLinea.toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-          ),
+          if (!esCargoDelivery)
+            incidencia != null
+                ? _pieProblema(child: _tagIncidencia(incidencia))
+                : _pieProblema(
+                    child: InkWell(
+                      onTap: () => _reportarProblema(linea, pedido),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.flag_outlined,
+                            size: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Reportar problema',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
         ],
       ),
     );
+  }
+
+  // Pestaña inferior de la tarjeta (reportar problema / incidencia).
+  Widget _pieProblema({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _botonImprimirProducto(PedidoLine linea) {
+    return Tooltip(
+      message: 'Imprimir comanda de este producto',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => showAppToast(
+          context,
+          'Comanda de "${linea.nombrePlato}" enviada a imprimir.',
+          type: ToastType.success,
+        ),
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.print_outlined,
+            size: 14,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tagIncidencia(Incidencia incidencia) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCE4EC),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        'Incidencia: ${incidencia.etiquetaAccion}',
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFFC2185B),
+        ),
+      ),
+    );
+  }
+
+  // Reportar problema: marca la línea como 'incidencia' y avisa a cocina.
+  Future<void> _reportarProblema(PedidoLine linea, Pedido pedido) async {
+    final resultado =
+        await showBlurDialog<({String motivo, String accion, String? nota})>(
+          context: context,
+          builder: (_) =>
+              ReportarProblemaDialog(nombrePlato: linea.nombrePlato),
+        );
+    if (resultado == null || !mounted) return;
+    registrarIncidencia(
+      pedidoId: pedido.id,
+      pedidoLineaId: linea.id,
+      motivo: resultado.motivo,
+      accion: resultado.accion,
+      nota: resultado.nota,
+    );
+    setState(() {});
+    showAppToast(
+      context,
+      resultado.accion == 'descuento'
+          ? 'Incidencia registrada para ${linea.nombrePlato}.'
+          : 'Incidencia registrada: ${linea.nombrePlato} vuelve a cocina.',
+      type: ToastType.success,
+      titulo: 'Problema reportado',
+    );
+  }
+
+  // Checklist de entrega por plato (lo controla el mesero).
+  String _tituloItemsConChecklist(List<PedidoLine> detalles) {
+    final platos = detalles.where(
+      (l) => l.cartaId != cartaIdCargoDelivery && l.cartaId != cartaIdAjuste,
+    );
+    if (platos.isEmpty) return 'ÍTEMS DEL PEDIDO';
+    final entregados = platos.where((l) => lineasEntregadas.contains(l.id)).length;
+    return 'ÍTEMS DEL PEDIDO ($entregados/${platos.length} ENTREGADOS)';
   }
 
   Widget _tituloSeccion(String texto) {
@@ -1694,8 +1998,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // --- Panel derecho de cobro: método de pago, monto, propina y el botón.
-  // Vive en el mismo modal que el detalle del pedido (nunca aparte).
+  // --- Cobro: método de pago, monto y propina ---
 
   Widget _panelCobro(Pedido pedido) {
     return Container(
@@ -1706,11 +2009,7 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
     );
   }
 
-  // dentroDeScrollExterno=true (mobile): el contenido va apilado dentro del
-  // scroll compartido con _contenidoPedidoExistente (ver build()), así que
-  // la lista de métodos de pago no debe pelear por un Expanded propio; en
-  // escritorio (false) sí necesita su propio scroll interno para no empujar
-  // el botón "Cobrar" fuera de la vista con una altura fija de 680.
+  // dentroDeScrollExterno=true en mobile (comparte scroll con el detalle).
   Widget _contenidoCobro(Pedido pedido, {required bool dentroDeScrollExterno}) {
     final saldo = saldoPendienteDePedido(pedido.id);
     final habilitado = saldo > 0.01;
@@ -1719,15 +2018,31 @@ class _PanelPedidoMesaState extends State<PanelPedidoMesa> {
       children: [
         _tituloSeccion('MÉTODO DE PAGO'),
         const SizedBox(height: 8),
-        for (final medio in mockMediosPago) _opcionMedioPago(medio),
+        for (final medio in mediosPagoActivos) _opcionMedioPago(medio),
         const SizedBox(height: 12),
         _tituloSeccion('MONTO A COBRAR (S/)'),
         const SizedBox(height: 6),
         _campoNumerico(_montoCobroController),
-        const SizedBox(height: 12),
-        _tituloSeccion('PROPINA (OPCIONAL, S/)'),
-        const SizedBox(height: 6),
-        _campoNumerico(_propinaCobroController),
+        if (config.propinaHabilitada) ...[
+          const SizedBox(height: 12),
+          _tituloSeccion('PROPINA (OPCIONAL, S/)'),
+          const SizedBox(height: 6),
+          _campoNumerico(_propinaCobroController),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(
+                () => _propinaCobroController.text =
+                    (_montoCobro * config.propinaSugerida / 100)
+                        .toStringAsFixed(2),
+              ),
+              child: Text(
+                'Usar propina sugerida (${config.propinaSugerida.toStringAsFixed(0)}%)',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+        ],
         if (_medioPagoCobro.aplicaComision) ...[
           const SizedBox(height: 10),
           Text(

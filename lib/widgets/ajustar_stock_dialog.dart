@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_tipos_movimiento.dart';
+import '../data/catalogos_store.dart';
 import '../models/inventario_movimiento.dart';
 import '../models/producto_inventario.dart';
 import '../models/tipo_movimiento.dart';
+import '../theme/app_theme.dart';
+import 'app_select.dart';
 
 // Registra una entrada/salida manual de stock. Devuelve el InventarioMovimiento
 // resultante via Navigator.pop, o null si se cancela.
@@ -21,6 +23,7 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
   final _cantidadController = TextEditingController();
   final _notasController = TextEditingController();
   TipoMovimiento _tipoMovimiento = movEntradaManual;
+  String? _error;
 
   @override
   void dispose() {
@@ -34,9 +37,7 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
     final cantidad = double.parse(_cantidadController.text.trim());
 
     if (!_tipoMovimiento.esEntrada && cantidad > widget.producto.stockActual) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La cantidad supera el stock disponible')),
-      );
+      setState(() => _error = 'La cantidad supera el stock disponible');
       return;
     }
 
@@ -55,62 +56,115 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Ajustar stock · ${widget.producto.nombre}'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Stock actual: ${widget.producto.stockActual}'),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<TipoMovimiento>(
-              initialValue: _tipoMovimiento,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Tipo de movimiento',
-              ),
-              items: mockTiposMovimiento
-                  .map(
-                    (t) => DropdownMenuItem(
-                      value: t,
-                      child: Text(t.tipoMovimiento),
+    final esMobile = AppBreakpoints.esMobile(context);
+    final anchoPantalla = MediaQuery.sizeOf(context).width;
+    return Material(
+      color: Colors.white,
+      borderRadius: esMobile
+          ? const BorderRadius.vertical(top: Radius.circular(AppRadii.sheet))
+          : BorderRadius.circular(AppRadii.sheet),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: esMobile
+            ? BoxConstraints(minWidth: anchoPantalla, maxWidth: anchoPantalla)
+            : const BoxConstraints(minWidth: 400, maxWidth: 400),
+        child: Form(
+          key: _formKey,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(28, esMobile ? 28 : 22, 28, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Ajustar stock',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() => _tipoMovimiento = value!),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${widget.producto.nombre} · stock actual '
+                  '${widget.producto.stockActual}',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 16),
+                AppSelect<TipoMovimiento>(
+                  label: 'Tipo de movimiento',
+                  value: _tipoMovimiento,
+                  items: [
+                    for (final t in mockTiposMovimiento)
+                      AppSelectItem(value: t, label: t.tipoMovimiento),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _tipoMovimiento = v!;
+                    _error = null;
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _cantidadController,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Cantidad',
+                    errorText: _error,
+                  ),
+                  onChanged: (_) {
+                    if (_error != null) setState(() => _error = null);
+                  },
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Ingresa la cantidad';
+                    }
+                    final parsed = double.tryParse(v.trim());
+                    if (parsed == null || parsed <= 0) return 'Cantidad inválida';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _notasController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Notas (opcional)',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: _confirmar,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Registrar'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _cantidadController,
-              decoration: const InputDecoration(labelText: 'Cantidad'),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Ingresa la cantidad';
-                final parsed = double.tryParse(v.trim());
-                if (parsed == null || parsed <= 0) return 'Cantidad inválida';
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _notasController,
-              decoration: const InputDecoration(labelText: 'Notas (opcional)'),
-              maxLines: 2,
-            ),
-          ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(onPressed: _confirmar, child: const Text('Registrar')),
-      ],
     );
   }
 }

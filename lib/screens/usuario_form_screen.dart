@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_sedes.dart';
+import '../data/configuracion_store.dart';
 import '../models/app_role.dart';
 import '../models/mock_user.dart';
 import '../models/sede.dart';
@@ -30,7 +30,7 @@ class _UsuarioFormScreenState extends State<UsuarioFormScreen> {
   late AppRole _rol = widget.usuario?.rol ?? AppRole.mesero;
   late Sede? _sede = widget.usuario?.sedeId == null
       ? null
-      : mockSedes.where((s) => s.id == widget.usuario!.sedeId).firstOrNull;
+      : sedes.where((s) => s.id == widget.usuario!.sedeId).firstOrNull;
   late bool _activo = widget.usuario?.activo ?? true;
 
   @override
@@ -115,7 +115,7 @@ class _UsuarioFormScreenState extends State<UsuarioFormScreen> {
                   value: null,
                   child: Text('Sin asignar'),
                 ),
-                ...mockSedes.map(
+                ...sedes.map(
                   (s) => DropdownMenuItem<Sede?>(
                     value: s,
                     child: Text(s.direccion),

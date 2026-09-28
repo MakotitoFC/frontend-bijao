@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:hugeicons/hugeicons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_theme.dart';
 
-// Select personalizado: campo redondeado con ícono de flecha hacia abajo.
-// Al tocarlo, despliega un menú anclado justo debajo del campo (no un
-// modal/bottom sheet) con las opciones (ícono + texto), marcando la
-// seleccionada con un check.
+// Select con menú anclado debajo del campo (ícono + texto por opción).
 class AppSelectField<T> extends StatefulWidget {
   final String label;
   final T? value;
   final List<T> items;
   final String Function(T item) itemLabel;
-  final List<List<dynamic>>? Function(T item)? itemIcon;
+  final IconData? Function(T item)? itemIcon;
   final ValueChanged<T> onChanged;
-  final List<List<dynamic>>? leadingIcon;
+  final IconData? leadingIcon;
   final String? errorText;
 
   const AppSelectField({
@@ -73,7 +70,7 @@ class _AppSelectFieldState<T> extends State<AppSelectField<T>> {
           child: Row(
             children: [
               if (icono != null) ...[
-                HugeIcon(icon: icono, color: AppColors.primaryGreen, size: 20),
+                Icon(icono, color: AppColors.primaryGreen, size: 20),
                 const SizedBox(width: 10),
               ],
               Expanded(
@@ -83,8 +80,8 @@ class _AppSelectFieldState<T> extends State<AppSelectField<T>> {
                 ),
               ),
               if (esSeleccionado)
-                HugeIcon(
-                  icon: HugeIcons.strokeRoundedCheckmarkCircle02,
+                Icon(
+                  LucideIcons.circleCheck,
                   color: AppColors.primaryGreen,
                   size: 18,
                 ),
@@ -111,8 +108,8 @@ class _AppSelectFieldState<T> extends State<AppSelectField<T>> {
               ? null
               : Padding(
                   padding: const EdgeInsets.all(12),
-                  child: HugeIcon(
-                    icon: widget.leadingIcon!,
+                  child: Icon(
+                    widget.leadingIcon!,
                     color: Colors.grey.shade600,
                     size: 20,
                   ),
@@ -122,8 +119,8 @@ class _AppSelectFieldState<T> extends State<AppSelectField<T>> {
             child: AnimatedRotation(
               turns: _abierto ? 0.5 : 0,
               duration: const Duration(milliseconds: 150),
-              child: HugeIcon(
-                icon: HugeIcons.strokeRoundedArrowDown01,
+              child: Icon(
+                LucideIcons.chevronDown,
                 color: Colors.grey.shade500,
                 size: 18,
               ),

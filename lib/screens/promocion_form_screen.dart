@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_cartas.dart';
+import '../data/cartas_store.dart';
 import '../data/promociones_store.dart';
 import '../models/promocion.dart';
 
@@ -184,7 +184,7 @@ class _PromocionFormScreenState extends State<PromocionFormScreen> {
               'Platos aplicables',
               style: Theme.of(context).textTheme.titleSmall,
             ),
-            ...mockCartas.map(
+            ...cartasNotifier.value.map(
               (carta) => CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(carta.nombrePlato),

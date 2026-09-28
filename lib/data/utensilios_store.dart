@@ -1,7 +1,7 @@
 import '../models/inventario_movimiento.dart';
 import '../models/utensilio_roto.dart';
 import 'inventario_store.dart';
-import 'mock_tipos_movimiento.dart';
+import 'catalogos_store.dart';
 
 // Estado en memoria de utensilios/menaje roto. Registrar una rotura también
 // descuenta el stock del producto como merma (ver inventario_store.dart).

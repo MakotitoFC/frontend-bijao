@@ -4,9 +4,7 @@ import '../theme/app_theme.dart';
 
 enum AppButtonVariant { primary, outline }
 
-// Botón base del sistema de diseño: relleno sólido (acción primaria) o
-// outline/ghost (acción secundaria, por defecto). Se encoge levemente al
-// presionar y oscurece un poco en hover (escritorio/web).
+// Botón base: relleno sólido (primario) u outline (secundario).
 class AppButton extends StatefulWidget {
   final String label;
   final VoidCallback? onPressed;

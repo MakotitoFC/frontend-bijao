@@ -1,15 +1,9 @@
 import '../models/inventario_movimiento.dart';
 import '../models/producto_inventario.dart';
-import 'mock_productos_inventario.dart';
 
-// Estado en memoria de inventario, compartido entre Inventario y Compras
-// (una compra debe reflejarse en el stock real). Sin backend aún, esto vive
-// solo mientras la app está abierta.
-// TODO: reemplazar por lecturas/escrituras reales a `producto_inventario` /
-// `inventario_movimiento` al conectar el servidor local.
-final List<ProductoInventario> productosInventario = List.of(
-  productosInventarioIniciales,
-);
+// Stock del inventario (tabla `producto_inventario`) y sus movimientos
+// (`inventario_movimiento`). Se cargan desde el backend.
+final List<ProductoInventario> productosInventario = [];
 final Map<String, List<InventarioMovimiento>> movimientosInventario = {};
 
 void registrarMovimientoInventario(InventarioMovimiento movimiento) {

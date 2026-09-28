@@ -4,9 +4,7 @@ import '../theme/app_theme.dart';
 
 enum ToastType { success, error, warning, info }
 
-// Notificación tipo toast flotante en la parte superior de la pantalla:
-// círculo de ícono + título en negrita + descripción, con una barra inferior
-// del color del tipo que se reduce hasta que el toast se cierra solo.
+// Toast flotante con ícono, título y descripción; se cierra solo.
 void showAppToast(
   BuildContext context,
   String message, {

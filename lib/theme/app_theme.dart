@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Paleta propia de Bijao: verde selva (la hoja de bijao) + acento tierra/dorado.
+// Paleta de Bijao: verde menta #0CAB7B sobre navbar oscuro #1F1F1F, header
+// #FFFFFC y fondo de vistas #F5F6FF.
 class AppColors {
-  static const Color primaryGreen = Color(0xFF1B5E3F);
-  static const Color primaryGreenDark = Color(0xFF12432D);
+  static const Color primaryGreen = Color(0xFF0CAB7B);
+  static const Color primaryGreenDark = Color(0xFF098A63);
   static const Color accentGold = Color(0xFFC98A3E);
-  static const Color background = Color(0xFFF7F5F0);
+  static const Color background = Color(0xFFF5F6FF);
+  static const Color navbar = Color(0xFF1F1F1F);
+  static const Color header = Color(0xFFFFFFFC);
 
   static const Color success = Color(0xFF2E7D4F);
   static const Color error = Color(0xFFC24444);
@@ -21,11 +24,36 @@ class AppColors {
   static const Color loginMutedGreen = Color(0xFF8DBA91);
   static const Color loginPanelBg = Color(0xFFF2F5F3);
   static const Color loginButtonDark = Color(0xFF1B3A2E);
-  static const Color loginInputAccent = Color(0xFF045125);
+  static const Color loginInputAccent = primaryGreen;
 
   // Paleta de la pantalla Mesas (estado por color, ver mesa_card.dart).
   static const Color mesaOcupada = Color(0xFF4A82E0);
   static const Color mesaLibre = Color(0xFF9CA3AF);
+
+  // Neón: verde para lo libre/activo y rojo para lo ocupado. `verdeTexto` es
+  // el verde oscuro que se usa para el texto sobre fondos neón claros.
+  static const Color neonVerde = Color(0xFF19F5A1);
+  static const Color neonRojo = Color(0xFFFF3B5C);
+  static const Color verdeTexto = Color(0xFF078A5F);
+  static const Color rojoTexto = Color(0xFFC21A3A);
+}
+
+// Etiquetas "medio neón": fondo translúcido, trazo neón y, si están activas,
+// un brillo suave alrededor. Verde por defecto; `color` permite el rojo de
+// "Ocupada" (ver mesas_screen.dart) con el mismo estilo.
+class Neon {
+  static BoxDecoration etiqueta({
+    bool activa = false,
+    double radio = 20,
+    Color color = AppColors.neonVerde,
+  }) => BoxDecoration(
+    color: color.withValues(alpha: activa ? 0.28 : 0.10),
+    borderRadius: BorderRadius.circular(radio),
+    border: Border.all(color: color.withValues(alpha: activa ? 1 : 0.5)),
+    boxShadow: activa
+        ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 10)]
+        : null,
+  );
 }
 
 // Radios de esquina estándar (nivel "moderado": consistente pero no pill-shape).
@@ -49,10 +77,14 @@ class AppBreakpoints {
 class AppTheme {
   static ThemeData get light {
     final baseTextTheme = GoogleFonts.poppinsTextTheme();
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primaryGreen,
-      brightness: Brightness.light,
-    ).copyWith(secondary: AppColors.accentGold);
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: AppColors.primaryGreen,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: AppColors.primaryGreen,
+          secondary: AppColors.accentGold,
+        );
 
     return ThemeData(
       useMaterial3: true,

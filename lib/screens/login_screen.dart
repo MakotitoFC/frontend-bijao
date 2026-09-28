@@ -1,21 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:hugeicons/hugeicons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../data/mock_sedes.dart';
+import '../data/configuracion_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/mock_user.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_button.dart';
 import '../widgets/app_toast.dart';
 import 'home_screen.dart';
 
-// Login con datos mock (sin backend). Los campos son correo y contraseña;
-// la sede se resuelve automáticamente del usuario autenticado
-// (`usuario.sedeId`), no se elige en esta pantalla.
-// Solo desktop: split-screen (panel a la izquierda, tarjeta flotante
-// centrada a la derecha).
-// TODO: al conectar el servidor local de la laptop, reemplazar
-// _submit() por la llamada real de autenticación (usuarios/mockSedes).
+// Login: correo + contraseña contra `usuarios`.
+// TODO backend: reemplazar _submit() por la autenticación real.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -24,45 +18,17 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _imagenLogin = 'assets/images/login_cocina.jpg';
+
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _emailFocus = FocusNode();
-  final _passwordFocus = FocusNode();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
 
-  // Anula por completo el borde redondeado del tema global (que solo
-  // sobreescribir `border` no basta: enabledBorder/focusedBorder del tema
-  // tienen prioridad sobre él).
-  static const _sinBorde = InputDecoration(
-    border: InputBorder.none,
-    enabledBorder: InputBorder.none,
-    focusedBorder: InputBorder.none,
-    disabledBorder: InputBorder.none,
-    errorBorder: InputBorder.none,
-    focusedErrorBorder: InputBorder.none,
-    filled: false,
-    isDense: true,
-    contentPadding: EdgeInsets.zero,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    _emailFocus.addListener(_onFocusChange);
-    _passwordFocus.addListener(_onFocusChange);
-  }
-
-  void _onFocusChange() => setState(() {});
-
   @override
   void dispose() {
-    _emailFocus.removeListener(_onFocusChange);
-    _passwordFocus.removeListener(_onFocusChange);
-    _emailFocus.dispose();
-    _passwordFocus.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -90,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (usuario == null) {
       showAppToast(
         context,
-        'Correo o contraseña incorrectos (usuarios de prueba)',
+        'Correo o contraseña incorrectos',
         type: ToastType.error,
       );
       return;
@@ -106,8 +72,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final sede =
-        mockSedes.where((s) => s.id == usuario!.sedeId).firstOrNull ??
-        mockSedes.first;
+        sedes.where((s) => s.id == usuario!.sedeId).firstOrNull ??
+        sedes.first;
     final usuarioEncontrado = usuario;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -116,355 +82,258 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _fieldRow({required bool active, required Widget child}) {
-    return SizedBox(
-      height: 66,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: child,
+  Widget _etiqueta(String texto) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      texto,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Colors.white,
       ),
-    );
-  }
-
-  Widget _fieldLabel(String texto) => Text(
-    texto,
-    style: const TextStyle(
-      color: AppColors.loginInputAccent,
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
     ),
   );
 
-  Widget _emailContent() {
-    final activo = _emailFocus.hasFocus;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _fieldLabel('Correo electrónico'),
-        const SizedBox(height: 4),
-        TextFormField(
-          controller: _emailController,
-          focusNode: _emailFocus,
-          keyboardType: TextInputType.emailAddress,
-          style: TextStyle(
-            color: activo ? AppColors.loginInputAccent : Colors.black87,
+  InputDecoration _decoracion(String hint, IconData icono, {Widget? sufijo}) {
+    final borde = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide.none,
+    );
+    return InputDecoration(
+      filled: true,
+      fillColor: Colors.white,
+      hintText: hint,
+      hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+      prefixIcon: Icon(icono, size: 18, color: Colors.grey.shade600),
+      suffixIcon: sufijo,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: borde,
+      enabledBorder: borde,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppColors.primaryGreenDark, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _formulario(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Image.asset('assets/images/logo_bijao.png', height: 38),
           ),
-          decoration: _sinBorde,
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) {
-              return 'Ingresa tu correo';
-            }
-            if (!value.contains('@')) {
-              return 'Correo inválido';
-            }
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _passwordContent() {
-    final activo = _passwordFocus.hasFocus;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _fieldLabel('Contraseña'),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _passwordController,
-                focusNode: _passwordFocus,
-                obscureText: _obscurePassword,
-                style: TextStyle(
-                  color: activo ? AppColors.loginInputAccent : Colors.black87,
+          const SizedBox(height: 32),
+          const Text(
+            'Bienvenido',
+            style: TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ingresa tus credenciales para continuar',
+            style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.85)),
+          ),
+          const SizedBox(height: 30),
+          _etiqueta('Correo electrónico'),
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(fontSize: 14),
+            decoration: _decoracion('Ingresa tu correo', LucideIcons.mail),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Ingresa tu correo';
+              }
+              if (!value.contains('@')) return 'Correo inválido';
+              return null;
+            },
+          ),
+          const SizedBox(height: 18),
+          _etiqueta('Contraseña'),
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            style: const TextStyle(fontSize: 14),
+            onFieldSubmitted: (_) => _isLoading ? null : _submit(),
+            decoration: _decoracion(
+              'Ingresa tu contraseña',
+              LucideIcons.lock,
+              sufijo: IconButton(
+                icon: Icon(
+                  _obscurePassword ? LucideIcons.eye : LucideIcons.eyeOff,
+                  size: 18,
+                  color: Colors.grey.shade600,
                 ),
-                decoration: _sinBorde,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Ingresa tu contraseña';
-                  }
-                  return null;
-                },
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
-            IconButton(
-              style: IconButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: HugeIcon(
-                icon: _obscurePassword
-                    ? HugeIcons.strokeRoundedView
-                    : HugeIcons.strokeRoundedViewOffSlash,
-                color: Colors.grey.shade500,
-                size: 20,
-              ),
-              onPressed: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _campoContenedor({required bool active, required Widget child}) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: active ? AppColors.loginInputAccent : Colors.grey.shade300,
-        ),
-        borderRadius: BorderRadius.circular(AppRadii.input),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: _fieldRow(active: active, child: child),
-    );
-  }
-
-  Widget _credentialsGroup() {
-    return Column(
-      children: [
-        _campoContenedor(active: _emailFocus.hasFocus, child: _emailContent()),
-        const SizedBox(height: 16),
-        _campoContenedor(
-          active: _passwordFocus.hasFocus,
-          child: _passwordContent(),
-        ),
-      ],
-    );
-  }
-
-  Widget _card(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset('assets/images/logo_bijao.png', height: 52),
-            const SizedBox(height: 28),
-            Text(
-              'Bienvenido',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Ingresa tus credenciales para continuar',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 28),
-            _credentialsGroup(),
-            const SizedBox(height: 28),
-            AppButton(
-              label: 'Iniciar sesión',
-              variant: AppButtonVariant.primary,
-              backgroundColor: AppColors.loginButtonDark,
-              hoverColor: AppColors.loginDarkPanel,
-              radius: 28,
-              isLoading: _isLoading,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Ingresa tu contraseña';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
               onPressed: _isLoading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.primaryGreenDark,
+                disabledBackgroundColor: Colors.white.withValues(alpha: 0.7),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primaryGreenDark,
+                      ),
+                    )
+                  : const Text(
+                      'Iniciar sesión',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _copyright() => Text(
+    '© ${DateTime.now().year} Kumo Systems. Todos los derechos reservados',
+    textAlign: TextAlign.center,
+    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.7)),
+  );
+
+  Widget _foto({double? alto, BorderRadius? radio}) {
+    return ClipRRect(
+      borderRadius: radio ?? BorderRadius.zero,
+      child: Image.asset(
+        _imagenLogin,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: alto ?? double.infinity,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final mobile = AppBreakpoints.esMobile(context);
     return Scaffold(
-      backgroundColor: AppColors.loginPanelBg,
-      body: _buildLayoutAncho(context),
+      backgroundColor: AppColors.background,
+      body: mobile ? _buildMobile(context) : _buildEscritorio(context),
     );
   }
 
-  Widget _buildLayoutAncho(BuildContext context) {
-    // Mobile: sin el panel de marca/features a la izquierda, solo el
-    // "Bienvenido" y el formulario de credenciales, a pantalla completa.
-    if (AppBreakpoints.esMobile(context)) {
-      return SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: constraints.maxHeight - 40,
+  // Mobile: foto arriba, panel verde con el formulario debajo.
+  Widget _buildMobile(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _foto(alto: 170, radio: BorderRadius.circular(20)),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen,
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Center(child: _card(context)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _formulario(context),
+                  const SizedBox(height: 24),
+                  _copyright(),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
-      );
-    }
-    return Row(
-      children: [
-        Expanded(
-          flex: 5,
-          child: Container(
-            color: AppColors.loginDarkPanel,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Expanded(child: _FeaturePanel()),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(56, 0, 56, 32),
-                  child: _CopyrightText(
-                    color: Colors.white.withValues(alpha: 0.5),
+      ),
+    );
+  }
+
+  // Escritorio y tablet: tarjeta con foto a la izquierda y panel verde con
+  // el formulario a la derecha.
+  Widget _buildEscritorio(BuildContext context) {
+    return SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000, maxHeight: 640),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 30,
+                    offset: const Offset(0, 12),
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          flex: 6,
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(48),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: _card(context),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Row(
+                children: [
+                  Expanded(child: _foto()),
+                  Expanded(
+                    child: Container(
+                      color: AppColors.primaryGreen,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 48,
+                        vertical: 32,
+                      ),
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Center(
+                              child: SingleChildScrollView(
+                                child: _formulario(context),
+                              ),
+                            ),
+                          ),
+                          _copyright(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
-}
-
-class _CopyrightText extends StatelessWidget {
-  final Color color;
-
-  const _CopyrightText({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      '© ${DateTime.now().year} Kumo Systems. Todos los derechos reservados',
-      textAlign: TextAlign.left,
-      style: TextStyle(color: color, fontSize: 12),
-    );
-  }
-}
-
-// Panel de marca/features: columna izquierda del split-screen.
-class _FeaturePanel extends StatelessWidget {
-  const _FeaturePanel();
-
-  @override
-  Widget build(BuildContext context) {
-    const tituloStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 38,
-      fontWeight: FontWeight.w800,
-      height: 1.1,
-    );
-
-    final contenido = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('Sistema POS', style: tituloStyle),
-        Text(
-          'Control total',
-          style: tituloStyle.copyWith(
-            color: AppColors.loginAccentGreen,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Control total de tu operación: desde la primera orden hasta la '
-          'última mesa. Acceso seguro para equipos que nunca se detienen.',
-          style: TextStyle(
-            color: AppColors.loginMutedGreen,
-            fontSize: 15,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 32),
-        _feature(
-          HugeIcons.strokeRoundedZap,
-          'Rápido',
-          'Toma órdenes en segundos',
-        ),
-        const SizedBox(height: 16),
-        _feature(
-          HugeIcons.strokeRoundedChartLineData02,
-          'Claro',
-          'Reportes en tiempo real',
-        ),
-        const SizedBox(height: 16),
-        _feature(
-          HugeIcons.strokeRoundedSecurityValidation,
-          'Seguro',
-          'Datos protegidos',
-        ),
-      ],
-    );
-
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      padding: const EdgeInsets.fromLTRB(56, 56, 56, 0),
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(child: contenido),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _feature(
-    List<List<dynamic>> icon,
-    String titulo,
-    String descripcion,
-  ) => Row(
-    children: [
-      HugeIcon(icon: icon, color: AppColors.loginAccentGreen, size: 20),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Text.rich(
-          TextSpan(
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            children: [
-              TextSpan(
-                text: '$titulo: ',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              TextSpan(
-                text: descripcion,
-                style: const TextStyle(fontWeight: FontWeight.w400),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ],
-  );
 }

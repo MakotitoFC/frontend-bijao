@@ -18,6 +18,9 @@ class PedidoLine {
   final double precioUnitario; // base + modificadores + taper, por unidad
   final double descuentoAplicado; // total de la línea
   final double precioTotalLinea; // total final de la línea (con descuento)
+  // Estado de la línea (pedidos_detalle.estado): null = normal, 'incidencia'
+  // = tiene una devolución/reclamo reportado (ver incidencias_store.dart).
+  final String? estado;
 
   const PedidoLine({
     required this.id,
@@ -32,5 +35,22 @@ class PedidoLine {
     required this.precioUnitario,
     required this.descuentoAplicado,
     required this.precioTotalLinea,
+    this.estado,
   });
+
+  PedidoLine copyWith({String? estado}) => PedidoLine(
+    id: id,
+    cartaId: cartaId,
+    nombrePlato: nombrePlato,
+    cantidad: cantidad,
+    modificadores: modificadores,
+    presentacion: presentacion,
+    taper: taper,
+    promocion: promocion,
+    comentario: comentario,
+    precioUnitario: precioUnitario,
+    descuentoAplicado: descuentoAplicado,
+    precioTotalLinea: precioTotalLinea,
+    estado: estado ?? this.estado,
+  );
 }

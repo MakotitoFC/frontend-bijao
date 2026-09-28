@@ -1,7 +1,7 @@
 import '../models/compra.dart';
 import '../models/compra_detalle.dart';
 import '../models/inventario_movimiento.dart';
-import 'mock_tipos_movimiento.dart';
+import 'catalogos_store.dart';
 import 'inventario_store.dart';
 
 // Estado en memoria de compras. Registrar una compra también repone el

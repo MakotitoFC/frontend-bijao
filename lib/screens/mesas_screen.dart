@@ -1,75 +1,79 @@
 import 'package:flutter/material.dart';
-import 'package:hugeicons/hugeicons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
+import '../data/usuarios_store.dart';
 import '../models/mesa.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../widgets/app_select.dart';
+import '../widgets/marching_ants_border.dart';
 import '../widgets/mesa_card.dart';
-import '../widgets/panel_pedido_mesa.dart';
+import '../widgets/mesa_form_dialog.dart';
 
-// Vista de mesas: grilla a pantalla completa estilo "floor plan".
-// El panel de detalle aparece SOLO al hacer clic en una mesa.
-class MesasScreen extends StatefulWidget {
-  const MesasScreen({super.key});
-
-  @override
-  State<MesasScreen> createState() => _MesasScreenState();
+// Pedido activo (no pagado) de una mesa, considerando mesas unidas
+// (`todasLasMesas`). Usado por el plano (T-1, T-2...).
+Pedido? _pedidoActivoDeMesa(int mesaNumero) {
+  for (final p in pedidos) {
+    if (p.todasLasMesas.contains(mesaNumero) && p.estado != 'pagado') {
+      return p;
+    }
+  }
+  return null;
 }
 
-class _MesasScreenState extends State<MesasScreen> {
-  bool _modoUnion = false;
-  final Set<int> _paraUnir = {};
+String _horaDe(DateTime fecha) =>
+    '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
 
-  final _busquedaController = TextEditingController();
-  String _busqueda = '';
+// Mesero que tomó el pedido (pedidos.usuario_id): así se ve, mesa por mesa,
+// cuántas está atendiendo cada uno.
+String? _meseroDe(Pedido? pedido) {
+  if (pedido?.usuarioId == null) return null;
+  for (final u in usuarios) {
+    if (u.id == pedido!.usuarioId) return u.nombre;
+  }
+  return null;
+}
+
+// Plano de mesas (tabla `mesas`): filtros de zona/estado, unir mesas y la
+// grilla. Al tocar una mesa avisa por `onSeleccionarMesa`.
+class MesasPlano extends StatefulWidget {
+  final ValueChanged<Mesa> onSeleccionarMesa;
+
+  const MesasPlano({super.key, required this.onSeleccionarMesa});
 
   @override
-  void dispose() {
-    _busquedaController.dispose();
-    super.dispose();
-  }
+  State<MesasPlano> createState() => _MesasPlanoState();
+}
+
+class _MesasPlanoState extends State<MesasPlano> {
+  bool _modoUnion = false;
+  final Set<int> _paraUnir = {};
+  String? _zona;
+  String? _estado;
 
   void _seleccionarMesa(Mesa mesa) {
     if (_modoUnion) {
       _alternarSeleccionParaUnir(mesa);
       return;
     }
-    _abrirPedidoMesa(mesa);
-  }
-
-  Future<void> _abrirPedidoMesa(Mesa mesa) async {
-    await showBlurDialog<void>(
-      context: context,
-      builder: (dialogContext) => PanelPedidoMesa(
-        key: ValueKey(mesa.numero),
-        mesa: mesa,
-        onCerrar: () => Navigator.of(dialogContext).pop(),
-        onCambio: () => setState(() {}),
-      ),
-    );
-    setState(() {});
+    widget.onSeleccionarMesa(mesa);
   }
 
   void _alternarSeleccionParaUnir(Mesa mesa) {
     if (mesa.estado != 'libre' || estaUnida(mesa.numero)) return;
     setState(() {
-      if (_paraUnir.contains(mesa.numero)) {
-        _paraUnir.remove(mesa.numero);
-      } else if (_paraUnir.length < 2) {
-        _paraUnir.add(mesa.numero);
-      }
+      if (!_paraUnir.remove(mesa.numero)) _paraUnir.add(mesa.numero);
     });
   }
 
   void _confirmarUnion() {
-    final numeros = _paraUnir.toList();
-    if (numeros.length != 2) return;
+    if (_paraUnir.length < 2) return;
     setState(() {
-      unirMesas(numeros[0], numeros[1]);
+      unirMesas(_paraUnir.toList());
       _paraUnir.clear();
       _modoUnion = false;
     });
@@ -82,294 +86,283 @@ class _MesasScreenState extends State<MesasScreen> {
     });
   }
 
+  Future<void> _nuevaMesa() async {
+    final datos = await showBlurDialog<({int numero, int capacidad})>(
+      context: context,
+      builder: (_) => const MesaFormDialog(),
+    );
+    if (datos == null || !mounted) return;
+    setState(
+      () => agregarMesa(
+        numero: datos.numero,
+        capacidad: datos.capacidad,
+        zona: _zona ?? 'Principal',
+      ),
+    );
+  }
+
   void _desunir(int numero) {
     setState(() => separarMesas(numero));
   }
 
-  Pedido? _pedidoActivoDe(int mesaNumero) {
-    for (final p in pedidos) {
-      if (p.todasLasMesas.contains(mesaNumero) && p.estado != 'pagado') {
-        return p;
-      }
-    }
-    return null;
-  }
-
-  String _hora(DateTime fecha) =>
-      '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: _buildAncho(context),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _barraSuperior(),
+        Expanded(child: _grilla()),
+      ],
     );
   }
 
-  Widget _buildAncho(BuildContext context) {
-    return SafeArea(
+  // Filtros de zona/estado + Unir mesas/+ Mesa.
+  Widget _barraSuperior() {
+    final n = _paraUnir.length;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(32, 24, 32, 0),
-            child: _encabezado(context),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 170,
+                child: AppSelect<String?>(
+                  value: _zona,
+                  compacto: true,
+                  items: [
+                    const AppSelectItem(value: null, label: 'Todas las zonas'),
+                    for (final z in zonasMesas)
+                      AppSelectItem(value: z, label: z),
+                  ],
+                  onChanged: (v) => setState(() => _zona = v),
+                  hint: 'Todas las zonas',
+                ),
+              ),
+              SizedBox(
+                width: 190,
+                child: AppSelect<String?>(
+                  value: _estado,
+                  compacto: true,
+                  items: const [
+                    AppSelectItem(value: null, label: 'Todos los estados'),
+                    AppSelectItem(value: 'ocupada', label: 'Ocupadas'),
+                    AppSelectItem(value: 'libre', label: 'Libres'),
+                  ],
+                  onChanged: (v) => setState(() => _estado = v),
+                  hint: 'Todos los estados',
+                ),
+              ),
+              _botonOscuro(
+                icono: LucideIcons.link,
+                texto: 'Unir mesas',
+                activo: _modoUnion,
+                onTap: () => setState(() {
+                  _modoUnion = !_modoUnion;
+                  _paraUnir.clear();
+                }),
+              ),
+              _botonOscuro(
+                icono: Icons.add,
+                texto: 'Mesa',
+                onTap: _nuevaMesa,
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          if (_modoUnion) _barraUnion(),
-          // La grilla ocupa todo el ancho disponible; su ClipRect propio
-          // evita que las mesas se dibujen por encima del encabezado al
-          // hacer scroll.
-          Expanded(
-            child: Padding(padding: const EdgeInsets.all(20), child: _grilla()),
-          ),
+          if (_modoUnion) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.warning,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      n < 2
+                          ? 'Elige 2 o más mesas libres para unir ($n)'
+                          : 'Unir ${_paraUnir.toList().map((e) => 'Mesa $e').join(' + ')}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _cancelarUnion,
+                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 4),
+                  FilledButton(
+                    onPressed: n >= 2 ? _confirmarUnion : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.warning,
+                      disabledBackgroundColor: Colors.white.withValues(alpha: 0.5),
+                    ),
+                    child: const Text('Unir'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _barraUnion() {
-    final listo = _paraUnir.length == 2;
-    return Container(
-      width: double.infinity,
-      color: AppColors.primaryGreen.withValues(alpha: 0.08),
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-      child: Row(
-        children: [
-          Text(
-            listo
-                ? 'Unir Mesa ${_paraUnir.elementAt(0)} y Mesa ${_paraUnir.elementAt(1)}'
-                : 'Elige 2 mesas libres para unir (${_paraUnir.length}/2)',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+  // Botón de trazo verde; activo se rellena de verde.
+  Widget _botonOscuro({
+    required IconData icono,
+    required String texto,
+    required VoidCallback onTap,
+    bool activo = false,
+  }) {
+    final color = activo ? Colors.white : AppColors.primaryGreen;
+    return Material(
+      color: activo ? AppColors.primaryGreen : Colors.white,
+      borderRadius: BorderRadius.circular(AppRadii.input),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.input),
+            border: Border.all(color: AppColors.primaryGreen, width: 1.5),
           ),
-          const Spacer(),
-          TextButton(onPressed: _cancelarUnion, child: const Text('Cancelar')),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: listo ? _confirmarUnion : null,
-            child: const Text('Unir mesas'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  BoxShadow get _sombraFlotante => BoxShadow(
-    color: Colors.black.withValues(alpha: 0.06),
-    blurRadius: 12,
-    offset: const Offset(0, 3),
-  );
-
-  // Encabezado: dos tarjetas flotantes en la misma fila. Una con las tags de
-  // leyenda (Disponible/Ocupada) y otra con el buscador + el botón de unir
-  // mesas (sin pestañas de piso/salón porque tu app no maneja zonas).
-  Widget _encabezado(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _tarjetaFlotante(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _puntoLeyenda(
-                color: const Color(0xFFBDBDBD),
-                texto: 'Disponible',
-              ),
-              const SizedBox(width: 14),
-              _puntoLeyenda(color: AppColors.mesaOcupada, texto: 'Ocupada'),
-            ],
-          ),
-        ),
-        const Spacer(),
-        _tarjetaFlotante(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 220,
-                child: TextField(
-                  controller: _busquedaController,
-                  onChanged: (v) => setState(() => _busqueda = v),
-                  style: const TextStyle(fontSize: 13),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar mesa...',
-                    hintStyle: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 18,
-                      color: Colors.grey.shade500,
-                    ),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 34),
-                    isDense: true,
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: AppColors.primaryGreen,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: Material(
-                  color: _modoUnion
-                      ? const Color(0xFFE8F5E9)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => setState(() {
-                      _modoUnion = !_modoUnion;
-                      _paraUnir.clear();
-                    }),
-                    child: Center(
-                      child: HugeIcon(
-                        icon: HugeIcons.strokeRoundedLink04,
-                        size: 18,
-                        color: _modoUnion
-                            ? AppColors.primaryGreen
-                            : Colors.black87,
-                      ),
-                    ),
-                  ),
+              Icon(icono, size: 16, color: color),
+              const SizedBox(width: 7),
+              Text(
+                texto,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color,
                 ),
               ),
             ],
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _tarjetaFlotante({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [_sombraFlotante],
       ),
-      child: child,
-    );
-  }
-
-  Widget _puntoLeyenda({required Color color, required String texto}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          texto,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-      ],
     );
   }
 
   Widget _grilla() {
-    final termino = _busqueda.trim().toLowerCase();
-    final visibles = mesas.where((m) {
-      final pareja = parejaDe(m.numero);
-      if (!(pareja == null || m.numero < pareja)) return false;
-      if (termino.isEmpty) return true;
-      final etiqueta = pareja == null
-          ? 't-${m.numero}'
-          : 't-${m.numero}+$pareja';
-      return etiqueta.contains(termino) || m.numero.toString() == termino;
-    }).toList();
+    final visibles = mesas
+        .where(
+          (m) =>
+              esAnclaDeGrupo(m.numero) &&
+              (_zona == null || m.zona == _zona) &&
+              (_estado == null || m.estado == _estado),
+        )
+        .toList();
 
-    final columnas = <List<Mesa>>[];
-    for (var i = 0; i < visibles.length; i += 2) {
-      final fin = (i + 2 > visibles.length) ? visibles.length : i + 2;
-      columnas.add(visibles.sublist(i, fin));
-    }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      // Center: un SingleChildScrollView vertical le da a su hijo un ancho
-      // "loose" (0..maxWidth), así que el propio Wrap se encoge a su
-      // contenido y WrapAlignment.center no tiene ancho extra sobre el cual
-      // centrar. Center sí ocupa todo el ancho disponible y centra el Wrap
-      // (ya encogido a su contenido) dentro de él.
-      child: Center(
-        child: Wrap(
-          spacing: 32,
-          runSpacing: 32,
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          children: [
-            for (final columna in columnas)
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final mesa in columna) ...[
-                    _mesaCard(mesa),
-                    const SizedBox(height: 24),
-                  ],
-                ],
-              ),
-          ],
+    if (visibles.isEmpty) {
+      return Center(
+        child: Text(
+          'Sin mesas para este filtro',
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
         ),
-      ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Escala del dibujo según el ancho disponible.
+        final scale = c.maxWidth >= 640
+            ? 1.0
+            : (c.maxWidth >= 420 ? 0.82 : 0.68);
+
+        final columnas = <List<Mesa>>[];
+        for (var i = 0; i < visibles.length; i += 2) {
+          final fin = (i + 2 > visibles.length) ? visibles.length : i + 2;
+          columnas.add(visibles.sublist(i, fin));
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          // Center asegura que el Wrap quede centrado en el ancho disponible.
+          child: Center(
+            child: Wrap(
+              spacing: 24 * scale,
+              runSpacing: 24 * scale,
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.start,
+              children: [
+                for (final columna in columnas)
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final mesa in columna) ...[
+                        _mesaCard(mesa, scale, c.maxWidth),
+                        SizedBox(height: 20 * scale),
+                      ],
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _mesaCard(Mesa mesa) {
+  Widget _mesaCard(Mesa mesa, double scale, double anchoDisponible) {
     final ocupada = mesa.estado == 'ocupada';
-    final pedido = ocupada ? _pedidoActivoDe(mesa.numero) : null;
-    final pareja = parejaDe(mesa.numero);
+    final pedido = ocupada ? _pedidoActivoDeMesa(mesa.numero) : null;
+    final unidas = otrasUnidas(mesa.numero);
     final seleccionadaParaUnir = _paraUnir.contains(mesa.numero);
+    // Mesa unida que no entra en el ancho disponible: se muestra compacta.
+    final totalSillas = MesaCard.totalSillasDe(mesa.numero, unidas);
+    final simplificada =
+        unidas.isNotEmpty && (scale < 1 || totalSillas > 8) &&
+        (totalSillas * 34 * scale) > anchoDisponible * 0.85;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
       opacity: _modoUnion && mesa.estado != 'libre' ? 0.4 : 1,
       child: seleccionadaParaUnir
-          ? Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primaryGreen, width: 2),
-                borderRadius: BorderRadius.circular(34),
-              ),
+          ? MarchingAntsBorder(
+              radius: 34,
+              color: Colors.grey.shade400,
               child: MesaCard(
                 numero: mesa.numero,
                 ocupada: ocupada,
-                horaInicio: pedido != null ? _hora(pedido.fechaPedido) : null,
+                horaInicio: pedido != null ? _horaDe(pedido.fechaPedido) : null,
                 monto: pedido != null ? totalDePedido(pedido.id) : null,
+                mesero: _meseroDe(pedido),
                 onTap: () => _seleccionarMesa(mesa),
+                scale: scale,
+                simplificada: simplificada,
               ),
             )
           : MesaCard(
               key: ValueKey('mesa-${mesa.numero}'),
               numero: mesa.numero,
-              numeroPareja: pareja,
+              unidas: unidas,
               ocupada: ocupada,
-              horaInicio: pedido != null ? _hora(pedido.fechaPedido) : null,
+              horaInicio: pedido != null ? _horaDe(pedido.fechaPedido) : null,
               monto: pedido != null ? totalDePedido(pedido.id) : null,
+              mesero: _meseroDe(pedido),
               onTap: () => _seleccionarMesa(mesa),
-              onDesunir: pareja != null && mesa.estado == 'libre'
+              onDesunir: unidas.isNotEmpty && mesa.estado == 'libre'
                   ? () => _desunir(mesa.numero)
                   : null,
+              scale: scale,
+              simplificada: simplificada,
             ),
     );
   }

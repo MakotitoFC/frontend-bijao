@@ -2,20 +2,18 @@ import '../models/carta_insumo.dart';
 import '../models/inventario_movimiento.dart';
 import '../models/pedido_detalle_insumo.dart';
 import '../models/pedido_line.dart';
+import 'catalogos_store.dart';
 import 'inventario_store.dart';
-import 'mock_carta_insumos.dart';
-import 'mock_tipos_movimiento.dart';
 
-// Trazabilidad de insumos por plato vendido (simula `carta_insumo` +
-// `pedidos_detalle_insumo`). Al confirmar un pedido, las recetas de
-// cantidad fija descuentan stock automáticamente; las variables (ej.
-// bebidas por presentación) quedan pendientes de registrar manualmente
-// (ver CocinaScreen).
-// TODO: reemplazar por datos reales al conectar el backend.
+// Recetas por plato (tabla `carta_insumo`): qué insumos descuenta cada venta.
+// Se cargan desde el backend.
+final List<CartaInsumo> recetasCarta = [];
+
+// Consumo de insumos ya registrado por línea de pedido (`pedidos_detalle_insumo`).
 final List<PedidoDetalleInsumo> pedidoDetalleInsumos = [];
 
 List<CartaInsumo> recetaDeCarta(String cartaId) =>
-    mockCartaInsumos.where((r) => r.cartaId == cartaId).toList();
+    recetasCarta.where((r) => r.cartaId == cartaId).toList();
 
 List<CartaInsumo> insumosPendientesDe(PedidoLine linea) =>
     recetaDeCarta(linea.cartaId)

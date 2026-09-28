@@ -1,19 +1,20 @@
-import 'package:hugeicons/hugeicons.dart';
+import 'package:flutter/widgets.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 // Ícono de respaldo por categoría e imagen real para algunos platos de
 // muestra. Compartido entre el catálogo del pedido y la vista de Productos
 // para que ambos usen exactamente el mismo criterio visual.
 
-List<List<dynamic>> iconoDeCategoria(String categoriaId) {
+IconData iconoDeCategoria(String categoriaId) {
   switch (categoriaId) {
     case 'cat1':
-      return HugeIcons.strokeRoundedServingFood;
+      return LucideIcons.utensils;
     case 'cat2':
-      return HugeIcons.strokeRoundedSpoonAndFork;
+      return LucideIcons.utensilsCrossed;
     case 'cat3':
-      return HugeIcons.strokeRoundedSoftDrink02;
+      return LucideIcons.cupSoda;
     default:
-      return HugeIcons.strokeRoundedServingFood;
+      return LucideIcons.utensils;
   }
 }
 

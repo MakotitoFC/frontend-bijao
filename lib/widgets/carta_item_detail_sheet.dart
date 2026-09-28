@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_modificadores.dart';
-import '../data/mock_presentaciones.dart';
+import '../data/presentaciones_store.dart';
 import '../data/promociones_store.dart';
-import '../data/mock_tapers.dart';
 import '../models/carta_item.dart';
 
 // Vista de solo consulta de un ítem de la carta (sin agregar al pedido).
@@ -14,16 +12,10 @@ class CartaItemDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final modificadores = mockModificadores
-        .where((m) => m.cartaId == item.id)
-        .toList();
     final presentaciones = mockPresentaciones
         .where((p) => p.cartaId == item.id)
         .toList();
     final promocion = promocionDeCarta(item.id);
-    final taper = item.taperId == null
-        ? null
-        : mockTapers.where((t) => t.id == item.taperId).firstOrNull;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
@@ -74,45 +66,9 @@ class CartaItemDetailSheet extends StatelessWidget {
                 title: const Text('Precio'),
                 trailing: Text('S/ ${item.precioCliente!.toStringAsFixed(2)}'),
               ),
-            if (modificadores.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Modificadores disponibles',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              ...modificadores.map(
-                (m) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.tune),
-                  title: Text(m.nombre),
-                  trailing: Text(
-                    m.precioAjuste > 0
-                        ? '+S/ ${m.precioAjuste.toStringAsFixed(2)}'
-                        : 'Sin costo',
-                  ),
-                ),
-              ),
-            ],
-            if (taper != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Para llevar',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.takeout_dining_outlined),
-                title: Text(taper.nombre),
-                trailing: Text('+S/ ${taper.precio.toStringAsFixed(2)}'),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
-}
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

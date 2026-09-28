@@ -9,18 +9,18 @@ class AppSelectItem<T> {
   const AppSelectItem({required this.value, required this.label});
 }
 
-// Select reutilizable: el campo muestra una flecha que rota 180° al abrir
-// (mismo patrón que el botón de contraer/expandir del navbar) y las opciones
-// se despliegan en un panel flotante justo debajo, por ENCIMA del contenido
-// de la pantalla (no lo empuja hacia abajo), usando un OverlayEntry anclado
-// con CompositedTransformFollower para que siga al campo si la pantalla
-// hace scroll.
+// Select reutilizable: panel de opciones flotante sobre el contenido, con
+// flecha que rota al abrir.
 class AppSelect<T> extends StatefulWidget {
   final String? label;
   final T? value;
   final List<AppSelectItem<T>> items;
   final ValueChanged<T?> onChanged;
   final String hint;
+  // Etiqueta flotando sobre el borde, como un TextField.
+  final bool flotante;
+  // Campo más bajo, para barras de filtros.
+  final bool compacto;
 
   const AppSelect({
     super.key,
@@ -29,6 +29,8 @@ class AppSelect<T> extends StatefulWidget {
     required this.items,
     required this.onChanged,
     this.hint = 'Selecciona una opción',
+    this.flotante = false,
+    this.compacto = false,
   });
 
   @override
@@ -136,8 +138,50 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     );
   }
 
+  Widget _campoFlotante(BuildContext context) {
+    final estilo = Theme.of(context).textTheme.bodyLarge;
+    return CompositedTransformTarget(
+      link: _link,
+      child: Material(
+        key: _campoKey,
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.input),
+          onTap: _alternar,
+          child: InputDecorator(
+            isFocused: _abierto,
+            isEmpty: widget.value == null,
+            decoration: InputDecoration(labelText: widget.label),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _etiquetaActual,
+                    overflow: TextOverflow.ellipsis,
+                    style: estilo,
+                  ),
+                ),
+                AnimatedRotation(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  turns: _abierto ? 0.5 : 0,
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 20,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.flotante) return _campoFlotante(context);
     return CompositedTransformTarget(
       link: _link,
       child: Column(
@@ -162,9 +206,9 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
               borderRadius: BorderRadius.circular(AppRadii.input),
               onTap: _alternar,
               child: Container(
-                padding: const EdgeInsets.symmetric(
+                padding: EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 14,
+                  vertical: widget.compacto ? 9 : 14,
                 ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppRadii.input),
@@ -181,7 +225,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                         _etiquetaActual,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: widget.compacto ? 13 : 14,
                           color: widget.value == null
                               ? Colors.grey.shade500
                               : Colors.black87,
@@ -194,7 +238,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                       turns: _abierto ? 0.5 : 0,
                       child: Icon(
                         Icons.keyboard_arrow_down,
-                        size: 20,
+                        size: widget.compacto ? 18 : 20,
                         color: Colors.grey.shade600,
                       ),
                     ),

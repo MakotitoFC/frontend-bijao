@@ -1,103 +1,69 @@
 import 'package:flutter/material.dart';
-import 'package:hugeicons/hugeicons.dart';
 
-import '../data/mock_cartas.dart';
-import '../data/mock_categorias.dart';
-import '../data/mock_presentaciones.dart';
+import '../data/cartas_store.dart';
+import '../data/categorias_store.dart';
+import '../data/presentaciones_store.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
 import '../theme/app_theme.dart';
+import '../utils/agregados_utils.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/carta_visuals.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
 import 'carta_form_screen.dart';
 
-// Desatura la tarjeta completa (foto incluida) a escala de grises para los
-// platos inactivos.
+// Filtro gris para tarjetas de productos inactivos.
 const _filtroGris = ColorFilter.matrix(<double>[
-  0.2126,
-  0.7152,
-  0.0722,
-  0,
-  0,
-  0.2126,
-  0.7152,
-  0.0722,
-  0,
-  0,
-  0.2126,
-  0.7152,
-  0.0722,
-  0,
-  0,
-  0,
-  0,
-  0,
-  1,
-  0,
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0, 0, 0, 1, 0,
 ]);
 
-// Catálogo de la carta. El Mesero solo consulta (sin editar); el
-// Administrador además puede crear/editar/eliminar platos. Mismo diseño de
-// tarjeta y tabs que el catálogo del pedido. Crear y buscar viven en la
-// barra superior; el CRUD por ítem (editar/eliminar) se revela al pasar el
-// cursor, empujando el ancho de la tarjeta en vez de superponerse (sin
-// modales: crear/editar navegan a CartaFormScreen, una pantalla completa).
-// TODO: al conectar el backend, reemplazar mockCartas/mockCategorias por la
-// carta real de `carta`/`categoria_comida` filtrada por estado activo.
+// Catálogo de productos (tabla `productos`) en tarjetas; el Mesero solo
+// consulta, el Administrador puede crear/editar/eliminar.
+// TODO backend: reemplazar cartasNotifier por `productos`.
 class CartaScreen extends StatefulWidget {
   final bool esAdmin;
+  // Categoría activa (null = Todos) y texto de búsqueda, controlados por la
+  // cabecera.
+  final ValueNotifier<CategoriaComida?> seleccion;
+  final ValueNotifier<String> busqueda;
+  // Mobile: la pantalla pinta su propia cabecera.
+  final bool cabeceraPropia;
 
-  const CartaScreen({super.key, required this.esAdmin});
+  const CartaScreen({
+    super.key,
+    required this.esAdmin,
+    required this.seleccion,
+    required this.busqueda,
+    this.cabeceraPropia = false,
+  });
 
   @override
   State<CartaScreen> createState() => _CartaScreenState();
 }
 
 class _CartaScreenState extends State<CartaScreen> {
-  CategoriaComida? _categoriaSeleccionada;
-  List<CartaItem> _cartas = List.of(mockCartas);
-
-  final _busquedaController = TextEditingController();
-  String _busqueda = '';
-
-  @override
-  void dispose() {
-    _busquedaController.dispose();
-    super.dispose();
-  }
-
   List<CartaItem> get _cartaFiltrada {
-    var base = _categoriaSeleccionada == null
-        ? _cartas
-        : _cartas
-              .where((c) => c.categoriaId == _categoriaSeleccionada!.id)
-              .toList();
-    final termino = _busqueda.trim().toLowerCase();
+    final categoria = widget.seleccion.value;
+    var base = cartasNotifier.value;
+    if (categoria != null) {
+      base = base.where((c) => c.categoriaId == categoria.id).toList();
+    }
+    final termino = widget.busqueda.value.trim().toLowerCase();
     if (termino.isNotEmpty) {
       base = base
-          .where((c) => c.nombrePlato.toLowerCase().contains(termino))
+          .where(
+            (c) =>
+                c.nombrePlato.toLowerCase().contains(termino) ||
+                (c.sku?.toLowerCase().contains(termino) ?? false),
+          )
           .toList();
     }
     return base;
-  }
-
-  Future<void> _crearPlato() async {
-    final nuevo = await showBlurDialog<CartaItem>(
-      context: context,
-      builder: (_) => const CartaFormScreen(),
-    );
-    if (nuevo != null) {
-      setState(() => _cartas = [..._cartas, nuevo]);
-      if (!mounted) return;
-      showAppToast(
-        context,
-        '${nuevo.nombrePlato} se agregó a la carta.',
-        type: ToastType.success,
-        titulo: 'Plato creado',
-      );
-    }
   }
 
   Future<void> _editarPlato(CartaItem item) async {
@@ -106,9 +72,9 @@ class _CartaScreenState extends State<CartaScreen> {
       builder: (_) => CartaFormScreen(item: item),
     );
     if (editado != null) {
-      setState(() {
-        _cartas = _cartas.map((c) => c.id == editado.id ? editado : c).toList();
-      });
+      cartasNotifier.value = cartasNotifier.value
+          .map((c) => c.id == editado.id ? editado : c)
+          .toList();
       if (!mounted) return;
       showAppToast(
         context,
@@ -119,9 +85,24 @@ class _CartaScreenState extends State<CartaScreen> {
     }
   }
 
-  // Modal de advertencia (no un simple confirm): ícono y texto de alerta,
-  // dejando claro que la acción no se puede deshacer. Fondo blanco, ancho
-  // reducido y difuminado detrás, igual que el resto de modales centrados.
+  void _alternarDisponible(CartaItem item) {
+    final nuevo = item.copyWith(
+      estado: item.disponible ? 'inactivo' : 'activo',
+    );
+    cartasNotifier.value = cartasNotifier.value
+        .map((c) => c.id == item.id ? nuevo : c)
+        .toList();
+    showAppToast(
+      context,
+      nuevo.disponible
+          ? '${item.nombrePlato} está disponible.'
+          : '${item.nombrePlato} se desactivó.',
+      type: nuevo.disponible ? ToastType.success : ToastType.info,
+      titulo: nuevo.disponible ? 'Producto activado' : 'Producto desactivado',
+    );
+  }
+
+  // Modal de advertencia: la acción no se puede deshacer.
   Future<void> _eliminarPlato(CartaItem item) async {
     final confirmar = await showBlurDialog<bool>(
       context: context,
@@ -200,7 +181,9 @@ class _CartaScreenState extends State<CartaScreen> {
       },
     );
     if (confirmar == true) {
-      setState(() => _cartas = _cartas.where((c) => c.id != item.id).toList());
+      cartasNotifier.value = cartasNotifier.value
+          .where((c) => c.id != item.id)
+          .toList();
       if (!mounted) return;
       showAppToast(
         context,
@@ -219,52 +202,43 @@ class _CartaScreenState extends State<CartaScreen> {
     return precios.reduce((a, b) => a < b ? a : b);
   }
 
+  String _nombreCategoria(String id) {
+    for (final c in mockCategorias) {
+      if (c.id == id) return c.categoria;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
-    final paddingExterno = esMobile ? 12.0 : 20.0;
+    final margen = esMobile ? 12.0 : 24.0;
     return Scaffold(
-      body: Padding(
-        padding: EdgeInsets.all(paddingExterno),
-        child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
+      body: ListenableBuilder(
+        listenable: Listenable.merge([
+          widget.seleccion,
+          widget.busqueda,
+          cartasNotifier,
+        ]),
+        builder: (context, _) {
+          final items = _cartaFiltrada;
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Text(
-                  'Pedidos',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+              if (widget.cabeceraPropia)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(margen, 16, margen, 0),
+                  child: CartaCabecera(
+                    seleccion: widget.seleccion,
+                    busqueda: widget.busqueda,
+                    esAdmin: widget.esAdmin,
+                    vertical: esMobile,
+                    mostrarTitulo: esMobile,
+                    onCambio: () => setState(() {}),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _barraSuperior(esMobile),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: _tabsCategorias(),
-              ),
-              const SizedBox(height: 8),
-              Divider(height: 1, color: Colors.grey.shade200),
               Expanded(
-                child: _cartaFiltrada.isEmpty
+                child: items.isEmpty
                     ? Center(
                         child: Text(
                           'Sin resultados',
@@ -272,241 +246,111 @@ class _CartaScreenState extends State<CartaScreen> {
                         ),
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.all(20),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            // En mobile, si es Administrador se reserva el
-                            // ancho de la franja de editar/eliminar (que en
-                            // mobile queda siempre visible, no por hover) para
-                            // que la tarjeta + franja no desborden el ancho.
-                            final anchoTarjeta = esMobile
-                                ? constraints.maxWidth -
-                                      (widget.esAdmin ? 38 : 0)
-                                : 190.0;
-                            return Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                for (final item in _cartaFiltrada)
-                                  KeyedSubtree(
-                                    key: ValueKey(item.id),
-                                    child: _tarjetaPlato(item, anchoTarjeta),
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
+                        padding: EdgeInsets.all(margen),
+                        child: _grilla(items, esMobile),
                       ),
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
-  // Buscador + botón de crear (solo Administrador), en la misma fila. El
-  // Mesero solo ve el buscador. En mobile el buscador se estira y el botón
-  // queda solo con "+ Nuevo".
-  Widget _barraSuperior(bool esMobile) {
-    final buscador = TextField(
-      controller: _busquedaController,
-      onChanged: (v) => setState(() => _busqueda = v),
-      style: const TextStyle(fontSize: 13),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Buscar productos...',
-        hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-        prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey.shade500),
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 36,
-          minHeight: 18,
+  // 3 columnas en escritorio, 1 en mobile.
+  Widget _grilla(List<CartaItem> items, bool esMobile) {
+    const espacio = 20.0;
+    final columnas = esMobile ? 1 : 3;
+    final filas = <Widget>[];
+    for (var i = 0; i < items.length; i += columnas) {
+      final fin = (i + columnas > items.length) ? items.length : i + columnas;
+      final grupo = items.sublist(i, fin);
+      filas.add(
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var j = 0; j < columnas; j++) ...[
+                if (j > 0) const SizedBox(width: espacio),
+                Expanded(
+                  child: j < grupo.length
+                      ? KeyedSubtree(
+                          key: ValueKey(grupo[j].id),
+                          child: _tarjetaPlato(grupo[j]),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ),
         ),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: BorderSide(color: Colors.grey.shade400),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: BorderSide(color: Colors.grey.shade400),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: const BorderSide(color: AppColors.primaryGreen),
-        ),
-      ),
-    );
-    return Row(
+      );
+    }
+    return Column(
       children: [
-        esMobile
-            ? Expanded(child: buscador)
-            : SizedBox(width: 200, child: buscador),
-        if (widget.esAdmin) ...[
-          const SizedBox(width: 12),
-          _botonNuevoPlato(esMobile),
+        for (var i = 0; i < filas.length; i++) ...[
+          if (i > 0) const SizedBox(height: espacio),
+          filas[i],
         ],
       ],
     );
   }
 
-  Widget _botonNuevoPlato(bool esMobile) {
-    return FilledButton.icon(
-      onPressed: _crearPlato,
-      style: FilledButton.styleFrom(
-        backgroundColor: AppColors.primaryGreen,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      ),
-      icon: const Icon(Icons.add, size: 18),
-      label: Text(
-        esMobile ? 'Nuevo' : 'Nuevo plato',
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-
-  // Los tabs no se estiran a lo ancho de la fila: cada uno ocupa solo el
-  // espacio de su contenido y quedan alineados a la izquierda. Scrollable en
-  // horizontal para que no se desborden en pantallas angostas (mobile).
-  Widget _tabsCategorias() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _tabCategoria(null, 'Todo', HugeIcons.strokeRoundedGridView),
-          for (final cat in mockCategorias)
-            _tabCategoria(cat, cat.categoria, iconoDeCategoria(cat.id)),
-        ],
-      ),
-    );
-  }
-
-  // Los íconos de los tabs no cambian de color al seleccionar: solo el
-  // texto y la franja inferior indican la categoría activa.
-  Widget _tabCategoria(
-    CategoriaComida? cat,
-    String label,
-    List<List<dynamic>> icono,
-  ) {
-    final seleccionado = _categoriaSeleccionada?.id == cat?.id;
+  Widget _tarjetaPlato(CartaItem item) {
+    final tarjeta = _contenidoTarjeta(item);
+    if (widget.esAdmin) return tarjeta;
     return InkWell(
-      onTap: () => setState(() => _categoriaSeleccionada = cat),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: seleccionado ? AppColors.primaryGreen : Colors.transparent,
-              width: 1.5,
-            ),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            HugeIcon(icon: icono, size: 20, color: Colors.grey.shade700),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: seleccionado ? FontWeight.w700 : FontWeight.w600,
-                color: seleccionado
-                    ? AppColors.primaryGreen
-                    : Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ),
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => CartaItemDetailSheet(item: item),
       ),
+      child: tarjeta,
     );
   }
 
-  Widget _tarjetaPlato(CartaItem item, double ancho) {
-    final inactivo = item.estado == 'inactivo';
-    final contenido = inactivo
-        ? ColorFiltered(
-            colorFilter: _filtroGris,
-            child: _contenidoTarjeta(item, ancho),
-          )
-        : _contenidoTarjeta(item, ancho);
-    if (!widget.esAdmin) {
-      return InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          builder: (_) => CartaItemDetailSheet(item: item),
-        ),
-        child: _tarjetaBase(ancho: ancho, inactivo: inactivo, child: contenido),
-      );
-    }
-    return _HoverCrudCard(
-      ancho: ancho,
-      inactivo: inactivo,
-      siempreVisible: AppBreakpoints.esMobile(context),
-      onEditar: () => _editarPlato(item),
-      onEliminar: () => _eliminarPlato(item),
-      child: contenido,
-    );
-  }
+  String _fecha(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
-  Widget _tarjetaBase({
-    required Widget child,
-    required double ancho,
-    bool inactivo = false,
-  }) {
-    return Container(
-      width: ancho,
+  Widget _contenidoTarjeta(CartaItem item) {
+    final desdePrecio = item.precioCliente == null;
+    final precio = desdePrecio ? _precioMinimo(item.id) : item.precioCliente!;
+    final imagen = imagenDeCarta(item.id);
+    final categoria = _nombreCategoria(item.categoriaId);
+    final tarjeta = Container(
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: inactivo ? Colors.grey.shade100 : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade400, width: 2),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      padding: const EdgeInsets.all(12),
-      child: child,
-    );
-  }
-
-  Widget _contenidoTarjeta(CartaItem item, double ancho) {
-    final desdePrecio = item.precioCliente == null;
-    final precio = desdePrecio ? _precioMinimo(item.id) : item.precioCliente!;
-    final inactivo = item.estado == 'inactivo';
-    final imagen = imagenDeCarta(item.id);
-    return SizedBox(
-      width: ancho - 24,
-      height: 248,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Stack(
             children: [
-              SizedBox(
-                width: double.infinity,
-                height: 140,
+              AspectRatio(
+                aspectRatio: 16 / 10,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
+                    width: double.infinity,
                     color: const Color(0xFFF1F3F0),
-                    child: imagen != null
+                    child: item.imagenBytes != null
+                        ? Image.memory(item.imagenBytes!, fit: BoxFit.cover)
+                        : imagen != null
                         ? Image.asset(imagen, fit: BoxFit.cover)
                         : Center(
-                            child: HugeIcon(
-                              icon: iconoDeCategoria(item.categoriaId),
+                            child: Icon(
+                              iconoDeCategoria(item.categoriaId),
                               size: 36,
                               color: Colors.grey.shade400,
                             ),
@@ -514,37 +358,30 @@ class _CartaScreenState extends State<CartaScreen> {
                   ),
                 ),
               ),
-              if (inactivo)
-                Positioned(
-                  top: 6,
-                  left: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'Inactivo',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: _chipDisponible(item.disponible),
+              ),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 10),
+          if (categoria.isNotEmpty)
+            Text(
+              categoria.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: AppColors.primaryGreen,
+              ),
+            ),
+          const SizedBox(height: 2),
           Text(
             item.nombrePlato,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
           if (item.descripcion.isNotEmpty) ...[
             const SizedBox(height: 2),
@@ -552,120 +389,231 @@ class _CartaScreenState extends State<CartaScreen> {
               item.descripcion,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ],
-          const SizedBox(height: 4),
-          Text(
-            desdePrecio
-                ? 'Desde S/ ${precio.toStringAsFixed(2)}'
-                : 'S/ ${precio.toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _dato(
+                'Precio',
+                desdePrecio
+                    ? 'Desde S/ ${precio.toStringAsFixed(2)}'
+                    : 'S/ ${precio.toStringAsFixed(2)}',
+                destacado: true,
+              ),
+              _dato(
+                'Costo',
+                item.costo == null
+                    ? '—'
+                    : 'S/ ${item.costo!.toStringAsFixed(2)}',
+              ),
+              _dato('Stock', '${item.stock}'),
+              _dato('SKU', item.sku ?? '—'),
+            ],
           ),
+          if (item.agregados.isNotEmpty || item.limiteAgregados != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Text(
+                  'Agregados',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                if (item.limiteAgregados != null) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '(máx. ${item.limiteAgregados})',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final a in agregadosSimples(item.agregados))
+                  _chipAgregado(a),
+                for (final g in gruposDeAgregados(item.agregados))
+                  _chipGrupoAgregado(g),
+                if (item.agregados.isEmpty)
+                  Text(
+                    'Sin agregados',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+              ],
+            ),
+          ],
+          const Spacer(),
+          if (item.creadoEn != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Creado el ${_fecha(item.creadoEn!)}',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+            ),
+          ],
         ],
       ),
     );
-  }
-}
-
-// Tarjeta con revelado de CRUD al pasar el cursor: una franja verde se
-// expande desde el borde derecho empujando el ancho total de la tarjeta (no
-// se superpone al contenido ni a las tarjetas vecinas), mostrando
-// editar/eliminar en blanco; al salir el cursor, la franja se contrae. Sin
-// modales: editar navega a CartaFormScreen (pantalla completa).
-class _HoverCrudCard extends StatefulWidget {
-  final Widget child;
-  final double ancho;
-  final bool inactivo;
-  // En mobile no hay hover (pantalla táctil): la franja de editar/eliminar
-  // queda siempre visible en vez de revelarse al pasar el cursor.
-  final bool siempreVisible;
-  final VoidCallback onEditar;
-  final VoidCallback onEliminar;
-
-  const _HoverCrudCard({
-    required this.child,
-    required this.ancho,
-    this.inactivo = false,
-    this.siempreVisible = false,
-    required this.onEditar,
-    required this.onEliminar,
-  });
-
-  @override
-  State<_HoverCrudCard> createState() => _HoverCrudCardState();
-}
-
-class _HoverCrudCardState extends State<_HoverCrudCard> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final mostrarFranja = widget.siempreVisible || _hover;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade400, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+    // Inactivo: tarjeta gris salvo los botones de activar/editar/eliminar.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        item.disponible
+            ? tarjeta
+            : Opacity(
+                opacity: 0.55,
+                child: ColorFiltered(colorFilter: _filtroGris, child: tarjeta),
               ),
-            ],
-          ),
-          child: IntrinsicHeight(
+        if (widget.esAdmin)
+          Positioned(
+            top: 18,
+            right: 18,
             child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  width: widget.ancho,
-                  color: widget.inactivo ? Colors.grey.shade100 : Colors.white,
-                  padding: const EdgeInsets.all(12),
-                  child: widget.child,
+                _botonAccion(
+                  item.disponible
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  item.disponible ? 'Desactivar' : 'Activar',
+                  () => _alternarDisponible(item),
                 ),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  width: mostrarFranja ? 38 : 0,
-                  color: AppColors.primaryGreen,
-                  child: ClipRect(
-                    child: Column(
-                      children: [
-                        _botonAccion(
-                          Icons.edit_outlined,
-                          'Editar',
-                          widget.onEditar,
-                        ),
-                        _botonAccion(
-                          Icons.delete_outline,
-                          'Eliminar',
-                          widget.onEliminar,
-                        ),
-                      ],
-                    ),
-                  ),
+                const SizedBox(width: 6),
+                _botonAccion(
+                  Icons.edit_outlined,
+                  'Editar',
+                  () => _editarPlato(item),
+                ),
+                const SizedBox(width: 6),
+                _botonAccion(
+                  Icons.delete_outline,
+                  'Eliminar',
+                  () => _eliminarPlato(item),
                 ),
               ],
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _chipDisponible(bool disponible) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: disponible
+            ? AppColors.primaryGreen
+            : Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        disponible ? 'Disponible' : 'No disponible',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
 
   Widget _botonAccion(IconData icono, String tooltip, VoidCallback onTap) {
-    return Expanded(
-      child: Tooltip(
-        message: tooltip,
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 1,
         child: InkWell(
+          customBorder: const CircleBorder(),
           onTap: onTap,
-          child: Center(child: Icon(icono, color: Colors.white, size: 18)),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(icono, size: 16, color: Colors.grey.shade800),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dato(String etiqueta, String valor, {bool destacado = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: destacado
+            ? AppColors.primaryGreen.withValues(alpha: 0.1)
+            : AppColors.background,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            etiqueta,
+            style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+          ),
+          Text(
+            valor,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: destacado ? AppColors.primaryGreen : Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipAgregado(Map<String, dynamic> agregado) {
+    final nombre = '${agregado['nombre'] ?? agregado.values.firstOrNull ?? ''}';
+    final precio = agregado['precio'];
+    final texto = precio is num
+        ? '$nombre · S/ ${precio.toStringAsFixed(2)}'
+        : nombre;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.navbar,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        texto,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _chipGrupoAgregado(Map<String, dynamic> grupo) {
+    final items = itemsDeGrupo(
+      grupo,
+    ).map((it) => '${it['nombre']}').join(', ');
+    final maximo = cantidadMaximaGrupo(grupo) ?? 1;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.navbar,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '${nombreGrupo(grupo)} (máx. $maximo)${items.isEmpty ? '' : ': $items'}',
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
         ),
       ),
     );

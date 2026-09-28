@@ -1,13 +1,9 @@
 import '../models/promocion.dart';
-import 'mock_promociones.dart';
 
-// Estado en memoria de promociones, compartido entre el módulo Promociones
-// (admin) y Carta/Pedidos (aplicación automática del descuento).
-// TODO: reemplazar por `promocion`/`promocion_carta` reales al conectar backend.
-final List<Promocion> promociones = List.of(promocionesIniciales);
-final Map<String, String> promocionCartaIds = Map.of(
-  promocionCartaIdsIniciales,
-);
+// Promociones (tabla `promocion`) y a qué platos aplica cada una
+// (`promocion_carta`). Se cargan desde el backend.
+final List<Promocion> promociones = [];
+final Map<String, String> promocionCartaIds = {};
 
 Promocion? promocionDeCarta(String cartaId) {
   final promoId = promocionCartaIds[cartaId];

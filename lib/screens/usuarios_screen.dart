@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_sedes.dart';
+import '../data/configuracion_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/mock_user.dart';
@@ -58,7 +58,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
   String? _sedeDe(String? sedeId) {
     if (sedeId == null) return null;
-    for (final sede in mockSedes) {
+    for (final sede in sedes) {
       if (sede.id == sedeId) return sede.direccion;
     }
     return null;
