@@ -3,14 +3,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_theme.dart';
 
-// Modal de "Nuevo Pedido": elige tipo (Mesa, Delivery o Rápido) y retorna
-// 'mesa'/'delivery'/'llevar'.
+// Modal de "Nuevo Pedido": elige tipo (Mesa o Delivery) y retorna
+// 'mesa'/'delivery'.
 class ElegirTipoPedidoDialog extends StatefulWidget {
   const ElegirTipoPedidoDialog({super.key});
 
   @override
-  State<ElegirTipoPedidoDialog> createState() =>
-      _ElegirTipoPedidoDialogState();
+  State<ElegirTipoPedidoDialog> createState() => _ElegirTipoPedidoDialogState();
 }
 
 class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
@@ -27,7 +26,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
           : BorderRadius.circular(AppRadii.sheet),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        width: esMobile ? anchoPantalla : 640,
+        width: esMobile ? anchoPantalla : 440,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -38,7 +37,10 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                   const Expanded(
                     child: Text(
                       'Nuevo pedido',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   InkWell(
@@ -52,7 +54,11 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.grey.shade300),
                       ),
-                      child: Icon(Icons.close, size: 16, color: Colors.grey.shade700),
+                      child: Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Colors.grey.shade700,
+                      ),
                     ),
                   ),
                 ],
@@ -65,34 +71,30 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
               const SizedBox(height: 24),
               IntrinsicHeight(
                 child: Flex(
-                direction: esMobile ? Axis.vertical : Axis.horizontal,
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _tarjetaTipo(
-                    icono: LucideIcons.utensils,
-                    titulo: 'Mesa',
-                    descripcion: 'Pedido para consumir en una mesa del local.',
-                    seleccionado: _tipoSeleccion == 'mesa',
-                    onTap: () => setState(() => _tipoSeleccion = 'mesa'),
-                  ),
-                  SizedBox(width: esMobile ? 0 : 14, height: esMobile ? 16 : 0),
-                  _tarjetaTipo(
-                    icono: LucideIcons.bike,
-                    titulo: 'Delivery',
-                    descripcion: 'Pedido para entregar a domicilio.',
-                    seleccionado: _tipoSeleccion == 'delivery',
-                    onTap: () => setState(() => _tipoSeleccion = 'delivery'),
-                  ),
-                  SizedBox(width: esMobile ? 0 : 14, height: esMobile ? 16 : 0),
-                  _tarjetaTipo(
-                    icono: LucideIcons.zap,
-                    titulo: 'Rápido',
-                    descripcion: 'Venta directa para llevar, sin mesa.',
-                    seleccionado: _tipoSeleccion == 'llevar',
-                    onTap: () => setState(() => _tipoSeleccion = 'llevar'),
-                  ),
-                ],
+                  direction: esMobile ? Axis.vertical : Axis.horizontal,
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _tarjetaTipo(
+                      icono: LucideIcons.utensils,
+                      titulo: 'Mesa',
+                      descripcion:
+                          'Pedido para consumir en una mesa del local.',
+                      seleccionado: _tipoSeleccion == 'mesa',
+                      onTap: () => setState(() => _tipoSeleccion = 'mesa'),
+                    ),
+                    SizedBox(
+                      width: esMobile ? 0 : 14,
+                      height: esMobile ? 16 : 0,
+                    ),
+                    _tarjetaTipo(
+                      icono: LucideIcons.bike,
+                      titulo: 'Delivery',
+                      descripcion: 'Pedido para entregar a domicilio.',
+                      seleccionado: _tipoSeleccion == 'delivery',
+                      onTap: () => setState(() => _tipoSeleccion = 'delivery'),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
@@ -103,13 +105,6 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       : () => Navigator.of(context).pop(_tipoSeleccion),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primaryGreen,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
                   ),
                   child: const Text(
                     'Continuar',
@@ -155,7 +150,9 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
             Icon(
               icono,
               size: 26,
-              color: seleccionado ? AppColors.primaryGreenDark : Colors.grey.shade700,
+              color: seleccionado
+                  ? AppColors.primaryGreenDark
+                  : Colors.grey.shade700,
             ),
             const SizedBox(height: 12),
             Text(
@@ -163,7 +160,9 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: seleccionado ? AppColors.primaryGreenDark : Colors.black87,
+                color: seleccionado
+                    ? AppColors.primaryGreenDark
+                    : Colors.black87,
               ),
             ),
             const SizedBox(height: 4),

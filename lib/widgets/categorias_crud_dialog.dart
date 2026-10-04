@@ -5,7 +5,7 @@ import '../data/categorias_store.dart';
 import '../models/categoria_comida.dart';
 import '../theme/app_theme.dart';
 
-// Modal "Categorías": lista, agrega, edita y elimina categorías.
+// Modal "Categorías": lista, agrega, edita (en la misma fila) y elimina.
 class CategoriasCrudDialog extends StatefulWidget {
   final ValueNotifier<CategoriaComida?> seleccion;
   final VoidCallback onCambio;
@@ -23,17 +23,22 @@ class CategoriasCrudDialog extends StatefulWidget {
 class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
   final _nombreController = TextEditingController();
   String? _error;
+  // Categoría que se está editando en su propia fila (null = ninguna).
+  String? _editandoId;
+  String? _errorEdicion;
+  final _editController = TextEditingController();
 
   @override
   void dispose() {
     _nombreController.dispose();
+    _editController.dispose();
     super.dispose();
   }
 
   void _agregar() {
     final nombre = _nombreController.text.trim();
     if (nombre.isEmpty) return;
-    final repetida = mockCategorias.any(
+    final repetida = categorias.any(
       (c) => c.categoria.toLowerCase() == nombre.toLowerCase(),
     );
     if (repetida) {
@@ -48,32 +53,34 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     widget.onCambio();
   }
 
-  Future<void> _editar(CategoriaComida cat) async {
-    final controller = TextEditingController(text: cat.categoria);
-    final nuevo = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Editar categoría'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Nombre'),
-          onSubmitted: (v) => Navigator.of(dialogContext).pop(v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
+  // Edición en la propia fila: el nombre se vuelve un input.
+  void _empezarEdicion(CategoriaComida cat) {
+    setState(() {
+      _editandoId = cat.id;
+      _editController.text = cat.categoria;
+    });
+  }
+
+  void _cancelarEdicion() => setState(() => _editandoId = null);
+
+  void _guardarEdicion(CategoriaComida cat) {
+    final nuevo = _editController.text.trim();
+    if (nuevo.isEmpty || nuevo == cat.categoria) {
+      _cancelarEdicion();
+      return;
+    }
+    final repetida = categorias.any(
+      (c) => c.id != cat.id && c.categoria.toLowerCase() == nuevo.toLowerCase(),
     );
-    if (nuevo == null || nuevo.isEmpty || nuevo == cat.categoria) return;
-    setState(() => renombrarCategoria(cat.id, nuevo));
+    if (repetida) {
+      setState(() => _errorEdicion = 'Ya existe esa categoría');
+      return;
+    }
+    setState(() {
+      renombrarCategoria(cat.id, nuevo);
+      _editandoId = null;
+      _errorEdicion = null;
+    });
     widget.onCambio();
   }
 
@@ -120,7 +127,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     );
     if (confirmar != true) return;
     setState(() {
-      mockCategorias.removeWhere((c) => c.id == cat.id);
+      categorias.removeWhere((c) => c.id == cat.id);
       if (widget.seleccion.value?.id == cat.id) widget.seleccion.value = null;
     });
     widget.onCambio();
@@ -130,7 +137,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
     final anchoPantalla = MediaQuery.sizeOf(context).width;
-    final categorias = List.of(mockCategorias)
+    final ordenadas = List.of(categorias)
       ..sort((a, b) => a.orden.compareTo(b.orden));
     return Material(
       color: Colors.white,
@@ -145,7 +152,11 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                 maxWidth: anchoPantalla,
                 maxHeight: MediaQuery.sizeOf(context).height * 0.85,
               )
-            : const BoxConstraints(minWidth: 420, maxWidth: 420, maxHeight: 560),
+            : const BoxConstraints(
+                minWidth: 420,
+                maxWidth: 420,
+                maxHeight: 560,
+              ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -157,7 +168,10 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                   const Expanded(
                     child: Text(
                       'Categorías',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -200,7 +214,10 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                       padding: const EdgeInsets.only(top: 4, left: 4),
                       child: Text(
                         _error!,
-                        style: const TextStyle(fontSize: 12, color: AppColors.error),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.error,
+                        ),
                       ),
                     ),
                 ],
@@ -208,7 +225,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
             ),
             Divider(height: 1, color: Colors.grey.shade200),
             Flexible(
-              child: categorias.isEmpty
+              child: ordenadas.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.all(24),
                       child: Center(
@@ -221,45 +238,108 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                   : ListView.separated(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      itemCount: categorias.length,
+                      itemCount: ordenadas.length,
                       separatorBuilder: (context, index) =>
                           Divider(height: 1, color: Colors.grey.shade200),
                       itemBuilder: (context, i) {
-                        final cat = categorias[i];
+                        final cat = ordenadas[i];
                         final cantidad = cartasNotifier.value
                             .where((c) => c.categoriaId == cat.id)
                             .length;
+                        final editando = _editandoId == cat.id;
                         return ListTile(
-                          title: Text(
-                            cat.categoria,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                          subtitle: Text(
-                            '$cantidad producto(s)',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                tooltip: 'Editar',
-                                icon: const Icon(Icons.edit_outlined, size: 18),
-                                onPressed: () => _editar(cat),
-                              ),
-                              IconButton(
-                                tooltip: 'Eliminar',
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 18,
-                                  color: AppColors.error,
+                          title: editando
+                              ? SizedBox(
+                                  height: AppSizes.control,
+                                  child: TextField(
+                                    controller: _editController,
+                                    expands: true,
+                                    maxLines: null,
+                                    minLines: null,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    autofocus: true,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                    ),
+                                    onChanged: (_) {
+                                      if (_errorEdicion != null) {
+                                        setState(() => _errorEdicion = null);
+                                      }
+                                    },
+                                    onSubmitted: (_) => _guardarEdicion(cat),
+                                  ),
+                                )
+                              : Text(
+                                  cat.categoria,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
                                 ),
-                                onPressed: () => _eliminar(cat),
-                              ),
-                            ],
-                          ),
+                          subtitle: editando && _errorEdicion != null
+                              ? Text(
+                                  _errorEdicion!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.error,
+                                  ),
+                                )
+                              : Text(
+                                  '$cantidad producto(s)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                          trailing: editando
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Guardar',
+                                      icon: const Icon(
+                                        Icons.check,
+                                        size: 20,
+                                        color: AppColors.primaryGreen,
+                                      ),
+                                      onPressed: () => _guardarEdicion(cat),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Cancelar',
+                                      icon: const Icon(Icons.close, size: 20),
+                                      onPressed: _cancelarEdicion,
+                                    ),
+                                  ],
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Editar',
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 18,
+                                      ),
+                                      onPressed: () => _empezarEdicion(cat),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Eliminar',
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                        color: AppColors.error,
+                                      ),
+                                      onPressed: () => _eliminar(cat),
+                                    ),
+                                  ],
+                                ),
                         );
                       },
                     ),

@@ -6,8 +6,7 @@ import '../models/nav_item.dart';
 // Ítems del sidebar (mapeo directo del dashboard anterior, según lo
 // acordado: Pedidos=Mesas y Pedidos, Productos=Carta, Pagos=Historial de
 // pedidos y Cajas, Informes=Reportes, Configuración=ajustes del negocio).
-// Inventario/Compras/Promociones no tienen ítem (ocultos por ahora, su
-// código sigue intacto en el proyecto).
+// Compras no tiene ítem (oculto por ahora, su código sigue en el proyecto).
 const navItems = [
   NavItem(
     clave: 'inicio',

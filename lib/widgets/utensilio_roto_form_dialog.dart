@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/inventario_store.dart';
 import '../data/usuarios_store.dart';
 import '../data/utensilios_store.dart';
-import '../models/mock_user.dart';
+import '../models/usuario.dart';
 import '../models/producto_inventario.dart';
 import '../models/utensilio_roto.dart';
 import '../theme/app_theme.dart';
@@ -25,9 +25,10 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
   final _costoController = TextEditingController();
   final _notasController = TextEditingController();
 
-  ProductoInventario? _producto =
-      productosInventario.isEmpty ? null : productosInventario.first;
-  MockUser? _empleado = usuarios.isEmpty ? null : usuarios.first;
+  ProductoInventario? _producto = productosInventario.isEmpty
+      ? null
+      : productosInventario.first;
+  Usuario? _empleado = usuarios.isEmpty ? null : usuarios.first;
 
   @override
   void initState() {
@@ -124,7 +125,7 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                   }),
                 ),
                 const SizedBox(height: 14),
-                AppSelect<MockUser>(
+                AppSelect<Usuario>(
                   label: 'Empleado responsable',
                   value: _empleado,
                   items: [
@@ -160,7 +161,9 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                     decimal: true,
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Ingresa el costo';
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Ingresa el costo';
+                    }
                     if (double.tryParse(v.trim()) == null) {
                       return 'Costo inválido';
                     }
@@ -180,15 +183,7 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: _guardar,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    style: ElevatedButton.styleFrom(),
                     child: const Text('Registrar rotura'),
                   ),
                 ),

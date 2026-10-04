@@ -21,7 +21,54 @@ int siguienteNumeroMesa() => mesas.isEmpty
 bool existeMesa(int numero) => mesas.any((m) => m.numero == numero);
 
 // Zonas del local (no existen en la BD todavía: se agrupan solo en memoria).
-const zonasMesas = ['Principal', 'Exterior'];
+final List<String> zonasMesas = ['Principal'];
+
+bool existeZona(String nombre) =>
+    zonasMesas.any((z) => z.toLowerCase() == nombre.trim().toLowerCase());
+
+void agregarZona(String nombre) => zonasMesas.add(nombre.trim());
+
+// Cambia el nombre de una zona y de las mesas que pertenecen a ella.
+void renombrarZona(String actual, String nuevo) {
+  final i = zonasMesas.indexOf(actual);
+  if (i == -1) return;
+  zonasMesas[i] = nuevo.trim();
+  for (var j = 0; j < mesas.length; j++) {
+    if (mesas[j].zona == actual) {
+      mesas[j] = mesas[j].copyWith(zona: nuevo.trim());
+    }
+  }
+}
+
+List<Mesa> mesasDeZona(String zona) =>
+    mesas.where((m) => m.zona == zona).toList();
+
+// Una zona se puede eliminar si no tiene mesas ocupadas ni unidas.
+bool puedeEliminarZona(String zona) =>
+    zonasMesas.length > 1 &&
+    mesasDeZona(zona).every((m) => m.estado == 'libre' && !estaUnida(m.numero));
+
+// Elimina la zona y sus mesas.
+void eliminarZona(String zona) {
+  mesas.removeWhere((m) => m.zona == zona);
+  zonasMesas.remove(zona);
+}
+
+void actualizarMesa(
+  int numero, {
+  required int capacidad,
+  required String zona,
+}) {
+  final i = mesas.indexWhere((m) => m.numero == numero);
+  if (i != -1) mesas[i] = mesas[i].copyWith(capacidad: capacidad, zona: zona);
+}
+
+bool puedeEliminarMesa(int numero) {
+  final i = mesas.indexWhere((m) => m.numero == numero);
+  return i != -1 && mesas[i].estado == 'libre' && !estaUnida(numero);
+}
+
+void eliminarMesa(int numero) => mesas.removeWhere((m) => m.numero == numero);
 
 Mesa agregarMesa({
   required int numero,

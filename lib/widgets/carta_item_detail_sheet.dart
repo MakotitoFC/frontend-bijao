@@ -12,7 +12,7 @@ class CartaItemDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final presentaciones = mockPresentaciones
+    final delProducto = presentaciones
         .where((p) => p.cartaId == item.id)
         .toList();
     final promocion = promocionDeCarta(item.id);
@@ -44,7 +44,7 @@ class CartaItemDetailSheet extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            if (presentaciones.isNotEmpty) ...[
+            if (delProducto.isNotEmpty) ...[
               Text(
                 'Presentaciones',
                 style: Theme.of(context).textTheme.titleSmall,

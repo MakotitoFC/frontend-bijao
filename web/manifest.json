@@ -1,11 +1,11 @@
 {
-    "name": "frontend_bijao",
-    "short_name": "frontend_bijao",
+    "name": "El Bijao POS",
+    "short_name": "Bijao POS",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0A3622",
+    "theme_color": "#0A3622",
+    "description": "Sistema POS para restaurantes: pedidos, mesas, cocina y pagos.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

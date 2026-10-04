@@ -23,6 +23,8 @@ class CartaItem {
   // Imagen subida desde el formulario (en memoria hasta que exista
   // `imagen_url` real en el backend).
   final Uint8List? imagenBytes;
+  // Se ofrece en el pedido con el botón naranja "Plato del día".
+  final bool platoDelDia;
 
   const CartaItem({
     required this.id,
@@ -38,6 +40,7 @@ class CartaItem {
     this.limiteAgregados,
     this.creadoEn,
     this.imagenBytes,
+    this.platoDelDia = false,
   });
 
   bool get disponible => estado != 'inactivo';
@@ -56,5 +59,6 @@ class CartaItem {
     limiteAgregados: limiteAgregados,
     creadoEn: creadoEn,
     imagenBytes: imagenBytes,
+    platoDelDia: platoDelDia,
   );
 }

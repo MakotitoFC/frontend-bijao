@@ -8,10 +8,10 @@ import 'app_toast.dart';
 
 // Alta de un producto nuevo (formulario modal). Compartido entre el botón de
 // la cabecera de Productos y cualquier otro punto de entrada.
-Future<void> crearPlato(BuildContext context) async {
+Future<void> crearPlato(BuildContext context, {String? categoriaId}) async {
   final nuevo = await showBlurDialog<CartaItem>(
     context: context,
-    builder: (_) => const CartaFormScreen(),
+    builder: (_) => CartaFormScreen(categoriaInicialId: categoriaId),
   );
   if (nuevo == null) return;
   cartasNotifier.value = [...cartasNotifier.value, nuevo];

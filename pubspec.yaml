@@ -1,5 +1,5 @@
 name: frontend_bijao
-description: "A new Flutter project."
+description: "Sistema POS para restaurantes: pedidos, mesas, cocina y pagos."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -63,10 +63,6 @@ flutter:
 
   assets:
     - assets/images/logo_bijao.png
-    - assets/images/login_cocina.jpg
-    - assets/images/tacacho-con-cecina-y-chorizo.jpg
-    - assets/images/Ensalada-de-chonta.webp
-    - assets/images/aguajina-bebida-selva-peruana-cocatambo.webp
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

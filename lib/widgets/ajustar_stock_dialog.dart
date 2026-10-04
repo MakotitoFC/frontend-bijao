@@ -104,7 +104,7 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                   label: 'Tipo de movimiento',
                   value: _tipoMovimiento,
                   items: [
-                    for (final t in mockTiposMovimiento)
+                    for (final t in tiposMovimiento)
                       AppSelectItem(value: t, label: t.tipoMovimiento),
                   ],
                   onChanged: (v) => setState(() {
@@ -131,7 +131,9 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                       return 'Ingresa la cantidad';
                     }
                     final parsed = double.tryParse(v.trim());
-                    if (parsed == null || parsed <= 0) return 'Cantidad inválida';
+                    if (parsed == null || parsed <= 0) {
+                      return 'Cantidad inválida';
+                    }
                     return null;
                   },
                 ),
@@ -148,15 +150,7 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: _confirmar,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    style: ElevatedButton.styleFrom(),
                     child: const Text('Registrar'),
                   ),
                 ),

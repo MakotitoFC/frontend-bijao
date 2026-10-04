@@ -1,265 +1,410 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../data/configuracion_store.dart';
 import '../theme/app_theme.dart';
+import 'app_tag.dart';
+import 'pago_dialogs.dart';
 
-// Resultado al crear un descuento para el pedido.
-typedef DescuentoConfigurado =
-    ({String nombre, bool esPorcentaje, double monto});
+// Resultado al elegir un ticket de descuento: aplicarlo o quitar el ya aplicado.
+typedef DescuentoConfigurado = ({
+  String nombre,
+  bool esPorcentaje,
+  double monto,
+  bool quitar,
+});
 
-// Modal "Descuentos": nombre, tipo (porcentaje o soles) y monto.
+class _TipoDescuento {
+  final IconData icono;
+  final String nombre;
+  final bool esPorcentaje;
+  final double monto;
+
+  const _TipoDescuento({
+    required this.icono,
+    required this.nombre,
+    required this.esPorcentaje,
+    required this.monto,
+  });
+}
+
+// Descuento extra del pedido: tickets de distintos tipos de descuento.
 class DescuentoDialog extends StatefulWidget {
-  const DescuentoDialog({super.key});
+  // Consumo sobre el que se calculan los porcentajes.
+  final double base;
+  // Nombres de los descuentos que ya tiene aplicados el pedido.
+  final Set<String> aplicados;
+
+  const DescuentoDialog({
+    super.key,
+    required this.base,
+    this.aplicados = const {},
+  });
 
   @override
   State<DescuentoDialog> createState() => _DescuentoDialogState();
 }
 
 class _DescuentoDialogState extends State<DescuentoDialog> {
-  final _nombreController = TextEditingController();
-  final _montoController = TextEditingController();
+  final _nombre = TextEditingController();
+  final _monto = TextEditingController();
   bool _esPorcentaje = true;
-  double _monto = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _montoController.addListener(() {
-      setState(() {
-        _monto =
-            double.tryParse(_montoController.text.trim().replaceAll(',', '.')) ??
-            0;
-      });
-    });
-  }
 
   @override
   void dispose() {
-    _nombreController.dispose();
-    _montoController.dispose();
+    _nombre.dispose();
+    _monto.dispose();
     super.dispose();
   }
 
-  void _guardar() {
-    final nombre = _nombreController.text.trim();
-    if (nombre.isEmpty || _monto <= 0) return;
+  List<_TipoDescuento> get _tipos => [
+    const _TipoDescuento(
+      icono: LucideIcons.heart,
+      nombre: 'Cliente frecuente',
+      esPorcentaje: true,
+      monto: 10,
+    ),
+    const _TipoDescuento(
+      icono: LucideIcons.gift,
+      nombre: 'Cortesía de la casa',
+      esPorcentaje: true,
+      monto: 15,
+    ),
+    if (config.descuentoEmpleadoHabilitado)
+      _TipoDescuento(
+        icono: LucideIcons.users,
+        nombre: 'Empleado',
+        esPorcentaje: true,
+        monto: config.descuentoEmpleadoPorcentaje,
+      ),
+    const _TipoDescuento(
+      icono: LucideIcons.banknote,
+      nombre: 'Descuento S/ 5',
+      esPorcentaje: false,
+      monto: 5,
+    ),
+    const _TipoDescuento(
+      icono: LucideIcons.coins,
+      nombre: 'Descuento S/ 10',
+      esPorcentaje: false,
+      monto: 10,
+    ),
+  ];
+
+  double get _montoPersonalizado =>
+      double.tryParse(_monto.text.trim().replaceAll(',', '.')) ?? 0;
+
+  void _resolver(String nombre, bool esPorcentaje, double monto, bool quitar) {
     Navigator.of(context).pop<DescuentoConfigurado>((
       nombre: nombre,
-      esPorcentaje: _esPorcentaje,
-      monto: _monto,
+      esPorcentaje: esPorcentaje,
+      monto: monto,
+      quitar: quitar,
     ));
   }
 
+  void _aplicarPersonalizado() {
+    final nombre = _nombre.text.trim();
+    if (nombre.isEmpty || _montoPersonalizado <= 0) return;
+    _resolver(nombre, _esPorcentaje, _montoPersonalizado, false);
+  }
+
+  String _valor(bool esPorcentaje, double monto) => esPorcentaje
+      ? '${monto.toStringAsFixed(monto % 1 == 0 ? 0 : 1)}%'
+      : 'S/ ${monto.toStringAsFixed(monto % 1 == 0 ? 0 : 2)}';
+
   @override
   Widget build(BuildContext context) {
-    final esMobile = AppBreakpoints.esMobile(context);
-    return Material(
-      color: Colors.white,
-      borderRadius: esMobile
-          ? const BorderRadius.vertical(top: Radius.circular(AppRadii.sheet))
-          : BorderRadius.circular(AppRadii.sheet),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        width: esMobile ? MediaQuery.sizeOf(context).width : 420,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, esMobile ? 20 : 16, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ModalPago(
+      titulo: 'Descuento extra',
+      subtitulo: 'Elige un ticket de descuento',
+      anchoEscritorio: 460,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          4,
+          4,
+          4,
+          4 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final t in _tipos) ...[_ticket(t), const SizedBox(height: 14)],
+            _ticketPersonalizado(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _ticket(_TipoDescuento t) {
+    final aplicado = widget.aplicados.contains(t.nombre);
+    final ahorro = t.esPorcentaje ? widget.base * t.monto / 100 : t.monto;
+    return _MarcoTicket(
+      icono: t.icono,
+      lateral: t.esPorcentaje ? 'PORCENTAJE' : 'SOLES',
+      centro: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            t.nombre.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Descuentos',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+              Text(
+                _valor(t.esPorcentaje, t.monto),
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primaryGreenDark,
+                ),
               ),
-              const SizedBox(height: 4),
-              _cartilla(),
+              const SizedBox(width: 6),
+              Text(
+                'OFF',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade500,
+                ),
+              ),
             ],
           ),
-        ),
+          Text(
+            'Ahorras S/ ${ahorro.toStringAsFixed(2)}',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 10),
+          aplicado
+              ? OutlinedButton(
+                  onPressed: () =>
+                      _resolver(t.nombre, t.esPorcentaje, t.monto, true),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    side: const BorderSide(color: AppColors.error),
+                  ),
+                  child: const Text('Quitar'),
+                )
+              : FilledButton(
+                  onPressed: () =>
+                      _resolver(t.nombre, t.esPorcentaje, t.monto, false),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: const Text('Aplicar'),
+                ),
+        ],
       ),
     );
   }
 
-  // Cartilla tipo ticket: badge (% o S/) a la izquierda, formulario a la derecha.
-  Widget _cartilla() {
-    return IntrinsicHeight(
-      child: Row(
+  Widget _ticketPersonalizado() {
+    return _MarcoTicket(
+      icono: LucideIcons.pencil,
+      lateral: 'A MEDIDA',
+      centro: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 92,
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen,
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(16),
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  _esPorcentaje
-                      ? '${_monto.toStringAsFixed(0)}%'
-                      : 'S/${_monto.toStringAsFixed(0)}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'DCTO',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-              ],
+          Text(
+            'PERSONALIZADO',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: Colors.grey.shade700,
             ),
           ),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: const BorderRadius.horizontal(
-                  right: Radius.circular(16),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nombre,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(hintText: 'Nombre del descuento'),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              AppTag(
+                etiqueta: '%',
+                activo: _esPorcentaje,
+                onTap: () => setState(() => _esPorcentaje = true),
+              ),
+              AppTag(
+                etiqueta: 'S/',
+                activo: !_esPorcentaje,
+                onTap: () => setState(() => _esPorcentaje = false),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _monto,
+                  onChanged: (_) => setState(() {}),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: _esPorcentaje ? 'Monto (%)' : 'Monto (S/)',
+                  ),
                 ),
-                border: Border.all(color: Colors.grey.shade200),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _campo(
-                    controller: _nombreController,
-                    hint: 'Nombre del descuento (ej. Cliente frecuente)',
-                    autofocus: true,
-                  ),
-                  const SizedBox(height: 10),
-                  _tipoTabs(),
-                  const SizedBox(height: 10),
-                  _campo(
-                    controller: _montoController,
-                    hint: _esPorcentaje ? 'Monto (%)' : 'Monto (S/)',
-                    teclado: const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _guardar,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: const Text(
-                      'Aplicar',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed:
+                  _nombre.text.trim().isNotEmpty && _montoPersonalizado > 0
+                  ? _aplicarPersonalizado
+                  : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
               ),
+              child: const Text('Aplicar'),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // Elige si el descuento es por porcentaje o en soles.
-  Widget _tipoTabs() {
-    Widget tab(String texto, bool valor, {bool izquierda = false}) {
-      final activo = _esPorcentaje == valor;
-      return Expanded(
-        child: InkWell(
-          onTap: () => setState(() => _esPorcentaje = valor),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: activo ? AppColors.primaryGreen : Colors.white,
-              border: izquierda
-                  ? null
-                  : Border(left: BorderSide(color: Colors.grey.shade300)),
-            ),
-            child: Text(
-              texto,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: activo ? Colors.white : Colors.grey.shade600,
+// Ticket: ícono a la izquierda, línea punteada, contenido, texto vertical a la
+// derecha y muescas en los costados.
+class _MarcoTicket extends StatelessWidget {
+  final IconData icono;
+  final String lateral;
+  final Widget centro;
+
+  const _MarcoTicket({
+    required this.icono,
+    required this.lateral,
+    required this.centro,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PhysicalShape(
+      color: Colors.white,
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.35),
+      clipper: const _TicketClipper(),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 84,
+              child: Center(
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryGreen.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icono,
+                    size: 22,
+                    color: AppColors.primaryGreenDark,
+                  ),
+                ),
               ),
             ),
-          ),
+            CustomPaint(
+              size: const Size(1, double.infinity),
+              painter: _LineaPunteada(Colors.grey.shade400),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Align(alignment: Alignment.centerLeft, child: centro),
+              ),
+            ),
+            SizedBox(
+              width: 32,
+              child: Center(
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: Text(
+                    lateral,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TicketClipper extends CustomClipper<Path> {
+  const _TicketClipper();
+
+  static const _radio = 14.0;
+  static const _muesca = 10.0;
+
+  @override
+  Path getClip(Size size) {
+    final tarjeta = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Offset.zero & size,
+          const Radius.circular(_radio),
         ),
       );
+    final y = size.height / 2;
+    final muescas = Path()
+      ..addOval(Rect.fromCircle(center: Offset(0, y), radius: _muesca))
+      ..addOval(
+        Rect.fromCircle(center: Offset(size.width, y), radius: _muesca),
+      );
+    return Path.combine(PathOperation.difference, tarjeta, muescas);
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+class _LineaPunteada extends CustomPainter {
+  final Color color;
+
+  _LineaPunteada(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final pincel = Paint()
+      ..color = color
+      ..strokeWidth = 1.2;
+    const trazo = 5.0;
+    const hueco = 4.0;
+    for (var y = 12.0; y < size.height - 12; y += trazo + hueco) {
+      canvas.drawLine(Offset(0, y), Offset(0, y + trazo), pincel);
     }
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        children: [
-          tab('Porcentaje (%)', true, izquierda: true),
-          tab('Soles (S/)', false),
-        ],
-      ),
-    );
   }
 
-  Widget _campo({
-    required TextEditingController controller,
-    required String hint,
-    bool autofocus = false,
-    TextInputType? teclado,
-  }) {
-    return TextField(
-      controller: controller,
-      autofocus: autofocus,
-      keyboardType: teclado,
-      style: const TextStyle(fontSize: 13),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: hint,
-        hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 12,
-          horizontal: 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(10)),
-          borderSide: BorderSide(color: AppColors.primaryGreen),
-        ),
-      ),
-    );
-  }
+  @override
+  bool shouldRepaint(covariant _LineaPunteada old) => old.color != color;
 }

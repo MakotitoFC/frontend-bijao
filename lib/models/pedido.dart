@@ -7,7 +7,7 @@ class Pedido {
   final int mesaNumero;
   final List<int> mesasUnidas; // otras mesas unidas a esta, comparten cuenta
   final String estado; // 'pendiente' | 'preparando' | 'listo' | 'entregado' | 'cancelado' | 'anulado'
-  final String tipoPedido; // 'llevar' | 'mesa' | 'delivery'
+  final String tipoPedido; // 'mesa' | 'delivery'
   final DateTime fechaPedido;
   final String? notas; // pedidos.notas
   final String? clienteNombre; // pedidos.cliente_nombre
@@ -60,14 +60,34 @@ class Pedido {
 
   String get etiquetaTipoPedido {
     switch (tipoPedido) {
-      case 'llevar':
-        return 'Llevar';
       case 'delivery':
         return 'Delivery';
       default:
         return 'Mesa';
     }
   }
+
+  // Edición de los datos del pedido (cliente, contacto, dirección y notas).
+  Pedido conDatos({
+    required String? clienteNombre,
+    required String? clienteCelular,
+    required String? direccionDelivery,
+    required String? notas,
+  }) => Pedido(
+    id: id,
+    numeroPedido: numeroPedido,
+    mesaNumero: mesaNumero,
+    mesasUnidas: mesasUnidas,
+    estado: estado,
+    tipoPedido: tipoPedido,
+    fechaPedido: fechaPedido,
+    notas: notas,
+    clienteNombre: clienteNombre,
+    clienteCelular: clienteCelular,
+    direccionDelivery: direccionDelivery,
+    fechaFinalizacion: fechaFinalizacion,
+    usuarioId: usuarioId,
+  );
 
   // Al pasar a 'listo' o 'entregado' se fija la fecha de finalización (corta
   // el cronómetro del pedido).

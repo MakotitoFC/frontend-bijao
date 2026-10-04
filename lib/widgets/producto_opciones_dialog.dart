@@ -5,28 +5,30 @@ import '../models/carta_item.dart';
 import '../models/carta_presentacion.dart';
 import '../models/modificador.dart';
 import '../theme/app_theme.dart';
+import 'app_tag.dart';
 import '../utils/agregados_utils.dart';
-import '../utils/carta_visuals.dart';
 
 // Resultado al agregar un producto configurado al pedido.
-typedef ProductoConfigurado =
-    ({
-      int cantidad,
-      CartaPresentacion? presentacion,
-      List<Modificador> modificadores,
-      String? comentario,
-      double precioUnitario,
-    });
+typedef ProductoConfigurado = ({
+  int cantidad,
+  CartaPresentacion? presentacion,
+  List<Modificador> modificadores,
+  String? comentario,
+  double precioUnitario,
+});
 
 // Modal "Agregar al pedido": presentación, extras opcionales y nota.
 class ProductoOpcionesDialog extends StatefulWidget {
   final CartaItem item;
   final bool esAdmin;
+  // Color del botón principal (ej. naranja para el plato del día).
+  final Color? acento;
 
   const ProductoOpcionesDialog({
     super.key,
     required this.item,
     required this.esAdmin,
+    this.acento,
   });
 
   @override
@@ -34,7 +36,7 @@ class ProductoOpcionesDialog extends StatefulWidget {
 }
 
 class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
-  late final List<CartaPresentacion> _presentaciones = mockPresentaciones
+  late final List<CartaPresentacion> _presentaciones = presentaciones
       .where((p) => p.cartaId == widget.item.id)
       .toList();
   CartaPresentacion? _presentacion;
@@ -155,7 +157,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: esMobile ? tam.width : 400,
-          maxHeight: esMobile ? tam.height * 0.9 : (tam.height * 0.85).clamp(420.0, 680.0),
+          maxHeight: esMobile
+              ? tam.height * 0.9
+              : (tam.height * 0.85).clamp(420.0, 680.0),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -168,7 +172,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                   Expanded(
                     child: Text(
                       widget.item.nombrePlato,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -190,7 +197,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                         Expanded(
                           child: Text(
                             widget.item.descripcion,
-                            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -207,14 +217,16 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     const SizedBox(height: 14),
                     Text(
                       'S/ ${_precioUnitario.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     if (_presentaciones.isNotEmpty) ...[
                       const SizedBox(height: 18),
                       _tituloSeccion('Elige el tamaño', obligatorio: true),
                       const SizedBox(height: 6),
-                      for (final p in _presentaciones)
-                        _filaRadio(p),
+                      for (final p in _presentaciones) _filaRadio(p),
                     ],
                     if (_extrasSimples.isNotEmpty) ...[
                       const SizedBox(height: 18),
@@ -259,7 +271,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       maxLines: 2,
                       decoration: InputDecoration(
                         hintText: 'Notas para este producto (opcional)',
-                        hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                        hintStyle: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide(color: Colors.grey.shade300),
@@ -290,7 +305,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     child: Text(
                       '$_cantidad',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   _botonCantidad(Icons.add, () => setState(() => _cantidad++)),
@@ -299,11 +317,8 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     child: FilledButton(
                       onPressed: _confirmar,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                        backgroundColor:
+                            widget.acento ?? AppColors.primaryGreen,
                       ),
                       child: Text(
                         'Agregar S/ ${_total.toStringAsFixed(2)}',
@@ -320,14 +335,24 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     );
   }
 
-  Widget _tituloSeccion(String texto, {String? subtitulo, bool obligatorio = false}) {
+  Widget _tituloSeccion(
+    String texto, {
+    String? subtitulo,
+    bool obligatorio = false,
+  }) {
     return Row(
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(texto, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              Text(
+                texto,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
               if (subtitulo != null)
                 Text(
                   subtitulo,
@@ -385,75 +410,40 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     );
   }
 
-  // Cada extra opcional es una tag/chip que se activa al tocarla.
+  // Cada extra opcional es una tag que se activa al tocarla.
   Widget _tagAgregado(Map<String, dynamic> a) {
     final nombre = '${a['nombre']}';
     final precio = a['precio'];
-    final activo = _agregadosElegidos.contains(nombre);
     final texto = precio is num && precio > 0
         ? '$nombre +S/ ${precio.toStringAsFixed(2)}'
         : nombre;
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
+    return AppTag(
+      etiqueta: texto,
+      activo: _agregadosElegidos.contains(nombre),
       onTap: () => _alternarAgregado(nombre),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: activo ? AppColors.primaryGreen.withValues(alpha: 0.12) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
-            width: activo ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          texto,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: activo ? AppColors.primaryGreenDark : Colors.black87,
-          ),
-        ),
-      ),
     );
   }
 
   // Igual que `_tagAgregado`, pero para un ítem dentro de un grupo.
-  Widget _tagAgregadoGrupo(Map<String, dynamic> grupo, Map<String, dynamic> it) {
+  Widget _tagAgregadoGrupo(
+    Map<String, dynamic> grupo,
+    Map<String, dynamic> it,
+  ) {
     final nombreItem = '${it['nombre']}';
     final precio = it['precio'];
     final grupoNombre = nombreGrupo(grupo);
-    final activo = (_seleccionPorGrupo[grupoNombre] ?? const {}).contains(
-      nombreItem,
-    );
     final texto = precio is num && precio > 0
         ? '$nombreItem +S/ ${precio.toStringAsFixed(2)}'
         : nombreItem;
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
+    return AppTag(
+      etiqueta: texto,
+      activo: (_seleccionPorGrupo[grupoNombre] ?? const {}).contains(
+        nombreItem,
+      ),
       onTap: () => _alternarAgregadoGrupo(
         grupoNombre,
         nombreItem,
         cantidadMaximaGrupo(grupo) ?? 1,
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: activo ? AppColors.primaryGreen.withValues(alpha: 0.12) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
-            width: activo ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          texto,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: activo ? AppColors.primaryGreenDark : Colors.black87,
-          ),
-        ),
       ),
     );
   }
@@ -467,21 +457,22 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
         child: Icon(
           icono,
           size: 20,
-          color: onTap == null ? Colors.grey.shade300 : AppColors.primaryGreen,
+          color: onTap == null
+              ? Colors.grey.shade300
+              : (widget.acento ?? AppColors.primaryGreen),
         ),
       ),
     );
   }
 
   Widget _imagen(CartaItem item) {
-    final asset = imagenDeCarta(item.id);
     return ColoredBox(
       color: const Color(0xFFF1F3F0),
-      child: asset != null
-          ? Image.asset(asset, fit: BoxFit.cover)
+      child: item.imagenBytes != null
+          ? Image.memory(item.imagenBytes!, fit: BoxFit.cover)
           : Center(
               child: Icon(
-                iconoDeCategoria(item.categoriaId),
+                Icons.restaurant_outlined,
                 size: 26,
                 color: Colors.grey.shade400,
               ),

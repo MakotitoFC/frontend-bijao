@@ -1,8 +1,8 @@
 import 'app_role.dart';
 
-// Simula la tabla `usuario` (usuario, email, password, estado, rol_id, sede_id)
+// Refleja la tabla `usuario` (usuario, email, password, estado, rol_id, sede_id)
 // mientras no hay backend.
-class MockUser {
+class Usuario {
   final String id;
   final String nombre;
   final String email;
@@ -11,7 +11,7 @@ class MockUser {
   final String? sedeId;
   final bool activo;
 
-  const MockUser({
+  const Usuario({
     required this.id,
     required this.nombre,
     required this.email,

@@ -16,11 +16,11 @@ class Mesa {
     this.zona = 'Principal',
   });
 
-  Mesa copyWith({String? estado}) => Mesa(
+  Mesa copyWith({String? estado, int? capacidad, String? zona}) => Mesa(
     id: id,
     numero: numero,
     estado: estado ?? this.estado,
-    capacidad: capacidad,
-    zona: zona,
+    capacidad: capacidad ?? this.capacidad,
+    zona: zona ?? this.zona,
   );
 }

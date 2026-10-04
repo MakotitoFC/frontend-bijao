@@ -31,9 +31,20 @@ void registrarConsumoInsumo(
   PedidoLine linea,
   CartaInsumo receta, {
   required double cantidad,
+}) => registrarConsumoDirecto(
+  linea,
+  receta.productoInventarioId,
+  cantidad: cantidad,
+);
+
+// Consumo directo de un insumo del inventario para una línea del pedido.
+void registrarConsumoDirecto(
+  PedidoLine linea,
+  String productoInventarioId, {
+  required double cantidad,
 }) {
   final producto = productosInventario
-      .where((p) => p.id == receta.productoInventarioId)
+      .where((p) => p.id == productoInventarioId)
       .firstOrNull;
   final costo = (producto?.costoReposicion ?? 0) * cantidad;
 
@@ -41,7 +52,7 @@ void registrarConsumoInsumo(
     PedidoDetalleInsumo(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       pedidoDetalleId: linea.id,
-      productoInventarioId: receta.productoInventarioId,
+      productoInventarioId: productoInventarioId,
       cantidadUsada: cantidad,
       costo: costo,
       fecha: DateTime.now(),
@@ -50,7 +61,7 @@ void registrarConsumoInsumo(
 
   registrarMovimientoInventario(
     InventarioMovimiento(
-      productoInventarioId: receta.productoInventarioId,
+      productoInventarioId: productoInventarioId,
       tipoMovimiento: movSalidaVenta,
       cantidad: cantidad,
       notas: 'Venta: ${linea.nombrePlato}',

@@ -31,7 +31,8 @@ class ReportesScreen extends StatelessWidget {
         .toList();
     final anteriores = _pedidosValidos
         .where(
-          (p) => p.fechaPedido.isAfter(corte2) && p.fechaPedido.isBefore(corte1),
+          (p) =>
+              p.fechaPedido.isAfter(corte2) && p.fechaPedido.isBefore(corte1),
         )
         .toList();
     return (actual: calcular(actuales), anterior: calcular(anteriores));
@@ -110,9 +111,7 @@ class ReportesScreen extends StatelessWidget {
     required int flexDerecha,
   }) {
     if (angosto) {
-      return Column(
-        children: [izquierda, const SizedBox(height: 16), derecha],
-      );
+      return Column(children: [izquierda, const SizedBox(height: 16), derecha]);
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,9 +153,7 @@ class ReportesScreen extends StatelessWidget {
   Widget _filaKpis(bool angosto) {
     final cantidad = _periodos((l) => l.length.toDouble());
     final ventas = _periodos(_ventasDe);
-    final ticket = _periodos(
-      (l) => l.isEmpty ? 0 : _ventasDe(l) / l.length,
-    );
+    final ticket = _periodos((l) => l.isEmpty ? 0 : _ventasDe(l) / l.length);
     final tarjetas = [
       _kpi(
         'Cantidad de pedidos',
@@ -215,7 +212,10 @@ class ReportesScreen extends StatelessWidget {
             children: [
               Text(
                 valor,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(width: 8),
               _chipCambio(cambioPct),
@@ -230,7 +230,11 @@ class ReportesScreen extends StatelessWidget {
     if (pct == null) {
       return Text(
         '--%',
-        style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade500,
+          fontWeight: FontWeight.w600,
+        ),
       );
     }
     final positivo = pct >= 0;
@@ -245,7 +249,11 @@ class ReportesScreen extends StatelessWidget {
         ),
         Text(
           '${pct.abs().toStringAsFixed(2)}%',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
         ),
       ],
     );
@@ -255,11 +263,10 @@ class ReportesScreen extends StatelessWidget {
 
   List<({String label, Color color, bool Function(Pedido) filtro})>
   get _servicios => [
-    (label: 'En mesa', color: const Color(0xFF8E24AA), filtro: (p) => p.tipoPedido == 'mesa'),
     (
-      label: 'Para llevar',
-      color: AppColors.primaryGreen,
-      filtro: (p) => p.tipoPedido == 'llevar',
+      label: 'En mesa',
+      color: const Color(0xFF8E24AA),
+      filtro: (p) => p.tipoPedido == 'mesa',
     ),
     (
       label: 'A domicilio',
@@ -274,7 +281,10 @@ class ReportesScreen extends StatelessWidget {
       height: 220,
       child: total == 0
           ? Center(
-              child: Text('Sin pedidos todavía', style: TextStyle(color: Colors.grey.shade500)),
+              child: Text(
+                'Sin pedidos todavía',
+                style: TextStyle(color: Colors.grey.shade500),
+              ),
             )
           : Stack(
               alignment: Alignment.center,
@@ -287,7 +297,10 @@ class ReportesScreen extends StatelessWidget {
                       for (final s in _servicios)
                         if (_pedidosValidos.where(s.filtro).isNotEmpty)
                           PieChartSectionData(
-                            value: _pedidosValidos.where(s.filtro).length.toDouble(),
+                            value: _pedidosValidos
+                                .where(s.filtro)
+                                .length
+                                .toDouble(),
                             color: s.color,
                             radius: 46,
                             title:
@@ -313,7 +326,10 @@ class ReportesScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Análisis de pedidos', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        const Text(
+          'Análisis de pedidos',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        ),
         const SizedBox(height: 14),
         angosto
             ? Column(children: [dona, const SizedBox(height: 16), tabla])
@@ -330,7 +346,11 @@ class ReportesScreen extends StatelessWidget {
   }
 
   Widget _tablaServicios(int total) {
-    const estiloCabecera = TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6B7280));
+    const estiloCabecera = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF6B7280),
+    );
     return Table(
       columnWidths: const {
         0: FlexColumnWidth(2),
@@ -341,10 +361,22 @@ class ReportesScreen extends StatelessWidget {
       children: [
         const TableRow(
           children: [
-            Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('TIPO DE SERVICIO', style: estiloCabecera)),
-            Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('PEDIDOS', style: estiloCabecera)),
-            Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('VENTAS', style: estiloCabecera)),
-            Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('TICKET PROM.', style: estiloCabecera)),
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('TIPO DE SERVICIO', style: estiloCabecera),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('PEDIDOS', style: estiloCabecera),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('VENTAS', style: estiloCabecera),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('TICKET PROM.', style: estiloCabecera),
+            ),
           ],
         ),
         for (final s in _servicios) _filaServicio(s),
@@ -352,22 +384,31 @@ class ReportesScreen extends StatelessWidget {
     );
   }
 
-  TableRow _filaServicio(({String label, Color color, bool Function(Pedido) filtro}) s) {
+  TableRow _filaServicio(
+    ({String label, Color color, bool Function(Pedido) filtro}) s,
+  ) {
     final lista = _pedidosValidos.where(s.filtro).toList();
     final ventas = _ventasDe(lista);
     final ticket = lista.isEmpty ? 0.0 : ventas / lista.length;
-    final periodoCantidad = _periodos((l) => l.where(s.filtro).length.toDouble());
+    final periodoCantidad = _periodos(
+      (l) => l.where(s.filtro).length.toDouble(),
+    );
     final periodoVentas = _periodos((l) => _ventasDe(l.where(s.filtro)));
     final periodoTicket = _periodos((l) {
       final f = l.where(s.filtro).toList();
       return f.isEmpty ? 0 : _ventasDe(f) / f.length;
     });
-    Widget celda(Widget w) => Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: w);
-    Widget valorConCambio(String texto, double? cambio) => Row(
-      mainAxisSize: MainAxisSize.min,
+    Widget celda(Widget w) =>
+        Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: w);
+    Widget valorConCambio(String texto, double? cambio) => Wrap(
+      spacing: 4,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(texto, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(width: 4),
+        Text(
+          texto,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
         _chipCambio(cambio),
       ],
     );
@@ -376,15 +417,43 @@ class ReportesScreen extends StatelessWidget {
         celda(
           Row(
             children: [
-              Container(width: 9, height: 9, decoration: BoxDecoration(color: s.color, shape: BoxShape.circle)),
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: s.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 8),
-              Text(s.label, style: const TextStyle(fontSize: 13)),
+              Flexible(
+                child: Text(
+                  s.label,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
             ],
           ),
         ),
-        celda(valorConCambio('${lista.length}', _cambioPct(periodoCantidad.actual, periodoCantidad.anterior))),
-        celda(valorConCambio('\$ ${ventas.toStringAsFixed(2)}', _cambioPct(periodoVentas.actual, periodoVentas.anterior))),
-        celda(valorConCambio('\$ ${ticket.toStringAsFixed(2)}', _cambioPct(periodoTicket.actual, periodoTicket.anterior))),
+        celda(
+          valorConCambio(
+            '${lista.length}',
+            _cambioPct(periodoCantidad.actual, periodoCantidad.anterior),
+          ),
+        ),
+        celda(
+          valorConCambio(
+            '\$ ${ventas.toStringAsFixed(2)}',
+            _cambioPct(periodoVentas.actual, periodoVentas.anterior),
+          ),
+        ),
+        celda(
+          valorConCambio(
+            '\$ ${ticket.toStringAsFixed(2)}',
+            _cambioPct(periodoTicket.actual, periodoTicket.anterior),
+          ),
+        ),
       ],
     );
   }
@@ -409,8 +478,11 @@ class ReportesScreen extends StatelessWidget {
   Widget _progresoPedidos() {
     final dias = _ultimos7Dias;
     final actual = dias.map(_pedidosEnDia).toList();
-    final anterior = dias.map((d) => _pedidosEnDia(d.subtract(const Duration(days: 7)))).toList();
-    final maxY = ([...actual, ...anterior].fold(0, (a, b) => a > b ? a : b) + 2).toDouble();
+    final anterior = dias
+        .map((d) => _pedidosEnDia(d.subtract(const Duration(days: 7))))
+        .toList();
+    final maxY = ([...actual, ...anterior].fold(0, (a, b) => a > b ? a : b) + 2)
+        .toDouble();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -423,8 +495,12 @@ class ReportesScreen extends StatelessWidget {
               gridData: const FlGridData(show: true, drawVerticalLine: false),
               borderData: FlBorderData(show: false),
               titlesData: FlTitlesData(
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
@@ -432,7 +508,10 @@ class ReportesScreen extends StatelessWidget {
                     interval: (maxY / 4).clamp(1, double.infinity),
                     getTitlesWidget: (v, meta) => Text(
                       v.toInt().toString(),
-                      style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
                   ),
                 ),
@@ -442,13 +521,18 @@ class ReportesScreen extends StatelessWidget {
                     reservedSize: 28,
                     getTitlesWidget: (v, meta) {
                       final i = v.toInt();
-                      if (i < 0 || i >= dias.length) return const SizedBox.shrink();
+                      if (i < 0 || i >= dias.length) {
+                        return const SizedBox.shrink();
+                      }
                       final d = dias[i];
                       return Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           '${d.day} ${_mesAbrev(d.month)}',
-                          style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade500,
+                          ),
                         ),
                       );
                     },
@@ -457,14 +541,20 @@ class ReportesScreen extends StatelessWidget {
               ),
               lineBarsData: [
                 LineChartBarData(
-                  spots: [for (var i = 0; i < actual.length; i++) FlSpot(i.toDouble(), actual[i].toDouble())],
+                  spots: [
+                    for (var i = 0; i < actual.length; i++)
+                      FlSpot(i.toDouble(), actual[i].toDouble()),
+                  ],
                   color: AppColors.primaryGreenDark,
                   barWidth: 2.5,
                   isCurved: false,
                   dotData: const FlDotData(show: true),
                 ),
                 LineChartBarData(
-                  spots: [for (var i = 0; i < anterior.length; i++) FlSpot(i.toDouble(), anterior[i].toDouble())],
+                  spots: [
+                    for (var i = 0; i < anterior.length; i++)
+                      FlSpot(i.toDouble(), anterior[i].toDouble()),
+                  ],
                   color: AppColors.primaryGreen.withValues(alpha: 0.35),
                   barWidth: 2.5,
                   isCurved: false,
@@ -480,7 +570,10 @@ class ReportesScreen extends StatelessWidget {
           children: [
             _leyendaLinea('Últimos 7 días', AppColors.primaryGreenDark),
             const SizedBox(width: 16),
-            _leyendaLinea('7 días anteriores', AppColors.primaryGreen.withValues(alpha: 0.35)),
+            _leyendaLinea(
+              '7 días anteriores',
+              AppColors.primaryGreen.withValues(alpha: 0.35),
+            ),
           ],
         ),
       ],
@@ -488,16 +581,35 @@ class ReportesScreen extends StatelessWidget {
   }
 
   String _mesAbrev(int mes) => const [
-    '', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+    '',
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
   ][mes];
 
   Widget _leyendaLinea(String texto, Color color) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
         const SizedBox(width: 6),
-        Text(texto, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        Text(
+          texto,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
       ],
     );
   }
@@ -520,14 +632,20 @@ class ReportesScreen extends StatelessWidget {
     if (porMesero.isEmpty) {
       return Center(
         heightFactor: 3,
-        child: Text('Sin pedidos todavía', style: TextStyle(color: Colors.grey.shade500)),
+        child: Text(
+          'Sin pedidos todavía',
+          style: TextStyle(color: Colors.grey.shade500),
+        ),
       );
     }
     final filas = porMesero.entries.map((e) {
       final ventas = _ventasDe(e.value);
-      return (nombre: _nombreUsuario(e.key), pedidos: e.value.length, ventas: ventas);
-    }).toList()
-      ..sort((a, b) => b.ventas.compareTo(a.ventas));
+      return (
+        nombre: _nombreUsuario(e.key),
+        pedidos: e.value.length,
+        ventas: ventas,
+      );
+    }).toList()..sort((a, b) => b.ventas.compareTo(a.ventas));
     final maxVentas = filas.fold(0.0, (m, f) => f.ventas > m ? f.ventas : m);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -540,8 +658,15 @@ class ReportesScreen extends StatelessWidget {
     );
   }
 
-  Widget _filaMesero(String nombre, int pedidos, double ventas, double maxVentas) {
-    final proporcion = maxVentas == 0 ? 0.0 : (ventas / maxVentas).clamp(0.05, 1.0);
+  Widget _filaMesero(
+    String nombre,
+    int pedidos,
+    double ventas,
+    double maxVentas,
+  ) {
+    final proporcion = maxVentas == 0
+        ? 0.0
+        : (ventas / maxVentas).clamp(0.05, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -550,7 +675,10 @@ class ReportesScreen extends StatelessWidget {
             Expanded(
               child: Text(
                 nombre,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -594,14 +722,20 @@ class ReportesScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (mejorIndice >= 0) ...[
-          Text('Mejor horario', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          Text(
+            'Mejor horario',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
           const SizedBox(height: 2),
           Text.rich(
             TextSpan(
               children: [
                 TextSpan(
                   text: '${etiqueta(mejorIndice)}  ',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 TextSpan(
                   text: '$maxValor pedidos',
@@ -625,14 +759,19 @@ class ReportesScreen extends StatelessWidget {
       children: [
         SizedBox(
           width: 100,
-          child: Text(etiqueta, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          child: Text(
+            etiqueta,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
         ),
         Expanded(
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
               FractionallySizedBox(
-                widthFactor: maxValor == 0 ? 0 : (valor / maxValor).clamp(0.02, 1.0),
+                widthFactor: maxValor == 0
+                    ? 0
+                    : (valor / maxValor).clamp(0.02, 1.0),
                 child: Container(
                   height: 16,
                   decoration: BoxDecoration(
@@ -647,7 +786,10 @@ class ReportesScreen extends StatelessWidget {
         const SizedBox(width: 8),
         SizedBox(
           width: 20,
-          child: Text('$valor', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          child: Text(
+            '$valor',
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
         ),
       ],
     );
@@ -672,14 +814,20 @@ class ReportesScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (mejorIndice >= 0) ...[
-          Text('Mejor día', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          Text(
+            'Mejor día',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
           const SizedBox(height: 2),
           Text.rich(
             TextSpan(
               children: [
                 TextSpan(
                   text: '${etiquetas[mejorIndice]}  ',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 TextSpan(
                   text: '$maxValor pedidos',
@@ -698,18 +846,32 @@ class ReportesScreen extends StatelessWidget {
               gridData: const FlGridData(show: false),
               borderData: FlBorderData(show: false),
               titlesData: FlTitlesData(
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                leftTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     getTitlesWidget: (v, meta) {
                       final i = v.toInt();
-                      if (i < 0 || i >= etiquetas.length) return const SizedBox.shrink();
+                      if (i < 0 || i >= etiquetas.length) {
+                        return const SizedBox.shrink();
+                      }
                       return Padding(
                         padding: const EdgeInsets.only(top: 6),
-                        child: Text(etiquetas[i], style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                        child: Text(
+                          etiquetas[i],
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -743,7 +905,10 @@ class ReportesScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final m in mediosPagoActivos) ...[
-          _filaMetodoPago(m.medioPago, pagos.where((p) => p.medioPago.id == m.id).length),
+          _filaMetodoPago(
+            m.medioPago,
+            pagos.where((p) => p.medioPago.id == m.id).length,
+          ),
           const SizedBox(height: 10),
         ],
       ],
@@ -758,7 +923,10 @@ class ReportesScreen extends StatelessWidget {
         const SizedBox(width: 10),
         SizedBox(
           width: 20,
-          child: Text('$cantidad', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          child: Text(
+            '$cantidad',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
         ),
       ],
     );

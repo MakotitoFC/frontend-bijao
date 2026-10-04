@@ -13,8 +13,11 @@ class Configuracion {
   bool servicioDelivery = true;
 
   // Propina al cobrar (`pedidos.propina`) y porcentaje sugerido.
-  bool propinaHabilitada = true;
   double propinaSugerida = 10;
+
+  // Precio de cada tamaño de tupper (editable al agregarlo al pedido).
+  double tupperGrande = 2.0;
+  double tupperMediano = 1.5;
 
   // Descuento de empleado (`pedidos.descuento`), en porcentaje.
   bool descuentoEmpleadoHabilitado = false;
@@ -67,11 +70,23 @@ const medioEfectivo = MedioPago(
   aplicaComision: false,
 );
 
+// Métodos de pago disponibles mientras no se configuren otros: efectivo, yape,
+// tarjeta, transferencia y canje de puntos.
+const mediosPagoBase = [
+  medioEfectivo,
+  MedioPago(id: 'mp2', medioPago: 'Yape', aplicaComision: false),
+  MedioPago(id: 'mp3', medioPago: 'Tarjeta', aplicaComision: false),
+  MedioPago(id: 'mp4', medioPago: 'Transferencia', aplicaComision: false),
+  MedioPago(id: 'mp5', medioPago: 'Puntos', aplicaComision: false),
+];
+
 // Métodos de pago editables (`medio_pago`). Se cargan desde el backend.
 final List<MedioPago> mediosPago = [];
 
-List<MedioPago> get mediosPagoActivos =>
-    mediosPago.where((m) => m.activo).toList();
+List<MedioPago> get mediosPagoActivos {
+  final activos = mediosPago.where((m) => m.activo).toList();
+  return activos.isEmpty ? mediosPagoBase : activos;
+}
 
 // Restaurantes / sedes (`restaurantes.direccion`, `telefono`, `activo`). Se
 // cargan desde el backend; queda 1 de prueba para que el login funcione.

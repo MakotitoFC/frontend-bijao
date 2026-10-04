@@ -8,10 +8,11 @@ import '../models/categoria_comida.dart';
 import '../theme/app_theme.dart';
 import '../utils/agregados_utils.dart';
 import '../utils/blur_dialog.dart';
-import '../utils/carta_visuals.dart';
+import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
+import '../widgets/estrella_plato_del_dia.dart';
 import 'carta_form_screen.dart';
 
 // Filtro gris para tarjetas de productos inactivos.
@@ -195,7 +196,7 @@ class _CartaScreenState extends State<CartaScreen> {
   }
 
   double _precioMinimo(String cartaId) {
-    final precios = mockPresentaciones
+    final precios = presentaciones
         .where((p) => p.cartaId == cartaId)
         .map((p) => p.precioCliente);
     if (precios.isEmpty) return 0;
@@ -203,7 +204,7 @@ class _CartaScreenState extends State<CartaScreen> {
   }
 
   String _nombreCategoria(String id) {
-    for (final c in mockCategorias) {
+    for (final c in categorias) {
       if (c.id == id) return c.categoria;
     }
     return '';
@@ -316,10 +317,9 @@ class _CartaScreenState extends State<CartaScreen> {
   Widget _contenidoTarjeta(CartaItem item) {
     final desdePrecio = item.precioCliente == null;
     final precio = desdePrecio ? _precioMinimo(item.id) : item.precioCliente!;
-    final imagen = imagenDeCarta(item.id);
     final categoria = _nombreCategoria(item.categoriaId);
     final tarjeta = Container(
-      padding: const EdgeInsets.all(12),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -333,133 +333,166 @@ class _CartaScreenState extends State<CartaScreen> {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Stack(
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 10,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    color: const Color(0xFFF1F3F0),
-                    child: item.imagenBytes != null
-                        ? Image.memory(item.imagenBytes!, fit: BoxFit.cover)
-                        : imagen != null
-                        ? Image.asset(imagen, fit: BoxFit.cover)
-                        : Center(
-                            child: Icon(
-                              iconoDeCategoria(item.categoriaId),
-                              size: 36,
-                              color: Colors.grey.shade400,
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 10,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: double.infinity,
+                            color: const Color(0xFFF1F3F0),
+                            child: item.imagenBytes != null
+                                ? Image.memory(
+                                    item.imagenBytes!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Center(
+                                    child: Icon(
+                                      Icons.restaurant_outlined,
+                                      size: 36,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: _chipDisponible(item.disponible),
+                      ),
+                      if (item.platoDelDia)
+                        const Positioned(
+                          bottom: 8,
+                          left: 8,
+                          child: EstrellaPlatoDelDia(),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (categoria.isNotEmpty)
+                    Text(
+                      categoria.toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.nombrePlato,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (item.descripcion.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      item.descripcion,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _dato(
+                        'Precio',
+                        desdePrecio
+                            ? 'Desde S/ ${precio.toStringAsFixed(2)}'
+                            : 'S/ ${precio.toStringAsFixed(2)}',
+                        destacado: true,
+                      ),
+                      _dato(
+                        'Costo',
+                        item.costo == null
+                            ? '—'
+                            : 'S/ ${item.costo!.toStringAsFixed(2)}',
+                      ),
+                      _dato('Stock', '${item.stock}'),
+                      _dato('SKU', item.sku ?? '—'),
+                    ],
+                  ),
+                  if (item.agregados.isNotEmpty ||
+                      item.limiteAgregados != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Text(
+                          'Agregados',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        if (item.limiteAgregados != null) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '(máx. ${item.limiteAgregados})',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
                             ),
                           ),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                left: 8,
-                child: _chipDisponible(item.disponible),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (categoria.isNotEmpty)
-            Text(
-              categoria.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-                color: AppColors.primaryGreen,
-              ),
-            ),
-          const SizedBox(height: 2),
-          Text(
-            item.nombrePlato,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-          ),
-          if (item.descripcion.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              item.descripcion,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _dato(
-                'Precio',
-                desdePrecio
-                    ? 'Desde S/ ${precio.toStringAsFixed(2)}'
-                    : 'S/ ${precio.toStringAsFixed(2)}',
-                destacado: true,
-              ),
-              _dato(
-                'Costo',
-                item.costo == null
-                    ? '—'
-                    : 'S/ ${item.costo!.toStringAsFixed(2)}',
-              ),
-              _dato('Stock', '${item.stock}'),
-              _dato('SKU', item.sku ?? '—'),
-            ],
-          ),
-          if (item.agregados.isNotEmpty || item.limiteAgregados != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Text(
-                  'Agregados',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                if (item.limiteAgregados != null) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    '(máx. ${item.limiteAgregados})',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                  ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final a in agregadosSimples(item.agregados))
+                          _chipAgregado(a),
+                        for (final g in gruposDeAgregados(item.agregados))
+                          _chipGrupoAgregado(g),
+                        if (item.agregados.isEmpty)
+                          Text(
+                            'Sin agregados',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const Spacer(),
+                  if (item.creadoEn != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Creado el ${_fecha(item.creadoEn!)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final a in agregadosSimples(item.agregados))
-                  _chipAgregado(a),
-                for (final g in gruposDeAgregados(item.agregados))
-                  _chipGrupoAgregado(g),
-                if (item.agregados.isEmpty)
-                  Text(
-                    'Sin agregados',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                  ),
-              ],
-            ),
-          ],
-          const Spacer(),
-          if (item.creadoEn != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Creado el ${_fecha(item.creadoEn!)}',
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-            ),
-          ],
+          ),
         ],
       ),
     );
@@ -580,42 +613,16 @@ class _CartaScreenState extends State<CartaScreen> {
     final texto = precio is num
         ? '$nombre · S/ ${precio.toStringAsFixed(2)}'
         : nombre;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.navbar,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        texto,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-      ),
-    );
+    return AppTag(etiqueta: texto, activo: true);
   }
 
   Widget _chipGrupoAgregado(Map<String, dynamic> grupo) {
-    final items = itemsDeGrupo(
-      grupo,
-    ).map((it) => '${it['nombre']}').join(', ');
+    final items = itemsDeGrupo(grupo).map((it) => '${it['nombre']}').join(', ');
     final maximo = cantidadMaximaGrupo(grupo) ?? 1;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.navbar,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '${nombreGrupo(grupo)} (máx. $maximo)${items.isEmpty ? '' : ': $items'}',
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-      ),
+    return AppTag(
+      etiqueta:
+          '${nombreGrupo(grupo)} (máx. $maximo)${items.isEmpty ? '' : ': $items'}',
+      activo: true,
     );
   }
 }

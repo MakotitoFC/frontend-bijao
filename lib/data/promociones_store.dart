@@ -13,27 +13,3 @@ Promocion? promocionDeCarta(String cartaId) {
   }
   return null;
 }
-
-Set<String> cartasDePromocion(String promocionId) => promocionCartaIds.entries
-    .where((e) => e.value == promocionId)
-    .map((e) => e.key)
-    .toSet();
-
-void asignarCartasAPromocion(String promocionId, Set<String> cartaIds) {
-  promocionCartaIds.removeWhere((_, promoId) => promoId == promocionId);
-  for (final cartaId in cartaIds) {
-    promocionCartaIds[cartaId] = promocionId;
-  }
-}
-
-void agregarPromocion(Promocion promocion) => promociones.add(promocion);
-
-void actualizarPromocion(Promocion promocion) {
-  final index = promociones.indexWhere((p) => p.id == promocion.id);
-  if (index != -1) promociones[index] = promocion;
-}
-
-void eliminarPromocion(String id) {
-  promociones.removeWhere((p) => p.id == id);
-  promocionCartaIds.removeWhere((_, promoId) => promoId == id);
-}

@@ -7,6 +7,8 @@ import '../models/categoria_comida.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'carta_acciones.dart';
+import 'app_search_field.dart';
+import 'app_tag.dart';
 import 'categorias_crud_dialog.dart';
 import 'tabs_desplazables.dart';
 
@@ -98,41 +100,16 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       ),
     );
     if (confirmar != true) return;
-    mockCategorias.removeWhere((c) => c.id == cat.id);
+    categorias.removeWhere((c) => c.id == cat.id);
     widget.seleccion.value = null;
     widget.onCambio();
   }
 
   Widget _buscador() {
-    return TextField(
+    return AppSearchField(
       controller: _busquedaController,
+      hint: 'Buscar productos...',
       onChanged: (v) => widget.busqueda.value = v,
-      style: const TextStyle(fontSize: 13),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Buscar productos...',
-        hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-        prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey.shade500),
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 36,
-          minHeight: 18,
-        ),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: const BorderSide(color: AppColors.primaryGreen),
-        ),
-      ),
     );
   }
 
@@ -142,8 +119,6 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.primaryGreen,
         side: const BorderSide(color: AppColors.primaryGreen),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       ),
       icon: const Icon(Icons.add, size: 18),
       label: const Text(
@@ -174,7 +149,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
                 actual == null,
                 () => widget.seleccion.value = null,
               ),
-              for (final cat in mockCategorias)
+              for (final cat in categorias)
                 _tab(
                   cat.categoria,
                   _contar(cartas, cat),
@@ -198,7 +173,12 @@ class _CartaCabeceraState extends State<CartaCabecera> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _buscador()),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buscador(),
+                ),
+              ),
               if (widget.esAdmin) ...[
                 const SizedBox(width: 8),
                 IconButton.outlined(
@@ -209,7 +189,10 @@ class _CartaCabeceraState extends State<CartaCabecera> {
                 const SizedBox(width: 6),
                 IconButton.filled(
                   tooltip: 'Nuevo producto',
-                  onPressed: () => crearPlato(context),
+                  onPressed: () => crearPlato(
+                    context,
+                    categoriaId: widget.seleccion.value?.id,
+                  ),
                   icon: const Icon(Icons.add),
                 ),
               ],
@@ -227,7 +210,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         Row(
           children: [
             if (widget.mostrarTitulo) ...[titulo, const SizedBox(width: 32)],
-            SizedBox(width: 320, child: _buscador()),
+            _buscador(),
           ],
         ),
         const SizedBox(height: 16),
@@ -248,12 +231,9 @@ class _CartaCabeceraState extends State<CartaCabecera> {
 
   Widget _botonNuevoProducto() {
     return FilledButton.icon(
-      onPressed: () => crearPlato(context),
-      style: FilledButton.styleFrom(
-        backgroundColor: AppColors.primaryGreen,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      ),
+      onPressed: () =>
+          crearPlato(context, categoriaId: widget.seleccion.value?.id),
+      style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
       icon: const Icon(Icons.add, size: 18),
       label: const Text(
         'Producto',
@@ -273,72 +253,13 @@ class _CartaCabeceraState extends State<CartaCabecera> {
     VoidCallback onTap, {
     VoidCallback? onEliminar,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
-              width: activo ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: activo
-                      ? AppColors.primaryGreenDark
-                      : Colors.grey.shade400,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                constraints: const BoxConstraints(minWidth: 24),
-                height: 24,
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: activo ? AppColors.primaryGreen : Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$cantidad',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: activo ? Colors.white : Colors.grey.shade500,
-                  ),
-                ),
-              ),
-              if (onEliminar != null) ...[
-                const SizedBox(width: 2),
-                Tooltip(
-                  message: 'Eliminar categoría',
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onEliminar,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(Icons.close, size: 16, color: Colors.grey.shade500),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+    return AppTag(
+      etiqueta: label,
+      activo: activo,
+      cantidad: cantidad,
+      onTap: onTap,
+      onQuitar: onEliminar,
+      tooltipQuitar: 'Eliminar categoría',
     );
   }
 }

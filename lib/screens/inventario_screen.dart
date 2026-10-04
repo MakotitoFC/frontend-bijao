@@ -10,6 +10,8 @@ import '../models/producto_inventario.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/ajustar_stock_dialog.dart';
+import '../widgets/app_search_field.dart';
+import '../widgets/app_tag.dart';
 import '../widgets/compra_form_dialog.dart';
 import '../widgets/pestanas_vista.dart';
 import '../widgets/producto_inventario_form_dialog.dart';
@@ -39,11 +41,14 @@ class InventarioScreen extends StatelessWidget {
 }
 
 String _unidadDe(int id) =>
-    mockUnidadesProducto.where((u) => u.id == id).map((u) => u.unidad).firstOrNull ??
+    unidadesProducto
+        .where((u) => u.id == id)
+        .map((u) => u.unidad)
+        .firstOrNull ??
     '—';
 
 String _tipoProductoDe(int id) =>
-    mockTiposProducto
+    tiposProducto
         .where((t) => t.id == id)
         .map((t) => t.tipoProducto)
         .firstOrNull ??
@@ -227,39 +232,20 @@ class _ProductosTabState extends State<_ProductosTab> {
   }
 
   Widget _chipTipo(String etiqueta, int? valor) {
-    final activo = _filtroTipo == valor;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => setState(() => _filtroTipo = valor),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: activo
-                ? AppColors.primaryGreen
-                : AppColors.primaryGreen.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            etiqueta,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: activo ? Colors.white : AppColors.verdeTexto,
-            ),
-          ),
-        ),
-      ),
+    return AppTag(
+      etiqueta: etiqueta,
+      activo: _filtroTipo == valor,
+      onTap: () => setState(() => _filtroTipo = valor),
     );
   }
 
   // ---- resumen (estilo dashboard) ----
 
-  int get _sinStock => productosInventario.where((p) => p.stockActual <= 0).length;
+  int get _sinStock =>
+      productosInventario.where((p) => p.stockActual <= 0).length;
 
   Map<int, double> get _stockPorTipo {
-    final mapa = <int, double>{for (final t in mockTiposProducto) t.id: 0};
+    final mapa = <int, double>{for (final t in tiposProducto) t.id: 0};
     for (final p in productosInventario) {
       mapa[p.tipoProductoId] = (mapa[p.tipoProductoId] ?? 0) + p.stockActual;
     }
@@ -273,7 +259,9 @@ class _ProductosTabState extends State<_ProductosTab> {
 
   double get _stockMaximo => productosInventario.isEmpty
       ? 0
-      : productosInventario.map((p) => p.stockActual).reduce((a, b) => a > b ? a : b);
+      : productosInventario
+            .map((p) => p.stockActual)
+            .reduce((a, b) => a > b ? a : b);
 
   double get _stockMinimoPromedio {
     final conMinimo = productosInventario.where((p) => p.stockMinimo > 0);
@@ -283,9 +271,11 @@ class _ProductosTabState extends State<_ProductosTab> {
 
   List<({ProductoInventario producto, InventarioMovimiento movimiento})>
   get _actividadReciente {
-    final todos = <({ProductoInventario producto, InventarioMovimiento movimiento})>[];
+    final todos =
+        <({ProductoInventario producto, InventarioMovimiento movimiento})>[];
     for (final p in productosInventario) {
-      for (final m in movimientosInventario[p.id] ?? const <InventarioMovimiento>[]) {
+      for (final m
+          in movimientosInventario[p.id] ?? const <InventarioMovimiento>[]) {
         todos.add((producto: p, movimiento: m));
       }
     }
@@ -340,26 +330,11 @@ class _ProductosTabState extends State<_ProductosTab> {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  onChanged: (v) => setState(() => _busqueda = v),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: 'Buscar producto...',
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 18,
-                      color: Colors.grey.shade500,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppSearchField(
+                    hint: 'Buscar producto...',
+                    onChanged: (v) => setState(() => _busqueda = v),
                   ),
                 ),
               ),
@@ -368,13 +343,6 @@ class _ProductosTabState extends State<_ProductosTab> {
                 onPressed: _crearProducto,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
                 ),
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Producto'),
@@ -386,8 +354,7 @@ class _ProductosTabState extends State<_ProductosTab> {
             child: Row(
               children: [
                 _chipTipo('Todos', null),
-                for (final t in mockTiposProducto)
-                  _chipTipo(t.tipoProducto, t.id),
+                for (final t in tiposProducto) _chipTipo(t.tipoProducto, t.id),
               ],
             ),
           ),
@@ -417,10 +384,13 @@ class _ProductosTabState extends State<_ProductosTab> {
     return LayoutBuilder(
       builder: (context, c) {
         final columnas = c.maxWidth < 620 ? 1 : 3;
-        final ancho = columnas == 1
-            ? c.maxWidth
-            : (c.maxWidth - 24) / 3;
-        Widget tarjeta(IconData icono, Color color, String titulo, String valor) {
+        final ancho = columnas == 1 ? c.maxWidth : (c.maxWidth - 24) / 3;
+        Widget tarjeta(
+          IconData icono,
+          Color color,
+          String titulo,
+          String valor,
+        ) {
           return SizedBox(
             width: ancho,
             child: Container(
@@ -451,7 +421,10 @@ class _ProductosTabState extends State<_ProductosTab> {
                           titulo,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                         Text(
                           valor,
@@ -503,6 +476,71 @@ class _ProductosTabState extends State<_ProductosTab> {
   // Tarjeta "Resumen de inventario": fecha + acciones (refrescar / nuevo).
   Widget _resumenOverview() {
     final hoy = DateTime.now();
+    final titulo = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(
+            Icons.dashboard_customize_outlined,
+            size: 20,
+            color: AppColors.primaryGreen,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Resumen de inventario',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            Text(
+              _fecha(hoy),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      ],
+    );
+    final aviso = _visiblesBajo.isEmpty
+        ? null
+        : Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${_visiblesBajo.length} producto(s) necesitan reposición',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.warning,
+              ),
+            ),
+          );
+    final actualizar = OutlinedButton.icon(
+      onPressed: () => setState(() {}),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: Colors.grey.shade300),
+      ),
+      icon: const Icon(Icons.refresh, size: 16),
+      label: const Text('Actualizar'),
+    );
+    final nuevo = FilledButton.icon(
+      onPressed: _crearProducto,
+      style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+      icon: const Icon(Icons.add, size: 16),
+      label: const Text('Nuevo producto'),
+    );
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -510,87 +548,27 @@ class _ProductosTabState extends State<_ProductosTab> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryGreen.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.dashboard_customize_outlined,
-                  size: 20,
-                  color: AppColors.primaryGreen,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Resumen de inventario',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                  ),
-                  Text(
-                    _fecha(hoy),
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          if (_visiblesBajo.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${_visiblesBajo.length} producto(s) necesitan reposición',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.warning,
-                ),
-              ),
-            ),
-          const Spacer(),
-          OutlinedButton.icon(
-            onPressed: () => setState(() {}),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.grey.shade300),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Actualizar'),
-          ),
-          FilledButton.icon(
-            onPressed: _crearProducto,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Nuevo producto'),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, c) {
+          if (c.maxWidth >= 720) {
+            return Row(
+              children: [
+                titulo,
+                if (aviso != null) ...[const SizedBox(width: 12), aviso],
+                const Spacer(),
+                actualizar,
+                const SizedBox(width: 12),
+                nuevo,
+              ],
+            );
+          }
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [titulo, ?aviso, actualizar, nuevo],
+          );
+        },
       ),
     );
   }
@@ -600,7 +578,9 @@ class _ProductosTabState extends State<_ProductosTab> {
     final datos = _stockPorTipo;
     final maximo = datos.values.isEmpty
         ? 1.0
-        : datos.values.reduce((a, b) => a > b ? a : b).clamp(1, double.infinity);
+        : datos.values
+              .reduce((a, b) => a > b ? a : b)
+              .clamp(1, double.infinity);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -621,7 +601,7 @@ class _ProductosTabState extends State<_ProductosTab> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (final t in mockTiposProducto)
+                for (final t in tiposProducto)
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -642,7 +622,9 @@ class _ProductosTabState extends State<_ProductosTab> {
                             duration: const Duration(milliseconds: 300),
                             height: 90 * ((datos[t.id] ?? 0) / maximo),
                             decoration: BoxDecoration(
-                              color: AppColors.primaryGreen.withValues(alpha: 0.75),
+                              color: AppColors.primaryGreen.withValues(
+                                alpha: 0.75,
+                              ),
                               borderRadius: const BorderRadius.vertical(
                                 top: Radius.circular(6),
                               ),
@@ -653,7 +635,10 @@ class _ProductosTabState extends State<_ProductosTab> {
                             t.tipoProducto,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
                         ],
                       ),
@@ -760,7 +745,10 @@ class _ProductosTabState extends State<_ProductosTab> {
                 p.nombre,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
               ),
               Text(
                 '${m.tipoMovimiento.tipoMovimiento} · ${m.cantidad} ${_unidadDe(p.unidadProductoId)}',
@@ -787,7 +775,9 @@ class _ProductosTabState extends State<_ProductosTab> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: p.stockBajo ? AppColors.error.withValues(alpha: 0.4) : Colors.grey.shade200,
+            color: p.stockBajo
+                ? AppColors.error.withValues(alpha: 0.4)
+                : Colors.grey.shade200,
           ),
         ),
         child: Row(
@@ -1016,7 +1006,9 @@ class _ComprasTabState extends State<_ComprasTab> {
                             ),
                             Text(
                               'S/ ${d.precioTotal.toStringAsFixed(2)}',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),
@@ -1051,13 +1043,6 @@ class _ComprasTabState extends State<_ComprasTab> {
                 onPressed: _nuevaCompra,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
                 ),
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Compra'),
@@ -1162,40 +1147,11 @@ class _UtensiliosRotosTabState extends State<_UtensiliosRotosTab> {
   }
 
   Widget _chipEstado(String etiqueta, bool activo, ValueChanged<bool> onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
+    return AppTag(
+      etiqueta: etiqueta,
+      activo: activo,
+      icono: activo ? Icons.check_circle : Icons.circle_outlined,
       onTap: () => setState(() => onTap(!activo)),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: activo
-              ? AppColors.primaryGreen.withValues(alpha: 0.12)
-              : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              activo ? Icons.check_circle : Icons.circle_outlined,
-              size: 14,
-              color: activo ? AppColors.primaryGreen : Colors.grey.shade500,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              etiqueta,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1218,13 +1174,6 @@ class _UtensiliosRotosTabState extends State<_UtensiliosRotosTab> {
                 onPressed: _registrar,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
                 ),
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Registrar rotura'),

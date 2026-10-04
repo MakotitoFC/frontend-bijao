@@ -2,18 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/cierres_store.dart';
-import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
+import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
-import '../models/mesa.dart';
-import '../models/mock_user.dart';
+import '../models/usuario.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../widgets/app_search_field.dart';
+import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/panel_pedido_mesa.dart';
+import '../widgets/detalle_pedido_panel.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
 
@@ -89,7 +90,7 @@ BoxDecoration get _panel => BoxDecoration(
 // ---------------------------------------------------------------------------
 
 class HistorialPedidosScreen extends StatefulWidget {
-  final MockUser usuario;
+  final Usuario usuario;
 
   const HistorialPedidosScreen({super.key, required this.usuario});
 
@@ -138,28 +139,53 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     }).toList();
   }
 
+  // Cobrar usa el mismo detalle que Pedidos (Pagar / Pago compartido), en un
+  // modal que se cierra solo cuando el pedido queda pagado o cancelado.
   Future<void> _cobrar(Pedido p) async {
-    final mesa = p.mesaNumero == 0
-        ? const Mesa(id: 'delivery', numero: 0, estado: 'ocupada')
-        : mesas.firstWhere(
-            (m) => m.numero == p.mesaNumero,
-            orElse: () => Mesa(
-              id: 'm${p.mesaNumero}',
-              numero: p.mesaNumero,
-              estado: 'ocupada',
-            ),
-          );
     await showBlurDialog<void>(
       context: context,
-      builder: (dialogContext) => PanelPedidoMesa(
-        key: ValueKey('cobro-${p.id}'),
-        mesa: mesa,
-        usuario: widget.usuario,
-        onCerrar: () => Navigator.of(dialogContext).pop(),
-        onCambio: () => setState(() {}),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogo) {
+          final actual = _pedidoPorId(p.id) ?? p;
+          final ancho = MediaQuery.sizeOf(context);
+          return Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: AppBreakpoints.esMobile(context) ? ancho.width : 440,
+              height: ancho.height * 0.9,
+              child: DetallePedidoPanel(
+                key: ValueKey('cobro-${p.id}'),
+                pedido: actual,
+                esAdmin: widget.usuario.rol == AppRole.administrador,
+                onVolver: () => Navigator.of(dialogContext).pop(),
+                onCambio: () {
+                  setDialogo(() {});
+                  setState(() {});
+                  final estado = (_pedidoPorId(p.id) ?? p).estado;
+                  if (estado == 'pagado' ||
+                      estado == 'cancelado' ||
+                      estado == 'anulado') {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    });
+                  }
+                },
+              ),
+            ),
+          );
+        },
       ),
     );
     if (mounted) setState(() {});
+  }
+
+  Pedido? _pedidoPorId(String id) {
+    for (final x in pedidos) {
+      if (x.id == id) return x;
+    }
+    return null;
   }
 
   @override
@@ -168,86 +194,73 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Container(
-        decoration: _panel,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Text(
-                  'Historial de pedidos',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                const Spacer(),
-                _pastilla('Todos', 'todos'),
-                _pastilla('Pagados', 'pagados'),
-                _pastilla('Por cobrar', 'por_cobrar'),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 220,
-                  child: TextField(
-                    controller: _busqueda,
-                    onChanged: (_) => setState(() {}),
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: 'Buscar pedido o cliente...',
-                      hintStyle: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search,
-                        size: 18,
-                        color: Colors.grey.shade500,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          decoration: _panel,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LayoutBuilder(
+                builder: (context, c) {
+                  const titulo = Text(
+                    'Historial de pedidos',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  );
+                  final controles = [
+                    _pastilla('Todos', 'todos'),
+                    _pastilla('Pagados', 'pagados'),
+                    _pastilla('Por cobrar', 'por_cobrar'),
+                    AppSearchField(
+                      controller: _busqueda,
+                      hint: 'Buscar pedido o cliente...',
+                      onChanged: (_) => setState(() {}),
                     ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: filas.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Sin pedidos',
-                        style: TextStyle(color: Colors.grey.shade500),
-                      ),
-                    )
-                  : SingleChildScrollView(child: _tabla(filas)),
-            ),
-          ],
+                  ];
+                  if (c.maxWidth >= 860) {
+                    return Row(
+                      children: [
+                        titulo,
+                        const Spacer(),
+                        ...controles.take(3),
+                        const SizedBox(width: 8),
+                        controles.last,
+                      ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      titulo,
+                      const SizedBox(height: 10),
+                      Wrap(runSpacing: 8, children: controles),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: filas.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Sin pedidos',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      )
+                    : SingleChildScrollView(child: _tabla(filas)),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
 
   Widget _pastilla(String etiqueta, String valor) {
-    final activo = _filtro == valor;
-    return Padding(
-      padding: const EdgeInsets.only(left: 6),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => setState(() => _filtro = valor),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: Neon.etiqueta(activa: activo, radio: 20),
-          child: Text(
-            etiqueta,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors.verdeTexto,
-            ),
-          ),
-        ),
-      ),
+    return AppTag(
+      etiqueta: etiqueta,
+      activo: _filtro == valor,
+      onTap: () => setState(() => _filtro = valor),
     );
   }
 
@@ -347,7 +360,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 // ---------------------------------------------------------------------------
 
 class CajaScreen extends StatefulWidget {
-  final MockUser usuario;
+  final Usuario usuario;
 
   const CajaScreen({super.key, required this.usuario});
 
@@ -439,111 +452,111 @@ class _CajaScreenState extends State<CajaScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            decoration: _panel,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Caja actual',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              decoration: _panel,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Caja actual',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          Text(
-                            'Desde ${_fecha(inicioCajaActual)} · ${t.pedidos} pedido(s) cobrado(s)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
+                            Text(
+                              'Desde ${_fecha(inicioCajaActual)} · ${t.pedidos} pedido(s) cobrado(s)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    FilledButton.icon(
-                      onPressed: _cerrarCaja,
-                      icon: const Icon(LucideIcons.lock, size: 16),
-                      label: const Text('Cerrar caja'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
+                      FilledButton.icon(
+                        onPressed: _cerrarCaja,
+                        icon: const Icon(LucideIcons.lock, size: 16),
+                        label: const Text('Cerrar caja'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryGreen,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _dato('Efectivo', t.efectivo),
-                    _dato('Tarjeta', t.tarjeta),
-                    _dato('Yape', t.yape),
-                    _dato('Plin', t.plin),
-                    _dato('Delivery', t.delivery),
-                    _dato('Total', t.general, destacado: true),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            decoration: _panel,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Cierres de caja',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                if (cierresCaja.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Text(
-                        'Aún no hay cierres de caja',
-                        style: TextStyle(color: Colors.grey.shade500),
-                      ),
-                    ),
-                  )
-                else
-                  _tablaCentrada(
-                    [
-                      _col('Cierre'),
-                      _col('Cajero'),
-                      _col('Pedidos'),
-                      _col('Inicial'),
-                      _col('Efectivo'),
-                      _col('Tarjeta'),
-                      _col('Yape'),
-                      _col('Plin'),
-                      _col('Delivery'),
-                      _col('Total'),
-                      _col('Declarado'),
-                      _col('Dif. efectivo'),
-                      _col('Notas'),
                     ],
-                    [for (final c in cierresCaja) _fila(c)],
                   ),
-              ],
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _dato('Efectivo', t.efectivo),
+                      _dato('Tarjeta', t.tarjeta),
+                      _dato('Yape', t.yape),
+                      _dato('Plin', t.plin),
+                      _dato('Delivery', t.delivery),
+                      _dato('Total', t.general, destacado: true),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 16),
+            Container(
+              decoration: _panel,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Cierres de caja',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  if (cierresCaja.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'Aún no hay cierres de caja',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      ),
+                    )
+                  else
+                    _tablaCentrada(
+                      [
+                        _col('Cierre'),
+                        _col('Cajero'),
+                        _col('Pedidos'),
+                        _col('Inicial'),
+                        _col('Efectivo'),
+                        _col('Tarjeta'),
+                        _col('Yape'),
+                        _col('Plin'),
+                        _col('Delivery'),
+                        _col('Total'),
+                        _col('Declarado'),
+                        _col('Dif. efectivo'),
+                        _col('Notas'),
+                      ],
+                      [for (final c in cierresCaja) _fila(c)],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -69,7 +69,9 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
         .where((l) => l.producto != null && l.cantidad > 0)
         .toList();
     if (lineasValidas.isEmpty) {
-      setState(() => _error = 'Agrega al menos una línea con producto y cantidad');
+      setState(
+        () => _error = 'Agrega al menos una línea con producto y cantidad',
+      );
       return;
     }
 
@@ -90,7 +92,7 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
             compraId: compraId,
             productoInventarioId: l.producto!.id,
             cantidad: l.cantidad,
-            unidadProductoId: (l.unidad ?? mockUnidadesProducto.first).id,
+            unidadProductoId: (l.unidad ?? unidadesProducto.first).id,
             precioUnitario: l.precioUnitario,
             precioTotal: l.total,
           ),
@@ -198,7 +200,10 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
                   const SizedBox(height: 4),
                   Text(
                     _error!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.error),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.error,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 8),
@@ -230,15 +235,7 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: _guardar,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    style: ElevatedButton.styleFrom(),
                     child: const Text('Registrar compra'),
                   ),
                 ),
@@ -274,7 +271,7 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
                   ],
                   onChanged: (v) => setState(() {
                     linea.producto = v;
-                    linea.unidad ??= mockUnidadesProducto
+                    linea.unidad ??= unidadesProducto
                         .where((u) => u.id == v?.unidadProductoId)
                         .firstOrNull;
                   }),

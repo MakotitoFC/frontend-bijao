@@ -96,7 +96,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
       constraints: const BoxConstraints(maxHeight: 260),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadii.input),
+        borderRadius: BorderRadius.circular(AppRadii.tag),
         border: Border.all(color: Colors.grey.shade300),
         boxShadow: [
           BoxShadow(
@@ -119,7 +119,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
             },
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               color: seleccionado
                   ? AppColors.primaryGreen.withValues(alpha: 0.08)
                   : Colors.transparent,
@@ -201,17 +201,16 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
           Material(
             key: _campoKey,
             color: Colors.white,
-            borderRadius: BorderRadius.circular(AppRadii.input),
+            borderRadius: BorderRadius.circular(AppRadii.tag),
             child: InkWell(
-              borderRadius: BorderRadius.circular(AppRadii.input),
+              borderRadius: BorderRadius.circular(AppRadii.tag),
               onTap: _alternar,
               child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: widget.compacto ? 9 : 14,
-                ),
+                height: AppSizes.control,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppRadii.input),
+                  borderRadius: BorderRadius.circular(AppRadii.tag),
                   border: Border.all(
                     color: _abierto
                         ? AppColors.primaryGreen
@@ -225,7 +224,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                         _etiquetaActual,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: widget.compacto ? 13 : 14,
+                          fontSize: 13,
                           color: widget.value == null
                               ? Colors.grey.shade500
                               : Colors.black87,
@@ -238,7 +237,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                       turns: _abierto ? 0.5 : 0,
                       child: Icon(
                         Icons.keyboard_arrow_down,
-                        size: widget.compacto ? 18 : 20,
+                        size: 18,
                         color: Colors.grey.shade600,
                       ),
                     ),

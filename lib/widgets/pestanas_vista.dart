@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import 'app_tag.dart';
 import 'tabs_desplazables.dart';
 
 // Subvistas de un módulo: una fila de pestañas verdes arriba y, debajo, el
@@ -44,26 +44,10 @@ class _PestanasVistaState extends State<PestanasVista> {
   }
 
   Widget _pastilla(String etiqueta, int i) {
-    final activo = i == _indice;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: () => setState(() => _indice = i),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: Neon.etiqueta(activa: activo, radio: 24),
-          child: Text(
-            etiqueta,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.verdeTexto,
-            ),
-          ),
-        ),
-      ),
+    return AppTag(
+      etiqueta: etiqueta,
+      activo: i == _indice,
+      onTap: () => setState(() => _indice = i),
     );
   }
 }

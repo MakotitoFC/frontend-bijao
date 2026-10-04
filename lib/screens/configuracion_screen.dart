@@ -4,8 +4,9 @@ import '../data/configuracion_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/horario.dart';
-import '../models/mock_user.dart';
+import '../models/usuario.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_select.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/config_widgets.dart';
 import '../widgets/pestanas_vista.dart';
@@ -13,7 +14,7 @@ import '../widgets/pestanas_vista.dart';
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
 // Usuarios y roles, y Negocio.
 class ConfiguracionScreen extends StatefulWidget {
-  final MockUser usuario;
+  final Usuario usuario;
 
   const ConfiguracionScreen({super.key, required this.usuario});
 
@@ -98,17 +99,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       SeccionConfig(
         titulo: 'Propinas',
         filas: [
-          FilaSwitch(
-            titulo: 'Permitir propina al cobrar',
-            descripcion: 'Muestra el campo de propina en el cobro',
-            valor: config.propinaHabilitada,
-            onChanged: (v) => setState(() => config.propinaHabilitada = v),
-            extra: CampoNumeroConfig(
-              etiqueta: 'Propina sugerida',
-              valor: config.propinaSugerida,
-              sufijo: '%',
-              onChanged: (n) => config.propinaSugerida = n,
-            ),
+          CampoNumeroConfig(
+            etiqueta: 'Propina sugerida (botón Propina de los pedidos)',
+            valor: config.propinaSugerida,
+            sufijo: '%',
+            onChanged: (n) => config.propinaSugerida = n,
           ),
         ],
       ),
@@ -344,7 +339,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     ];
   }
 
-  Widget _filaUsuario(MockUser u) {
+  Widget _filaUsuario(Usuario u) {
     final soyYo = u.id == widget.usuario.id;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -425,7 +420,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     );
   }
 
-  MockUser _conRol(MockUser u, AppRole rol) => MockUser(
+  Usuario _conRol(Usuario u, AppRole rol) => Usuario(
     id: u.id,
     nombre: u.nombre,
     email: u.email,
@@ -435,7 +430,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     activo: u.activo,
   );
 
-  MockUser _conActivo(MockUser u, bool activo) => MockUser(
+  Usuario _conActivo(Usuario u, bool activo) => Usuario(
     id: u.id,
     nombre: u.nombre,
     email: u.email,
@@ -477,12 +472,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                   decoration: const InputDecoration(labelText: 'Contraseña'),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<AppRole>(
-                  initialValue: rol,
-                  decoration: const InputDecoration(labelText: 'Rol'),
+                AppSelect<AppRole>(
+                  label: 'Rol',
+                  value: rol,
                   items: [
                     for (final r in AppRole.values)
-                      DropdownMenuItem(value: r, child: Text(r.label)),
+                      AppSelectItem(value: r, label: r.label),
                   ],
                   onChanged: (r) => setLocal(() => rol = r ?? rol),
                 ),
@@ -512,7 +507,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     if (creado == true) {
       setState(
         () => agregarUsuario(
-          MockUser(
+          Usuario(
             id: DateTime.now().microsecondsSinceEpoch.toString(),
             nombre: nombre.text.trim(),
             email: email.text.trim(),

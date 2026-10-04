@@ -11,31 +11,38 @@ import '../models/app_role.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
 import '../models/mesa.dart';
-import '../models/mock_user.dart';
+import '../models/usuario.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../screens/mesas_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
-import '../utils/carta_visuals.dart';
+import 'app_search_field.dart';
+import 'app_tag.dart';
+import 'estrella_plato_del_dia.dart';
 import 'app_toast.dart';
-import 'descuento_dialog.dart';
 import 'dotted_divider.dart';
+import 'plato_del_dia_picker.dart';
 import 'producto_opciones_dialog.dart';
+import 'propina_dialog.dart';
+import 'tupper_dialog.dart';
 
 // Arma un pedido nuevo (tipo ya elegido en ElegirTipoPedidoDialog): mesa
 // (si aplica), galería de productos y resumen (`pedidos` + `pedidos_detalle`).
 class NuevoPedidoDialog extends StatefulWidget {
-  final MockUser usuario;
-  final String tipo; // 'mesa' | 'delivery' | 'llevar', ya elegido antes.
+  final Usuario usuario;
+  final String tipo; // 'mesa' | 'delivery', ya elegido antes.
   // true = se creó el pedido, false = se canceló/volvió a la cola.
   final ValueChanged<bool> onTerminar;
+  // Volver desde el primer paso: reabre la elección del tipo de pedido.
+  final VoidCallback onVolver;
 
   const NuevoPedidoDialog({
     super.key,
     required this.usuario,
     required this.tipo,
     required this.onTerminar,
+    required this.onVolver,
   });
 
   @override
@@ -49,7 +56,17 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   final _busquedaController = TextEditingController();
   final List<PedidoLine> _carrito = [];
   bool _descEmpleado = false;
-  final List<_Ajuste> _ajustes = []; // descuentos/servicios ("Descuento"/"+")
+  double _propina = 0; // propina para el mesero (0 = sin propina)
+  static const TupperConfigurado _sinTupper = (
+    grande: 0,
+    precioGrande: 0,
+    mediano: 0,
+    precioMediano: 0,
+  );
+  TupperConfigurado _tupper = _sinTupper;
+  double get _tupperTotal =>
+      _tupper.grande * _tupper.precioGrande +
+      _tupper.mediano * _tupper.precioMediano;
 
   final _nombreController = TextEditingController();
   final _telefonoController = TextEditingController();
@@ -94,10 +111,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       ? config.cargoDeliveryMonto
       : 0;
 
-  double get _ajustesDescuento =>
-      _ajustes.fold(0.0, (s, a) => s + a.calcular(_subtotal));
-
-  double get _total => _subtotal - _descuento - _ajustesDescuento + _cargoDelivery;
+  double get _total =>
+      _subtotal - _descuento + _cargoDelivery + _propina + _tupperTotal;
 
   PedidoLine _conDescuento(PedidoLine l) {
     final pct = _porcentajeDescuento;
@@ -111,7 +126,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       cantidad: l.cantidad,
       modificadores: l.modificadores,
       presentacion: l.presentacion,
-      taper: l.taper,
       promocion: l.promocion,
       comentario: l.comentario,
       precioUnitario: l.precioUnitario,
@@ -122,10 +136,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
 
   // ---------- acciones ----------
 
-  Future<void> _abrirOpciones(CartaItem item) async {
+  Future<void> _abrirOpciones(CartaItem item, {Color? acento}) async {
     final resultado = await showBlurDialog<ProductoConfigurado>(
       context: context,
-      builder: (_) => ProductoOpcionesDialog(item: item, esAdmin: _esAdmin),
+      builder: (_) =>
+          ProductoOpcionesDialog(item: item, esAdmin: _esAdmin, acento: acento),
     );
     if (resultado == null || !mounted) return;
     setState(() {
@@ -137,7 +152,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           cantidad: resultado.cantidad,
           modificadores: resultado.modificadores,
           presentacion: resultado.presentacion,
-          taper: null,
           promocion: null,
           comentario: resultado.comentario,
           precioUnitario: resultado.precioUnitario,
@@ -146,6 +160,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         ),
       );
     });
+  }
+
+  // Tag naranja del resumen: agrega el plato del día registrado en Productos.
+  Future<void> _abrirPlatoDelDia() async {
+    final item = await elegirPlatoDelDia(context);
+    if (item == null || !mounted) return;
+    await _abrirOpciones(item, acento: AppColors.platoDelDia);
   }
 
   void _cambiarCantidadLinea(int index, int delta) {
@@ -162,7 +183,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           cantidad: nueva,
           modificadores: linea.modificadores,
           presentacion: linea.presentacion,
-          taper: linea.taper,
           promocion: linea.promocion,
           comentario: linea.comentario,
           precioUnitario: linea.precioUnitario,
@@ -183,7 +203,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
 
   void _confirmar() {
     if (_carrito.isEmpty) {
-      showAppToast(context, 'Agrega al menos un producto.', type: ToastType.error);
+      showAppToast(
+        context,
+        'Agrega al menos un producto.',
+        type: ToastType.error,
+      );
       return;
     }
     final esDelivery = widget.tipo == 'delivery';
@@ -219,7 +243,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       clienteCelular: esDelivery && _telefonoController.text.trim().isNotEmpty
           ? _telefonoController.text.trim()
           : null,
-      direccionDelivery: esDelivery && _direccionController.text.trim().isNotEmpty
+      direccionDelivery:
+          esDelivery && _direccionController.text.trim().isNotEmpty
           ? _direccionController.text.trim()
           : null,
       usuarioId: widget.usuario.id,
@@ -234,30 +259,24 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           cantidad: 1,
           modificadores: const [],
           presentacion: null,
-          taper: null,
           promocion: null,
           comentario: null,
           precioUnitario: _cargoDelivery,
           descuentoAplicado: 0,
           precioTotalLinea: _cargoDelivery,
         ),
-      for (final a in _ajustes)
-        PedidoLine(
-          id: '${DateTime.now().microsecondsSinceEpoch}-${a.nombre.hashCode}',
-          cartaId: cartaIdAjuste,
-          nombrePlato: 'Descuento: ${a.nombre}',
-          cantidad: 1,
-          modificadores: const [],
-          presentacion: null,
-          taper: null,
-          promocion: null,
-          comentario: null,
-          precioUnitario: -a.calcular(_subtotal),
-          descuentoAplicado: 0,
-          precioTotalLinea: -a.calcular(_subtotal),
-        ),
     ];
     registrarPedido(pedido, lineas);
+    establecerPropinaPedido(pedido.id, _propina);
+    if (_tupperTotal > 0) {
+      establecerTupperPedido(
+        pedido.id,
+        grande: _tupper.grande,
+        precioGrande: _tupper.precioGrande,
+        mediano: _tupper.mediano,
+        precioMediano: _tupper.precioMediano,
+      );
+    }
     if (esMesa) actualizarEstadoMesa(mesaNumero, 'ocupada');
     for (final l in lineas) {
       if (l.cartaId != cartaIdCargoDelivery && l.cartaId != cartaIdAjuste) {
@@ -266,9 +285,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     }
 
     final items = _carrito.fold(0, (s, l) => s + l.cantidad);
-    final destino = esMesa
-        ? 'Mesa $mesaNumero'
-        : (esDelivery ? 'Delivery' : 'Para llevar');
+    final destino = esMesa ? 'Mesa $mesaNumero' : 'Delivery';
     showAppToast(
       context,
       'Pedido #${pedido.numeroPedido} · $destino · $items ítem(s) · enviado a cocina',
@@ -300,7 +317,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         ? 'Elige una mesa'
         : switch (widget.tipo) {
             'delivery' => 'Pedido de delivery',
-            'llevar' => 'Pedido para llevar',
             _ => 'Mesa $_mesaNumero',
           };
     return Column(
@@ -313,9 +329,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
               Expanded(
                 child: Text(
                   titulo,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
+              _botonVolver(),
+              const SizedBox(width: 8),
               _botonCerrar(),
             ],
           ),
@@ -326,6 +347,36 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
               : _armarPedido(esMobile),
         ),
       ],
+    );
+  }
+
+  // Vuelve a la vista anterior: del armado a la elección de mesa (si aplica) o
+  // de ahí a la elección del tipo de pedido.
+  void _volver() {
+    if (widget.tipo == 'mesa' && _mesaNumero != null) {
+      setState(() => _mesaNumero = null);
+    } else {
+      widget.onVolver();
+    }
+  }
+
+  Widget _botonVolver() {
+    return Tooltip(
+      message: 'Volver',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: _volver,
+        child: Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Icon(LucideIcons.undo2, size: 16, color: Colors.grey.shade700),
+        ),
+      ),
     );
   }
 
@@ -350,7 +401,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   // --- Galería de productos + resumen ---
 
   Widget _armarPedido(bool esMobile) {
-    final galeria = _galeria();
+    final galeria = _galeria(enScroll: esMobile);
     final resumen = _resumen(fixedFooter: !esMobile);
     if (esMobile) {
       return SingleChildScrollView(
@@ -374,45 +425,46 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     );
   }
 
-  Widget _galeria() {
+  // Escritorio: la lista ocupa el alto restante. Mobile (dentro de un scroll):
+  // alto fijo, con scroll propio.
+  Widget _alturaGaleria(bool enScroll, Widget lista) =>
+      enScroll ? SizedBox(height: 380, child: lista) : Expanded(child: lista);
+
+  Widget _galeria({bool enScroll = false}) {
+    final productos = _productos;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Buscador del mismo ancho que los tags de categoría de abajo.
-        IntrinsicWidth(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        AppSearchField(
+          controller: _busquedaController,
+          hint: 'Buscar producto...',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _campoTexto(
-                controller: _busquedaController,
-                hint: 'Buscar producto...',
-                icono: Icons.search,
-                onChanged: (_) => setState(() {}),
-                contentPaddingVertical: 14,
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _pillCategoria('Todos', _categoria == null, () {
-                    setState(() => _categoria = null);
-                  }),
-                  for (final cat in mockCategorias)
-                    _pillCategoria(cat.categoria, _categoria?.id == cat.id, () {
-                      setState(() => _categoria = cat);
-                    }),
-                ],
-              ),
+              _pillCategoria('Todos', _categoria == null, () {
+                setState(() => _categoria = null);
+              }),
+              for (final cat in categorias)
+                _pillCategoria(
+                  cat.categoria,
+                  _categoria?.id == cat.id,
+                  () => setState(() => _categoria = cat),
+                ),
             ],
           ),
         ),
         const SizedBox(height: 12),
-        Expanded(
-          child: SizedBox(
+        _alturaGaleria(
+          enScroll,
+          SizedBox(
             width: double.infinity,
             child: LayoutBuilder(
               builder: (context, c) {
-                final productos = _productos;
                 if (productos.isEmpty) {
                   return Center(
                     child: Text(
@@ -425,7 +477,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                 final columnas = c.maxWidth >= 620
                     ? 3
                     : (c.maxWidth >= 400 ? 2 : 1);
-                final ancho = (c.maxWidth - espacio * (columnas - 1)) / columnas;
+                final ancho =
+                    (c.maxWidth - espacio * (columnas - 1)) / columnas;
                 return SingleChildScrollView(
                   child: Wrap(
                     spacing: espacio,
@@ -445,40 +498,21 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   }
 
   Widget _pillCategoria(String texto, bool activo, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: activo ? AppColors.navbar : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: activo ? null : Border.all(color: Colors.grey.shade300),
-          ),
-          child: Text(
-            texto,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: activo ? Colors.white : Colors.black87,
-            ),
-          ),
-        ),
-      ),
-    );
+    return AppTag(etiqueta: texto, activo: activo, onTap: onTap);
   }
 
   Widget _imagen(CartaItem item) {
-    final asset = imagenDeCarta(item.id);
     return ColoredBox(
       color: const Color(0xFFF1F3F0),
-      child: asset != null
-          ? Image.asset(asset, fit: BoxFit.cover, width: double.infinity)
+      child: item.imagenBytes != null
+          ? Image.memory(
+              item.imagenBytes!,
+              fit: BoxFit.cover,
+              width: double.infinity,
+            )
           : Center(
               child: Icon(
-                iconoDeCategoria(item.categoriaId),
+                Icons.restaurant_outlined,
                 size: 30,
                 color: Colors.grey.shade400,
               ),
@@ -502,7 +536,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
             aspectRatio: 16 / 11,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: _imagen(item),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _imagen(item),
+                  if (item.platoDelDia)
+                    const Positioned(
+                      top: 6,
+                      right: 6,
+                      child: EstrellaPlatoDelDia(),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -528,10 +573,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
               onPressed: () => _abrirOpciones(item),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primaryGreen,
-                padding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
               ),
               icon: const Icon(Icons.add, size: 15),
               label: const Text(
@@ -549,12 +590,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     final esDelivery = widget.tipo == 'delivery';
     final tituloTipo = switch (widget.tipo) {
       'delivery' => 'Delivery',
-      'llevar' => 'Para llevar',
       _ => 'Mesa $_mesaNumero',
     };
     final iconoTipo = switch (widget.tipo) {
       'delivery' => LucideIcons.bike,
-      'llevar' => LucideIcons.shoppingBag,
       _ => LucideIcons.utensils,
     };
     final contenido = Column(
@@ -646,7 +685,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
               Expanded(
                 child: Text(
                   'Descuento de empleado (${config.descuentoEmpleadoPorcentaje.toStringAsFixed(0)}%)',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               Switch(
@@ -671,17 +713,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           ),
           child: Column(
             children: [
-              Row(
-                children: [
-                  Expanded(child: _filaTotal('Subtotal', _subtotal, fuerte: false)),
-                  const SizedBox(width: 8),
-                  _botonAgregarAjuste(),
-                ],
-              ),
-              for (final a in _ajustes) ...[
-                const SizedBox(height: 6),
-                _filaAjuste(a),
-              ],
+              _filaTotal('Subtotal', _subtotal, fuerte: false),
               if (_descuento > 0) ...[
                 const SizedBox(height: 6),
                 _filaTotal('Descuento', -_descuento, fuerte: false),
@@ -690,45 +722,70 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                 const SizedBox(height: 6),
                 _filaTotal('Cargo por delivery', _cargoDelivery, fuerte: false),
               ],
+              if (_propina > 0) ...[const SizedBox(height: 6), _filaPropina()],
+              if (_tupperTotal > 0) ...[
+                const SizedBox(height: 6),
+                _filaTupper(),
+              ],
               const SizedBox(height: 10),
               _filaTotal('Total', _total, fuerte: true),
             ],
           ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          runSpacing: 8,
+          children: [
+            AppTag(
+              etiqueta: 'Plato del día',
+              icono: LucideIcons.chefHat,
+              activo: false,
+              color: AppColors.platoDelDia,
+              onTap: _abrirPlatoDelDia,
+            ),
+            AppTag(
+              etiqueta: 'Propina',
+              icono: LucideIcons.handCoins,
+              activo: false,
+              color: AppColors.platoDelDia,
+              onTap: _abrirPropina,
+            ),
+            AppTag(
+              etiqueta: 'Tupper',
+              icono: LucideIcons.package,
+              activo: false,
+              color: Colors.black87,
+              colorBorde: Colors.grey.shade300,
+              onTap: _abrirTupper,
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         const DottedDivider(),
         const SizedBox(height: 12),
         Row(
           children: [
-            SizedBox(
-              width: 46,
-              height: 46,
-              child: OutlinedButton(
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
                 onPressed: _carrito.isEmpty ? null : _imprimir,
-                style: OutlinedButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  side: BorderSide(color: Colors.grey.shade300),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                icon: const Icon(LucideIcons.printer, size: 16),
+                label: const Text(
+                  'Imprimir',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-                child: Icon(
-                  Icons.print_outlined,
-                  size: 20,
-                  color: _carrito.isEmpty ? Colors.grey.shade400 : Colors.black87,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.navbar,
                 ),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
+              flex: 3,
               child: FilledButton(
                 onPressed: _carrito.isEmpty ? null : _confirmar,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
                 child: const Text(
                   'Confirmar pedido',
@@ -776,34 +833,33 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     );
   }
 
-  // Fila de un descuento agregado, con botón para quitarlo.
-  Widget _filaAjuste(_Ajuste a) {
-    final monto = a.calcular(_subtotal);
+  // Propina para el mesero: sale en el card del subtotal, con editar y quitar.
+  Widget _filaPropina() {
+    final estilo = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      color: Colors.grey.shade600,
+    );
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            a.esPorcentaje ? '${a.nombre} (${a.monto.toStringAsFixed(0)}%)' : a.nombre,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey.shade600,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Text(
-          '-S/ ${monto.toStringAsFixed(2)}',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
-          ),
-        ),
+        Expanded(child: Text('Propina', style: estilo)),
         InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: () => setState(() => _ajustes.remove(a)),
+          onTap: _abrirPropina,
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(
+              LucideIcons.pencil,
+              size: 13,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text('S/ ${_propina.toStringAsFixed(2)}', style: estilo),
+        InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _propina = 0),
           child: Padding(
             padding: const EdgeInsets.only(left: 6),
             child: Icon(Icons.close, size: 14, color: Colors.grey.shade500),
@@ -813,46 +869,67 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     );
   }
 
-  // Abre el modal de Descuentos para agregar uno como tag.
-  Widget _botonAgregarAjuste() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: _abrirAjuste,
-      child: Container(
-        width: 26,
-        height: 26,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.grey.shade300),
+  // Tupper para llevar: sale en el card del subtotal, con editar y quitar.
+  Widget _filaTupper() {
+    final estilo = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      color: Colors.grey.shade600,
+    );
+    return Row(
+      children: [
+        Expanded(child: Text('Tupper', style: estilo)),
+        InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: _abrirTupper,
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(
+              LucideIcons.pencil,
+              size: 13,
+              color: Colors.grey.shade600,
+            ),
+          ),
         ),
-        child: Icon(Icons.add, size: 16, color: AppColors.primaryGreenDark),
-      ),
+        const SizedBox(width: 6),
+        Text('S/ ${_tupperTotal.toStringAsFixed(2)}', style: estilo),
+        InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _tupper = _sinTupper),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Icon(Icons.close, size: 14, color: Colors.grey.shade500),
+          ),
+        ),
+      ],
     );
   }
 
-  Future<void> _abrirAjuste() async {
-    final resultado = await showBlurDialog<DescuentoConfigurado>(
+  Future<void> _abrirTupper() async {
+    final r = await showBlurDialog<TupperConfigurado>(
       context: context,
-      builder: (_) => const DescuentoDialog(),
+      builder: (_) =>
+          TupperDialog(grande: _tupper.grande, mediano: _tupper.mediano),
     );
-    if (resultado == null || !mounted) return;
-    setState(() {
-      _ajustes.add(
-        _Ajuste(
-          nombre: resultado.nombre,
-          esPorcentaje: resultado.esPorcentaje,
-          monto: resultado.monto,
-        ),
-      );
-    });
+    if (r == null || !mounted) return;
+    setState(() => _tupper = r);
+  }
+
+  Future<void> _abrirPropina() async {
+    final monto = await showBlurDialog<double>(
+      context: context,
+      builder: (_) => PropinaDialog(base: _subtotal, actual: _propina),
+    );
+    if (monto == null || !mounted) return;
+    setState(() => _propina = monto);
   }
 
   // Fila del carrito para una línea del pedido.
   Widget _filaCarrito(int index) {
     final linea = _carrito[index];
-    final item = cartasNotifier.value.where((c) => c.id == linea.cartaId).firstOrNull;
+    final item = cartasNotifier.value
+        .where((c) => c.id == linea.cartaId)
+        .firstOrNull;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
@@ -882,7 +959,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                   linea.nombrePlato,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
                 ),
                 if (linea.presentacion != null)
                   Text(
@@ -899,7 +979,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                 if (linea.comentario != null)
                   Text(
                     linea.comentario!,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
@@ -954,10 +1034,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Flexible(
-          child: Text(etiqueta, style: estilo, maxLines: 1, overflow: TextOverflow.ellipsis),
+          child: Text(
+            etiqueta,
+            style: estilo,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         const SizedBox(width: 8),
-        Text('${valor < 0 ? '-' : ''}S/ ${valor.abs().toStringAsFixed(2)}', style: estilo),
+        Text(
+          '${valor < 0 ? '-' : ''}S/ ${valor.abs().toStringAsFixed(2)}',
+          style: estilo,
+        ),
       ],
     );
   }
@@ -986,7 +1074,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         prefixIcon: multilinea
             ? null
             : Icon(icono, size: 18, color: Colors.grey.shade500),
-        prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 18),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 18,
+        ),
         filled: true,
         fillColor: Colors.white,
         contentPadding: EdgeInsets.symmetric(
@@ -1015,17 +1106,3 @@ extension _FirstOrNull<T> on Iterable<T> {
 }
 
 // Descuento del pedido: por porcentaje (sobre el subtotal) o monto fijo.
-class _Ajuste {
-  final String nombre;
-  final bool esPorcentaje;
-  final double monto;
-
-  const _Ajuste({
-    required this.nombre,
-    required this.esPorcentaje,
-    required this.monto,
-  });
-
-  double calcular(double subtotal) =>
-      esPorcentaje ? subtotal * monto / 100 : monto;
-}

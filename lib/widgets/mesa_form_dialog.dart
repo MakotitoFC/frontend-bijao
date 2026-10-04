@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../data/mesas_store.dart';
+import '../models/mesa.dart';
 import '../theme/app_theme.dart';
+import 'app_select.dart';
 
-// Alta de una mesa: número y cantidad de clientes (define cuántas sillas se
-// dibujan). Devuelve (numero, capacidad) o null si se cancela.
+typedef MesaFormResultado = ({
+  int numero,
+  int capacidad,
+  String zona,
+  bool eliminar,
+});
+
+// Alta o edición de una mesa: número, cantidad de clientes (define cuántas
+// sillas se dibujan) y zona. En edición también permite eliminarla.
 class MesaFormDialog extends StatefulWidget {
-  const MesaFormDialog({super.key});
+  final Mesa? mesa;
+  final String zonaInicial;
+
+  const MesaFormDialog({super.key, this.mesa, this.zonaInicial = 'Principal'});
 
   @override
   State<MesaFormDialog> createState() => _MesaFormDialogState();
@@ -18,9 +30,14 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
 
   final _formKey = GlobalKey<FormState>();
   late final _numeroController = TextEditingController(
-    text: '${siguienteNumeroMesa()}',
+    text: '${widget.mesa?.numero ?? siguienteNumeroMesa()}',
   );
-  int _capacidad = 4;
+  late int _capacidad = widget.mesa == null
+      ? 4
+      : capacidadDe(widget.mesa!.numero);
+  late String _zona = widget.mesa?.zona ?? widget.zonaInicial;
+
+  bool get _editando => widget.mesa != null;
 
   @override
   void dispose() {
@@ -33,17 +50,28 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
     Navigator.of(context).pop((
       numero: int.parse(_numeroController.text.trim()),
       capacidad: _capacidad,
+      zona: _zona,
+      eliminar: false,
+    ));
+  }
+
+  void _eliminar() {
+    Navigator.of(context).pop((
+      numero: widget.mesa!.numero,
+      capacidad: _capacidad,
+      zona: _zona,
+      eliminar: true,
     ));
   }
 
   Widget _boton(IconData icono, VoidCallback? onTap) => InkWell(
-    borderRadius: BorderRadius.circular(10),
+    borderRadius: BorderRadius.circular(AppRadii.tag),
     onTap: onTap,
     child: Container(
-      width: 40,
-      height: 40,
+      width: AppSizes.control,
+      height: AppSizes.control,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadii.tag),
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: Icon(
@@ -58,6 +86,7 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
     final anchoPantalla = MediaQuery.sizeOf(context).width;
+    final puedeEliminar = _editando && puedeEliminarMesa(widget.mesa!.numero);
     return Material(
       color: Colors.white,
       borderRadius: esMobile
@@ -78,10 +107,12 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Nueva mesa',
-                        style: TextStyle(
+                        _editando
+                            ? 'Editar mesa T-${widget.mesa!.numero}'
+                            : 'Nueva mesa',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
@@ -96,7 +127,8 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _numeroController,
-                  autofocus: true,
+                  autofocus: !_editando,
+                  enabled: !_editando,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     labelText: 'Número de mesa',
@@ -104,9 +136,21 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                   validator: (v) {
                     final n = int.tryParse(v?.trim() ?? '');
                     if (n == null || n <= 0) return 'Ingresa un número';
-                    if (existeMesa(n)) return 'Ya existe la mesa $n';
+                    if (!_editando && existeMesa(n)) {
+                      return 'Ya existe la mesa $n';
+                    }
                     return null;
                   },
+                ),
+                const SizedBox(height: 16),
+                AppSelect<String>(
+                  label: 'Zona',
+                  value: _zona,
+                  items: [
+                    for (final z in zonasMesas)
+                      AppSelectItem(value: z, label: z),
+                  ],
+                  onChanged: (v) => setState(() => _zona = v ?? _zona),
                 ),
                 const SizedBox(height: 20),
                 Text(
@@ -155,21 +199,33 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                   ],
                 ),
                 const SizedBox(height: 24),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton(
-                    onPressed: _guardar,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
+                Row(
+                  children: [
+                    if (_editando) ...[
+                      Tooltip(
+                        message: puedeEliminar
+                            ? 'Eliminar mesa'
+                            : 'No se puede eliminar una mesa ocupada o unida',
+                        child: OutlinedButton(
+                          onPressed: puedeEliminar ? _eliminar : null,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.error,
+                            side: BorderSide(
+                              color: puedeEliminar
+                                  ? AppColors.error
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: const Text('Eliminar'),
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                    ],
+                    const Spacer(),
+                    ElevatedButton(
+                      onPressed: _guardar,
+                      child: Text(_editando ? 'Guardar' : 'Crear mesa'),
                     ),
-                    child: const Text('Crear mesa'),
-                  ),
+                  ],
                 ),
               ],
             ),

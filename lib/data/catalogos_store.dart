@@ -1,11 +1,10 @@
 // Catálogos de referencia (tablas pequeñas y fijas del esquema): unidades,
 // tipos de producto, tipos de seguimiento de stock, tipos de movimiento de
-// inventario y unidades de presentación de bebidas.
+// inventario.
 
 import '../models/tipo_movimiento.dart';
 import '../models/tipo_producto.dart';
 import '../models/tipo_seguimiento.dart';
-import '../models/unidad_bebida.dart';
 import '../models/unidad_producto.dart';
 
 // `unidad_producto`.
@@ -13,19 +12,19 @@ const unidadKg = UnidadProducto(id: 1, unidad: 'Kg');
 const unidadLitro = UnidadProducto(id: 2, unidad: 'Litro');
 const unidadUnidad = UnidadProducto(id: 3, unidad: 'Unidad');
 const unidadPaquete = UnidadProducto(id: 4, unidad: 'Paquete');
-const mockUnidadesProducto = [unidadKg, unidadLitro, unidadUnidad, unidadPaquete];
+const unidadesProducto = [unidadKg, unidadLitro, unidadUnidad, unidadPaquete];
 
 // `tipo_producto`.
 const tipoInsumo = TipoProducto(id: 1, tipoProducto: 'Insumo');
 const tipoBebida = TipoProducto(id: 2, tipoProducto: 'Bebida');
 const tipoDesechable = TipoProducto(id: 3, tipoProducto: 'Desechable');
 const tipoMenaje = TipoProducto(id: 4, tipoProducto: 'Menaje');
-const mockTiposProducto = [tipoInsumo, tipoBebida, tipoDesechable, tipoMenaje];
+const tiposProducto = [tipoInsumo, tipoBebida, tipoDesechable, tipoMenaje];
 
 // `tipo_seguimiento`.
 const seguimientoUnidad = TipoSeguimiento(id: 1, tipoSeguimiento: 'Por unidad');
 const seguimientoPeso = TipoSeguimiento(id: 2, tipoSeguimiento: 'Por peso');
-const mockTiposSeguimiento = [seguimientoUnidad, seguimientoPeso];
+const tiposSeguimiento = [seguimientoUnidad, seguimientoPeso];
 
 // `tipo_movimiento`.
 const movEntradaManual = TipoMovimiento(
@@ -38,7 +37,11 @@ const movSalidaManual = TipoMovimiento(
   tipoMovimiento: 'Salida manual',
   esEntrada: false,
 );
-const movMerma = TipoMovimiento(id: 3, tipoMovimiento: 'Merma', esEntrada: false);
+const movMerma = TipoMovimiento(
+  id: 3,
+  tipoMovimiento: 'Merma',
+  esEntrada: false,
+);
 // Los usa el sistema (no se eligen a mano).
 const movEntradaCompra = TipoMovimiento(
   id: 4,
@@ -50,9 +53,4 @@ const movSalidaVenta = TipoMovimiento(
   tipoMovimiento: 'Salida por venta',
   esEntrada: false,
 );
-const mockTiposMovimiento = [movEntradaManual, movSalidaManual, movMerma];
-
-// `unidad_bebida` (unidad de presentación: vaso, botella, jarra...).
-const unidadVaso = UnidadBebida(id: 1, unidadPresentacion: 'Vaso');
-const unidadBotella = UnidadBebida(id: 2, unidadPresentacion: 'Botella');
-const unidadJarra = UnidadBebida(id: 3, unidadPresentacion: 'Jarra');
+const tiposMovimiento = [movEntradaManual, movSalidaManual, movMerma];

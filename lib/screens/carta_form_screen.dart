@@ -8,15 +8,19 @@ import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
 import '../theme/app_theme.dart';
 import '../utils/agregados_utils.dart';
-import '../utils/carta_visuals.dart';
 import '../widgets/app_select.dart';
+import '../widgets/app_tag.dart';
+import '../widgets/app_toast.dart';
 
 // Alta/edición de un producto (tabla `productos`), solo Administrador.
 // TODO backend: insertar/actualizar `productos`.
 class CartaFormScreen extends StatefulWidget {
   final CartaItem? item; // null = crear nuevo
 
-  const CartaFormScreen({super.key, this.item});
+  // Categoría preseleccionada al crear (ej. la pestaña activa en Productos).
+  final String? categoriaInicialId;
+
+  const CartaFormScreen({super.key, this.item, this.categoriaInicialId});
 
   @override
   State<CartaFormScreen> createState() => _CartaFormScreenState();
@@ -48,10 +52,12 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   final _agregadoNombreController = TextEditingController();
   final _agregadoPrecioController = TextEditingController();
 
-  late CategoriaComida _categoria = mockCategorias.firstWhere(
-    (c) => c.id == widget.item?.categoriaId,
-    orElse: () => mockCategorias.first,
-  );
+  late CategoriaComida? _categoria = categorias
+      .where(
+        (c) => c.id == (widget.item?.categoriaId ?? widget.categoriaInicialId),
+      )
+      .firstOrNull;
+  late bool _platoDelDia = widget.item?.platoDelDia ?? false;
   late bool _activo = widget.item?.estado != 'inactivo';
   late final List<Map<String, dynamic>> _agregados = List.of(
     agregadosSimples(widget.item?.agregados ?? const []),
@@ -124,7 +130,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     final resultado = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(existente == null ? 'Nuevo grupo de extras' : 'Editar grupo'),
+        title: Text(
+          existente == null ? 'Nuevo grupo de extras' : 'Editar grupo',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -200,12 +208,17 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
 
   void _guardar() {
     if (!_formKey.currentState!.validate()) return;
+    final categoria = _categoria;
+    if (categoria == null) {
+      showAppToast(context, 'Elige una categoría', type: ToastType.error);
+      return;
+    }
 
     final resultado = CartaItem(
       id: widget.item?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
       nombrePlato: _nombreController.text.trim(),
       descripcion: _descripcionController.text.trim(),
-      categoriaId: _categoria.id,
+      categoriaId: categoria.id,
       precioCliente: double.parse(_precioController.text.trim()),
       estado: _activo ? 'activo' : 'inactivo',
       costo: _costoController.text.trim().isEmpty
@@ -227,18 +240,16 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       limiteAgregados: int.tryParse(_limiteController.text.trim()),
       creadoEn: widget.item?.creadoEn ?? DateTime.now(),
       imagenBytes: _imagenBytes ?? widget.item?.imagenBytes,
+      platoDelDia: _platoDelDia,
     );
     Navigator.of(context).pop(resultado);
   }
 
   Widget _imagen(double lado) {
     final bytes = _imagenBytes ?? widget.item?.imagenBytes;
-    final asset = widget.item == null ? null : imagenDeCarta(widget.item!.id);
     Widget contenido;
     if (bytes != null) {
       contenido = Image.memory(bytes, fit: BoxFit.cover);
-    } else if (asset != null) {
-      contenido = Image.asset(asset, fit: BoxFit.cover);
     } else {
       contenido = Icon(
         Icons.image_outlined,
@@ -354,30 +365,11 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   }
 
   Widget _chipExtra(String texto, VoidCallback onQuitar) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 5, 8, 5),
-      decoration: BoxDecoration(
-        color: AppColors.primaryGreen.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            texto,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryGreen,
-            ),
-          ),
-          const SizedBox(width: 4),
-          InkWell(
-            onTap: onQuitar,
-            child: const Icon(Icons.close, size: 14, color: AppColors.primaryGreen),
-          ),
-        ],
-      ),
+    return AppTag(
+      etiqueta: texto,
+      activo: true,
+      onQuitar: onQuitar,
+      tooltipQuitar: 'Quitar',
     );
   }
 
@@ -399,7 +391,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
               Expanded(
                 child: Text(
                   '${g.nombre} · máx. ${g.cantidadMaxima}',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               IconButton(
@@ -413,7 +408,11 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 tooltip: 'Eliminar grupo',
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                icon: const Icon(Icons.delete_outline, size: 17, color: AppColors.error),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 17,
+                  color: AppColors.error,
+                ),
                 onPressed: () => _eliminarGrupo(index),
               ),
             ],
@@ -458,7 +457,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                     filled: true,
                     fillColor: AppColors.background,
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   onSubmitted: (_) => _agregarItemAGrupo(index),
                 ),
               ),
@@ -611,16 +612,15 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       _fila(
                         AppSelect<CategoriaComida>(
                           label: 'Categoría',
-                          flotante: true,
                           value: _categoria,
-                          items: mockCategorias
+                          items: categorias
                               .map(
                                 (c) =>
                                     AppSelectItem(value: c, label: c.categoria),
                               )
                               .toList(),
                           onChanged: (value) =>
-                              setState(() => _categoria = value!),
+                              setState(() => _categoria = value),
                         ),
                         _numero(
                           _precioController,
@@ -641,6 +641,18 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                           decoration: const InputDecoration(labelText: 'SKU'),
                         ),
                         _numero(_limiteController, 'Límite de agregados'),
+                      ),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: AppTag(
+                          etiqueta: 'Plato del día',
+                          icono: Icons.star_rounded,
+                          activo: _platoDelDia,
+                          color: AppColors.platoDelDia,
+                          onTap: () =>
+                              setState(() => _platoDelDia = !_platoDelDia),
+                        ),
                       ),
                       const SizedBox(height: 24),
                       const Text(
@@ -750,15 +762,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                         alignment: Alignment.centerRight,
                         child: ElevatedButton(
                           onPressed: _guardar,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 28,
-                              vertical: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
+                          style: ElevatedButton.styleFrom(),
                           child: Text(
                             editando ? 'Guardar cambios' : 'Crear plato',
                           ),

@@ -44,11 +44,11 @@ class _ProductoInventarioFormDialogState
   );
 
   late int _tipoProductoId =
-      widget.producto?.tipoProductoId ?? mockTiposProducto.first.id;
+      widget.producto?.tipoProductoId ?? tiposProducto.first.id;
   late int _tipoSeguimientoId =
-      widget.producto?.tipoSeguimientoId ?? mockTiposSeguimiento.first.id;
+      widget.producto?.tipoSeguimientoId ?? tiposSeguimiento.first.id;
   late int _unidadId =
-      widget.producto?.unidadProductoId ?? mockUnidadesProducto.first.id;
+      widget.producto?.unidadProductoId ?? unidadesProducto.first.id;
   late bool _activo = widget.producto?.estado != 'inactivo';
 
   bool get _editando => widget.producto != null;
@@ -69,7 +69,9 @@ class _ProductoInventarioFormDialogState
     if (!_formKey.currentState!.validate()) return;
     Navigator.of(context).pop(
       ProductoInventario(
-        id: widget.producto?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        id:
+            widget.producto?.id ??
+            DateTime.now().microsecondsSinceEpoch.toString(),
         nombre: _nombreController.text.trim(),
         descripcion: _descripcionController.text.trim().isEmpty
             ? null
@@ -166,7 +168,7 @@ class _ProductoInventarioFormDialogState
                   label: 'Tipo de producto',
                   value: _tipoProductoId,
                   items: [
-                    for (final t in mockTiposProducto)
+                    for (final t in tiposProducto)
                       AppSelectItem(value: t.id, label: t.tipoProducto),
                   ],
                   onChanged: (v) => setState(() => _tipoProductoId = v!),
@@ -179,7 +181,7 @@ class _ProductoInventarioFormDialogState
                         label: 'Seguimiento',
                         value: _tipoSeguimientoId,
                         items: [
-                          for (final t in mockTiposSeguimiento)
+                          for (final t in tiposSeguimiento)
                             AppSelectItem(
                               value: t.id,
                               label: t.tipoSeguimiento,
@@ -195,7 +197,7 @@ class _ProductoInventarioFormDialogState
                         label: 'Unidad',
                         value: _unidadId,
                         items: [
-                          for (final u in mockUnidadesProducto)
+                          for (final u in unidadesProducto)
                             AppSelectItem(value: u.id, label: u.unidad),
                         ],
                         onChanged: (v) => setState(() => _unidadId = v!),
@@ -287,16 +289,10 @@ class _ProductoInventarioFormDialogState
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: _guardar,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                    style: ElevatedButton.styleFrom(),
+                    child: Text(
+                      _editando ? 'Guardar cambios' : 'Crear producto',
                     ),
-                    child: Text(_editando ? 'Guardar cambios' : 'Crear producto'),
                   ),
                 ),
               ],

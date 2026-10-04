@@ -4,7 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/nav_items.dart';
 import '../models/categoria_comida.dart';
 import '../models/app_role.dart';
-import '../models/mock_user.dart';
+import '../models/usuario.dart';
 import '../models/nav_item.dart';
 import '../models/sede.dart';
 import '../theme/app_theme.dart';
@@ -22,7 +22,7 @@ import 'reportes_screen.dart';
 // vista elegida. Ver nav_items.dart para las vistas disponibles.
 class HomeScreen extends StatefulWidget {
   final Sede sede;
-  final MockUser usuario;
+  final Usuario usuario;
 
   const HomeScreen({super.key, required this.sede, required this.usuario});
 
@@ -66,10 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
       titulo: 'Historial de pedidos',
       descripcion: 'Pedidos y su estado de pago',
     ),
-    'caja': (
-      titulo: 'Caja',
-      descripcion: 'Caja actual y cierres de caja',
-    ),
+    'caja': (titulo: 'Caja', descripcion: 'Caja actual y cierres de caja'),
     'reportes': (titulo: 'Reportes', descripcion: 'Ventas y reportes'),
     'finanzas': (
       titulo: 'Finanzas',
@@ -157,8 +154,6 @@ class _HomeScreenState extends State<HomeScreen> {
             _GlobalHeader(
               usuario: widget.usuario,
               mostrarLogo: true,
-              onConfiguracion: () =>
-                  setState(() => _seleccionado = 'configuracion'),
               onLogout: () => _logout(context),
             ),
             Expanded(
@@ -184,8 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _Sidebar(
             usuario: widget.usuario,
-            onConfiguracion: () =>
-                setState(() => _seleccionado = 'configuracion'),
             onLogout: () => _logout(context),
             colapsado: _colapsado,
             items: items,
@@ -205,8 +198,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   barraFija: true,
                   titulo: _titulos[_seleccionado]?.titulo,
                   descripcion: _titulos[_seleccionado]?.descripcion,
-                  onConfiguracion: () =>
-                      setState(() => _seleccionado = 'configuracion'),
                   onLogout: () => _logout(context),
                 ),
                 Expanded(
@@ -224,14 +215,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// Header global: campana + usuario (menú de Configuración/Cerrar sesión).
+// Header global: campana + usuario (menú de Cerrar sesión).
 class _GlobalHeader extends StatelessWidget {
-  final MockUser usuario;
+  final Usuario usuario;
   final bool mostrarLogo;
   final bool barraFija;
   final String? titulo;
   final String? descripcion;
-  final VoidCallback onConfiguracion;
   final VoidCallback onLogout;
 
   const _GlobalHeader({
@@ -240,7 +230,6 @@ class _GlobalHeader extends StatelessWidget {
     this.barraFija = false,
     this.titulo,
     this.descripcion,
-    required this.onConfiguracion,
     required this.onLogout,
   });
 
@@ -295,7 +284,6 @@ class _GlobalHeader extends StatelessWidget {
               usuario: usuario,
               mostrarNombre: !mostrarLogo,
               mostrarFlecha: true,
-              onConfiguracion: onConfiguracion,
               onLogout: onLogout,
             ),
           ],
@@ -342,12 +330,6 @@ class _GlobalHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 _botonIcono(LucideIcons.bell, 'Notificaciones', () {}),
-                const SizedBox(width: 10),
-                _botonIcono(
-                  LucideIcons.settings,
-                  'Configuración',
-                  onConfiguracion,
-                ),
               ],
             ),
           ],
@@ -363,19 +345,17 @@ class _GlobalHeader extends StatelessWidget {
   }
 }
 
-// Avatar del usuario con su menú (Configuración / Cerrar sesión).
+// Avatar del usuario con su menú (Cerrar sesión).
 class _MenuUsuario extends StatelessWidget {
-  final MockUser usuario;
+  final Usuario usuario;
   final bool mostrarNombre;
   final bool mostrarFlecha;
-  final VoidCallback onConfiguracion;
   final VoidCallback onLogout;
 
   const _MenuUsuario({
     required this.usuario,
     required this.mostrarNombre,
     this.mostrarFlecha = false,
-    required this.onConfiguracion,
     required this.onLogout,
   });
 
@@ -393,20 +373,9 @@ class _MenuUsuario extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadii.card),
       ),
       onSelected: (value) {
-        if (value == 'configuracion') onConfiguracion();
         if (value == 'logout') onLogout();
       },
       itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'configuracion',
-          child: Row(
-            children: const [
-              Icon(LucideIcons.settings, size: 18, color: Colors.black87),
-              SizedBox(width: 12),
-              Text('Configuración'),
-            ],
-          ),
-        ),
         PopupMenuItem(
           value: 'logout',
           child: Row(
@@ -488,7 +457,8 @@ class _BottomNav extends StatelessWidget {
   });
 
   bool get _masActivo => restantes.any(
-    (i) => i.clave == seleccionado || i.hijos.any((h) => h.clave == seleccionado),
+    (i) =>
+        i.clave == seleccionado || i.hijos.any((h) => h.clave == seleccionado),
   );
 
   Future<void> _abrirMas(BuildContext context) async {
@@ -647,7 +617,8 @@ class _HojaMas extends StatelessWidget {
                     ],
                   ),
                 ),
-                for (final hijo in item.hijos) _fila(context, hijo, indentado: true),
+                for (final hijo in item.hijos)
+                  _fila(context, hijo, indentado: true),
               ] else
                 _fila(context, item),
             ],
@@ -681,7 +652,7 @@ class _HojaMas extends StatelessWidget {
 
 // Placeholder de "página en construcción" para vistas sin contenido real.
 class _InicioContent extends StatelessWidget {
-  final MockUser usuario;
+  final Usuario usuario;
   final Sede sede;
   final String nombreVista;
 
@@ -763,8 +734,7 @@ class _Sidebar extends StatelessWidget {
   final List<NavItem> items;
   final String seleccionado;
   final Set<String> gruposAbiertos;
-  final MockUser usuario;
-  final VoidCallback onConfiguracion;
+  final Usuario usuario;
   final VoidCallback onLogout;
   final VoidCallback onToggle;
   final ValueChanged<String> onSeleccionar;
@@ -772,7 +742,6 @@ class _Sidebar extends StatelessWidget {
 
   const _Sidebar({
     required this.usuario,
-    required this.onConfiguracion,
     required this.onLogout,
     required this.colapsado,
     required this.items,
@@ -783,8 +752,8 @@ class _Sidebar extends StatelessWidget {
     required this.onAlternarGrupo,
   });
 
-  static const double _anchoExpandido = 212;
-  static const double _anchoContraido = 96;
+  static const double _anchoExpandido = 200;
+  static const double _anchoContraido = 68;
 
   List<NavItem> _hijosPermitidos(NavItem item) =>
       item.hijos.where((h) => h.rolesPermitidos.contains(usuario.rol)).toList();
@@ -876,16 +845,6 @@ class _Sidebar extends StatelessWidget {
 
   List<PopupMenuEntry<String>> _opcionesUsuario() => const [
     PopupMenuItem(
-      value: 'configuracion',
-      child: Row(
-        children: [
-          Icon(LucideIcons.settings, size: 18),
-          SizedBox(width: 12),
-          Text('Configuración'),
-        ],
-      ),
-    ),
-    PopupMenuItem(
       value: 'logout',
       child: Row(
         children: [
@@ -898,11 +857,10 @@ class _Sidebar extends StatelessWidget {
   ];
 
   void _onSeleccionarOpcionUsuario(String v) {
-    if (v == 'configuracion') onConfiguracion();
     if (v == 'logout') onLogout();
   }
 
-  // Pie del navbar: usuario + menú (Configuración/Cerrar sesión).
+  // Pie del navbar: usuario + menú (Cerrar sesión).
   Widget _pie() {
     final avatar = Container(
       width: 38,
@@ -932,7 +890,7 @@ class _Sidebar extends StatelessWidget {
     final menu = PopupMenuButton<String>(
       tooltip: 'Opciones',
       padding: EdgeInsets.zero,
-      offset: const Offset(0, -110),
+      offset: const Offset(0, -60),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadii.card),
       ),
@@ -985,7 +943,11 @@ class _Sidebar extends StatelessWidget {
   }
 
   // `hijos` solo en un ítem grupo (ej. "Ventas"): despliega su lista.
-  Widget _navTile(NavItem item, {List<NavItem>? hijos, bool indentado = false}) {
+  Widget _navTile(
+    NavItem item, {
+    List<NavItem>? hijos,
+    bool indentado = false,
+  }) {
     final esGrupo = hijos != null;
     final abierto = esGrupo && gruposAbiertos.contains(item.clave);
     final activo = esGrupo

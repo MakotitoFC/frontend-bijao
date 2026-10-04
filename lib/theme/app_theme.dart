@@ -11,57 +11,38 @@ class AppColors {
   static const Color navbar = Color(0xFF1F1F1F);
   static const Color header = Color(0xFFFFFFFC);
 
+  // Naranja del "Plato del día" (estrella de la card y botones asociados).
+  static const Color platoDelDia = Color(0xFFF07F13);
+
   static const Color success = Color(0xFF2E7D4F);
   static const Color error = Color(0xFFC24444);
   static const Color warning = Color(0xFFC98A3E);
   static const Color info = Color(0xFF3D6B8C);
 
-  // Paleta específica del Login (pantalla "Sistema POS / Control total").
-  static const Color loginDarkPanel = Color(
-    0xFF14261F,
-  ); // aproximado: no especificado, tomado de la referencia
-  static const Color loginAccentGreen = Color(0xFF41FD7F);
-  static const Color loginMutedGreen = Color(0xFF8DBA91);
-  static const Color loginPanelBg = Color(0xFFF2F5F3);
-  static const Color loginButtonDark = Color(0xFF1B3A2E);
-  static const Color loginInputAccent = primaryGreen;
-
   // Paleta de la pantalla Mesas (estado por color, ver mesa_card.dart).
   static const Color mesaOcupada = Color(0xFF4A82E0);
-  static const Color mesaLibre = Color(0xFF9CA3AF);
 
-  // Neón: verde para lo libre/activo y rojo para lo ocupado. `verdeTexto` es
-  // el verde oscuro que se usa para el texto sobre fondos neón claros.
+  // Verde neón para estados activos; `verdeTexto` es el verde oscuro del
+  // texto sobre esos fondos claros.
   static const Color neonVerde = Color(0xFF19F5A1);
-  static const Color neonRojo = Color(0xFFFF3B5C);
   static const Color verdeTexto = Color(0xFF078A5F);
-  static const Color rojoTexto = Color(0xFFC21A3A);
-}
-
-// Etiquetas "medio neón": fondo translúcido, trazo neón y, si están activas,
-// un brillo suave alrededor. Verde por defecto; `color` permite el rojo de
-// "Ocupada" (ver mesas_screen.dart) con el mismo estilo.
-class Neon {
-  static BoxDecoration etiqueta({
-    bool activa = false,
-    double radio = 20,
-    Color color = AppColors.neonVerde,
-  }) => BoxDecoration(
-    color: color.withValues(alpha: activa ? 0.28 : 0.10),
-    borderRadius: BorderRadius.circular(radio),
-    border: Border.all(color: color.withValues(alpha: activa ? 1 : 0.5)),
-    boxShadow: activa
-        ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 10)]
-        : null,
-  );
 }
 
 // Radios de esquina estándar (nivel "moderado": consistente pero no pill-shape).
 class AppRadii {
   static const double input = 14;
-  static const double button = 14;
+  // Botones: un poco más redondeados que los tags (no pastilla).
+  static const double button = 12;
+  static const double tag = 8;
   static const double card = 16;
   static const double sheet = 24;
+}
+
+// Alto común de tags y botones.
+class AppSizes {
+  static const double control = 36;
+  // Alto de los botones: mayor que el de tags y selects.
+  static const double boton = 44;
 }
 
 // Punto de quiebre único para todo el diseño responsive: por debajo de este
@@ -75,6 +56,26 @@ class AppBreakpoints {
 }
 
 class AppTheme {
+  // Todos los botones: mismo alto entre sí (mayor que los tags) y esquinas algo
+  // más redondeadas que las de los tags.
+  static ButtonStyle _estiloBoton() => ButtonStyle(
+    minimumSize: const WidgetStatePropertyAll(Size(0, AppSizes.boton)),
+    maximumSize: const WidgetStatePropertyAll(
+      Size(double.infinity, AppSizes.boton),
+    ),
+    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    visualDensity: VisualDensity.standard,
+    shape: WidgetStatePropertyAll(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.button),
+      ),
+    ),
+    textStyle: const WidgetStatePropertyAll(
+      TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+    ),
+  );
+
   static ThemeData get light {
     final baseTextTheme = GoogleFonts.poppinsTextTheme();
     final colorScheme =
@@ -132,15 +133,14 @@ class AppTheme {
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryGreen,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadii.button),
-          ),
+        style: _estiloBoton().copyWith(
+          backgroundColor: const WidgetStatePropertyAll(AppColors.primaryGreen),
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
         ),
       ),
+      filledButtonTheme: FilledButtonThemeData(style: _estiloBoton()),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: _estiloBoton()),
+      textButtonTheme: TextButtonThemeData(style: _estiloBoton()),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(

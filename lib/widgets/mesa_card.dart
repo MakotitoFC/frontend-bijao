@@ -26,6 +26,9 @@ class MesaCard extends StatelessWidget {
   final String? mesero;
   final VoidCallback onTap;
   final VoidCallback? onDesunir;
+  final VoidCallback? onEditar;
+  // Zona de la mesa: se muestra como tag transparente.
+  final String? zona;
   // Escala del dibujo (1 = escritorio, <1 = mobile/tablet).
   final double scale;
   // Fuerza la tarjeta compacta según el ancho disponible.
@@ -41,6 +44,8 @@ class MesaCard extends StatelessWidget {
     this.monto,
     this.mesero,
     this.onDesunir,
+    this.onEditar,
+    this.zona,
     this.scale = 1,
     this.simplificada = false,
   });
@@ -153,13 +158,23 @@ class MesaCard extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _etiqueta,
-                            style: TextStyle(
-                              fontSize: 14 * scale,
-                              fontWeight: FontWeight.w700,
-                              color: textoPrincipal,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                _etiqueta,
+                                style: TextStyle(
+                                  fontSize: 14 * scale,
+                                  fontWeight: FontWeight.w700,
+                                  color: textoPrincipal,
+                                ),
+                              ),
+                              if (zona != null) ...[
+                                SizedBox(width: 6 * scale),
+                                Flexible(child: _tagZona(scale)),
+                              ],
+                              if (_unida && onDesunir != null)
+                                SizedBox(width: 22 * scale),
+                            ],
                           ),
                           const Spacer(),
                           if (ocupada && mesero != null) ...[
@@ -215,6 +230,26 @@ class MesaCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      if (onEditar != null)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Tooltip(
+                            message: 'Editar mesa',
+                            child: InkWell(
+                              onTap: onEditar,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(
+                                  LucideIcons.pencil,
+                                  size: 14 * scale,
+                                  color: textoPrincipal,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -222,6 +257,30 @@ class MesaCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Tag transparente con la zona de la mesa.
+  Widget _tagZona(double escala) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: 6 * escala,
+        vertical: 1.5 * escala,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadii.tag),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
+      ),
+      child: Text(
+        zona!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 9.5 * escala,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
       ),
     );
   }
@@ -259,8 +318,25 @@ class MesaCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onEditar != null)
+                    InkWell(
+                      onTap: onEditar,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          LucideIcons.pencil,
+                          size: 14,
+                          color: textoPrincipal,
+                        ),
+                      ),
+                    ),
                 ],
               ),
+              if (zona != null) ...[
+                const SizedBox(height: 6),
+                Align(alignment: Alignment.centerLeft, child: _tagZona(1)),
+              ],
               const SizedBox(height: 8),
               if (ocupada && mesero != null) ...[
                 _filaDato(
