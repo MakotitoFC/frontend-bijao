@@ -35,7 +35,7 @@ class _ProductoInventarioFormDialogState
   late final TextEditingController _notasController;
 
   String? _tipoProductoId;
-  String? _tipoSeguimientoId;
+  String _seguimiento = 'granel';
   String? _unidadProductoId;
   late bool _estado; // true = Activo/Disponible, false = Inactivo/Agotado
   bool _guardando = false;
@@ -64,7 +64,7 @@ class _ProductoInventarioFormDialogState
 
     // Inicializar IDs seleccionados
     _tipoProductoId = p?.tipoProductoId ?? (tiposProducto.isNotEmpty ? tiposProducto.first.id : null);
-    _tipoSeguimientoId = p?.tipoSeguimientoId ?? (tiposSeguimiento.isNotEmpty ? tiposSeguimiento.first.id : null);
+    _seguimiento = p?.seguimiento ?? 'granel';
     _unidadProductoId = p?.unidadProductoId ?? (unidadesProducto.isNotEmpty ? unidadesProducto.first.id : null);
 
     _asegurarCatalogosCargados();
@@ -81,10 +81,6 @@ class _ProductoInventarioFormDialogState
       await CatalogService.instance.cargarTiposProducto();
       recargar = true;
     }
-    if (tiposSeguimiento.isEmpty) {
-      await CatalogService.instance.cargarTiposSeguimiento();
-      recargar = true;
-    }
     if (unidadesProducto.isEmpty) {
       await CatalogService.instance.cargarUnidadesProducto();
       recargar = true;
@@ -92,7 +88,6 @@ class _ProductoInventarioFormDialogState
     if (recargar && mounted) {
       setState(() {
         _tipoProductoId ??= tiposProducto.isNotEmpty ? tiposProducto.first.id : null;
-        _tipoSeguimientoId ??= tiposSeguimiento.isNotEmpty ? tiposSeguimiento.first.id : null;
         _unidadProductoId ??= unidadesProducto.isNotEmpty ? unidadesProducto.first.id : null;
       });
     }
@@ -114,10 +109,6 @@ class _ProductoInventarioFormDialogState
 
     if (_tipoProductoId == null || _tipoProductoId!.isEmpty) {
       showAppToast(context, 'Selecciona un tipo de producto', type: ToastType.error);
-      return;
-    }
-    if (_tipoSeguimientoId == null || _tipoSeguimientoId!.isEmpty) {
-      showAppToast(context, 'Selecciona un tipo de seguimiento', type: ToastType.error);
       return;
     }
     if (_unidadProductoId == null || _unidadProductoId!.isEmpty) {
@@ -157,11 +148,12 @@ class _ProductoInventarioFormDialogState
         nombre: _nombreController.text.trim(),
         descripcion: _descripcionController.text.trim().isEmpty ? null : _descripcionController.text.trim(),
         tipoProductoId: _tipoProductoId!,
-        tipoSeguimientoId: _tipoSeguimientoId!,
+        seguimiento: _seguimiento,
         unidadProductoId: _unidadProductoId!,
         stockActual: stockAct,
         stockMinimo: stockMin,
         costoReposicion: costoRepo,
+        costoPromedio: widget.producto?.costoPromedio ?? 0.0,
         notas: _notasController.text.trim().isEmpty ? null : _notasController.text.trim(),
         estado: _estado,
         sedeId: widget.producto?.sedeId ?? user?.sedeId,
@@ -328,11 +320,13 @@ class _ProductoInventarioFormDialogState
                                   const SizedBox(height: 6),
                                   AppSelect<String>(
                                     hint: 'Seguimiento',
-                                    value: _tipoSeguimientoId,
-                                    items: tiposSeguimiento
-                                        .map((s) => AppSelectItem(value: s.id, label: s.tipoSeguimiento))
-                                        .toList(),
-                                    onChanged: (v) => setState(() => _tipoSeguimientoId = v),
+                                    value: _seguimiento,
+                                    items: const [
+                                      AppSelectItem(value: 'granel', label: 'Granel (Kg, Lt)'),
+                                      AppSelectItem(value: 'unidad', label: 'Unidad (Pieza, Bot)'),
+                                      AppSelectItem(value: 'individual', label: 'Individual (Pescado)'),
+                                    ],
+                                    onChanged: (v) => setState(() => _seguimiento = v ?? 'granel'),
                                   ),
                                 ],
                               ),

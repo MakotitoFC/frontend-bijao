@@ -14,7 +14,6 @@ import '../models/producto_inventario.dart';
 import '../models/rbac.dart';
 import '../models/taper.dart';
 import '../models/tipo_producto.dart';
-import '../models/tipo_seguimiento.dart';
 import '../models/unidad_producto.dart';
 import '../models/utensilio_roto.dart';
 import '../models/zona.dart';
@@ -46,7 +45,6 @@ class CatalogService {
         cargarCarta(),
         cargarTapers(),
         cargarTiposProducto(),
-        cargarTiposSeguimiento(),
         cargarUnidadesProducto(),
         cargarProductosInventario(),
         cargarUtensiliosRotos(),
@@ -705,53 +703,6 @@ class CatalogService {
   }
 
   // ==========================================
-  // INVENTARIO: TIPOS DE SEGUIMIENTO
-  // ==========================================
-
-  Future<List<TipoSeguimiento>> cargarTiposSeguimiento({String? sedeId}) async {
-    try {
-      final query = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
-      final res = await _api.get('/api/tipos-seguimiento$query');
-      if (res is List) {
-        final lista = res.map((j) => TipoSeguimiento.fromJson(j as Map<String, dynamic>)).toList();
-        tiposSeguimiento
-          ..clear()
-          ..addAll(lista);
-        return lista;
-      }
-    } catch (e) {
-      developer.log('[CatalogService] Error al obtener tipos de seguimiento: $e');
-    }
-    return tiposSeguimiento;
-  }
-
-  Future<TipoSeguimiento> crearTipoSeguimiento({
-    required String tipoSeguimiento,
-    bool estado = true,
-    String? sedeId,
-  }) async {
-    final clientUuid = UuidHelper.v7();
-    final body = {
-      'id': clientUuid,
-      'tipo_seguimiento': tipoSeguimiento.trim(),
-      'estado': estado,
-      if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
-    };
-    final res = await _api.post('/api/tipos-seguimiento', body: body);
-    if (res is Map<String, dynamic>) {
-      final nuevo = TipoSeguimiento.fromJson(res);
-      tiposSeguimiento.add(nuevo);
-      return nuevo;
-    }
-    throw Exception('Error al crear tipo de seguimiento');
-  }
-
-  Future<void> eliminarTipoSeguimiento(String id) async {
-    await _api.delete('/api/tipos-seguimiento/$id');
-    tiposSeguimiento.removeWhere((t) => t.id == id);
-  }
-
-  // ==========================================
   // INVENTARIO: UNIDADES DE PRODUCTO
   // ==========================================
 
@@ -826,7 +777,7 @@ class CatalogService {
       'nombre': prod.nombre.trim(),
       'descripcion': prod.descripcion?.trim(),
       'tipo_producto_id': prod.tipoProductoId,
-      'tipo_seguimiento_id': prod.tipoSeguimientoId,
+      'seguimiento': prod.seguimiento,
       'unidad_producto_id': prod.unidadProductoId,
       'stock_actual': prod.stockActual,
       'stock_minimo': prod.stockMinimo,
@@ -854,7 +805,7 @@ class CatalogService {
       'nombre': prod.nombre.trim(),
       'descripcion': prod.descripcion?.trim(),
       'tipo_producto_id': prod.tipoProductoId,
-      'tipo_seguimiento_id': prod.tipoSeguimientoId,
+      'seguimiento': prod.seguimiento,
       'unidad_producto_id': prod.unidadProductoId,
       'stock_actual': prod.stockActual,
       'stock_minimo': prod.stockMinimo,

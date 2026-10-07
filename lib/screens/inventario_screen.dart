@@ -23,7 +23,6 @@ import '../widgets/producto_inventario_form_dialog.dart';
 import '../widgets/tabs_desplazables.dart';
 import '../widgets/taper_form_dialog.dart';
 import '../widgets/tipo_producto_form_dialog.dart';
-import '../widgets/tipo_seguimiento_form_dialog.dart';
 import '../widgets/unidad_producto_form_dialog.dart';
 import '../widgets/utensilio_roto_form_dialog.dart';
 
@@ -91,7 +90,6 @@ class _ProductosTabState extends State<_ProductosTab> {
     setState(() => _cargando = true);
     await Future.wait([
       CatalogService.instance.cargarTiposProducto(),
-      CatalogService.instance.cargarTiposSeguimiento(),
       CatalogService.instance.cargarUnidadesProducto(),
       CatalogService.instance.cargarProductosInventario(),
     ]);
@@ -162,14 +160,6 @@ class _ProductosTabState extends State<_ProductosTab> {
     final nuevo = await showDialog(
       context: context,
       builder: (_) => const TipoProductoFormDialog(),
-    );
-    if (nuevo != null) setState(() {});
-  }
-
-  Future<void> _crearTipoSeguimiento() async {
-    final nuevo = await showDialog(
-      context: context,
-      builder: (_) => const TipoSeguimientoFormDialog(),
     );
     if (nuevo != null) setState(() {});
   }
@@ -409,15 +399,6 @@ class _ProductosTabState extends State<_ProductosTab> {
                 ),
                 icon: const Icon(Icons.category_outlined, size: 16),
                 label: const Text('+ Tipo prod.'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _crearTipoSeguimiento,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.grey.shade800,
-                  side: BorderSide(color: Colors.grey.shade300),
-                ),
-                icon: const Icon(Icons.timeline_outlined, size: 16),
-                label: const Text('+ Seguimiento'),
               ),
               OutlinedButton.icon(
                 onPressed: _crearUnidadProducto,

@@ -5,12 +5,12 @@ class ProductoInventario {
   final String? descripcion;
   final String tipoProductoId;
   final String? tipoProductoNombre;
-  final String tipoSeguimientoId;
-  final String? tipoSeguimientoNombre;
+  final String seguimiento; // 'granel' | 'unidad' | 'individual'
   final String unidadProductoId;
   final String? unidadProductoNombre;
   final double stockActual;
   final double stockMinimo;
+  final double costoPromedio;
   final double? costoReposicion;
   final double? precioCliente;
   final String? notas;
@@ -25,12 +25,12 @@ class ProductoInventario {
     this.descripcion,
     required this.tipoProductoId,
     this.tipoProductoNombre,
-    required this.tipoSeguimientoId,
-    this.tipoSeguimientoNombre,
+    this.seguimiento = 'granel',
     required this.unidadProductoId,
     this.unidadProductoNombre,
     required this.stockActual,
     this.stockMinimo = 0,
+    this.costoPromedio = 0,
     this.costoReposicion,
     this.precioCliente,
     this.notas,
@@ -49,12 +49,12 @@ class ProductoInventario {
         descripcion: json['descripcion']?.toString(),
         tipoProductoId: json['tipo_producto_id']?.toString() ?? '',
         tipoProductoNombre: json['tipo_producto_nombre']?.toString(),
-        tipoSeguimientoId: json['tipo_seguimiento_id']?.toString() ?? '',
-        tipoSeguimientoNombre: json['tipo_seguimiento_nombre']?.toString(),
+        seguimiento: json['seguimiento']?.toString() ?? 'granel',
         unidadProductoId: json['unidad_producto_id']?.toString() ?? '',
         unidadProductoNombre: json['unidad_producto_nombre']?.toString(),
         stockActual: (json['stock_actual'] as num?)?.toDouble() ?? 0.0,
         stockMinimo: (json['stock_minimo'] as num?)?.toDouble() ?? 0.0,
+        costoPromedio: (json['costo_promedio'] as num?)?.toDouble() ?? 0.0,
         costoReposicion: (json['costo_reposicion'] as num?)?.toDouble(),
         precioCliente: (json['precio_cliente'] as num?)?.toDouble(),
         notas: json['notas']?.toString(),
@@ -73,10 +73,11 @@ class ProductoInventario {
         'nombre': nombre,
         'descripcion': descripcion,
         'tipo_producto_id': tipoProductoId,
-        'tipo_seguimiento_id': tipoSeguimientoId,
+        'seguimiento': seguimiento,
         'unidad_producto_id': unidadProductoId,
         'stock_actual': stockActual,
         'stock_minimo': stockMinimo,
+        'costo_promedio': costoPromedio,
         'costo_reposicion': costoReposicion,
         'notas': notas,
         'estado': estado,
@@ -89,12 +90,12 @@ class ProductoInventario {
     String? descripcion,
     String? tipoProductoId,
     String? tipoProductoNombre,
-    String? tipoSeguimientoId,
-    String? tipoSeguimientoNombre,
+    String? seguimiento,
     String? unidadProductoId,
     String? unidadProductoNombre,
     double? stockActual,
     double? stockMinimo,
+    double? costoPromedio,
     double? costoReposicion,
     double? precioCliente,
     String? notas,
@@ -107,16 +108,18 @@ class ProductoInventario {
         descripcion: descripcion ?? this.descripcion,
         tipoProductoId: tipoProductoId ?? this.tipoProductoId,
         tipoProductoNombre: tipoProductoNombre ?? this.tipoProductoNombre,
-        tipoSeguimientoId: tipoSeguimientoId ?? this.tipoSeguimientoId,
-        tipoSeguimientoNombre: tipoSeguimientoNombre ?? this.tipoSeguimientoNombre,
+        seguimiento: seguimiento ?? this.seguimiento,
         unidadProductoId: unidadProductoId ?? this.unidadProductoId,
         unidadProductoNombre: unidadProductoNombre ?? this.unidadProductoNombre,
         stockActual: stockActual ?? this.stockActual,
         stockMinimo: stockMinimo ?? this.stockMinimo,
+        costoPromedio: costoPromedio ?? this.costoPromedio,
         costoReposicion: costoReposicion ?? this.costoReposicion,
         precioCliente: precioCliente ?? this.precioCliente,
         notas: notas ?? this.notas,
         estado: estado ?? this.estado,
         sedeId: sedeId ?? this.sedeId,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
       );
 }

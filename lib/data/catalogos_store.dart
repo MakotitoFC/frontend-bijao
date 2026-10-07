@@ -3,13 +3,11 @@
 
 import '../models/tipo_movimiento.dart';
 import '../models/tipo_producto.dart';
-import '../models/tipo_seguimiento.dart';
 import '../models/unidad_producto.dart';
 
 // Listas dinámicas sincronizadas con PostgreSQL y el backend Go
 final List<UnidadProducto> unidadesProducto = [];
 final List<TipoProducto> tiposProducto = [];
-final List<TipoSeguimiento> tiposSeguimiento = [];
 
 // `tipo_movimiento`.
 const movEntradaManual = TipoMovimiento(
