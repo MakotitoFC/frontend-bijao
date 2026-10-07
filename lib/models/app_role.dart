@@ -1,4 +1,4 @@
-// Refleja `usuarios.rol` (CHECK: admin, trabajador, mesero, cajero).
+// Refleja los roles principales de la base de datos (ADMINISTRADOR, CAJERO, MOZO, TRABAJADOR)
 enum AppRole { administrador, trabajador, mesero, cajero }
 
 extension AppRoleLabel on AppRole {
@@ -9,37 +9,45 @@ extension AppRoleLabel on AppRole {
       case AppRole.trabajador:
         return 'Trabajador';
       case AppRole.mesero:
-        return 'Mesero';
+        return 'Mozo / Mesero';
       case AppRole.cajero:
         return 'Cajero';
     }
   }
 
-  // Valor guardado en `usuarios.rol`.
+  // Valor guardado en la BD
   String get valorBd {
     switch (this) {
       case AppRole.administrador:
-        return 'admin';
+        return 'ADMINISTRADOR';
       case AppRole.trabajador:
-        return 'trabajador';
+        return 'TRABAJADOR';
       case AppRole.mesero:
-        return 'mesero';
+        return 'MOZO';
       case AppRole.cajero:
-        return 'cajero';
+        return 'CAJERO';
     }
   }
 
-  // Qué puede hacer cada rol dentro del sistema.
   String get descripcion {
     switch (this) {
       case AppRole.administrador:
-        return 'Acceso a todo el sistema';
+        return 'Acceso total y configuración del restaurante';
       case AppRole.trabajador:
-        return 'Cocina: ve y prepara los pedidos';
+        return 'Cocina: visualiza y despacha pedidos';
       case AppRole.mesero:
-        return 'Toma pedidos y consulta productos';
+        return 'Atención de mesas y toma de pedidos';
       case AppRole.cajero:
-        return 'Toma pedidos y cobra en pagos';
+        return 'Cobro de pedidos y gestión de caja';
     }
+  }
+
+  static AppRole fromString(String? val) {
+    final v = (val ?? '').trim().toUpperCase();
+    if (v.contains('ADMIN')) return AppRole.administrador;
+    if (v.contains('MOZO') || v.contains('MESERO')) return AppRole.mesero;
+    if (v.contains('CAJA') || v.contains('CAJERO')) return AppRole.cajero;
+    if (v.contains('TRABAJ') || v.contains('COCINA')) return AppRole.trabajador;
+    return AppRole.mesero;
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -6,6 +8,7 @@ import '../data/pedidos_store.dart';
 import '../models/app_role.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
+import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_tag.dart';
@@ -33,21 +36,55 @@ class _PedidosScreenState extends State<PedidosScreen> {
   String? _seleccionId; // pedido mostrado en el detalle
   bool _armandoPedido = false; // true = la vista muestra "Nuevo pedido"
   String? _tipoNuevoPedido; // 'mesa' | 'delivery', elegido en el modal
+  Timer? _pollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) _cargar();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _cargar() async {
+    await PedidoService.instance.cargarPedidos();
+    if (mounted) setState(() {});
+  }
 
   // ---------- datos ----------
 
   bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
 
-  bool _esActivo(Pedido p) =>
-      p.estado != 'pagado' && p.estado != 'cancelado' && p.estado != 'anulado';
+  bool _esActivo(Pedido p) {
+    final est = p.estado.toLowerCase();
+    if (p.tipoPedido.toLowerCase() == 'delivery') {
+      return est != 'pagado' && est != 'anulado' && est != 'cancelado';
+    }
+    return est != 'pagado' &&
+        est != 'anulado' &&
+        est != 'devuelto' &&
+        est != 'cancelado';
+  }
 
   List<Pedido> get _cola {
     final base = pedidos.where(_esActivo);
     if (_estadoFiltro == null) return base.toList();
+    if (_estadoFiltro == 'pendiente') {
+      return base
+          .where((p) => p.estado == 'pendiente' || p.estado == 'pedido')
+          .toList();
+    }
     return base.where((p) => p.estado == _estadoFiltro).toList();
   }
 
-  // Pedido elegido, o null si ya no está activo (pagado/cancelado).
+  // Pedido elegido, o null si ya no está activo (pagado/cancelado/devuelto).
   Pedido? get _seleccionado {
     for (final p in pedidos) {
       if (p.id == _seleccionId && _esActivo(p)) return p;
@@ -58,7 +95,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
   int _contarEstado(String? estado) {
     final base = pedidos.where(_esActivo);
     if (estado == null) return base.length;
-    return base.where((p) => p.estado == estado).length;
+    return base.where((p) {
+      if (estado == 'pendiente') {
+        return p.estado == 'pendiente' || p.estado == 'pedido';
+      }
+      return p.estado == estado;
+    }).length;
   }
 
   String _fecha(DateTime d) =>
@@ -281,9 +323,10 @@ class _PedidosScreenState extends State<PedidosScreen> {
     const opciones = <(String?, String)>[
       (null, 'Todos'),
       ('pendiente', 'Pendiente'),
-      ('preparando', 'Preparando'),
-      ('listo', 'Listo'),
+      ('servido', 'Servido'),
+      ('en_camino', 'En camino'),
       ('entregado', 'Entregado'),
+      ('en_cuenta', 'En cuenta'),
     ];
     return Align(
       alignment: Alignment.centerLeft,

@@ -38,6 +38,10 @@ dependencies:
   file_picker: ^13.1.0
   lucide_icons_flutter: ^3.1.20
   fl_chart: ^0.69.0
+  http: ^1.6.0
+  multicast_dns: ^0.3.3+1
+  shared_preferences: ^2.5.5
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:

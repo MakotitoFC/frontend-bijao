@@ -5,6 +5,8 @@ import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import 'mesas_store.dart';
 import 'pedidos_store.dart';
+import '../services/pedido_service.dart';
+import '../utils/uuid_helper.dart';
 
 // Estado en memoria de pagos. Soporta pagos parciales/divididos: cada pago
 // se reparte entre las líneas del pedido que aún tengan saldo pendiente
@@ -82,8 +84,11 @@ void cerrarSiSaldado(Pedido pedido) {
   actualizarEstadoPedido(pedido.id, 'pagado');
   for (final numero in pedido.todasLasMesas) {
     if (numero == 0) continue;
-    actualizarEstadoMesa(numero, 'libre');
+    actualizarEstadoMesa(numero, 'disponible');
     separarMesas(numero);
+  }
+  if (UuidHelper.isValid(pedido.id)) {
+    PedidoService.instance.cambiarEstadoPedido(pedido.id, 'pagado').catchError((_) {});
   }
 }
 

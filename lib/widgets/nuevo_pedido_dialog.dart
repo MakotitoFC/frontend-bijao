@@ -16,13 +16,17 @@ import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../screens/mesas_screen.dart';
 import '../theme/app_theme.dart';
+import '../services/catalog_service.dart';
+import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/uuid_helper.dart';
 import 'app_search_field.dart';
 import 'app_tag.dart';
 import 'estrella_plato_del_dia.dart';
 import 'app_toast.dart';
 import 'dotted_divider.dart';
 import 'plato_del_dia_picker.dart';
+import 'plato_libre_dialog.dart';
 import 'producto_opciones_dialog.dart';
 import 'propina_dialog.dart';
 import 'tupper_dialog.dart';
@@ -51,6 +55,8 @@ class NuevoPedidoDialog extends StatefulWidget {
 
 class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   int? _mesaNumero;
+  String? _mesaId;
+  bool _confirmando = false;
 
   CategoriaComida? _categoria;
   final _busquedaController = TextEditingController();
@@ -146,7 +152,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     setState(() {
       _carrito.add(
         PedidoLine(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          id: UuidHelper.v7(),
           cartaId: item.id,
           nombrePlato: item.nombrePlato,
           cantidad: resultado.cantidad,
@@ -157,6 +163,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           precioUnitario: resultado.precioUnitario,
           descuentoAplicado: 0,
           precioTotalLinea: resultado.precioUnitario * resultado.cantidad,
+          tipoEntrega: resultado.tipoEntrega,
+          aplicaTaper: resultado.llevaTaper,
+          taperId: resultado.taperId,
+          precioTaper: resultado.precioTaper,
+          esLibre: false,
+          precioBase: item.precioCliente ?? 0.0,
         ),
       );
     });
@@ -167,6 +179,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     final item = await elegirPlatoDelDia(context);
     if (item == null || !mounted) return;
     await _abrirOpciones(item, acento: AppColors.platoDelDia);
+  }
+
+  // Modal para agregar un plato libre / pedido rápido que no está en la carta.
+  Future<void> _abrirPlatoLibre() async {
+    final linea = await showBlurDialog<PedidoLine>(
+      context: context,
+      builder: (_) => const PlatoLibreDialog(),
+    );
+    if (linea == null || !mounted) return;
+    setState(() {
+      _carrito.add(linea);
+    });
   }
 
   void _cambiarCantidadLinea(int index, int delta) {
@@ -201,7 +225,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     );
   }
 
-  void _confirmar() {
+  Future<void> _confirmar() async {
+    if (_confirmando) return;
     if (_carrito.isEmpty) {
       showAppToast(
         context,
@@ -227,9 +252,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       return;
     }
 
+    setState(() => _confirmando = true);
+
     final mesaNumero = esMesa ? _mesaNumero! : 0;
+    final pedidoUuid = UuidHelper.v7();
     final pedido = Pedido(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: pedidoUuid,
       numeroPedido: siguienteNumeroPedido(),
       mesaNumero: mesaNumero,
       tipoPedido: widget.tipo,
@@ -253,7 +281,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       for (final l in _carrito) _conDescuento(l),
       if (_cargoDelivery > 0)
         PedidoLine(
-          id: '${DateTime.now().microsecondsSinceEpoch}-cargo',
+          id: UuidHelper.v7(),
           cartaId: cartaIdCargoDelivery,
           nombrePlato: 'Cargo por delivery',
           cantidad: 1,
@@ -266,45 +294,76 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           precioTotalLinea: _cargoDelivery,
         ),
     ];
-    registrarPedido(pedido, lineas);
-    establecerPropinaPedido(pedido.id, _propina);
-    if (_tupperTotal > 0) {
-      establecerTupperPedido(
-        pedido.id,
-        grande: _tupper.grande,
-        precioGrande: _tupper.precioGrande,
-        mediano: _tupper.mediano,
-        precioMediano: _tupper.precioMediano,
+
+    try {
+      await PedidoService.instance.crearPedido(
+        pedido: pedido,
+        lineas: lineas,
+        mesaId: _mesaId,
+        mesaNumero: esMesa ? mesaNumero : null,
+        tipoEntrega: esDelivery ? 'delivery' : 'mesa',
+        comentarios: _notasController.text.trim().isNotEmpty
+            ? _notasController.text.trim()
+            : null,
       );
-    }
-    if (esMesa) actualizarEstadoMesa(mesaNumero, 'ocupada');
-    for (final l in lineas) {
-      if (l.cartaId != cartaIdCargoDelivery && l.cartaId != cartaIdAjuste) {
-        registrarConsumoAutomaticoDeLinea(l);
+
+      establecerPropinaPedido(pedidoUuid, _propina);
+      if (_tupperTotal > 0) {
+        establecerTupperPedido(
+          pedidoUuid,
+          grande: _tupper.grande,
+          precioGrande: _tupper.precioGrande,
+          mediano: _tupper.mediano,
+          precioMediano: _tupper.precioMediano,
+        );
+      }
+      if (esMesa) actualizarEstadoMesa(mesaNumero, 'ocupada');
+      for (final l in lineas) {
+        if (l.cartaId != cartaIdCargoDelivery && l.cartaId != cartaIdAjuste) {
+          registrarConsumoAutomaticoDeLinea(l);
+        }
+      }
+
+      await CatalogService.instance.cargarMesas();
+
+      if (!mounted) return;
+      final items = _carrito.fold(0, (s, l) => s + l.cantidad);
+      final destino = esMesa ? 'Mesa $mesaNumero' : 'Delivery';
+      showAppToast(
+        context,
+        'Pedido #${pedido.numeroPedido} · $destino · $items ítem(s) · enviado a cocina',
+        type: ToastType.success,
+        titulo: 'Pedido confirmado',
+      );
+      widget.onTerminar(true);
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'Error al confirmar pedido: $e',
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _confirmando = false);
       }
     }
-
-    final items = _carrito.fold(0, (s, l) => s + l.cantidad);
-    final destino = esMesa ? 'Mesa $mesaNumero' : 'Delivery';
-    showAppToast(
-      context,
-      'Pedido #${pedido.numeroPedido} · $destino · $items ítem(s) · enviado a cocina',
-      type: ToastType.success,
-      titulo: 'Pedido confirmado',
-    );
-    widget.onTerminar(true);
   }
 
   void _elegirMesa(Mesa mesa) {
-    if (mesa.estado != 'libre') {
+    if (!mesa.estaLibre) {
+      final motivo = mesa.estaReservada ? 'está reservada' : 'está ocupada';
       showAppToast(
         context,
-        'La mesa ${mesa.numero} está ocupada.',
+        'La mesa ${mesa.numero} $motivo.',
         type: ToastType.error,
       );
       return;
     }
-    setState(() => _mesaNumero = mesa.numero);
+    setState(() {
+      _mesaNumero = mesa.numero;
+      _mesaId = mesa.id;
+    });
   }
 
   // ---------- UI ----------
@@ -343,7 +402,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         ),
         Expanded(
           child: enPasoMesa
-              ? MesasPlano(onSeleccionarMesa: _elegirMesa)
+              ? MesasPlano(
+                  onSeleccionarMesa: _elegirMesa,
+                  usuario: widget.usuario,
+                )
               : _armarPedido(esMobile),
         ),
       ],
@@ -354,7 +416,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   // de ahí a la elección del tipo de pedido.
   void _volver() {
     if (widget.tipo == 'mesa' && _mesaNumero != null) {
-      setState(() => _mesaNumero = null);
+      setState(() {
+        _mesaNumero = null;
+        _mesaId = null;
+      });
     } else {
       widget.onVolver();
     }
@@ -435,10 +500,30 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppSearchField(
-          controller: _busquedaController,
-          hint: 'Buscar producto...',
-          onChanged: (_) => setState(() {}),
+        Row(
+          children: [
+            Expanded(
+              child: AppSearchField(
+                controller: _busquedaController,
+                hint: 'Buscar producto...',
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: _abrirPlatoLibre,
+              icon: const Icon(LucideIcons.sparkles, size: 15),
+              label: const Text(
+                'Plato libre',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         SingleChildScrollView(
@@ -737,6 +822,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           runSpacing: 8,
           children: [
             AppTag(
+              etiqueta: 'Plato libre',
+              icono: LucideIcons.sparkles,
+              activo: false,
+              color: AppColors.primaryGreen,
+              onTap: _abrirPlatoLibre,
+            ),
+            AppTag(
               etiqueta: 'Plato del día',
               icono: LucideIcons.chefHat,
               activo: false,
@@ -783,14 +875,23 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
             Expanded(
               flex: 3,
               child: FilledButton(
-                onPressed: _carrito.isEmpty ? null : _confirmar,
+                onPressed: (_carrito.isEmpty || _confirmando) ? null : _confirmar,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
                 ),
-                child: const Text(
-                  'Confirmar pedido',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
+                child: _confirmando
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Confirmar pedido',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
               ),
             ),
           ],

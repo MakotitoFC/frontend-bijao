@@ -4,7 +4,7 @@ class CompraDetalle {
   final String compraId;
   final String productoInventarioId;
   final double cantidad;
-  final int unidadProductoId;
+  final String unidadProductoId;
   final double precioUnitario;
   final double precioTotal;
 

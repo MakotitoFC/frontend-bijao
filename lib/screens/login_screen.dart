@@ -5,11 +5,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/configuracion_store.dart';
-import '../data/usuarios_store.dart';
-import '../models/usuario.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/patron_cocina.dart';
+import '../widgets/server_connection_dialog.dart';
 import 'home_screen.dart';
 
 // Login: correo + contraseña contra `usuarios`.
@@ -22,17 +22,39 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // "Recordarme": correo guardado mientras no haya almacenamiento real.
-  // TODO backend: persistir la sesión/correo en el dispositivo.
-  static String? _correoRecordado;
-
   final _formKey = GlobalKey<FormState>();
-  late final _emailController = TextEditingController(text: _correoRecordado);
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
-  late bool _recordarme = _correoRecordado != null;
+  bool _recordarme = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AuthService.instance.isAuthenticated && AuthService.instance.currentUser != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final user = AuthService.instance.currentUser!;
+        final sede = sedes.where((s) => s.id == user.sedeId).firstOrNull ?? sedes.first;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(sede: sede, usuario: user),
+          ),
+        );
+      });
+    }
+
+    AuthService.instance.getSavedEmail().then((saved) {
+      if (saved != null && saved.isNotEmpty && mounted) {
+        setState(() {
+          _emailController.text = saved;
+          _recordarme = true;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -44,49 +66,38 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1)); // simula latencia de red
-    setState(() => _isLoading = false);
-
-    if (!mounted) return;
-
-    final email = _emailController.text.trim().toLowerCase();
+    final identifier = _emailController.text.trim();
     final password = _passwordController.text;
-    Usuario? usuario;
-    for (final u in usuarios) {
-      if (u.email.toLowerCase() == email && u.password == password) {
-        usuario = u;
-        break;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = await AuthService.instance.login(
+        usuario: identifier,
+        password: password,
+        rememberEmail: _recordarme,
+      );
+
+      if (!mounted) return;
+
+      final sede = sedes.where((s) => s.id == user.sedeId).firstOrNull ?? sedes.first;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(sede: sede, usuario: user),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        e.toString(),
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
-
-    if (usuario == null) {
-      showAppToast(
-        context,
-        'Correo o contraseña incorrectos',
-        type: ToastType.error,
-      );
-      return;
-    }
-
-    if (!usuario.activo) {
-      showAppToast(
-        context,
-        'Este usuario está inactivo',
-        type: ToastType.error,
-      );
-      return;
-    }
-
-    _correoRecordado = _recordarme ? _emailController.text.trim() : null;
-    final sede =
-        sedes.where((s) => s.id == usuario!.sedeId).firstOrNull ?? sedes.first;
-    final usuarioEncontrado = usuario;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => HomeScreen(sede: sede, usuario: usuarioEncontrado),
-      ),
-    );
   }
 
   InputDecoration _decoracion(String hint, IconData icono, {Widget? sufijo}) {
@@ -151,14 +162,17 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 34),
           TextFormField(
             controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: TextInputType.text,
             style: const TextStyle(fontSize: 14),
-            decoration: _decoracion('Correo electrónico', LucideIcons.mail),
+            decoration: _decoracion('Usuario o correo', LucideIcons.user),
             validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Ingresa tu correo';
+              final v = value?.trim();
+              if (v == null || v.isEmpty) {
+                return 'Ingresa tu usuario o correo';
               }
-              if (!value.contains('@')) return 'Correo inválido';
+              if (v.length < 3) {
+                return 'Debe tener al menos 3 caracteres';
+              }
               return null;
             },
           ),
@@ -377,6 +391,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final mobile = AppBreakpoints.esMobile(context);
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'server_conn_btn',
+        backgroundColor: Colors.grey.shade100,
+        foregroundColor: Colors.black87,
+        elevation: 1,
+        onPressed: () => ServerConnectionDialog.show(context),
+        icon: const Icon(LucideIcons.wifi, size: 16),
+        label: const Text('Servidor / Red', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      ),
       body: mobile ? _buildMobile(context) : _buildEscritorio(context),
     );
   }

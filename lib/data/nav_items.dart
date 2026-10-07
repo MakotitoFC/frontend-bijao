@@ -3,10 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/app_role.dart';
 import '../models/nav_item.dart';
 
-// Ítems del sidebar (mapeo directo del dashboard anterior, según lo
-// acordado: Pedidos=Mesas y Pedidos, Productos=Carta, Pagos=Historial de
-// pedidos y Cajas, Informes=Reportes, Configuración=ajustes del negocio).
-// Compras no tiene ítem (oculto por ahora, su código sigue en el proyecto).
+// Ítems del sidebar con permisos RBAC requeridos
 const navItems = [
   NavItem(
     clave: 'inicio',
@@ -20,22 +17,36 @@ const navItems = [
     },
   ),
   NavItem(
+    clave: 'mesas',
+    label: 'Mesas',
+    icono: LucideIcons.layoutGrid,
+    rolesPermitidos: {
+      AppRole.administrador,
+      AppRole.mesero,
+      AppRole.cajero,
+    },
+    permisoRequerido: 'LEER.MESA',
+  ),
+  NavItem(
     clave: 'pedidos',
     label: 'Pedidos',
     icono: LucideIcons.clipboardList,
     rolesPermitidos: {AppRole.administrador, AppRole.mesero, AppRole.cajero},
+    permisoRequerido: 'LEER.PEDIDO',
   ),
   NavItem(
     clave: 'productos',
-    label: 'Productos',
-    icono: LucideIcons.store,
+    label: 'Carta',
+    icono: LucideIcons.utensilsCrossed,
     rolesPermitidos: {AppRole.administrador, AppRole.mesero},
+    permisoRequerido: 'LEER.CARTA',
   ),
   NavItem(
     clave: 'cocina',
     label: 'Cocina',
     icono: LucideIcons.chefHat,
     rolesPermitidos: {AppRole.administrador, AppRole.trabajador},
+    permisoRequerido: 'LEER.PEDIDO',
   ),
   NavItem(
     clave: 'ventas',
@@ -48,18 +59,21 @@ const navItems = [
         label: 'Historial de pedidos',
         icono: LucideIcons.receipt,
         rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+        permisoRequerido: 'LEER.PEDIDOS',
       ),
       NavItem(
         clave: 'caja',
         label: 'Caja',
         icono: LucideIcons.wallet,
         rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+        permisoRequerido: 'LEER.PAGO',
       ),
       NavItem(
         clave: 'reportes',
         label: 'Reportes',
         icono: LucideIcons.newspaper,
         rolesPermitidos: {AppRole.administrador},
+        permisoRequerido: 'LEER.MOVIMIENTO',
       ),
     ],
   ),
@@ -68,17 +82,20 @@ const navItems = [
     label: 'Finanzas',
     icono: LucideIcons.landmark,
     rolesPermitidos: {AppRole.administrador},
+    permisoRequerido: 'LEER.MOVIMIENTO',
   ),
   NavItem(
     clave: 'inventario',
     label: 'Inventario',
     icono: LucideIcons.boxes,
     rolesPermitidos: {AppRole.administrador},
+    permisoRequerido: 'VER.VISTA_INVENTARIO',
   ),
   NavItem(
     clave: 'configuracion',
     label: 'Configuración',
     icono: LucideIcons.settings,
     rolesPermitidos: {AppRole.administrador},
+    permisoRequerido: 'LEER.SEDE',
   ),
 ];

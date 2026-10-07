@@ -11,7 +11,9 @@ import '../models/incidencia.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
+import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/uuid_helper.dart';
 import 'app_toast.dart';
 import 'boleta_pedido_dialog.dart';
 import 'agregar_producto_dialog.dart';
@@ -44,41 +46,83 @@ String nombreMeseroDe(Pedido p) {
 
 // Color por `pedidos.estado`.
 ({Color color, String texto}) paletaEstadoPedido(String estado) {
-  switch (estado) {
+  switch (estado.toLowerCase()) {
     case 'preparando':
       return (color: const Color(0xFFEF6C00), texto: 'Preparando');
     case 'listo':
       return (color: AppColors.primaryGreen, texto: 'Listo');
+    case 'servido':
+      return (color: const Color(0xFF0284C7), texto: 'Servido');
+    case 'en_camino':
+      return (color: const Color(0xFF8B5CF6), texto: 'En camino');
     case 'entregado':
       return (color: AppColors.primaryGreenDark, texto: 'Entregado');
+    case 'en_cuenta':
+      return (color: const Color(0xFFD97706), texto: 'En cuenta');
+    case 'pagado':
+      return (color: const Color(0xFF16A34A), texto: 'Pagado');
+    case 'devuelto':
+      return (color: const Color(0xFFDC2626), texto: 'Devuelto');
+    case 'anulado':
+    case 'cancelado':
+      return (color: const Color(0xFF6B7280), texto: 'Anulado');
+    case 'pendiente':
+    case 'pedido':
     default:
       return (color: const Color(0xFFCA8A04), texto: 'Pendiente');
   }
 }
 
-// Píldora sólida con el estado del pedido.
+// Píldora sólida con el estado del pedido, interactiva con selector de estados.
 class BadgeEstadoPedido extends StatelessWidget {
   final String estado;
+  final ValueChanged<String>? onCambiarEstado;
 
-  const BadgeEstadoPedido(this.estado, {super.key});
+  const BadgeEstadoPedido(this.estado, {super.key, this.onCambiarEstado});
 
   @override
   Widget build(BuildContext context) {
     final p = paletaEstadoPedido(estado);
-    return Container(
+    final badgeWidget = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: p.color,
         borderRadius: BorderRadius.circular(100),
       ),
-      child: Text(
-        p.texto,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            p.texto,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (onCambiarEstado != null) ...[
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down, size: 14, color: Colors.white70),
+          ],
+        ],
       ),
+    );
+
+    if (onCambiarEstado == null) return badgeWidget;
+
+    return PopupMenuButton<String>(
+      tooltip: 'Cambiar estado del pedido',
+      onSelected: onCambiarEstado,
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'pendiente', child: Text('Pendiente')),
+        PopupMenuItem(value: 'servido', child: Text('Servido')),
+        PopupMenuItem(value: 'en_camino', child: Text('En camino')),
+        PopupMenuItem(value: 'entregado', child: Text('Entregado')),
+        PopupMenuItem(value: 'en_cuenta', child: Text('En cuenta')),
+        PopupMenuItem(value: 'devuelto', child: Text('Devuelto')),
+        PopupMenuItem(value: 'anulado', child: Text('Anulado')),
+      ],
+      child: badgeWidget,
     );
   }
 }
@@ -230,8 +274,11 @@ class DetallePedidoPanel extends StatelessWidget {
     actualizarEstadoPedido(pedido.id, 'cancelado');
     for (final n in pedido.todasLasMesas) {
       if (n == 0) continue;
-      actualizarEstadoMesa(n, 'libre');
+      actualizarEstadoMesa(n, 'disponible');
       separarMesas(n);
+    }
+    if (UuidHelper.isValid(pedido.id)) {
+      PedidoService.instance.cambiarEstadoPedido(pedido.id, 'anulado').catchError((_) {});
     }
     onCambio();
     showAppToast(
@@ -695,7 +742,13 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          BadgeEstadoPedido(pedido.estado),
+          BadgeEstadoPedido(
+            pedido.estado,
+            onCambiarEstado: (nuevo) async {
+              await PedidoService.instance.cambiarEstadoPedido(pedido.id, nuevo);
+              onCambio();
+            },
+          ),
           const SizedBox(width: 6),
           Tooltip(
             message: 'Editar pedido',
@@ -1140,6 +1193,40 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ],
         ),
+        if (pedido.estado == 'pendiente' || pedido.estado == 'pedido') ...[
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: () async {
+              await PedidoService.instance.cambiarEstadoPedido(pedido.id, 'servido');
+              onCambio();
+            },
+            icon: const Icon(LucideIcons.utensilsCrossed, size: 16),
+            label: const Text('Marcar como Servido', style: texto),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
+          ),
+        ] else if (pedido.tipoPedido == 'delivery' && pedido.estado == 'servido') ...[
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: () async {
+              await PedidoService.instance.cambiarEstadoPedido(pedido.id, 'en_camino');
+              onCambio();
+            },
+            icon: const Icon(LucideIcons.bike, size: 16),
+            label: const Text('Marcar En camino', style: texto),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
+          ),
+        ] else if (pedido.tipoPedido == 'delivery' && pedido.estado == 'en_camino') ...[
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: () async {
+              await PedidoService.instance.cambiarEstadoPedido(pedido.id, 'entregado');
+              onCambio();
+            },
+            icon: const Icon(LucideIcons.checkCircle2, size: 16),
+            label: const Text('Marcar Entregado', style: texto),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreenDark),
+          ),
+        ],
         const SizedBox(height: 12),
         Row(
           children: [

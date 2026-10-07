@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/presentaciones_store.dart';
 import '../models/carta_item.dart';
 import '../models/carta_presentacion.dart';
 import '../models/modificador.dart';
+import '../models/taper.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
 import '../utils/agregados_utils.dart';
@@ -15,6 +18,10 @@ typedef ProductoConfigurado = ({
   List<Modificador> modificadores,
   String? comentario,
   double precioUnitario,
+  String tipoEntrega,
+  bool llevaTaper,
+  String? taperId,
+  double precioTaper,
 });
 
 // Modal "Agregar al pedido": presentación, extras opcionales y nota.
@@ -46,6 +53,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   final _comentarioController = TextEditingController();
   int _cantidad = 1;
 
+  String _tipoEntrega = 'mesa'; // 'mesa', 'llevar', 'delivery'
+  bool _llevaTaper = false;
+  Taper? _taperSeleccionado;
+
   late final List<Map<String, dynamic>> _extrasSimples = agregadosSimples(
     widget.item.agregados,
   );
@@ -57,6 +68,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   void initState() {
     super.initState();
     if (_presentaciones.isNotEmpty) _presentacion = _presentaciones.first;
+    final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
+    if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
+      _taperSeleccionado = tapers.where((t) => t.id == widget.item.taperId).firstOrNull;
+    }
+    if (_taperSeleccionado == null && tapers.isNotEmpty) {
+      _taperSeleccionado = tapers.first;
+    }
   }
 
   @override
@@ -77,7 +95,8 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               .where((it) => elegidos.contains('${it['nombre']}'))
               .fold(0.0, (s2, it) => s2 + (precioDeAgregado(it) ?? 0));
     });
-    return base + extrasSimples + extrasGrupos;
+    final taperMonto = (_llevaTaper && _taperSeleccionado != null) ? _taperSeleccionado!.precio : 0.0;
+    return base + extrasSimples + extrasGrupos + taperMonto;
   }
 
   double get _total => _precioUnitario * _cantidad;
@@ -140,6 +159,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
           ? null
           : _comentarioController.text.trim(),
       precioUnitario: _precioUnitario,
+      tipoEntrega: _tipoEntrega,
+      llevaTaper: _llevaTaper,
+      taperId: _llevaTaper ? _taperSeleccionado?.id : null,
+      precioTaper: (_llevaTaper && _taperSeleccionado != null) ? _taperSeleccionado!.precio : 0.0,
     ));
   }
 
@@ -263,6 +286,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       ),
                     ],
                     const SizedBox(height: 18),
+                    _selectorTipoEntrega(),
+                    const SizedBox(height: 16),
+                    _selectorTaper(),
+                    const SizedBox(height: 18),
                     _tituloSeccion('Notas (opcional)'),
                     const SizedBox(height: 6),
                     TextField(
@@ -331,6 +358,146 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _selectorTipoEntrega() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _tituloSeccion('Tipo de entrega'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _chipTipoEntrega('mesa', 'En mesa', LucideIcons.utensils),
+            const SizedBox(width: 8),
+            _chipTipoEntrega('llevar', 'Para llevar', LucideIcons.packageCheck),
+            const SizedBox(width: 8),
+            _chipTipoEntrega('delivery', 'Delivery', LucideIcons.bike),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _chipTipoEntrega(String tipo, String etiqueta, IconData icono) {
+    final activo = _tipoEntrega == tipo;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _tipoEntrega = tipo;
+            if (tipo == 'llevar' || tipo == 'delivery') {
+              _llevaTaper = true;
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: activo ? AppColors.primaryGreen.withValues(alpha: 0.12) : Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
+              width: activo ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icono, size: 14, color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  etiqueta,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
+                    color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _selectorTaper() {
+    final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _llevaTaper ? const Color(0xFFF0FDF4) : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _llevaTaper ? AppColors.primaryGreen.withValues(alpha: 0.4) : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.package, size: 18, color: _llevaTaper ? AppColors.primaryGreenDark : Colors.grey.shade600),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '¿Llevar en táper descartable?',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _llevaTaper ? AppColors.primaryGreenDark : Colors.black87,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _llevaTaper,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.primaryGreen,
+                onChanged: (val) {
+                  setState(() => _llevaTaper = val);
+                },
+              ),
+            ],
+          ),
+          if (_llevaTaper) ...[
+            const SizedBox(height: 8),
+            if (tapers.isEmpty)
+              Text(
+                'No hay táperes registrados en inventario.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              )
+            else
+              DropdownButtonFormField<String>(
+                initialValue: _taperSeleccionado?.id,
+                decoration: InputDecoration(
+                  labelText: 'Seleccionar tipo de táper',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                items: [
+                  for (final t in tapers)
+                    DropdownMenuItem(
+                      value: t.id,
+                      child: Text('${t.nombre} (+S/ ${t.precio.toStringAsFixed(2)})'),
+                    ),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      _taperSeleccionado = tapers.firstWhere((t) => t.id == val);
+                    });
+                  }
+                },
+              ),
+          ],
+        ],
       ),
     );
   }

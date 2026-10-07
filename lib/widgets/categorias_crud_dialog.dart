@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
 import '../models/categoria_comida.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 
 // Modal "Categorías": lista, agrega, edita (en la misma fila) y elimina.
@@ -35,7 +36,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     super.dispose();
   }
 
-  void _agregar() {
+  Future<void> _agregar() async {
     final nombre = _nombreController.text.trim();
     if (nombre.isEmpty) return;
     final repetida = categorias.any(
@@ -45,12 +46,16 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       setState(() => _error = 'Ya existe esa categoría');
       return;
     }
-    setState(() {
-      agregarCategoria(nombre);
-      _nombreController.clear();
-      _error = null;
-    });
-    widget.onCambio();
+    try {
+      await CatalogService.instance.crearCategoria(nombre);
+      setState(() {
+        _nombreController.clear();
+        _error = null;
+      });
+      widget.onCambio();
+    } catch (e) {
+      setState(() => _error = 'Error al crear: $e');
+    }
   }
 
   // Edición en la propia fila: el nombre se vuelve un input.
@@ -63,7 +68,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
 
   void _cancelarEdicion() => setState(() => _editandoId = null);
 
-  void _guardarEdicion(CategoriaComida cat) {
+  Future<void> _guardarEdicion(CategoriaComida cat) async {
     final nuevo = _editController.text.trim();
     if (nuevo.isEmpty || nuevo == cat.categoria) {
       _cancelarEdicion();
@@ -76,12 +81,16 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       setState(() => _errorEdicion = 'Ya existe esa categoría');
       return;
     }
-    setState(() {
-      renombrarCategoria(cat.id, nuevo);
-      _editandoId = null;
-      _errorEdicion = null;
-    });
-    widget.onCambio();
+    try {
+      await CatalogService.instance.actualizarCategoria(cat.id, nuevo);
+      setState(() {
+        _editandoId = null;
+        _errorEdicion = null;
+      });
+      widget.onCambio();
+    } catch (e) {
+      setState(() => _errorEdicion = 'Error: $e');
+    }
   }
 
   Future<void> _eliminar(CategoriaComida cat) async {
@@ -126,11 +135,15 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       ),
     );
     if (confirmar != true) return;
-    setState(() {
-      categorias.removeWhere((c) => c.id == cat.id);
-      if (widget.seleccion.value?.id == cat.id) widget.seleccion.value = null;
-    });
-    widget.onCambio();
+    try {
+      await CatalogService.instance.eliminarCategoria(cat.id);
+      setState(() {
+        if (widget.seleccion.value?.id == cat.id) widget.seleccion.value = null;
+      });
+      widget.onCambio();
+    } catch (e) {
+      // Ignorar o registrar error
+    }
   }
 
   @override

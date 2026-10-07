@@ -16,6 +16,14 @@ class PedidoLine {
   final double precioUnitario; // base + modificadores, por unidad
   final double descuentoAplicado; // total de la línea
   final double precioTotalLinea; // total final de la línea (con descuento)
+  final String tipoEntrega; // 'mesa', 'llevar', 'delivery'
+  final bool aplicaTaper;
+  final String? taperId;
+  final double precioTaper;
+  final bool esLibre;
+  final String? nombreLibre;
+  final String? descripcionLibre;
+  final double precioBase;
   // Estado de la línea (pedidos_detalle.estado): null = normal, 'incidencia'
   // = tiene una devolución/reclamo reportado (ver incidencias_store.dart).
   final String? estado;
@@ -32,8 +40,50 @@ class PedidoLine {
     required this.precioUnitario,
     required this.descuentoAplicado,
     required this.precioTotalLinea,
+    this.tipoEntrega = 'mesa',
+    this.aplicaTaper = false,
+    this.taperId,
+    this.precioTaper = 0.0,
+    this.esLibre = false,
+    this.nombreLibre,
+    this.descripcionLibre,
+    this.precioBase = 0.0,
     this.estado,
   });
+
+  factory PedidoLine.fromJson(Map<String, dynamic> json) {
+    final cant = (json['cantidad'] as num?)?.toInt() ?? 1;
+    final pUnit = (json['precio_base'] as num?)?.toDouble() ??
+        (json['precio'] as num?)?.toDouble() ??
+        0.0;
+    final pTotal = (json['precio'] as num?)?.toDouble() ?? (pUnit * cant);
+    final desc = (json['descuento_aplicado'] as num?)?.toDouble() ?? 0.0;
+
+    return PedidoLine(
+      id: json['id']?.toString() ?? '',
+      cartaId: json['carta_id']?.toString() ?? '',
+      nombrePlato: json['plato_nombre']?.toString() ??
+          json['nombre_libre']?.toString() ??
+          'Plato',
+      cantidad: cant,
+      modificadores: const [],
+      presentacion: null,
+      promocion: null,
+      comentario: json['comentarios']?.toString(),
+      precioUnitario: pUnit,
+      descuentoAplicado: desc,
+      precioTotalLinea: pTotal,
+      tipoEntrega: json['tipo_entrega']?.toString() ?? 'mesa',
+      aplicaTaper: json['aplica_taper'] == true,
+      taperId: json['taper_id']?.toString(),
+      precioTaper: (json['precio_taper'] as num?)?.toDouble() ?? 0.0,
+      esLibre: json['es_libre'] == true,
+      nombreLibre: json['nombre_libre']?.toString(),
+      descripcionLibre: json['descripcion_libre']?.toString(),
+      precioBase: pUnit,
+      estado: json['estado']?.toString(),
+    );
+  }
 
   // Nueva cantidad: reescala el descuento de la línea y su total.
   PedidoLine conCantidad(int nueva) {
@@ -50,6 +100,14 @@ class PedidoLine {
       precioUnitario: precioUnitario,
       descuentoAplicado: desc,
       precioTotalLinea: precioUnitario * nueva - desc,
+      tipoEntrega: tipoEntrega,
+      aplicaTaper: aplicaTaper,
+      taperId: taperId,
+      precioTaper: precioTaper,
+      esLibre: esLibre,
+      nombreLibre: nombreLibre,
+      descripcionLibre: descripcionLibre,
+      precioBase: precioBase,
       estado: estado,
     );
   }
@@ -66,6 +124,14 @@ class PedidoLine {
     precioUnitario: precioUnitario,
     descuentoAplicado: descuentoAplicado,
     precioTotalLinea: precioTotalLinea,
+    tipoEntrega: tipoEntrega,
+    aplicaTaper: aplicaTaper,
+    taperId: taperId,
+    precioTaper: precioTaper,
+    esLibre: esLibre,
+    nombreLibre: nombreLibre,
+    descripcionLibre: descripcionLibre,
+    precioBase: precioBase,
     estado: estado,
   );
 
@@ -81,6 +147,14 @@ class PedidoLine {
     precioUnitario: precioUnitario,
     descuentoAplicado: descuentoAplicado,
     precioTotalLinea: precioTotalLinea,
+    tipoEntrega: tipoEntrega,
+    aplicaTaper: aplicaTaper,
+    taperId: taperId,
+    precioTaper: precioTaper,
+    esLibre: esLibre,
+    nombreLibre: nombreLibre,
+    descripcionLibre: descripcionLibre,
+    precioBase: precioBase,
     estado: estado ?? this.estado,
   );
 }

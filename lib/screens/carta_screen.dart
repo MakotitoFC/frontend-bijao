@@ -5,6 +5,8 @@ import '../data/categorias_store.dart';
 import '../data/presentaciones_store.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
+import '../models/usuario.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/agregados_utils.dart';
 import '../utils/blur_dialog.dart';
@@ -23,13 +25,11 @@ const _filtroGris = ColorFilter.matrix(<double>[
   0, 0, 0, 1, 0,
 ]);
 
-// Catálogo de productos (tabla `productos`) en tarjetas; el Mesero solo
-// consulta, el Administrador puede crear/editar/eliminar.
-// TODO backend: reemplazar cartasNotifier por `productos`.
+// Catálogo de productos (tabla `carta`): administrado según permisos RBAC
 class CartaScreen extends StatefulWidget {
   final bool esAdmin;
-  // Categoría activa (null = Todos) y texto de búsqueda, controlados por la
-  // cabecera.
+  final Usuario? usuario;
+  // Categoría activa (null = Todos) y texto de búsqueda, controlados por la cabecera.
   final ValueNotifier<CategoriaComida?> seleccion;
   final ValueNotifier<String> busqueda;
   // Mobile: la pantalla pinta su propia cabecera.
@@ -38,6 +38,7 @@ class CartaScreen extends StatefulWidget {
   const CartaScreen({
     super.key,
     required this.esAdmin,
+    this.usuario,
     required this.seleccion,
     required this.busqueda,
     this.cabeceraPropia = false,
@@ -48,6 +49,18 @@ class CartaScreen extends StatefulWidget {
 }
 
 class _CartaScreenState extends State<CartaScreen> {
+  bool get _puedeEditar =>
+      widget.esAdmin || (widget.usuario?.tienePermiso('UPDATE.CARTA') ?? false);
+  bool get _puedeEliminar =>
+      widget.esAdmin || (widget.usuario?.tienePermiso('DELETE.CARTA') ?? false);
+  bool get _puedeGestionar => _puedeEditar || _puedeEliminar;
+
+  @override
+  void initState() {
+    super.initState();
+    CatalogService.instance.cargarCarta();
+  }
+
   List<CartaItem> get _cartaFiltrada {
     final categoria = widget.seleccion.value;
     var base = cartasNotifier.value;
@@ -73,34 +86,49 @@ class _CartaScreenState extends State<CartaScreen> {
       builder: (_) => CartaFormScreen(item: item),
     );
     if (editado != null) {
-      cartasNotifier.value = cartasNotifier.value
-          .map((c) => c.id == editado.id ? editado : c)
-          .toList();
-      if (!mounted) return;
-      showAppToast(
-        context,
-        '${editado.nombrePlato} se actualizó correctamente.',
-        type: ToastType.info,
-        titulo: 'Plato actualizado',
-      );
+      try {
+        await CatalogService.instance.actualizarPlato(editado);
+        if (!mounted) return;
+        showAppToast(
+          context,
+          '${editado.nombrePlato} se actualizó correctamente.',
+          type: ToastType.info,
+          titulo: 'Plato actualizado',
+        );
+      } catch (e) {
+        if (!mounted) return;
+        showAppToast(
+          context,
+          'Error al actualizar: $e',
+          type: ToastType.error,
+          titulo: 'Error',
+        );
+      }
     }
   }
 
-  void _alternarDisponible(CartaItem item) {
-    final nuevo = item.copyWith(
-      estado: item.disponible ? 'inactivo' : 'activo',
-    );
-    cartasNotifier.value = cartasNotifier.value
-        .map((c) => c.id == item.id ? nuevo : c)
-        .toList();
-    showAppToast(
-      context,
-      nuevo.disponible
-          ? '${item.nombrePlato} está disponible.'
-          : '${item.nombrePlato} se desactivó.',
-      type: nuevo.disponible ? ToastType.success : ToastType.info,
-      titulo: nuevo.disponible ? 'Producto activado' : 'Producto desactivado',
-    );
+  Future<void> _alternarDisponible(CartaItem item) async {
+    try {
+      await CatalogService.instance.alternarEstadoPlato(item);
+      final nuevoDisponible = !item.disponible;
+      if (!mounted) return;
+      showAppToast(
+        context,
+        nuevoDisponible
+            ? '${item.nombrePlato} está disponible.'
+            : '${item.nombrePlato} se desactivó.',
+        type: nuevoDisponible ? ToastType.success : ToastType.info,
+        titulo: nuevoDisponible ? 'Producto activado' : 'Producto desactivado',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'Error: $e',
+        type: ToastType.error,
+        titulo: 'Error',
+      );
+    }
   }
 
   // Modal de advertencia: la acción no se puede deshacer.
@@ -182,16 +210,24 @@ class _CartaScreenState extends State<CartaScreen> {
       },
     );
     if (confirmar == true) {
-      cartasNotifier.value = cartasNotifier.value
-          .where((c) => c.id != item.id)
-          .toList();
-      if (!mounted) return;
-      showAppToast(
-        context,
-        '${item.nombrePlato} se eliminó de la carta.',
-        type: ToastType.error,
-        titulo: 'Plato eliminado',
-      );
+      try {
+        await CatalogService.instance.eliminarPlato(item.id);
+        if (!mounted) return;
+        showAppToast(
+          context,
+          '${item.nombrePlato} se eliminó de la carta.',
+          type: ToastType.error,
+          titulo: 'Plato eliminado',
+        );
+      } catch (e) {
+        if (!mounted) return;
+        showAppToast(
+          context,
+          'Error al eliminar: $e',
+          type: ToastType.error,
+          titulo: 'Error',
+        );
+      }
     }
   }
 
@@ -233,6 +269,7 @@ class _CartaScreenState extends State<CartaScreen> {
                     seleccion: widget.seleccion,
                     busqueda: widget.busqueda,
                     esAdmin: widget.esAdmin,
+                    usuario: widget.usuario,
                     vertical: esMobile,
                     mostrarTitulo: esMobile,
                     onCambio: () => setState(() {}),
@@ -506,31 +543,34 @@ class _CartaScreenState extends State<CartaScreen> {
                 opacity: 0.55,
                 child: ColorFiltered(colorFilter: _filtroGris, child: tarjeta),
               ),
-        if (widget.esAdmin)
+        if (_puedeGestionar)
           Positioned(
             top: 18,
             right: 18,
             child: Row(
               children: [
-                _botonAccion(
-                  item.disponible
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  item.disponible ? 'Desactivar' : 'Activar',
-                  () => _alternarDisponible(item),
-                ),
-                const SizedBox(width: 6),
-                _botonAccion(
-                  Icons.edit_outlined,
-                  'Editar',
-                  () => _editarPlato(item),
-                ),
-                const SizedBox(width: 6),
-                _botonAccion(
-                  Icons.delete_outline,
-                  'Eliminar',
-                  () => _eliminarPlato(item),
-                ),
+                if (_puedeEditar)
+                  _botonAccion(
+                    item.disponible
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    item.disponible ? 'Desactivar' : 'Activar',
+                    () => _alternarDisponible(item),
+                  ),
+                if (_puedeEditar) const SizedBox(width: 6),
+                if (_puedeEditar)
+                  _botonAccion(
+                    Icons.edit_outlined,
+                    'Editar',
+                    () => _editarPlato(item),
+                  ),
+                if (_puedeEliminar) const SizedBox(width: 6),
+                if (_puedeEliminar)
+                  _botonAccion(
+                    Icons.delete_outline,
+                    'Eliminar',
+                    () => _eliminarPlato(item),
+                  ),
               ],
             ),
           ),

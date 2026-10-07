@@ -43,6 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Android build output
+/android/build/
+
+# JVM crash logs
+hs_err_pid*.log
+replay_pid*.log
 
 # Widget Preview related
 .widget_preview/

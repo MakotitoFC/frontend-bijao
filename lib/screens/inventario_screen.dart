@@ -3,22 +3,31 @@ import 'package:flutter/material.dart';
 import '../data/catalogos_store.dart';
 import '../data/compras_store.dart';
 import '../data/inventario_store.dart';
-import '../data/usuarios_store.dart';
 import '../data/utensilios_store.dart';
 import '../models/inventario_movimiento.dart';
 import '../models/producto_inventario.dart';
+import '../models/rbac.dart';
+import '../models/taper.dart';
+import '../models/utensilio_roto.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/ajustar_stock_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/app_tag.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/compra_form_dialog.dart';
+import '../widgets/pago_cuenta_empleado_dialog.dart';
 import '../widgets/pestanas_vista.dart';
 import '../widgets/producto_inventario_form_dialog.dart';
 import '../widgets/tabs_desplazables.dart';
+import '../widgets/taper_form_dialog.dart';
+import '../widgets/tipo_producto_form_dialog.dart';
+import '../widgets/tipo_seguimiento_form_dialog.dart';
+import '../widgets/unidad_producto_form_dialog.dart';
 import '../widgets/utensilio_roto_form_dialog.dart';
 
-// Inventario: 3 subvistas (Productos, Compras, Utensilios rotos), solo-Administrador.
+// Inventario: 4 subvistas (Productos, Tápers, Compras, Utensilios rotos), solo-Administrador.
 class InventarioScreen extends StatelessWidget {
   const InventarioScreen({super.key});
 
@@ -29,6 +38,7 @@ class InventarioScreen extends StatelessWidget {
       body: PestanasVista(
         pestanas: [
           (etiqueta: 'Productos', contenido: (_) => const _ProductosTab()),
+          (etiqueta: 'Tápers', contenido: (_) => const _TapersTab()),
           (etiqueta: 'Compras', contenido: (_) => const _ComprasTab()),
           (
             etiqueta: 'Utensilios rotos',
@@ -40,14 +50,14 @@ class InventarioScreen extends StatelessWidget {
   }
 }
 
-String _unidadDe(int id) =>
+String _unidadDe(String id) =>
     unidadesProducto
         .where((u) => u.id == id)
         .map((u) => u.unidad)
         .firstOrNull ??
     '—';
 
-String _tipoProductoDe(int id) =>
+String _tipoProductoDe(String id) =>
     tiposProducto
         .where((t) => t.id == id)
         .map((t) => t.tipoProducto)
@@ -67,8 +77,26 @@ class _ProductosTab extends StatefulWidget {
 }
 
 class _ProductosTabState extends State<_ProductosTab> {
-  int? _filtroTipo; // null = Todos
+  String? _filtroTipo; // null = Todos
   String _busqueda = '';
+  bool _cargando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() => _cargando = true);
+    await Future.wait([
+      CatalogService.instance.cargarTiposProducto(),
+      CatalogService.instance.cargarTiposSeguimiento(),
+      CatalogService.instance.cargarUnidadesProducto(),
+      CatalogService.instance.cargarProductosInventario(),
+    ]);
+    if (mounted) setState(() => _cargando = false);
+  }
 
   List<ProductoInventario> get _visibles {
     var lista = productosInventario.where((p) {
@@ -81,19 +109,19 @@ class _ProductosTabState extends State<_ProductosTab> {
   }
 
   Future<void> _crearProducto() async {
-    final nuevo = await showBlurDialog<ProductoInventario>(
+    final nuevo = await showDialog<ProductoInventario>(
       context: context,
       builder: (_) => const ProductoInventarioFormDialog(),
     );
-    if (nuevo != null) setState(() => agregarProductoInventario(nuevo));
+    if (nuevo != null) setState(() {});
   }
 
   Future<void> _editarProducto(ProductoInventario producto) async {
-    final editado = await showBlurDialog<ProductoInventario>(
+    final editado = await showDialog<ProductoInventario>(
       context: context,
       builder: (_) => ProductoInventarioFormDialog(producto: producto),
     );
-    if (editado != null) setState(() => actualizarProductoInventario(editado));
+    if (editado != null) setState(() {});
   }
 
   Future<void> _eliminarProducto(ProductoInventario producto) async {
@@ -116,8 +144,42 @@ class _ProductosTabState extends State<_ProductosTab> {
       ),
     );
     if (confirmar == true) {
-      setState(() => eliminarProductoInventario(producto.id));
+      try {
+        await CatalogService.instance.eliminarProductoInventario(producto.id);
+        if (mounted) {
+          setState(() {});
+          showAppToast(context, 'Producto eliminado', type: ToastType.success);
+        }
+      } catch (e) {
+        if (mounted) {
+          showAppToast(context, 'Error al eliminar: $e', type: ToastType.error);
+        }
+      }
     }
+  }
+
+  Future<void> _crearTipoProducto() async {
+    final nuevo = await showDialog(
+      context: context,
+      builder: (_) => const TipoProductoFormDialog(),
+    );
+    if (nuevo != null) setState(() {});
+  }
+
+  Future<void> _crearTipoSeguimiento() async {
+    final nuevo = await showDialog(
+      context: context,
+      builder: (_) => const TipoSeguimientoFormDialog(),
+    );
+    if (nuevo != null) setState(() {});
+  }
+
+  Future<void> _crearUnidadProducto() async {
+    final nuevo = await showDialog(
+      context: context,
+      builder: (_) => const UnidadProductoFormDialog(),
+    );
+    if (nuevo != null) setState(() {});
   }
 
   Future<void> _ajustarStock(ProductoInventario producto) async {
@@ -231,7 +293,7 @@ class _ProductosTabState extends State<_ProductosTab> {
     );
   }
 
-  Widget _chipTipo(String etiqueta, int? valor) {
+  Widget _chipTipo(String etiqueta, String? valor) {
     return AppTag(
       etiqueta: etiqueta,
       activo: _filtroTipo == valor,
@@ -244,8 +306,8 @@ class _ProductosTabState extends State<_ProductosTab> {
   int get _sinStock =>
       productosInventario.where((p) => p.stockActual <= 0).length;
 
-  Map<int, double> get _stockPorTipo {
-    final mapa = <int, double>{for (final t in tiposProducto) t.id: 0};
+  Map<String, double> get _stockPorTipo {
+    final mapa = <String, double>{for (final t in tiposProducto) t.id: 0};
     for (final p in productosInventario) {
       mapa[p.tipoProductoId] = (mapa[p.tipoProductoId] ?? 0) + p.stockActual;
     }
@@ -327,25 +389,64 @@ class _ProductosTabState extends State<_ProductosTab> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: AppSearchField(
-                    hint: 'Buscar producto...',
-                    onChanged: (v) => setState(() => _busqueda = v),
-                  ),
+              SizedBox(
+                width: 260,
+                child: AppSearchField(
+                  hint: 'Buscar producto...',
+                  onChanged: (v) => setState(() => _busqueda = v),
                 ),
               ),
-              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: _crearTipoProducto,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey.shade800,
+                  side: BorderSide(color: Colors.grey.shade300),
+                ),
+                icon: const Icon(Icons.category_outlined, size: 16),
+                label: const Text('+ Tipo prod.'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _crearTipoSeguimiento,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey.shade800,
+                  side: BorderSide(color: Colors.grey.shade300),
+                ),
+                icon: const Icon(Icons.timeline_outlined, size: 16),
+                label: const Text('+ Seguimiento'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _crearUnidadProducto,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey.shade800,
+                  side: BorderSide(color: Colors.grey.shade300),
+                ),
+                icon: const Icon(Icons.straighten_outlined, size: 16),
+                label: const Text('+ Unidad'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => showDialog<Taper>(
+                  context: context,
+                  builder: (_) => const TaperFormDialog(),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryGreen,
+                  side: const BorderSide(color: AppColors.primaryGreen),
+                ),
+                icon: const Icon(Icons.takeout_dining_outlined, size: 16),
+                label: const Text('+ Táper'),
+              ),
               FilledButton.icon(
                 onPressed: _crearProducto,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
                 ),
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Producto'),
+                label: const Text('+ Nuevo producto'),
               ),
             ],
           ),
@@ -528,11 +629,17 @@ class _ProductosTabState extends State<_ProductosTab> {
             ),
           );
     final actualizar = OutlinedButton.icon(
-      onPressed: () => setState(() {}),
+      onPressed: _cargando ? null : _cargar,
       style: OutlinedButton.styleFrom(
         side: BorderSide(color: Colors.grey.shade300),
       ),
-      icon: const Icon(Icons.refresh, size: 16),
+      icon: _cargando
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.refresh, size: 16),
       label: const Text('Actualizar'),
     );
     final nuevo = FilledButton.icon(
@@ -540,6 +647,18 @@ class _ProductosTabState extends State<_ProductosTab> {
       style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
       icon: const Icon(Icons.add, size: 16),
       label: const Text('Nuevo producto'),
+    );
+    final nuevoTaper = OutlinedButton.icon(
+      onPressed: () => showDialog<Taper>(
+        context: context,
+        builder: (_) => const TaperFormDialog(),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primaryGreen,
+        side: const BorderSide(color: AppColors.primaryGreen),
+      ),
+      icon: const Icon(Icons.takeout_dining_outlined, size: 16),
+      label: const Text('Nuevo táper'),
     );
     return Container(
       padding: const EdgeInsets.all(16),
@@ -557,7 +676,9 @@ class _ProductosTabState extends State<_ProductosTab> {
                 if (aviso != null) ...[const SizedBox(width: 12), aviso],
                 const Spacer(),
                 actualizar,
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
+                nuevoTaper,
+                const SizedBox(width: 10),
                 nuevo,
               ],
             );
@@ -566,7 +687,7 @@ class _ProductosTabState extends State<_ProductosTab> {
             spacing: 12,
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: [titulo, ?aviso, actualizar, nuevo],
+            children: [titulo, ?aviso, actualizar, nuevoTaper, nuevo],
           );
         },
       ),
@@ -800,7 +921,7 @@ class _ProductosTabState extends State<_ProductosTab> {
                           ),
                         ),
                       ),
-                      if (p.estado == 'inactivo') ...[
+                      if (!p.estado) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -1127,146 +1248,1017 @@ class _UtensiliosRotosTab extends StatefulWidget {
 }
 
 class _UtensiliosRotosTabState extends State<_UtensiliosRotosTab> {
-  String _nombreProducto(String id) =>
-      productosInventario
-          .where((p) => p.id == id)
-          .map((p) => p.nombre)
-          .firstOrNull ??
-      'Producto eliminado';
+  String _busqueda = '';
+  String _filtro = 'todos'; // todos, pendientes, cobro, reposicion, resueltos
+  bool _cargando = false;
+  List<UserRBACModel> _empleados = [];
 
-  String _nombreEmpleado(String id) =>
-      usuarios.where((u) => u.id == id).map((u) => u.nombre).firstOrNull ??
-      'Usuario eliminado';
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() => _cargando = true);
+    try {
+      final res = await Future.wait([
+        CatalogService.instance.cargarUtensiliosRotos(),
+        CatalogService.instance.cargarProductosInventario(),
+        CatalogService.instance.cargarUsuariosRBAC(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _empleados = res[2] as List<UserRBACModel>;
+          _cargando = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  String _nombreProducto(UtensilioRoto u) {
+    if (u.productoNombre != null && u.productoNombre!.isNotEmpty) {
+      return u.productoNombre!;
+    }
+    return productosInventario
+            .where((p) => p.id == u.productoInventarioId)
+            .map((p) => p.nombre)
+            .firstOrNull ??
+        'Producto';
+  }
+
+  String _nombreEmpleado(UtensilioRoto u) {
+    if (u.empleadoNombre != null && u.empleadoNombre!.isNotEmpty) {
+      return u.empleadoNombre!;
+    }
+    return _empleados
+            .where((e) => e.id == u.empleadoId)
+            .map((e) => e.usuario)
+            .firstOrNull ??
+        'Empleado';
+  }
 
   Future<void> _registrar() async {
-    final registrado = await showBlurDialog<bool>(
+    final res = await showDialog<bool>(
       context: context,
       builder: (_) => const UtensilioRotoFormDialog(),
     );
-    if (registrado == true) setState(() {});
+    if (res == true) _cargar();
   }
 
-  Widget _chipEstado(String etiqueta, bool activo, ValueChanged<bool> onTap) {
-    return AppTag(
-      etiqueta: etiqueta,
-      activo: activo,
-      icono: activo ? Icons.check_circle : Icons.circle_outlined,
-      onTap: () => setState(() => onTap(!activo)),
+  Future<void> _abonarPago(UtensilioRoto u) async {
+    final pagado = await showDialog<bool>(
+      context: context,
+      builder: (_) => PagoCuentaEmpleadoDialog(rotura: u),
     );
+    if (pagado == true) _cargar();
+  }
+
+  Future<void> _marcarRepuesto(UtensilioRoto u) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar reposición'),
+        content: Text(
+          '¿Confirmar que el empleado ya repuso "${_nombreProducto(u)}" en físico?\nEsto marcará el registro como resuelto.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      try {
+        await CatalogService.instance.actualizarUtensilioRoto(u.copyWith(done: true));
+        if (mounted) {
+          showAppToast(context, 'Reposición registrada como completada', type: ToastType.success);
+          _cargar();
+        }
+      } catch (e) {
+        if (mounted) {
+          showAppToast(context, 'Error: $e', type: ToastType.error);
+        }
+      }
+    }
+  }
+
+  Future<void> _eliminar(UtensilioRoto u) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar registro'),
+        content: Text('¿Eliminar el registro de rotura de "${_nombreProducto(u)}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      try {
+        await CatalogService.instance.eliminarUtensilioRoto(u.id);
+        if (mounted) {
+          showAppToast(context, 'Registro eliminado', type: ToastType.success);
+          _cargar();
+        }
+      } catch (e) {
+        if (mounted) {
+          showAppToast(context, 'Error al eliminar: $e', type: ToastType.error);
+        }
+      }
+    }
+  }
+
+  List<UtensilioRoto> get _filtrados {
+    final query = _busqueda.trim().toLowerCase();
+    return utensiliosRotos.where((u) {
+      if (query.isNotEmpty) {
+        final prod = _nombreProducto(u).toLowerCase();
+        final emp = _nombreEmpleado(u).toLowerCase();
+        final notas = (u.notas ?? '').toLowerCase();
+        if (!prod.contains(query) && !emp.contains(query) && !notas.contains(query)) {
+          return false;
+        }
+      }
+
+      switch (_filtro) {
+        case 'pendientes':
+          return !u.done;
+        case 'cobro':
+          return u.isPagado;
+        case 'reposicion':
+          return u.isRepuesto;
+        case 'resueltos':
+          return u.done;
+        default:
+          return true;
+      }
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final totalIncidentes = utensiliosRotos.length;
+    final totalCosto = utensiliosRotos.fold(0.0, (s, u) => s + u.costoTotal);
+    final pendientes = utensiliosRotos.where((u) => !u.done).length;
+    final resueltos = utensiliosRotos.where((u) => u.done).length;
+
+    final lista = _filtrados;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Tarjetas de métricas
+          LayoutBuilder(
+            builder: (context, c) {
+              final columnas = c.maxWidth < 650 ? 2 : 4;
+              final ancho = (c.maxWidth - ((columnas - 1) * 12)) / columnas;
+              Widget tarjeta(IconData icon, Color color, String titulo, String valor) {
+                return SizedBox(
+                  width: ancho,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(icon, color: color, size: 20),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                titulo,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                              ),
+                              Text(
+                                valor,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  tarjeta(Icons.broken_image_outlined, Colors.red.shade400, 'Total incidentes', '$totalIncidentes'),
+                  tarjeta(Icons.payments_outlined, Colors.orange.shade600, 'Costo acumulado', 'S/ ${totalCosto.toStringAsFixed(2)}'),
+                  tarjeta(Icons.pending_actions, Colors.amber.shade700, 'Pendientes', '$pendientes'),
+                  tarjeta(Icons.check_circle_outline, AppColors.primaryGreen, 'Resueltos', '$resueltos'),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Cabecera con Buscador y botón Registrar
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 320,
+                  child: AppSearchField(
+                    hint: 'Buscar por producto, empleado o nota...',
+                    onChanged: (v) => setState(() => _busqueda = v),
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton.outlined(
+                      tooltip: 'Actualizar',
+                      onPressed: _cargando ? null : _cargar,
+                      icon: _cargando
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh, size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      onPressed: _registrar,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                      ),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Registrar rotura'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Filtros
+          TabsDesplazables(
+            child: Row(
+              children: [
+                _filtroChip('Todos', 'todos'),
+                _filtroChip('Pendientes', 'pendientes'),
+                _filtroChip('Por cobrar (A cuenta)', 'cobro'),
+                _filtroChip('Por reponer (Físico)', 'reposicion'),
+                _filtroChip('Resueltos', 'resueltos'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Lista de Utensilios
+          if (_cargando && utensiliosRotos.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (lista.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey.shade300),
+                    const SizedBox(height: 12),
+                    Text(
+                      utensiliosRotos.isEmpty
+                          ? 'Aún no se han registrado roturas de utensilios'
+                          : 'No se encontraron registros con los filtros actuales',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      utensiliosRotos.isEmpty
+                          ? 'Registra roturas o mermas para descontar de stock y gestionar cobros a empleados.'
+                          : 'Prueba cambiando los filtros de búsqueda.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: lista.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final u = lista[index];
+                return _tarjetaRotura(u);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filtroChip(String label, String valor) {
+    final activo = _filtro == valor;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+      padding: const EdgeInsets.only(right: 8),
+      child: AppTag(
+        etiqueta: label,
+        activo: activo,
+        onTap: () => setState(() => _filtro = valor),
+      ),
+    );
+  }
+
+  Widget _tarjetaRotura(UtensilioRoto u) {
+    final prodNombre = _nombreProducto(u);
+    final empNombre = _nombreEmpleado(u);
+    final saldoRestante = (u.costoTotal - u.totalPagado).clamp(0.0, u.costoTotal);
+    final progreso = u.costoTotal > 0 ? (u.totalPagado / u.costoTotal).clamp(0.0, 1.0) : 1.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: u.done ? Colors.grey.shade200 : (u.isPagado ? Colors.amber.shade200 : Colors.blue.shade200),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Utensilios rotos',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: (u.done ? AppColors.primaryGreen : Colors.red).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  u.done ? Icons.check_circle_outline : Icons.broken_image_outlined,
+                  color: u.done ? AppColors.primaryGreen : Colors.red,
+                  size: 22,
                 ),
               ),
-              FilledButton.icon(
-                onPressed: _registrar,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${u.cantidad}x $prodNombre',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          ),
+                        ),
+                        Text(
+                          'S/ ${u.costoTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Responsable: $empNombre · ${_fecha(u.fecha)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  ],
                 ),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Registrar rotura'),
+              ),
+              IconButton(
+                tooltip: 'Eliminar registro',
+                icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                onPressed: () => _eliminar(u),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: utensiliosRotos.isEmpty
-                ? Center(
-                    child: Text(
-                      'Aún no se han registrado roturas',
-                      style: TextStyle(color: Colors.grey.shade500),
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: utensiliosRotos.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final u = utensiliosRotos[index];
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.grey.shade200),
+
+          if (u.notas != null && u.notas!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Nota: ${u.notas}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+          Divider(height: 1, color: Colors.grey.shade200),
+          const SizedBox(height: 12),
+
+          // Estado y Acciones
+          Row(
+            children: [
+              // Badges de estado
+              if (u.done)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check, size: 14, color: AppColors.primaryGreen),
+                      SizedBox(width: 4),
+                      Text(
+                        'Resuelto / Liquidado',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryGreen,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${u.cantidad}x ${_nombreProducto(u.productoInventarioId)}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
+                      ),
+                    ],
+                  ),
+                )
+              else if (u.isPagado)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.payments_outlined, size: 14, color: Colors.amber.shade900),
+                      const SizedBox(width: 4),
+                      Text(
+                        'A cuenta de sueldo (Pendiente)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (u.isRepuesto)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.cached, size: 14, color: Colors.blue.shade900),
+                      const SizedBox(width: 4),
+                      Text(
+                        'A reponer en físico (Pendiente)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const Spacer(),
+
+              // Botones de acción según el caso
+              if (!u.done && u.isPagado)
+                FilledButton.icon(
+                  onPressed: () => _abonarPago(u),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.amber.shade800,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  icon: const Icon(Icons.payment, size: 16),
+                  label: const Text('Abonar pago', style: TextStyle(fontSize: 13)),
+                ),
+
+              if (!u.done && u.isRepuesto)
+                FilledButton.icon(
+                  onPressed: () => _marcarRepuesto(u),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  icon: const Icon(Icons.check, size: 16),
+                  label: const Text('Confirmar reposición', style: TextStyle(fontSize: 13)),
+                ),
+            ],
+          ),
+
+          // Barra de pagos si es a cuenta de empleado
+          if (u.isPagado) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progreso,
+                minHeight: 6,
+                backgroundColor: Colors.grey.shade200,
+                color: u.done ? AppColors.primaryGreen : Colors.amber.shade700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Abonado: S/ ${u.totalPagado.toStringAsFixed(2)} de S/ ${u.costoTotal.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  saldoRestante > 0 ? 'Saldo: S/ ${saldoRestante.toStringAsFixed(2)}' : 'Saldado ✓',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: saldoRestante > 0 ? Colors.red.shade700 : AppColors.primaryGreen,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------- Tápers ----------------
+
+class _TapersTab extends StatefulWidget {
+  const _TapersTab();
+
+  @override
+  State<_TapersTab> createState() => _TapersTabState();
+}
+
+class _TapersTabState extends State<_TapersTab> {
+  String _busqueda = '';
+  bool _cargando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() => _cargando = true);
+    await CatalogService.instance.cargarTapers();
+    if (mounted) setState(() => _cargando = false);
+  }
+
+  Future<void> _crearTaper() async {
+    final nuevo = await showDialog<Taper>(
+      context: context,
+      builder: (_) => const TaperFormDialog(),
+    );
+    if (nuevo != null) setState(() {});
+  }
+
+  Future<void> _editarTaper(Taper taper) async {
+    final editado = await showDialog<Taper>(
+      context: context,
+      builder: (_) => TaperFormDialog(taper: taper),
+    );
+    if (editado != null) setState(() {});
+  }
+
+  Future<void> _eliminarTaper(Taper taper) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar Táper'),
+        content: Text('¿Seguro que deseas eliminar "${taper.nombre}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      try {
+        await CatalogService.instance.eliminarTaper(taper.id);
+        if (!mounted) return;
+        setState(() {});
+        showAppToast(context, 'Táper eliminado', type: ToastType.success);
+      } catch (e) {
+        if (!mounted) return;
+        showAppToast(context, 'Error al eliminar táper: $e',
+            type: ToastType.error);
+      }
+    }
+  }
+
+  Future<void> _alternarEstado(Taper taper) async {
+    try {
+      await CatalogService.instance.alternarEstadoTaper(taper);
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        taper.estado ? 'Táper desactivado' : 'Táper activado',
+        type: ToastType.info,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, 'Error: $e', type: ToastType.error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tapers = CatalogService.instance.tapers;
+    final query = _busqueda.trim().toLowerCase();
+    final filtrados = tapers.where((t) {
+      if (query.isEmpty) return true;
+      return t.nombre.toLowerCase().contains(query);
+    }).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Tarjeta de cabecera
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.takeout_dining,
+                    color: AppColors.primaryGreen,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Catálogo de Tápers',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Configura los recipientes y costos para platos y pedidos para llevar o delivery.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton.outlined(
+                  tooltip: 'Actualizar lista',
+                  onPressed: _cargando ? null : _cargar,
+                  icon: _cargando
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 18),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _crearTaper,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Nuevo táper'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Buscador
+          Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppSearchField(
+                    hint: 'Buscar táper por nombre...',
+                    onChanged: (v) => setState(() => _busqueda = v),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Total: ${filtrados.length} táper(s)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Lista de tápers
+          if (_cargando && tapers.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (filtrados.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.takeout_dining_outlined,
+                      size: 48,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      tapers.isEmpty
+                          ? 'Aún no hay tápers registrados'
+                          : 'No se encontraron tápers con "$_busqueda"',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      tapers.isEmpty
+                          ? 'Crea un táper para poder asociarlo a los platos de la carta.'
+                          : 'Prueba con otro término de búsqueda.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                    if (tapers.isEmpty) ...[
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _crearTaper,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryGreen,
+                        ),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Agregar táper'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, c) {
+                final ancho = c.maxWidth;
+                final esDosColumnas = ancho >= 700;
+
+                Widget buildCard(Taper t) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: t.estado
+                            ? Colors.grey.shade200
+                            : Colors.grey.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: t.estado
+                                ? AppColors.primaryGreen.withValues(alpha: 0.1)
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.takeout_dining,
+                            color: t.estado
+                                ? AppColors.primaryGreen
+                                : Colors.grey.shade500,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                t.nombre,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: t.estado ? Colors.black87 : Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryGreen
+                                          .withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'S/ ${t.precio.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                        color: AppColors.primaryGreen,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Text(
-                                  'S/ ${u.costoTotal.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: t.estado
+                                          ? AppColors.primaryGreen
+                                              .withValues(alpha: 0.12)
+                                          : Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      t.estado ? 'Activo' : 'Inactivo',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: t.estado
+                                            ? AppColors.primaryGreen
+                                            : Colors.grey.shade600,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${_nombreEmpleado(u.empleadoId)} · ${_fecha(u.fecha)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            if (u.notas != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                u.notas!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
+                                ],
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                _chipEstado(
-                                  'Pagado',
-                                  u.isPagado,
-                                  (v) => actualizarUtensilioRoto(
-                                    u.copyWith(isPagado: v),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _chipEstado(
-                                  'Repuesto',
-                                  u.isRespuesto,
-                                  (v) => actualizarUtensilioRoto(
-                                    u.copyWith(isRespuesto: v),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                          ),
                         ),
-                      );
-                    },
-                  ),
-          ),
+                        IconButton(
+                          tooltip: t.estado ? 'Desactivar' : 'Activar',
+                          icon: Icon(
+                            t.estado
+                                ? Icons.toggle_on
+                                : Icons.toggle_off_outlined,
+                            size: 26,
+                            color: t.estado
+                                ? AppColors.primaryGreen
+                                : Colors.grey,
+                          ),
+                          onPressed: () => _alternarEstado(t),
+                        ),
+                        IconButton(
+                          tooltip: 'Editar táper',
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          onPressed: () => _editarTaper(t),
+                        ),
+                        IconButton(
+                          tooltip: 'Eliminar táper',
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: 18,
+                            color: AppColors.error,
+                          ),
+                          onPressed: () => _eliminarTaper(t),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                if (!esDosColumnas) {
+                  return Column(
+                    children: [for (final t in filtrados) buildCard(t)],
+                  );
+                }
+
+                return Wrap(
+                  spacing: 14,
+                  runSpacing: 0,
+                  children: [
+                    for (final t in filtrados)
+                      SizedBox(
+                        width: (ancho - 14) / 2,
+                        child: buildCard(t),
+                      ),
+                  ],
+                );
+              },
+            ),
         ],
       ),
     );

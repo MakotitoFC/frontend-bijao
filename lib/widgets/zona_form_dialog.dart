@@ -3,14 +3,19 @@ import 'package:flutter/material.dart';
 import '../data/mesas_store.dart';
 import '../theme/app_theme.dart';
 
-typedef ZonaFormResultado = ({String nombre, bool eliminar});
+typedef ZonaFormResultado = ({String nombre, bool estado, bool eliminar});
 
-// Alta o edición de una zona del local: solo el nombre. En edición también
+// Alta o edición de una zona del local: nombre y estado activo. En edición también
 // permite eliminarla (junto con sus mesas, si todas están libres).
 class ZonaFormDialog extends StatefulWidget {
   final String? zona;
+  final bool estadoInicial;
 
-  const ZonaFormDialog({super.key, this.zona});
+  const ZonaFormDialog({
+    super.key,
+    this.zona,
+    this.estadoInicial = true,
+  });
 
   @override
   State<ZonaFormDialog> createState() => _ZonaFormDialogState();
@@ -19,6 +24,7 @@ class ZonaFormDialog extends StatefulWidget {
 class _ZonaFormDialogState extends State<ZonaFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final _nombreController = TextEditingController(text: widget.zona);
+  late bool _estado = widget.estadoInicial;
 
   bool get _editando => widget.zona != null;
 
@@ -30,8 +36,11 @@ class _ZonaFormDialogState extends State<ZonaFormDialog> {
 
   void _guardar() {
     if (!_formKey.currentState!.validate()) return;
-    Navigator.of(context)
-        .pop((nombre: _nombreController.text.trim(), eliminar: false));
+    Navigator.of(context).pop((
+      nombre: _nombreController.text.trim(),
+      estado: _estado,
+      eliminar: false,
+    ));
   }
 
   @override
@@ -110,6 +119,19 @@ class _ZonaFormDialogState extends State<ZonaFormDialog> {
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                 ],
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Zona Activa', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    _estado ? 'Visible en el plano de mesas' : 'Oculta en el plano de mesas',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  value: _estado,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: AppColors.primaryGreen,
+                  onChanged: (v) => setState(() => _estado = v),
+                ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -119,7 +141,7 @@ class _ZonaFormDialogState extends State<ZonaFormDialog> {
                         child: OutlinedButton(
                           onPressed: puedeEliminar
                               ? () => Navigator.of(context)
-                                    .pop((nombre: widget.zona!, eliminar: true))
+                                    .pop((nombre: widget.zona!, estado: _estado, eliminar: true))
                               : null,
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.error,

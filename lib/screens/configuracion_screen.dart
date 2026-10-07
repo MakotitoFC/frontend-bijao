@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/configuracion_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/horario.dart';
+import '../models/rbac.dart';
 import '../models/usuario.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/blur_dialog.dart';
 import '../widgets/app_select.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/config_widgets.dart';
 import '../widgets/pestanas_vista.dart';
+import '../widgets/usuario_permisos_dialog.dart';
 
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
 // Usuarios y roles, y Negocio.
@@ -23,6 +28,79 @@ class ConfiguracionScreen extends StatefulWidget {
 }
 
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
+  List<RolModel> _rolesRBAC = [];
+  List<PermisoModel> _permisosRBAC = [];
+  List<UserRBACModel> _usuariosRBAC = [];
+  String? _rolSeleccionadoId;
+  bool _cargandoRBAC = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarRBAC();
+  }
+
+  Future<void> _cargarRBAC() async {
+    setState(() => _cargandoRBAC = true);
+    try {
+      final roles = await CatalogService.instance.cargarRoles();
+      final permisos = await CatalogService.instance.cargarPermisos();
+      final usuarios = await CatalogService.instance.cargarUsuariosRBAC();
+      if (mounted) {
+        setState(() {
+          _rolesRBAC = roles;
+          _permisosRBAC = permisos;
+          _usuariosRBAC = usuarios;
+          if ((_rolSeleccionadoId == null || !_rolesRBAC.any((r) => r.id == _rolSeleccionadoId)) &&
+              _rolesRBAC.isNotEmpty) {
+            _rolSeleccionadoId = _rolesRBAC.first.id;
+          }
+          _cargandoRBAC = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _cargandoRBAC = false);
+    }
+  }
+
+  Future<void> _togglePermisoRol(RolModel rol, PermisoModel permiso, bool asignar) async {
+    try {
+      if (asignar) {
+        await CatalogService.instance.asignarPermisoRol(rol.id, permiso.id);
+        if (!mounted) return;
+        showAppToast(context, 'Permiso asignado al rol ${rol.rol}', type: ToastType.success);
+      } else {
+        await CatalogService.instance.removerPermisoRol(rol.id, permiso.id);
+        if (!mounted) return;
+        showAppToast(context, 'Permiso revocado del rol ${rol.rol}', type: ToastType.info);
+      }
+      await _cargarRBAC();
+    } catch (e) {
+      if (mounted) showAppToast(context, 'Error actualizando permiso: $e', type: ToastType.error);
+    }
+  }
+
+  Future<void> _gestionarPermisosUsuario(UserRBACModel u) async {
+    final usuarioModel = Usuario(
+      id: u.id,
+      nombre: u.usuario,
+      email: u.email,
+      password: '',
+      rol: AppRoleLabel.fromString(u.rolNombre),
+      sedeId: widget.usuario.sedeId,
+      activo: u.estado,
+    );
+    await showBlurDialog(
+      context: context,
+      builder: (_) => UsuarioPermisosDialog(
+        usuario: usuarioModel,
+        roles: _rolesRBAC,
+        permisos: _permisosRBAC,
+      ),
+    );
+    await _cargarRBAC();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,10 +116,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             etiqueta: 'Métodos de pago',
             contenido: (_) => _pagina(_metodosPago()),
           ),
-          (
-            etiqueta: 'Usuarios y roles',
-            contenido: (_) => _pagina(_usuarios()),
-          ),
+          if (widget.usuario.tienePermiso('LEER.USUARIO') || widget.usuario.esAdmin)
+            (
+              etiqueta: 'Usuarios y roles',
+              contenido: (_) => _pagina(_usuarios()),
+            ),
           (etiqueta: 'Negocio', contenido: (_) => _pagina(_negocio())),
         ],
       ),
@@ -296,51 +375,191 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            for (final u in usuarios) ...[
-              Divider(height: 1, color: Colors.grey.shade200),
-              _filaUsuario(u),
+            if (_cargandoRBAC && _usuariosRBAC.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_usuariosRBAC.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text('No hay usuarios registrados.', style: TextStyle(color: Colors.grey.shade600)),
+              )
+            else
+              for (final u in _usuariosRBAC) ...[
+                Divider(height: 1, color: Colors.grey.shade200),
+                _filaUsuario(u),
+              ],
+          ],
+        ),
+      ),
+      Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Gestión de Permisos por Rol',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Asigna o revoca permisos a cada rol del sistema (tabla rol_permiso).',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            if (_cargandoRBAC)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_rolesRBAC.isEmpty)
+              const Text('No se pudieron cargar los roles del sistema.')
+            else ...[
+              // Selector de rol
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _rolesRBAC.map((r) {
+                  final seleccionado = r.id == _rolSeleccionadoId;
+                  return ChoiceChip(
+                    label: Text(
+                      r.rol,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: seleccionado ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    selected: seleccionado,
+                    selectedColor: AppColors.primaryGreen,
+                    onSelected: (val) {
+                      if (val) setState(() => _rolSeleccionadoId = r.id);
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+              _seccionPermisosDelRolActual(),
             ],
           ],
         ),
       ),
-      SeccionConfig(
-        titulo: 'Roles',
-        descripcion: 'Qué puede hacer cada rol dentro del sistema.',
-        filas: [
-          for (final r in AppRole.values)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 130,
-                    child: Text(
-                      r.label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      r.descripcion,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
     ];
   }
 
-  Widget _filaUsuario(Usuario u) {
+  Widget _seccionPermisosDelRolActual() {
+    final rolActual = _rolesRBAC.firstWhere(
+      (r) => r.id == _rolSeleccionadoId,
+      orElse: () => _rolesRBAC.first,
+    );
+
+    // Agrupar permisos por categorías lógicas
+    final Map<String, List<PermisoModel>> categorias = {
+      'Mesas y Zonas': [],
+      'Carta y Menú': [],
+      'Pedidos y Propinas': [],
+      'Caja y Pagos': [],
+      'Seguridad y Usuarios': [],
+    };
+
+    for (final p in _permisosRBAC) {
+      final perm = p.permiso.toUpperCase();
+      if (perm.contains('ZONA') || perm.contains('MESA')) {
+        categorias['Mesas y Zonas']!.add(p);
+      } else if (perm.contains('CARTA') ||
+          perm.contains('CATEGORIA') ||
+          perm.contains('TAPER') ||
+          perm.contains('MODIFICADOR')) {
+        categorias['Carta y Menú']!.add(p);
+      } else if (perm.contains('PEDIDO') || perm.contains('PROPINA')) {
+        categorias['Pedidos y Propinas']!.add(p);
+      } else if (perm.contains('PAGO') ||
+          perm.contains('MOVIMIENTO') ||
+          perm.contains('MEDIO')) {
+        categorias['Caja y Pagos']!.add(p);
+      } else {
+        categorias['Seguridad y Usuarios']!.add(p);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final entry in categorias.entries) ...[
+          if (entry.value.isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.key,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF2D3748),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (var i = 0; i < entry.value.length; i++) ...[
+                    if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
+                    () {
+                      final p = entry.value[i];
+                      final asignado = rolActual.tienePermiso(p.permiso);
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                p.permiso,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Switch(
+                              value: asignado,
+                              activeThumbColor: Colors.white,
+                              activeTrackColor: AppColors.primaryGreen,
+                              onChanged: (val) =>
+                                  _togglePermisoRol(rolActual, p, val),
+                            ),
+                          ],
+                        ),
+                      );
+                    }(),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _filaUsuario(UserRBACModel u) {
     final soyYo = u.id == widget.usuario.id;
+    final rolActual = _rolesRBAC.where((r) => r.id == u.rolId).firstOrNull ??
+        RolModel(id: u.rolId, rol: u.rolNombre.isNotEmpty ? u.rolNombre : 'Sin rol');
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -349,7 +568,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             radius: 18,
             backgroundColor: AppColors.primaryGreen.withValues(alpha: 0.12),
             child: Text(
-              u.nombre.isEmpty ? '?' : u.nombre[0].toUpperCase(),
+              u.usuario.isEmpty ? '?' : u.usuario[0].toUpperCase(),
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
                 color: AppColors.primaryGreen,
@@ -362,7 +581,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  u.nombre + (soyYo ? ' (tú)' : ''),
+                  u.usuario + (soyYo ? ' (tú)' : ''),
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -375,13 +594,23 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               ],
             ),
           ),
-          PopupMenuButton<AppRole>(
+          PopupMenuButton<RolModel>(
             tooltip: 'Cambiar rol',
             enabled: !soyYo,
-            onSelected: (r) => setState(() => actualizarUsuario(_conRol(u, r))),
+            onSelected: (r) async {
+              try {
+                await CatalogService.instance.actualizarRolUsuario(u.id, r.id);
+                if (!mounted) return;
+                showAppToast(context, 'Rol de ${u.usuario} actualizado a ${r.rol}', type: ToastType.success);
+                await _cargarRBAC();
+              } catch (e) {
+                if (!mounted) return;
+                showAppToast(context, 'Error actualizando rol: $e', type: ToastType.error);
+              }
+            },
             itemBuilder: (_) => [
-              for (final r in AppRole.values)
-                PopupMenuItem(value: r, child: Text(r.label)),
+              for (final r in _rolesRBAC)
+                PopupMenuItem(value: r, child: Text(r.rol)),
             ],
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -392,7 +621,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(u.rol.label, style: const TextStyle(fontSize: 12)),
+                  Text(rolActual.rol, style: const TextStyle(fontSize: 12)),
                   const SizedBox(width: 4),
                   Icon(
                     Icons.keyboard_arrow_down,
@@ -405,40 +634,48 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           ),
           const SizedBox(width: 8),
           Tooltip(
-            message: soyYo ? 'No puedes desactivarte' : 'Activo',
+            message: soyYo
+                ? 'No puedes desactivarte'
+                : (u.estado ? 'Desactivar usuario' : 'Activar usuario'),
             child: Switch(
-              value: u.activo,
+              value: u.estado,
               onChanged: soyYo
                   ? null
-                  : (v) => setState(() => actualizarUsuario(_conActivo(u, v))),
+                  : (v) async {
+                      try {
+                        await CatalogService.instance.actualizarEstadoUsuario(u.id, v);
+                        if (!mounted) return;
+                        showAppToast(
+                          context,
+                          v ? 'Usuario "${u.usuario}" activado' : 'Usuario "${u.usuario}" desactivado',
+                          type: v ? ToastType.success : ToastType.info,
+                        );
+                        await _cargarRBAC();
+                      } catch (e) {
+                        if (!mounted) return;
+                        showAppToast(context, 'Error actualizando estado: $e', type: ToastType.error);
+                      }
+                    },
               activeThumbColor: Colors.white,
               activeTrackColor: AppColors.primaryGreen,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Gestionar permisos directos y roles',
+            child: IconButton(
+              icon: const Icon(
+                LucideIcons.shieldCheck,
+                color: AppColors.primaryGreen,
+                size: 20,
+              ),
+              onPressed: () => _gestionarPermisosUsuario(u),
             ),
           ),
         ],
       ),
     );
   }
-
-  Usuario _conRol(Usuario u, AppRole rol) => Usuario(
-    id: u.id,
-    nombre: u.nombre,
-    email: u.email,
-    password: u.password,
-    rol: rol,
-    sedeId: u.sedeId,
-    activo: u.activo,
-  );
-
-  Usuario _conActivo(Usuario u, bool activo) => Usuario(
-    id: u.id,
-    nombre: u.nombre,
-    email: u.email,
-    password: u.password,
-    rol: u.rol,
-    sedeId: u.sedeId,
-    activo: activo,
-  );
 
   Future<void> _nuevoUsuario() async {
     final nombre = TextEditingController();

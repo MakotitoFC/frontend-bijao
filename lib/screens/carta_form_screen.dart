@@ -1,26 +1,36 @@
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../data/categorias_store.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
+import '../models/taper.dart';
+import '../services/auth_service.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
-import '../utils/agregados_utils.dart';
+import '../utils/uuid_helper.dart';
 import '../widgets/app_select.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 
-// Alta/edición de un producto (tabla `productos`), solo Administrador.
-// TODO backend: insertar/actualizar `productos`.
+/// Formulario para Crear / Editar un plato en la `carta` (según BD.txt).
+/// Campos en tabla `carta`:
+/// - id (uuid)
+/// - nombre_plato (varchar 50)
+/// - descripcion (text)
+/// - categoria_id (uuid)
+/// - taper_id (uuid, nullable)
+/// - estado ('disponible' | 'agotado')
+/// - precio_cliente (decimal)
+/// - precio_personal (decimal, opcional)
+/// - sede_id (uuid)
 class CartaFormScreen extends StatefulWidget {
   final CartaItem? item; // null = crear nuevo
-
-  // Categoría preseleccionada al crear (ej. la pestaña activa en Productos).
   final String? categoriaInicialId;
 
-  const CartaFormScreen({super.key, this.item, this.categoriaInicialId});
+  const CartaFormScreen({
+    super.key,
+    this.item,
+    this.categoriaInicialId,
+  });
 
   @override
   State<CartaFormScreen> createState() => _CartaFormScreenState();
@@ -28,452 +38,156 @@ class CartaFormScreen extends StatefulWidget {
 
 class _CartaFormScreenState extends State<CartaFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final _nombreController = TextEditingController(
-    text: widget.item?.nombrePlato ?? '',
-  );
-  late final _descripcionController = TextEditingController(
-    text: widget.item?.descripcion ?? '',
-  );
-  late final _precioController = TextEditingController(
-    text: widget.item?.precioCliente?.toStringAsFixed(2) ?? '',
-  );
-  late final _costoController = TextEditingController(
-    text: widget.item?.costo?.toStringAsFixed(2) ?? '',
-  );
-  late final _stockController = TextEditingController(
-    text: '${widget.item?.stock ?? 0}',
-  );
-  late final _skuController = TextEditingController(
-    text: widget.item?.sku ?? '',
-  );
-  late final _limiteController = TextEditingController(
-    text: widget.item?.limiteAgregados?.toString() ?? '',
-  );
-  final _agregadoNombreController = TextEditingController();
-  final _agregadoPrecioController = TextEditingController();
 
-  late CategoriaComida? _categoria = categorias
-      .where(
-        (c) => c.id == (widget.item?.categoriaId ?? widget.categoriaInicialId),
-      )
-      .firstOrNull;
-  late bool _platoDelDia = widget.item?.platoDelDia ?? false;
-  late bool _activo = widget.item?.estado != 'inactivo';
-  late final List<Map<String, dynamic>> _agregados = List.of(
-    agregadosSimples(widget.item?.agregados ?? const []),
-  );
-  late final List<_GrupoEditable> _grupos = [
-    for (final g in gruposDeAgregados(widget.item?.agregados ?? const []))
-      _GrupoEditable(
-        nombre: nombreGrupo(g),
-        cantidadMaxima: cantidadMaximaGrupo(g) ?? 1,
-        items: List.of(itemsDeGrupo(g)),
-      ),
-  ];
-  Uint8List? _imagenBytes;
+  late final TextEditingController _nombreController;
+  late final TextEditingController _descripcionController;
+  late final TextEditingController _precioClienteController;
+  late final TextEditingController _precioPersonalController;
+  late final TextEditingController _taperSearchController;
+  late final FocusNode _taperFocusNode;
+
+  CategoriaComida? _categoria;
+  String? _selectedTaperId;
+  String? _selectedTaperNombre;
+  String _estado = 'disponible';
+  bool _mostrarListaTapers = false;
+  bool _cargandoTapers = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final item = widget.item;
+    _nombreController = TextEditingController(text: item?.nombrePlato ?? '');
+    _descripcionController = TextEditingController(text: item?.descripcion ?? '');
+    _precioClienteController = TextEditingController(
+      text: item?.precioCliente != null ? item!.precioCliente!.toStringAsFixed(2) : '',
+    );
+    _precioPersonalController = TextEditingController(
+      text: item?.precioPersonal != null ? item!.precioPersonal!.toStringAsFixed(2) : '',
+    );
+
+    // Categoría preseleccionada
+    final catId = item?.categoriaId ?? widget.categoriaInicialId;
+    _categoria = categorias.where((c) => c.id == catId).firstOrNull;
+    if (_categoria == null && categorias.isNotEmpty && catId == null) {
+      _categoria = categorias.first;
+    }
+
+    _estado = (item?.estado == 'agotado') ? 'agotado' : 'disponible';
+    _selectedTaperId = item?.taperId;
+
+    _taperSearchController = TextEditingController();
+    _taperFocusNode = FocusNode();
+
+    _taperFocusNode.addListener(() {
+      if (_taperFocusNode.hasFocus) {
+        setState(() => _mostrarListaTapers = true);
+      }
+    });
+
+    _inicializarTapers();
+  }
+
+  Future<void> _inicializarTapers() async {
+    if (CatalogService.instance.tapers.isEmpty) {
+      setState(() => _cargandoTapers = true);
+      await CatalogService.instance.cargarTapers();
+      if (!mounted) return;
+      setState(() => _cargandoTapers = false);
+    }
+
+    // Si hay un taperId inicial, buscar su nombre y precio
+    if (_selectedTaperId != null && _selectedTaperId!.isNotEmpty) {
+      final encontrado = CatalogService.instance.tapers
+          .where((t) => t.id == _selectedTaperId)
+          .firstOrNull;
+      if (encontrado != null) {
+        _selectedTaperNombre = encontrado.nombre;
+        _taperSearchController.text =
+            '${encontrado.nombre} · S/ ${encontrado.precio.toStringAsFixed(2)}';
+      } else if (widget.item?.taperNombre != null) {
+        _selectedTaperNombre = widget.item!.taperNombre;
+        _taperSearchController.text = widget.item!.taperNombre!;
+      }
+      if (mounted) setState(() {});
+    }
+  }
 
   @override
   void dispose() {
     _nombreController.dispose();
     _descripcionController.dispose();
-    _precioController.dispose();
-    _costoController.dispose();
-    _stockController.dispose();
-    _skuController.dispose();
-    _limiteController.dispose();
-    _agregadoNombreController.dispose();
-    _agregadoPrecioController.dispose();
-    for (final g in _grupos) {
-      g.dispose();
-    }
+    _precioClienteController.dispose();
+    _precioPersonalController.dispose();
+    _taperSearchController.dispose();
+    _taperFocusNode.dispose();
     super.dispose();
   }
 
-  Future<void> _elegirImagen() async {
-    final archivo = await FilePicker.pickFile(type: FileType.image);
-    if (archivo == null) return;
-    final bytes = await archivo.readAsBytes();
-    if (!mounted) return;
-    setState(() => _imagenBytes = bytes);
-  }
-
-  void _agregarAgregado() {
-    final nombre = _agregadoNombreController.text.trim();
-    if (nombre.isEmpty) return;
-    final precio = double.tryParse(_agregadoPrecioController.text.trim());
+  void _seleccionarTaper(Taper? taper) {
     setState(() {
-      _agregados.add({'nombre': nombre, 'precio': ?precio});
-      _agregadoNombreController.clear();
-      _agregadoPrecioController.clear();
-    });
-  }
-
-  void _agregarItemAGrupo(int grupoIndex) {
-    final g = _grupos[grupoIndex];
-    final nombre = g.nombreItemController.text.trim();
-    if (nombre.isEmpty) return;
-    final precio = double.tryParse(g.precioItemController.text.trim());
-    setState(() {
-      g.items.add({'nombre': nombre, 'precio': ?precio});
-      g.nombreItemController.clear();
-      g.precioItemController.clear();
-    });
-  }
-
-  // Modal para crear o editar un grupo de extras (nombre/cantidad máxima).
-  Future<void> _crearOEditarGrupo({int? indexExistente}) async {
-    final existente = indexExistente != null ? _grupos[indexExistente] : null;
-    final nombreController = TextEditingController(text: existente?.nombre);
-    final cantidadController = TextEditingController(
-      text: '${existente?.cantidadMaxima ?? 1}',
-    );
-    final resultado = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          existente == null ? 'Nuevo grupo de extras' : 'Editar grupo',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombreController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Nombre del grupo (ej. Salsas)',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: cantidadController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Cantidad máxima que puede elegir el cliente',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(existente == null ? 'Crear' : 'Guardar'),
-          ),
-        ],
-      ),
-    );
-    if (resultado != true || nombreController.text.trim().isEmpty) return;
-    final cantidad = int.tryParse(cantidadController.text.trim()) ?? 1;
-    setState(() {
-      if (existente != null) {
-        existente.nombre = nombreController.text.trim();
-        existente.cantidadMaxima = cantidad;
+      if (taper == null) {
+        _selectedTaperId = null;
+        _selectedTaperNombre = null;
+        _taperSearchController.clear();
       } else {
-        _grupos.add(
-          _GrupoEditable(
-            nombre: nombreController.text.trim(),
-            cantidadMaxima: cantidad,
-          ),
-        );
+        _selectedTaperId = taper.id;
+        _selectedTaperNombre = taper.nombre;
+        _taperSearchController.text =
+            '${taper.nombre} · S/ ${taper.precio.toStringAsFixed(2)}';
       }
+      _mostrarListaTapers = false;
     });
-  }
-
-  Future<void> _eliminarGrupo(int index) async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Eliminar grupo'),
-        content: Text(
-          '¿Eliminar el grupo "${_grupos[index].nombre}" y sus extras?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-    if (confirmar == true) setState(() => _grupos.removeAt(index));
+    _taperFocusNode.unfocus();
   }
 
   void _guardar() {
     if (!_formKey.currentState!.validate()) return;
-    final categoria = _categoria;
-    if (categoria == null) {
-      showAppToast(context, 'Elige una categoría', type: ToastType.error);
+
+    if (_categoria == null) {
+      showAppToast(context, 'Selecciona una categoría para el plato',
+          type: ToastType.error);
       return;
     }
 
+    final pCliente = double.tryParse(_precioClienteController.text.trim());
+    if (pCliente == null || pCliente < 0) {
+      showAppToast(context, 'Ingresa un precio de cliente válido',
+          type: ToastType.error);
+      return;
+    }
+
+    double? pPersonal;
+    final pPersText = _precioPersonalController.text.trim();
+    if (pPersText.isNotEmpty) {
+      pPersonal = double.tryParse(pPersText);
+      if (pPersonal == null || pPersonal < 0) {
+        showAppToast(context, 'Ingresa un precio de personal válido',
+            type: ToastType.error);
+        return;
+      }
+    }
+
+    final sedeActual = widget.item?.sedeId ??
+        AuthService.instance.currentUser?.sedeId;
+
     final resultado = CartaItem(
-      id: widget.item?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+      id: widget.item?.id ?? UuidHelper.v7(),
       nombrePlato: _nombreController.text.trim(),
       descripcion: _descripcionController.text.trim(),
-      categoriaId: categoria.id,
-      precioCliente: double.parse(_precioController.text.trim()),
-      estado: _activo ? 'activo' : 'inactivo',
-      costo: _costoController.text.trim().isEmpty
-          ? null
-          : double.parse(_costoController.text.trim()),
-      sku: _skuController.text.trim().isEmpty
-          ? null
-          : _skuController.text.trim(),
-      stock: int.tryParse(_stockController.text.trim()) ?? 0,
-      agregados: [
-        ..._agregados,
-        for (final g in _grupos)
-          {
-            'grupo': g.nombre,
-            'cantidadMaxima': g.cantidadMaxima,
-            'items': List.of(g.items),
-          },
-      ],
-      limiteAgregados: int.tryParse(_limiteController.text.trim()),
+      categoriaId: _categoria!.id,
+      categoriaNombre: _categoria!.categoria,
+      taperId: _selectedTaperId,
+      taperNombre: _selectedTaperNombre,
+      estado: _estado,
+      precioCliente: pCliente,
+      precioPersonal: pPersonal,
+      sedeId: sedeActual,
       creadoEn: widget.item?.creadoEn ?? DateTime.now(),
-      imagenBytes: _imagenBytes ?? widget.item?.imagenBytes,
-      platoDelDia: _platoDelDia,
     );
+
     Navigator.of(context).pop(resultado);
-  }
-
-  Widget _imagen(double lado) {
-    final bytes = _imagenBytes ?? widget.item?.imagenBytes;
-    Widget contenido;
-    if (bytes != null) {
-      contenido = Image.memory(bytes, fit: BoxFit.cover);
-    } else {
-      contenido = Icon(
-        Icons.image_outlined,
-        size: 40,
-        color: Colors.grey.shade400,
-      );
-    }
-    return SizedBox(
-      width: lado,
-      height: lado,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: ColoredBox(
-                color: const Color(0xFFF1F3F0),
-                child: Opacity(
-                  opacity: _activo ? 1 : 0.4,
-                  child: Center(child: SizedBox.expand(child: contenido)),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 8,
-            left: 8,
-            child: _botonRedondo(
-              icono: _activo ? Icons.visibility : Icons.visibility_off,
-              tooltip: _activo
-                  ? 'Activo: toca para desactivar'
-                  : 'Inactivo: toca para activar',
-              color: _activo ? AppColors.primaryGreen : Colors.grey.shade600,
-              onTap: () => setState(() => _activo = !_activo),
-            ),
-          ),
-          Positioned(
-            bottom: 8,
-            right: 8,
-            child: _botonRedondo(
-              icono: Icons.photo_camera_outlined,
-              tooltip: 'Subir imagen',
-              color: Colors.grey.shade800,
-              onTap: _elegirImagen,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _botonRedondo({
-    required IconData icono,
-    required String tooltip,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.white,
-        shape: const CircleBorder(),
-        elevation: 2,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(icono, size: 18, color: color),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _numero(
-    TextEditingController c,
-    String label, {
-    bool decimal = false,
-    bool requerido = false,
-  }) {
-    return TextFormField(
-      controller: c,
-      decoration: InputDecoration(labelText: label),
-      keyboardType: TextInputType.numberWithOptions(decimal: decimal),
-      validator: (v) {
-        final t = v?.trim() ?? '';
-        if (t.isEmpty) return requerido ? 'Requerido' : null;
-        if ((decimal ? double.tryParse(t) : int.tryParse(t)) == null) {
-          return 'Valor inválido';
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _fila(Widget a, Widget b) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: a),
-        const SizedBox(width: 16),
-        Expanded(child: b),
-      ],
-    );
-  }
-
-  String _textoAgregado(Map<String, dynamic> a) {
-    final precio = a['precio'];
-    return precio is num
-        ? '${a['nombre']} · S/ ${precio.toStringAsFixed(2)}'
-        : '${a['nombre']}';
-  }
-
-  Widget _chipExtra(String texto, VoidCallback onQuitar) {
-    return AppTag(
-      etiqueta: texto,
-      activo: true,
-      onQuitar: onQuitar,
-      tooltipQuitar: 'Quitar',
-    );
-  }
-
-  // Tarjeta de un grupo de extras: nombre, cantidad máxima y sus extras.
-  Widget _tarjetaGrupo(int index) {
-    final g = _grupos[index];
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${g.nombre} · máx. ${g.cantidadMaxima}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Editar grupo',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                icon: const Icon(Icons.edit_outlined, size: 17),
-                onPressed: () => _crearOEditarGrupo(indexExistente: index),
-              ),
-              IconButton(
-                tooltip: 'Eliminar grupo',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 17,
-                  color: AppColors.error,
-                ),
-                onPressed: () => _eliminarGrupo(index),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (g.items.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (var j = 0; j < g.items.length; j++)
-                    _chipExtra(
-                      _textoAgregado(g.items[j]),
-                      () => setState(() => g.items.removeAt(j)),
-                    ),
-                ],
-              ),
-            ),
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: g.nombreItemController,
-                  decoration: const InputDecoration(
-                    hintText: 'Nombre del extra',
-                    filled: true,
-                    fillColor: AppColors.background,
-                  ),
-                  onSubmitted: (_) => _agregarItemAGrupo(index),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: g.precioItemController,
-                  decoration: const InputDecoration(
-                    hintText: 'Precio (S/)',
-                    filled: true,
-                    fillColor: AppColors.background,
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  onSubmitted: (_) => _agregarItemAGrupo(index),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                tooltip: 'Agregar',
-                onPressed: () => _agregarItemAGrupo(index),
-                icon: const Icon(Icons.add),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -481,34 +195,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     final editando = widget.item != null;
     final esMobile = AppBreakpoints.esMobile(context);
     final anchoPantalla = MediaQuery.sizeOf(context).width;
-    final lado = esMobile ? 116.0 : 156.0;
-    final tema = Theme.of(context);
-    return Theme(
-      data: tema.copyWith(
-        textTheme: tema.textTheme.copyWith(
-          bodyLarge: tema.textTheme.bodyLarge?.copyWith(fontSize: 13),
-        ),
-        inputDecorationTheme: tema.inputDecorationTheme.copyWith(
-          labelStyle: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-          floatingLabelStyle: const TextStyle(fontSize: 13),
-          hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-        ),
-      ),
-      child: _contenido(context, editando, esMobile, anchoPantalla, lado),
-    );
-  }
 
-  Widget _contenido(
-    BuildContext context,
-    bool editando,
-    bool esMobile,
-    double anchoPantalla,
-    double lado,
-  ) {
     return Material(
       color: Colors.white,
       borderRadius: esMobile
@@ -520,12 +207,12 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
             ? BoxConstraints(
                 minWidth: anchoPantalla,
                 maxWidth: anchoPantalla,
-                maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+                maxHeight: MediaQuery.sizeOf(context).height * 0.92,
               )
             : const BoxConstraints(
-                minWidth: 660,
-                maxWidth: 660,
-                maxHeight: 700,
+                minWidth: 580,
+                maxWidth: 620,
+                maxHeight: 740,
               ),
         child: Form(
           key: _formKey,
@@ -533,240 +220,175 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(28, esMobile ? 28 : 22, 14, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        editando ? 'Editar plato' : 'Nuevo plato',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
+              // Cabecera del modal
+              _buildHeader(editando),
+
+              // Contenido con scroll
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, 12, 28, 28),
+                  padding: const EdgeInsets.fromLTRB(28, 12, 28, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(
-                        height: lado,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _imagen(lado),
-                            const SizedBox(width: 20),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  TextFormField(
-                                    controller: _nombreController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Nombre del plato',
-                                    ),
-                                    validator: (v) =>
-                                        (v == null || v.trim().isEmpty)
-                                        ? 'Ingresa el nombre'
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _descripcionController,
-                                      expands: true,
-                                      maxLines: null,
-                                      minLines: null,
-                                      textAlignVertical: TextAlignVertical.top,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Descripción',
-                                        alignLabelWithHint: true,
-                                        filled: true,
-                                        fillColor: Colors.white,
-                                      ),
-                                      validator: (v) =>
-                                          (v == null || v.trim().isEmpty)
-                                          ? 'Ingresa la descripción'
-                                          : null,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 24),
-                      _fila(
-                        AppSelect<CategoriaComida>(
-                          label: 'Categoría',
-                          value: _categoria,
-                          items: categorias
-                              .map(
-                                (c) =>
-                                    AppSelectItem(value: c, label: c.categoria),
-                              )
-                              .toList(),
-                          onChanged: (value) =>
-                              setState(() => _categoria = value),
-                        ),
-                        _numero(
-                          _precioController,
-                          'Precio (S/)',
-                          decimal: true,
-                          requerido: true,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _fila(
-                        _numero(_costoController, 'Costo (S/)', decimal: true),
-                        _numero(_stockController, 'Stock'),
-                      ),
-                      const SizedBox(height: 16),
-                      _fila(
-                        TextFormField(
-                          controller: _skuController,
-                          decoration: const InputDecoration(labelText: 'SKU'),
-                        ),
-                        _numero(_limiteController, 'Límite de agregados'),
-                      ),
-                      const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: AppTag(
-                          etiqueta: 'Plato del día',
-                          icono: Icons.star_rounded,
-                          activo: _platoDelDia,
-                          color: AppColors.platoDelDia,
-                          onTap: () =>
-                              setState(() => _platoDelDia = !_platoDelDia),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Agregados',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              'Extras sueltos',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (_agregados.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    for (var i = 0; i < _agregados.length; i++)
-                                      _chipExtra(
-                                        _textoAgregado(_agregados[i]),
-                                        () => setState(
-                                          () => _agregados.removeAt(i),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: TextField(
-                                    controller: _agregadoNombreController,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Nombre del extra',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                    ),
-                                    onSubmitted: (_) => _agregarAgregado(),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  flex: 2,
-                                  child: TextField(
-                                    controller: _agregadoPrecioController,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Precio (S/)',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                    ),
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                        ),
-                                    onSubmitted: (_) => _agregarAgregado(),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton.filled(
-                                  tooltip: 'Agregar',
-                                  onPressed: _agregarAgregado,
-                                  icon: const Icon(Icons.add),
-                                ),
-                              ],
-                            ),
-                            if (_grupos.isNotEmpty) ...[
-                              const SizedBox(height: 18),
-                              Divider(height: 1, color: Colors.grey.shade300),
-                              const SizedBox(height: 14),
-                            ],
-                            for (var i = 0; i < _grupos.length; i++) ...[
-                              _tarjetaGrupo(i),
-                              const SizedBox(height: 12),
-                            ],
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () => _crearOEditarGrupo(),
-                                icon: const Icon(Icons.add, size: 16),
-                                label: const Text('Nuevo grupo de extras'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: ElevatedButton(
-                          onPressed: _guardar,
-                          style: ElevatedButton.styleFrom(),
-                          child: Text(
-                            editando ? 'Guardar cambios' : 'Crear plato',
+                      // 1. Nombre del plato
+                      TextFormField(
+                        controller: _nombreController,
+                        maxLength: 50,
+                        decoration: InputDecoration(
+                          labelText: 'Nombre del plato *',
+                          hintText: 'Ej. Arroz Chaufa Especial',
+                          prefixIcon: const Icon(Icons.restaurant_menu, size: 20),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'El nombre del plato es obligatorio';
+                          }
+                          if (v.trim().length > 50) {
+                            return 'Máximo 50 caracteres';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+
+                      // 2. Categoría (selector interno extrae categoria_id)
+                      AppSelect<CategoriaComida>(
+                        label: 'Categoría *',
+                        value: _categoria,
+                        items: categorias
+                            .map(
+                              (c) => AppSelectItem(value: c, label: c.categoria),
+                            )
+                            .toList(),
+                        onChanged: (cat) => setState(() => _categoria = cat),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 3. Descripción
+                      TextFormField(
+                        controller: _descripcionController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          labelText: 'Descripción *',
+                          hintText: 'Ingredientes, detalles de preparación o porción...',
+                          alignLabelWithHint: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'La descripción es obligatoria';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 4. Selector interactivo de Táper con ventana de 4-5 opciones
+                      _buildTaperSelector(),
+                      const SizedBox(height: 16),
+
+                      // 5. Precios (Cliente y Personal)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _precioClienteController,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: 'Precio público (S/) *',
+                                hintText: '0.00',
+                                prefixText: 'S/ ',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) {
+                                  return 'Precio requerido';
+                                }
+                                final p = double.tryParse(v.trim());
+                                if (p == null || p < 0) {
+                                  return 'Precio inválido';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _precioPersonalController,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: 'Precio personal (S/)',
+                                hintText: 'Opcional',
+                                prefixText: 'S/ ',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              validator: (v) {
+                                final text = v?.trim() ?? '';
+                                if (text.isNotEmpty) {
+                                  final p = double.tryParse(text);
+                                  if (p == null || p < 0) {
+                                    return 'Precio inválido';
+                                  }
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 6. Selector de Estado (disponible / agotado)
+                      _buildEstadoSelector(),
+                      const SizedBox(height: 24),
+
+                      // Botones de acción
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: Colors.grey.shade300),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 12),
+                          FilledButton.icon(
+                            onPressed: _guardar,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primaryGreen,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 22,
+                                vertical: 12,
+                              ),
+                            ),
+                            icon: const Icon(Icons.check, size: 18),
+                            label: Text(
+                              editando ? 'Guardar cambios' : 'Crear plato',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -778,24 +400,349 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       ),
     );
   }
-}
 
-// Estado editable de un grupo de extras dentro del formulario.
-class _GrupoEditable {
-  String nombre;
-  int cantidadMaxima;
-  final List<Map<String, dynamic>> items;
-  final nombreItemController = TextEditingController();
-  final precioItemController = TextEditingController();
+  Widget _buildHeader(bool editando) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 22, 16, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.restaurant_menu,
+              color: AppColors.primaryGreen,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  editando ? 'Editar plato de la carta' : 'Nuevo plato en la carta',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  'Configura los datos del plato según la carta oficial',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
 
-  _GrupoEditable({
-    required this.nombre,
-    required this.cantidadMaxima,
-    List<Map<String, dynamic>>? items,
-  }) : items = items ?? [];
+  /// Selector de táper con campo de búsqueda interactivo y dropdown deslizante de 4-5 opciones.
+  Widget _buildTaperSelector() {
+    final todosTapers = CatalogService.instance.tapers;
+    final query = _taperSearchController.text.trim().toLowerCase();
 
-  void dispose() {
-    nombreItemController.dispose();
-    precioItemController.dispose();
+    final tapersFiltrados = todosTapers.where((t) {
+      if (query.isEmpty) return true;
+      final format = '${t.nombre} · s/ ${t.precio.toStringAsFixed(2)}'.toLowerCase();
+      return format.contains(query) || t.nombre.toLowerCase().contains(query);
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Input para buscar táper
+        TextField(
+          controller: _taperSearchController,
+          focusNode: _taperFocusNode,
+          onTap: () {
+            setState(() => _mostrarListaTapers = true);
+          },
+          onChanged: (_) {
+            setState(() => _mostrarListaTapers = true);
+          },
+          decoration: InputDecoration(
+            labelText: 'Táper para llevar (opcional)',
+            hintText: 'Haz clic para buscar táper...',
+            prefixIcon: const Icon(Icons.takeout_dining_outlined, size: 20),
+            suffixIcon: _selectedTaperId != null || _taperSearchController.text.isNotEmpty
+                ? IconButton(
+                    tooltip: 'Quitar táper (Sin táper)',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => _seleccionarTaper(null),
+                  )
+                : const Icon(Icons.arrow_drop_down),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+
+        // Dropdown deslizable con altura de 4 a 5 items
+        if (_mostrarListaTapers) ...[
+          const SizedBox(height: 6),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 190),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.5), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: _cargandoTapers
+                ? const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  )
+                : todosTapers.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.inventory_2_outlined,
+                                size: 28, color: Colors.grey.shade400),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Aún no hay tápers registrados en inventario.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Scrollbar(
+                        thumbVisibility: true,
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          children: [
+                            // Opción explícita: "Sin táper"
+                            ListTile(
+                              dense: true,
+                              leading: const Icon(
+                                Icons.block,
+                                size: 18,
+                                color: Colors.grey,
+                              ),
+                              title: const Text(
+                                'Sin táper',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              subtitle: const Text(
+                                'Este plato no requiere táper por defecto',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                              selected: _selectedTaperId == null,
+                              selectedTileColor: Colors.grey.shade100,
+                              onTap: () => _seleccionarTaper(null),
+                            ),
+                            const Divider(height: 1),
+
+                            // Lista filtrada de tápers
+                            for (final t in tapersFiltrados)
+                              ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  Icons.takeout_dining,
+                                  size: 18,
+                                  color: _selectedTaperId == t.id
+                                      ? AppColors.primaryGreen
+                                      : Colors.grey.shade700,
+                                ),
+                                title: Text(
+                                  t.nombre,
+                                  style: TextStyle(
+                                    fontWeight: _selectedTaperId == t.id
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'S/ ${t.precio.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      color: AppColors.primaryGreen,
+                                    ),
+                                  ),
+                                ),
+                                selected: _selectedTaperId == t.id,
+                                selectedTileColor:
+                                    AppColors.primaryGreen.withValues(alpha: 0.08),
+                                onTap: () => _seleccionarTaper(t),
+                              ),
+                            if (tapersFiltrados.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  'No se encontró ningún táper con "$query"',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Selector visual de Estado ('disponible' vs 'agotado')
+  Widget _buildEstadoSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Estado en la carta',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => setState(() => _estado = 'disponible'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: _estado == 'disponible'
+                        ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                        : Colors.white,
+                    border: Border.all(
+                      color: _estado == 'disponible'
+                          ? AppColors.primaryGreen
+                          : Colors.grey.shade300,
+                      width: _estado == 'disponible' ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 18,
+                        color: _estado == 'disponible'
+                            ? AppColors.primaryGreen
+                            : Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Disponible',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: _estado == 'disponible'
+                              ? AppColors.primaryGreen
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => setState(() => _estado = 'agotado'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: _estado == 'agotado'
+                        ? AppColors.error.withValues(alpha: 0.12)
+                        : Colors.white,
+                    border: Border.all(
+                      color: _estado == 'agotado'
+                          ? AppColors.error
+                          : Colors.grey.shade300,
+                      width: _estado == 'agotado' ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.remove_circle_outline,
+                        size: 18,
+                        color: _estado == 'agotado'
+                            ? AppColors.error
+                            : Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Agotado',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: _estado == 'agotado'
+                              ? AppColors.error
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }

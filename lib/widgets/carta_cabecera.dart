@@ -4,6 +4,8 @@ import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
+import '../models/usuario.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'carta_acciones.dart';
@@ -12,12 +14,12 @@ import 'app_tag.dart';
 import 'categorias_crud_dialog.dart';
 import 'tabs_desplazables.dart';
 
-// Cabecera de Productos: título, buscador, "Nueva categoría" (solo admin)
-// y tabs de categorías.
+// Cabecera de Productos: título, buscador, "Nueva categoría" y tabs de categorías.
 class CartaCabecera extends StatefulWidget {
   final ValueNotifier<CategoriaComida?> seleccion;
   final ValueNotifier<String> busqueda;
   final bool esAdmin;
+  final Usuario? usuario;
   final bool vertical;
   // En escritorio el título vive en el header global, no aquí.
   final bool mostrarTitulo;
@@ -28,6 +30,7 @@ class CartaCabecera extends StatefulWidget {
     required this.seleccion,
     required this.busqueda,
     required this.esAdmin,
+    this.usuario,
     this.vertical = false,
     this.mostrarTitulo = true,
     required this.onCambio,
@@ -38,6 +41,11 @@ class CartaCabecera extends StatefulWidget {
 }
 
 class _CartaCabeceraState extends State<CartaCabecera> {
+  bool get _puedeCrearProducto =>
+      widget.esAdmin || (widget.usuario?.tienePermiso('CREAR.CARTA') ?? false);
+  bool get _puedeCrearCategoria =>
+      widget.esAdmin || (widget.usuario?.tienePermiso('CREAR.CATEGORIA_COMIDA') ?? false);
+
   late final _busquedaController = TextEditingController(
     text: widget.busqueda.value,
   );
@@ -100,15 +108,32 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       ),
     );
     if (confirmar != true) return;
-    categorias.removeWhere((c) => c.id == cat.id);
-    widget.seleccion.value = null;
-    widget.onCambio();
+    try {
+      await CatalogService.instance.eliminarCategoria(cat.id);
+      widget.seleccion.value = null;
+      widget.onCambio();
+    } catch (e) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('No se pudo eliminar la categoría: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buscador() {
     return AppSearchField(
       controller: _busquedaController,
-      hint: 'Buscar productos...',
+      hint: 'Buscar en la carta...',
       onChanged: (v) => widget.busqueda.value = v,
     );
   }
@@ -131,7 +156,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
   @override
   Widget build(BuildContext context) {
     const titulo = Text(
-      'Productos',
+      'Carta',
       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
     );
     final tabs = ListenableBuilder(
@@ -188,7 +213,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
                 ),
                 const SizedBox(width: 6),
                 IconButton.filled(
-                  tooltip: 'Nuevo producto',
+                  tooltip: 'Nuevo plato',
                   onPressed: () => crearPlato(
                     context,
                     categoriaId: widget.seleccion.value?.id,
@@ -217,9 +242,11 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         Row(
           children: [
             Expanded(child: tabs),
-            if (widget.esAdmin) ...[
+            if (_puedeCrearCategoria) ...[
               const SizedBox(width: 24),
               _botonCategoria(),
+            ],
+            if (_puedeCrearProducto) ...[
               const SizedBox(width: 10),
               _botonNuevoProducto(),
             ],
@@ -236,7 +263,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
       icon: const Icon(Icons.add, size: 18),
       label: const Text(
-        'Producto',
+        'Plato',
         style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
       ),
     );

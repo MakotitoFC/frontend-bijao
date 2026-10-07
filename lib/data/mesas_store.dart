@@ -46,7 +46,7 @@ List<Mesa> mesasDeZona(String zona) =>
 // Una zona se puede eliminar si no tiene mesas ocupadas ni unidas.
 bool puedeEliminarZona(String zona) =>
     zonasMesas.length > 1 &&
-    mesasDeZona(zona).every((m) => m.estado == 'libre' && !estaUnida(m.numero));
+    mesasDeZona(zona).every((m) => m.estaLibre && !estaUnida(m.numero));
 
 // Elimina la zona y sus mesas.
 void eliminarZona(String zona) {
@@ -65,7 +65,7 @@ void actualizarMesa(
 
 bool puedeEliminarMesa(int numero) {
   final i = mesas.indexWhere((m) => m.numero == numero);
-  return i != -1 && mesas[i].estado == 'libre' && !estaUnida(numero);
+  return i != -1 && mesas[i].estaLibre && !estaUnida(numero);
 }
 
 void eliminarMesa(int numero) => mesas.removeWhere((m) => m.numero == numero);
@@ -78,7 +78,7 @@ Mesa agregarMesa({
   final mesa = Mesa(
     id: 'm$numero',
     numero: numero,
-    estado: 'libre',
+    estado: 'disponible',
     capacidad: capacidad,
     zona: zona,
   );

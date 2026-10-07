@@ -22,10 +22,21 @@ void registrarPedido(Pedido pedido, List<PedidoLine> detalles) {
   detallesPorPedido[pedido.id] = detalles;
 }
 
+void sincronizarPedidosDesdeServidor(
+  List<Pedido> nuevosPedidos,
+  Map<String, List<PedidoLine>> nuevosDetalles,
+) {
+  pedidos.clear();
+  pedidos.addAll(nuevosPedidos);
+  detallesPorPedido.clear();
+  detallesPorPedido.addAll(nuevosDetalles);
+}
+
 void actualizarEstadoPedido(String id, String nuevoEstado) {
   final index = pedidos.indexWhere((p) => p.id == id);
-  if (index != -1)
+  if (index != -1) {
     pedidos[index] = pedidos[index].copyWith(estado: nuevoEstado);
+  }
 }
 
 // Marca una línea (producto) del pedido con una incidencia (devolución).

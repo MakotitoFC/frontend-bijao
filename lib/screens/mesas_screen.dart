@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -5,11 +7,17 @@ import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
+import '../models/app_role.dart';
 import '../models/mesa.dart';
 import '../models/pedido.dart';
+import '../models/usuario.dart';
+import '../models/zona.dart';
+import '../services/catalog_service.dart';
+import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_select.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/marching_ants_border.dart';
 import '../widgets/mesa_card.dart';
 import '../widgets/mesa_form_dialog.dart';
@@ -20,11 +28,15 @@ const _naranjaUnir = Color(0xFFF07F13);
 const _fondoSala = Color(0xFFF6F8FB);
 const _trazoSala = Color(0xFF9AA7B8);
 
-// Pedido activo (no pagado) de una mesa, considerando mesas unidas
+// Pedido activo (no pagado/anulado/devuelto) de una mesa, considerando mesas unidas
 // (`todasLasMesas`). Usado por el plano (T-1, T-2...).
 Pedido? _pedidoActivoDeMesa(int mesaNumero) {
   for (final p in pedidos) {
-    if (p.todasLasMesas.contains(mesaNumero) && p.estado != 'pagado') {
+    if (p.todasLasMesas.contains(mesaNumero) &&
+        p.estado != 'pagado' &&
+        p.estado != 'anulado' &&
+        p.estado != 'devuelto' &&
+        p.estado != 'cancelado') {
       return p;
     }
   }
@@ -44,19 +56,78 @@ String? _meseroDe(Pedido? pedido) {
   return null;
 }
 
-// Plano de mesas (tabla `mesas`) como croquis del local: cada zona es una sala
-// con sus mesas. Filtros de zona/estado, unir mesas, y alta/edición de mesas y
-// zonas. Al tocar una mesa avisa por `onSeleccionarMesa`.
+// Plano de mesas (tabla `mesa`): visualización y gestión según RBAC.
 class MesasPlano extends StatefulWidget {
   final ValueChanged<Mesa> onSeleccionarMesa;
+  final Usuario? usuario;
 
-  const MesasPlano({super.key, required this.onSeleccionarMesa});
+  const MesasPlano({
+    super.key,
+    required this.onSeleccionarMesa,
+    this.usuario,
+  });
 
   @override
   State<MesasPlano> createState() => _MesasPlanoState();
 }
 
 class _MesasPlanoState extends State<MesasPlano> {
+  bool get _puedeCrearMesa =>
+      widget.usuario == null ||
+      widget.usuario!.rol == AppRole.administrador ||
+      widget.usuario!.tienePermiso('CREAR.MESA');
+
+  bool get _puedeEditarMesa =>
+      widget.usuario == null ||
+      widget.usuario!.rol == AppRole.administrador ||
+      widget.usuario!.tienePermiso('UPDATE.MESA');
+
+  bool get _puedeEliminarMesa =>
+      widget.usuario == null ||
+      widget.usuario!.rol == AppRole.administrador ||
+      widget.usuario!.tienePermiso('DELETE.MESA');
+
+  bool get _puedeCrearZona =>
+      widget.usuario == null ||
+      widget.usuario!.rol == AppRole.administrador ||
+      widget.usuario!.tienePermiso('CREAR.ZONA');
+
+  bool get _puedeEditarZona =>
+      widget.usuario == null ||
+      widget.usuario!.rol == AppRole.administrador ||
+      widget.usuario!.tienePermiso('UPDATE.ZONA');
+
+  bool get _puedeEliminarZona =>
+      widget.usuario == null ||
+      widget.usuario!.rol == AppRole.administrador ||
+      widget.usuario!.tienePermiso('DELETE.ZONA');
+
+  Timer? _pollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    CatalogService.instance.cargarZonas().then((_) {
+      if (mounted) setState(() {});
+    });
+    CatalogService.instance.cargarMesas().then((_) {
+      if (mounted) setState(() {});
+    });
+    PedidoService.instance.cargarPedidos().then((_) {
+      if (mounted) setState(() {});
+    });
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) {
+        CatalogService.instance.cargarMesas().then((_) {
+          if (mounted) setState(() {});
+        });
+        PedidoService.instance.cargarPedidos().then((_) {
+          if (mounted) setState(() {});
+        });
+      }
+    });
+  }
+
   bool _modoUnion = false;
   final Set<int> _paraUnir = {};
   String? _zona;
@@ -65,6 +136,7 @@ class _MesasPlanoState extends State<MesasPlano> {
 
   @override
   void dispose() {
+    _pollingTimer?.cancel();
     _busqueda.dispose();
     super.dispose();
   }
@@ -89,7 +161,7 @@ class _MesasPlanoState extends State<MesasPlano> {
   }
 
   void _alternarSeleccionParaUnir(Mesa mesa) {
-    if (mesa.estado != 'libre' || estaUnida(mesa.numero)) return;
+    if (mesa.estado != 'disponible' && mesa.estado != 'libre' || estaUnida(mesa.numero)) return;
     setState(() {
       if (!_paraUnir.remove(mesa.numero)) _paraUnir.add(mesa.numero);
     });
@@ -117,13 +189,19 @@ class _MesasPlanoState extends State<MesasPlano> {
       builder: (_) => MesaFormDialog(zonaInicial: _zonaActual),
     );
     if (datos == null || !mounted) return;
-    setState(
-      () => agregarMesa(
+    try {
+      await CatalogService.instance.crearMesa(
         numero: datos.numero,
         capacidad: datos.capacidad,
         zona: datos.zona,
-      ),
-    );
+      );
+      setState(() {});
+      if (!mounted) return;
+      showAppToast(context, 'Mesa ${datos.numero} creada.', type: ToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, 'Error al crear mesa: $e', type: ToastType.error);
+    }
   }
 
   Future<void> _editarMesa(Mesa mesa) async {
@@ -132,18 +210,33 @@ class _MesasPlanoState extends State<MesasPlano> {
       builder: (_) => MesaFormDialog(mesa: mesa),
     );
     if (datos == null || !mounted) return;
-    setState(() {
+    try {
       if (datos.eliminar) {
-        eliminarMesa(mesa.numero);
+        if (!_puedeEliminarMesa) {
+          showAppToast(context, 'No tienes permiso para eliminar mesas.', type: ToastType.error);
+          return;
+        }
+        await CatalogService.instance.eliminarMesa(mesa.id, mesa.numero);
         _paraUnir.remove(mesa.numero);
+        setState(() {});
+        if (!mounted) return;
+        showAppToast(context, 'Mesa ${mesa.numero} eliminada.', type: ToastType.info);
       } else {
-        actualizarMesa(
-          mesa.numero,
+        await CatalogService.instance.actualizarMesa(
+          mesa.id,
+          numero: datos.numero,
           capacidad: datos.capacidad,
           zona: datos.zona,
+          estado: datos.estado,
         );
+        setState(() {});
+        if (!mounted) return;
+        showAppToast(context, 'Mesa ${datos.numero} actualizada.', type: ToastType.success);
       }
-    });
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, 'Error al actualizar mesa: $e', type: ToastType.error);
+    }
   }
 
   Future<void> _nuevaZona() async {
@@ -152,19 +245,42 @@ class _MesasPlanoState extends State<MesasPlano> {
       builder: (_) => const ZonaFormDialog(),
     );
     if (datos == null || !mounted) return;
-    setState(() {
-      agregarZona(datos.nombre);
-      _zona = datos.nombre.trim();
-    });
+    try {
+      final nueva = await CatalogService.instance.crearZona(
+        nombre: datos.nombre,
+        estado: datos.estado,
+      );
+      setState(() {
+        _zona = nueva.zona;
+      });
+      if (!mounted) return;
+      showAppToast(context, 'Zona "${nueva.zona}" creada.', type: ToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, 'Error al crear zona: $e', type: ToastType.error);
+    }
   }
 
   Future<void> _editarZona(String zona) async {
+    final zonaObj = CatalogService.instance.zonas.firstWhere(
+      (z) => z.zona.toLowerCase() == zona.toLowerCase(),
+      orElse: () => Zona(id: '', zona: zona, estado: true),
+    );
+
     final datos = await showBlurDialog<ZonaFormResultado>(
       context: context,
-      builder: (_) => ZonaFormDialog(zona: zona),
+      builder: (_) => ZonaFormDialog(
+        zona: zona,
+        estadoInicial: zonaObj.estado,
+      ),
     );
     if (datos == null || !mounted) return;
+
     if (datos.eliminar) {
+      if (!_puedeEliminarZona) {
+        showAppToast(context, 'No tienes permiso para eliminar zonas.', type: ToastType.error);
+        return;
+      }
       final confirmar = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -188,17 +304,47 @@ class _MesasPlanoState extends State<MesasPlano> {
         ),
       );
       if (confirmar != true || !mounted) return;
-      setState(() {
-        eliminarZona(zona);
-        if (_zona == zona) _zona = null;
-      });
+      try {
+        if (zonaObj.id.isNotEmpty) {
+          await CatalogService.instance.eliminarZona(zonaObj.id, zona);
+        } else {
+          eliminarZona(zona);
+        }
+        setState(() {
+          if (_zona == zona) _zona = null;
+        });
+        if (!mounted) return;
+        showAppToast(context, 'Zona "$zona" eliminada.', type: ToastType.info);
+      } catch (e) {
+        if (!mounted) return;
+        showAppToast(context, 'Error al eliminar zona: $e', type: ToastType.error);
+      }
       return;
     }
-    if (datos.nombre == zona) return;
-    setState(() {
-      renombrarZona(zona, datos.nombre);
-      if (_zona == zona) _zona = datos.nombre;
-    });
+
+    try {
+      if (zonaObj.id.isNotEmpty) {
+        final act = await CatalogService.instance.actualizarZona(
+          zonaObj.id,
+          nombre: datos.nombre,
+          estado: datos.estado,
+        );
+        setState(() {
+          renombrarZona(zona, act.zona);
+          if (_zona == zona) _zona = act.zona;
+        });
+      } else {
+        setState(() {
+          renombrarZona(zona, datos.nombre);
+          if (_zona == zona) _zona = datos.nombre;
+        });
+      }
+      if (!mounted) return;
+      showAppToast(context, 'Zona actualizada.', type: ToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(context, 'Error al actualizar zona: $e', type: ToastType.error);
+    }
   }
 
   void _desunir(int numero) {
@@ -217,11 +363,25 @@ class _MesasPlanoState extends State<MesasPlano> {
   }
 
   // Zona mostrada: solo una sala a la vez, que se cambia con el select.
-  String get _zonaActual =>
-      _zona != null && zonasMesas.contains(_zona) ? _zona! : zonasMesas.first;
+  String get _zonaActual {
+    final activas = CatalogService.instance.zonas
+        .where((z) => z.estado)
+        .map((z) => z.zona)
+        .toList();
+    final lista = activas.isNotEmpty ? activas : zonasMesas;
+    return _zona != null && lista.contains(_zona)
+        ? _zona!
+        : (lista.isNotEmpty ? lista.first : 'Salón Principal');
+  }
 
   // Selector de zona/estado + Unir mesas / Mesa / Zona.
   Widget _barraSuperior() {
+    final activas = CatalogService.instance.zonas
+        .where((z) => z.estado)
+        .map((z) => z.zona)
+        .toList();
+    final listaZonas = activas.isNotEmpty ? activas : zonasMesas;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -241,7 +401,7 @@ class _MesasPlanoState extends State<MesasPlano> {
               value: _zonaActual,
               compacto: true,
               items: [
-                for (final z in zonasMesas) AppSelectItem(value: z, label: z),
+                for (final z in listaZonas) AppSelectItem(value: z, label: z),
               ],
               onChanged: (v) => setState(() => _zona = v),
               hint: 'Zona',
@@ -254,8 +414,9 @@ class _MesasPlanoState extends State<MesasPlano> {
               compacto: true,
               items: const [
                 AppSelectItem(value: null, label: 'Todos los estados'),
-                AppSelectItem(value: 'ocupada', label: 'Ocupadas'),
-                AppSelectItem(value: 'libre', label: 'Libres'),
+                AppSelectItem(value: 'disponible', label: 'Disponible'),
+                AppSelectItem(value: 'ocupada', label: 'Ocupada'),
+                AppSelectItem(value: 'reservada', label: 'Reservada'),
               ],
               onChanged: (v) => setState(() => _estado = v),
               hint: 'Todos los estados',
@@ -276,24 +437,40 @@ class _MesasPlanoState extends State<MesasPlano> {
             icon: const Icon(LucideIcons.link, size: 16),
             label: const Text('Unir mesas'),
           ),
-          _botonBlanco(Icons.add, 'Mesa', _nuevaMesa),
-          _botonBlanco(Icons.add, 'Zona', _nuevaZona),
+          if (_puedeCrearMesa) _botonNuevaMesa(),
+          if (_puedeCrearZona) _botonNuevaZona(),
         ],
       ),
     );
   }
 
-  // Botón blanco con trazo gris.
-  Widget _botonBlanco(IconData icono, String texto, VoidCallback onTap) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        side: BorderSide(color: Colors.grey.shade400),
+  Widget _botonNuevaMesa() {
+    return FilledButton.icon(
+      onPressed: _nuevaMesa,
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.primaryGreen,
+        foregroundColor: Colors.white,
       ),
-      icon: Icon(icono, size: 16),
-      label: Text(texto),
+      icon: const Icon(Icons.add, size: 16),
+      label: const Text(
+        'Mesa',
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      ),
+    );
+  }
+
+  Widget _botonNuevaZona() {
+    return OutlinedButton.icon(
+      onPressed: _nuevaZona,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primaryGreen,
+        side: const BorderSide(color: AppColors.primaryGreen),
+      ),
+      icon: const Icon(Icons.add, size: 16),
+      label: const Text(
+        'Zona',
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      ),
     );
   }
 
@@ -320,11 +497,18 @@ class _MesasPlanoState extends State<MesasPlano> {
   Widget _sala(String zona, double scale, double anchoDisponible) {
     final visibles = mesas
         .where(
-          (m) =>
-              m.zona == zona &&
-              esAnclaDeGrupo(m.numero) &&
-              (_estado == null || m.estado == _estado) &&
-              _coincideBusqueda(m),
+          (m) {
+            final match = CatalogService.instance.zonas.firstWhere(
+              (z) => z.zona.toLowerCase() == m.zona.toLowerCase(),
+              orElse: () => const Zona(id: '', zona: '', estado: true),
+            );
+            if (!match.estado) return false;
+
+            return m.zona == zona &&
+                esAnclaDeGrupo(m.numero) &&
+                (_estado == null || m.estado == _estado) &&
+                _coincideBusqueda(m);
+          },
         )
         .toList();
     final total = mesasDeZona(zona).length;
@@ -544,28 +728,30 @@ class _MesasPlanoState extends State<MesasPlano> {
             ],
           ),
         ),
-        const SizedBox(width: 8),
-        Tooltip(
-          message: 'Editar zona',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AppRadii.tag),
-            onTap: () => _editarZona(zona),
-            child: Container(
-              width: AppSizes.control,
-              height: AppSizes.control,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(AppRadii.tag),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Icon(
-                LucideIcons.pencil,
-                size: 15,
-                color: Colors.grey.shade700,
+        if (_puedeEditarZona) ...[
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Editar zona',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.tag),
+              onTap: () => _editarZona(zona),
+              child: Container(
+                width: AppSizes.control,
+                height: AppSizes.control,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadii.tag),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Icon(
+                  LucideIcons.pencil,
+                  size: 15,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -583,7 +769,7 @@ class _MesasPlanoState extends State<MesasPlano> {
         (totalSillas * 34 * scale) > anchoDisponible * 0.85;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
-      opacity: _modoUnion && mesa.estado != 'libre' ? 0.4 : 1,
+      opacity: _modoUnion && !mesa.estaLibre ? 0.4 : 1,
       child: seleccionadaParaUnir
           ? MarchingAntsBorder(
               radius: 34,
@@ -592,6 +778,7 @@ class _MesasPlanoState extends State<MesasPlano> {
                 numero: mesa.numero,
                 zona: mesa.zona,
                 ocupada: ocupada,
+                estado: mesa.estado,
                 horaInicio: pedido != null ? _horaDe(pedido.fechaPedido) : null,
                 monto: pedido != null ? totalDePedido(pedido.id) : null,
                 mesero: _meseroDe(pedido),
@@ -606,12 +793,13 @@ class _MesasPlanoState extends State<MesasPlano> {
               zona: mesa.zona,
               unidas: unidas,
               ocupada: ocupada,
+              estado: mesa.estado,
               horaInicio: pedido != null ? _horaDe(pedido.fechaPedido) : null,
               monto: pedido != null ? totalDePedido(pedido.id) : null,
               mesero: _meseroDe(pedido),
               onTap: () => _seleccionarMesa(mesa),
-              onEditar: _modoUnion ? null : () => _editarMesa(mesa),
-              onDesunir: unidas.isNotEmpty && mesa.estado == 'libre'
+              onEditar: (_modoUnion || !_puedeEditarMesa) ? null : () => _editarMesa(mesa),
+              onDesunir: unidas.isNotEmpty && mesa.estaLibre
                   ? () => _desunir(mesa.numero)
                   : null,
               scale: scale,
@@ -685,3 +873,155 @@ class _PestanaPainter extends CustomPainter {
       old.grosor != grosor ||
       old.radio != radio;
 }
+
+// Vista principal de Mesas conectada al sidebar y navegación principal
+class MesasScreen extends StatelessWidget {
+  final Usuario usuario;
+
+  const MesasScreen({super.key, required this.usuario});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: MesasPlano(
+        usuario: usuario,
+        onSeleccionarMesa: (mesa) => _mostrarOpcionesMesa(context, mesa),
+      ),
+    );
+  }
+
+  Future<void> _mostrarOpcionesMesa(BuildContext context, Mesa mesa) async {
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Mesa ${mesa.numero}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: mesa.estaReservada
+                            ? const Color(0xFFE5A000).withValues(alpha: 0.15)
+                            : (mesa.estaOcupada
+                                ? AppColors.error.withValues(alpha: 0.15)
+                                : AppColors.primaryGreen.withValues(alpha: 0.15)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        mesa.estado.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: mesa.estaReservada
+                              ? const Color(0xFFE5A000)
+                              : (mesa.estaOcupada ? AppColors.error : AppColors.primaryGreen),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (mesa.estaLibre) ...[
+                  ListTile(
+                    leading: const Icon(LucideIcons.calendarCheck, color: Color(0xFFE5A000)),
+                    title: const Text('Reservar mesa'),
+                    subtitle: const Text('Bloquear mesa para reservación'),
+                    onTap: () async {
+                      Navigator.of(sheetCtx).pop();
+                      try {
+                        await PedidoService.instance.reservarMesa(mesa.id, mesa.numero);
+                        if (context.mounted) {
+                          showAppToast(context, 'Mesa ${mesa.numero} reservada.', type: ToastType.success);
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showAppToast(context, 'Error al reservar mesa: $e', type: ToastType.error);
+                        }
+                      }
+                    },
+                  ),
+                ] else if (mesa.estaReservada) ...[
+                  ListTile(
+                    leading: const Icon(LucideIcons.checkCircle, color: AppColors.primaryGreen),
+                    title: const Text('Liberar mesa'),
+                    subtitle: const Text('Marcar la mesa como disponible'),
+                    onTap: () async {
+                      Navigator.of(sheetCtx).pop();
+                      try {
+                        await PedidoService.instance.liberarMesa(mesa.id, mesa.numero);
+                        if (context.mounted) {
+                          showAppToast(context, 'Mesa ${mesa.numero} liberada a disponible.', type: ToastType.success);
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showAppToast(context, 'Error al liberar mesa: $e', type: ToastType.error);
+                        }
+                      }
+                    },
+                  ),
+                ] else if (mesa.estaOcupada) ...[
+                  ListTile(
+                    leading: const Icon(LucideIcons.checkCircle2, color: AppColors.primaryGreen),
+                    title: const Text('Liberar mesa manualmente'),
+                    subtitle: const Text('Marcar la mesa como disponible'),
+                    onTap: () async {
+                      Navigator.of(sheetCtx).pop();
+                      final confirmar = await showDialog<bool>(
+                        context: context,
+                        builder: (dCtx) => AlertDialog(
+                          title: Text('¿Liberar Mesa ${mesa.numero}?'),
+                          content: const Text('La mesa volverá al estado disponible.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(dCtx).pop(false),
+                              child: const Text('Cancelar'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(dCtx).pop(true),
+                              child: const Text('Liberar'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmar == true && context.mounted) {
+                        try {
+                          await PedidoService.instance.liberarMesa(mesa.id, mesa.numero);
+                          if (context.mounted) {
+                            showAppToast(context, 'Mesa ${mesa.numero} liberada a disponible.', type: ToastType.success);
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            showAppToast(context, 'Error al liberar mesa: $e', type: ToastType.error);
+                          }
+                        }
+                      }
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+

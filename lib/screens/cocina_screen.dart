@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -10,6 +12,7 @@ import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
+import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
@@ -38,6 +41,27 @@ class _CocinaScreenState extends State<CocinaScreen> {
 
   // null = Todos.
   String? _filtro;
+  Timer? _pollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) _cargar();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _cargar() async {
+    await PedidoService.instance.cargarPedidos();
+    if (mounted) setState(() {});
+  }
 
   // Un pedido ya cobrado ('pagado') se considera entregado.
   String _estadoDe(Pedido p) => p.estado == 'pagado' ? 'entregado' : p.estado;

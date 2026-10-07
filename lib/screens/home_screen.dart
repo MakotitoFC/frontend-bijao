@@ -7,6 +7,8 @@ import '../models/app_role.dart';
 import '../models/usuario.dart';
 import '../models/nav_item.dart';
 import '../models/sede.dart';
+import '../services/auth_service.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'carta_screen.dart';
@@ -14,6 +16,7 @@ import 'cocina_screen.dart';
 import 'configuracion_screen.dart';
 import 'inventario_screen.dart';
 import 'login_screen.dart';
+import 'mesas_screen.dart';
 import 'pagos_screen.dart';
 import 'pedidos_screen.dart';
 import 'reportes_screen.dart';
@@ -41,6 +44,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final ValueNotifier<String> _busquedaProductos = ValueNotifier('');
 
   @override
+  void initState() {
+    super.initState();
+    CatalogService.instance.cargarCatalogos();
+  }
+
+  @override
   void dispose() {
     _categoriaProductos.dispose();
     _busquedaProductos.dispose();
@@ -50,13 +59,17 @@ class _HomeScreenState extends State<HomeScreen> {
   // Título y descripción breve de cada vista, que muestra el header global.
   static const _titulos = <String, ({String titulo, String descripcion})>{
     'inicio': (titulo: 'Inicio', descripcion: 'Resumen de tu restaurante'),
+    'mesas': (
+      titulo: 'Mesas',
+      descripcion: 'Visualiza salas, mesas, ocupación y administra el plano del local',
+    ),
     'pedidos': (
       titulo: 'Pedidos',
       descripcion: 'Toma pedidos, elige mesa o delivery y sigue la cola',
     ),
     'productos': (
-      titulo: 'Productos',
-      descripcion: 'Administra tu carta, precios y categorías',
+      titulo: 'Carta',
+      descripcion: 'Administra tu carta de platos, precios y categorías',
     ),
     'cocina': (
       titulo: 'Cocina',
@@ -83,7 +96,9 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   };
 
-  void _logout(BuildContext context) {
+  void _logout(BuildContext context) async {
+    await AuthService.instance.logout();
+    if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
@@ -92,6 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _contenidoDe(String clave) {
     switch (clave) {
+      case 'mesas':
+        return MesasScreen(usuario: widget.usuario);
       case 'pedidos':
         return PedidosScreen(usuario: widget.usuario);
       case 'productos':
@@ -134,7 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final items = navItems
-        .where((i) => i.rolesPermitidos.contains(widget.usuario.rol))
+        .where((i) => i.tieneAcceso(widget.usuario))
         .toList();
 
     if (AppBreakpoints.esMobile(context)) {
@@ -756,7 +773,7 @@ class _Sidebar extends StatelessWidget {
   static const double _anchoContraido = 68;
 
   List<NavItem> _hijosPermitidos(NavItem item) =>
-      item.hijos.where((h) => h.rolesPermitidos.contains(usuario.rol)).toList();
+      item.hijos.where((h) => h.tieneAcceso(usuario)).toList();
 
   List<Widget> _construirTiles() {
     final tiles = <Widget>[];

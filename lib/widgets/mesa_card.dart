@@ -29,6 +29,8 @@ class MesaCard extends StatelessWidget {
   final VoidCallback? onEditar;
   // Zona de la mesa: se muestra como tag transparente.
   final String? zona;
+  // Estado explícito: disponible, ocupada, reservada
+  final String? estado;
   // Escala del dibujo (1 = escritorio, <1 = mobile/tablet).
   final double scale;
   // Fuerza la tarjeta compacta según el ancho disponible.
@@ -46,6 +48,7 @@ class MesaCard extends StatelessWidget {
     this.onDesunir,
     this.onEditar,
     this.zona,
+    this.estado,
     this.scale = 1,
     this.simplificada = false,
   });
@@ -113,8 +116,15 @@ class MesaCard extends StatelessWidget {
     final grosorSilla = _grosorSilla * scale;
     final largoSilla = _largoSilla * scale;
     final separacion = _separacion * scale;
-    // Libre = verde, ocupada = rojo.
-    final base = ocupada ? AppColors.error : AppColors.primaryGreen;
+    // Libre/disponible = verde, ocupada = rojo, reservada = ámbar.
+    final Color base;
+    if (estado == 'reservada') {
+      base = const Color(0xFFE5A000);
+    } else if (ocupada || estado == 'ocupada') {
+      base = AppColors.error;
+    } else {
+      base = AppColors.primaryGreen;
+    }
     final fondo = Color.alphaBlend(base.withValues(alpha: 0.62), Colors.white);
     final textoPrincipal = Colors.white;
     final textoSecundario = Colors.white.withValues(alpha: 0.9);
@@ -287,7 +297,14 @@ class MesaCard extends StatelessWidget {
 
   // Tarjeta compacta: mesas unidas + total de clientes, sin dibujar sillas.
   Widget _cardCompacta(BuildContext context) {
-    final base = ocupada ? AppColors.error : AppColors.primaryGreen;
+    final Color base;
+    if (estado == 'reservada') {
+      base = const Color(0xFFE5A000);
+    } else if (ocupada || estado == 'ocupada') {
+      base = AppColors.error;
+    } else {
+      base = AppColors.primaryGreen;
+    }
     final fondo = Color.alphaBlend(base.withValues(alpha: 0.62), Colors.white);
     final textoPrincipal = Colors.white;
     return Material(
