@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../data/categorias_store.dart';
+import '../data/subcategorias_store.dart';
+import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/taper.dart';
 import '../services/auth_service.dart';
@@ -10,6 +13,7 @@ import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import '../widgets/app_select.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/subcategorias_acordeon.dart';
 
 /// Formulario para Crear / Editar un plato en la `carta` (según BD.txt).
 /// Campos en tabla `carta`:
@@ -47,11 +51,14 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   late final FocusNode _taperFocusNode;
 
   CategoriaComida? _categoria;
+  Set<String> _subcategoriaIds = {};
   String? _selectedTaperId;
   String? _selectedTaperNombre;
   String _estado = 'disponible';
   bool _mostrarListaTapers = false;
   bool _cargandoTapers = false;
+  // Tamaños con precio propio (`carta_variante`).
+  final List<_VarianteEditable> _variantes = [];
 
   @override
   void initState() {
@@ -74,8 +81,15 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       _categoria = categorias.first;
     }
 
+    _subcategoriaIds = {...?item?.subcategoriaIds};
     _estado = (item?.estado == 'agotado') ? 'agotado' : 'disponible';
     _selectedTaperId = item?.taperId;
+
+    if (item != null) {
+      for (final v in variantesDeCarta(item.id)) {
+        _variantes.add(_VarianteEditable.desde(v));
+      }
+    }
 
     _taperSearchController = TextEditingController();
     _taperFocusNode = FocusNode();
@@ -122,8 +136,19 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     _precioPersonalController.dispose();
     _taperSearchController.dispose();
     _taperFocusNode.dispose();
+    for (final v in _variantes) {
+      v.dispose();
+    }
     super.dispose();
   }
+
+  void _agregarVariante() =>
+      setState(() => _variantes.add(_VarianteEditable()));
+
+  void _quitarVariante(int index) => setState(() {
+    _variantes[index].dispose();
+    _variantes.removeAt(index);
+  });
 
   void _seleccionarTaper(Taper? taper) {
     setState(() {
@@ -151,11 +176,31 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       return;
     }
 
-    final pCliente = double.tryParse(_precioClienteController.text.trim());
-    if (pCliente == null || pCliente < 0) {
-      showAppToast(context, 'Ingresa un precio de cliente válido',
-          type: ToastType.error);
+    if (_subcategoriaIds.isEmpty) {
+      final sinSubcategorias = subcategoriasDe(
+        _categoria!.id,
+        soloActivas: true,
+      ).isEmpty;
+      showAppToast(
+        context,
+        sinSubcategorias
+            ? 'Crea primero una subcategoría para "${_categoria!.categoria}" '
+                  '(Categorías > + Subcategoría)'
+            : 'Selecciona al menos una subcategoría del plato',
+        type: ToastType.error,
+      );
       return;
+    }
+
+    // Con tamaños, el precio base del plato es opcional (cada tamaño trae el suyo).
+    final textoPrecio = _precioClienteController.text.trim();
+    final pCliente = double.tryParse(textoPrecio);
+    if (textoPrecio.isNotEmpty || _variantes.isEmpty) {
+      if (pCliente == null || pCliente < 0) {
+        showAppToast(context, 'Ingresa un precio de cliente válido',
+            type: ToastType.error);
+        return;
+      }
     }
 
     double? pPersonal;
@@ -178,6 +223,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       descripcion: _descripcionController.text.trim(),
       categoriaId: _categoria!.id,
       categoriaNombre: _categoria!.categoria,
+      subcategoriaIds: _subcategoriaIds.toList(),
       taperId: _selectedTaperId,
       taperNombre: _selectedTaperNombre,
       estado: _estado,
@@ -186,6 +232,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       sedeId: sedeActual,
       creadoEn: widget.item?.creadoEn ?? DateTime.now(),
     );
+
+    reemplazarVariantesDeCarta(resultado.id, [
+      for (final v in _variantes) v.aVariante(resultado.id),
+    ]);
 
     Navigator.of(context).pop(resultado);
   }
@@ -263,8 +313,30 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                               (c) => AppSelectItem(value: c, label: c.categoria),
                             )
                             .toList(),
-                        onChanged: (cat) => setState(() => _categoria = cat),
+                        onChanged: (cat) => setState(() {
+                          _categoria = cat;
+                          // Las subcategorías deben ser de la categoría elegida.
+                          _subcategoriaIds.removeWhere(
+                            (id) =>
+                                subcategoriaPorId(id)?.categoriaComidaId !=
+                                cat?.id,
+                          );
+                        }),
                       ),
+                      if (_categoria != null &&
+                          subcategoriasDe(_categoria!.id, soloActivas: true)
+                              .isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        SubcategoriasAcordeon(
+                          opciones: subcategoriasDe(
+                            _categoria!.id,
+                            soloActivas: true,
+                          ),
+                          seleccion: _subcategoriaIds,
+                          onChanged: (v) =>
+                              setState(() => _subcategoriaIds = v),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // 3. Descripción
@@ -303,7 +375,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                                 decimal: true,
                               ),
                               decoration: InputDecoration(
-                                labelText: 'Precio público (S/) *',
+                                labelText: _variantes.isEmpty
+                                    ? 'Precio público (S/) *'
+                                    : 'Precio público (S/)',
                                 hintText: '0.00',
                                 prefixText: 'S/ ',
                                 border: OutlineInputBorder(
@@ -312,7 +386,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                               ),
                               validator: (v) {
                                 if (v == null || v.trim().isEmpty) {
-                                  return 'Precio requerido';
+                                  return _variantes.isEmpty
+                                      ? 'Precio requerido'
+                                      : null;
                                 }
                                 final p = double.tryParse(v.trim());
                                 if (p == null || p < 0) {
@@ -353,7 +429,11 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 6. Selector de Estado (disponible / agotado)
+                      // 6. Tamaños con precio propio (carta_variante)
+                      _buildVariantes(),
+                      const SizedBox(height: 16),
+
+                      // 7. Selector de Estado (disponible / agotado)
                       _buildEstadoSelector(),
                       const SizedBox(height: 24),
 
@@ -636,6 +716,184 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   }
 
   /// Selector visual de Estado ('disponible' vs 'agotado')
+  // Tamaños con precio propio: nombre, precios y peso opcional por tamaño.
+  Widget _buildVariantes() {
+    InputDecoration deco(String label, {String? hint, String? prefijo}) =>
+        InputDecoration(
+          labelText: label,
+          hintText: hint,
+          prefixText: prefijo,
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        );
+    String? precio(String? v, {bool requerido = true}) {
+      final t = v?.trim() ?? '';
+      if (t.isEmpty) return requerido ? 'Requerido' : null;
+      final n = double.tryParse(t.replaceAll(',', '.'));
+      return (n == null || n < 0) ? 'Inválido' : null;
+    }
+
+    String? peso(String? v) {
+      final t = v?.trim() ?? '';
+      if (t.isEmpty) return null;
+      final n = double.tryParse(t.replaceAll(',', '.'));
+      return (n == null || n < 0) ? 'Inválido' : null;
+    }
+
+    const teclado = TextInputType.numberWithOptions(decimal: true);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tamaños con precio propio',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  Text(
+                    'Ej. pescado: pequeño, mediano, grande',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: _agregarVariante,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Tamaño'),
+            ),
+          ],
+        ),
+        for (var i = 0; i < _variantes.length; i++) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _variantes[i].nombre,
+                        maxLength: 50,
+                        decoration: deco('Nombre *', hint: 'Ej. Mediano')
+                            .copyWith(counterText: ''),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Requerido'
+                            : null,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Quitar tamaño',
+                      onPressed: () => _quitarVariante(i),
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _variantes[i].precioCliente,
+                        keyboardType: teclado,
+                        decoration: deco('Precio público *', prefijo: 'S/ '),
+                        validator: precio,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _variantes[i].precioPersonal,
+                        keyboardType: teclado,
+                        decoration: deco('Precio personal *', prefijo: 'S/ '),
+                        validator: precio,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _variantes[i].pesoMin,
+                        keyboardType: teclado,
+                        decoration: deco('Peso mín. (kg)', hint: 'Opcional'),
+                        validator: peso,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _variantes[i].pesoMax,
+                        keyboardType: teclado,
+                        decoration: deco('Peso máx. (kg)', hint: 'Opcional'),
+                        validator: (v) {
+                          final base = peso(v);
+                          if (base != null) return base;
+                          final max = double.tryParse(
+                            (v ?? '').trim().replaceAll(',', '.'),
+                          );
+                          final min = double.tryParse(
+                            _variantes[i].pesoMin.text.trim().replaceAll(
+                              ',',
+                              '.',
+                            ),
+                          );
+                          if (max != null && min != null && max < min) {
+                            return 'Menor que el mín.';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Switch(
+                      value: _variantes[i].estado,
+                      activeThumbColor: Colors.white,
+                      activeTrackColor: AppColors.primaryGreen,
+                      onChanged: (v) =>
+                          setState(() => _variantes[i].estado = v),
+                    ),
+                    Text(
+                      _variantes[i].estado ? 'Activo' : 'Inactivo',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildEstadoSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -744,5 +1002,49 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
         ),
       ],
     );
+  }
+}
+
+// Fila editable de un tamaño (`carta_variante`) dentro del formulario.
+class _VarianteEditable {
+  final String? id;
+  final nombre = TextEditingController();
+  final precioCliente = TextEditingController();
+  final precioPersonal = TextEditingController();
+  final pesoMin = TextEditingController();
+  final pesoMax = TextEditingController();
+  bool estado = true;
+
+  _VarianteEditable() : id = null;
+
+  _VarianteEditable.desde(CartaVariante v) : id = v.id {
+    nombre.text = v.nombre;
+    precioCliente.text = v.precioCliente.toStringAsFixed(2);
+    precioPersonal.text = v.precioPersonal.toStringAsFixed(2);
+    pesoMin.text = v.pesoMinKg?.toString() ?? '';
+    pesoMax.text = v.pesoMaxKg?.toString() ?? '';
+    estado = v.estado;
+  }
+
+  double? _numero(TextEditingController c) =>
+      double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  CartaVariante aVariante(String cartaId) => CartaVariante(
+    id: id ?? UuidHelper.v7(),
+    cartaId: cartaId,
+    nombre: nombre.text.trim(),
+    precioCliente: _numero(precioCliente) ?? 0,
+    precioPersonal: _numero(precioPersonal) ?? 0,
+    pesoMinKg: _numero(pesoMin),
+    pesoMaxKg: _numero(pesoMax),
+    estado: estado,
+  );
+
+  void dispose() {
+    nombre.dispose();
+    precioCliente.dispose();
+    precioPersonal.dispose();
+    pesoMin.dispose();
+    pesoMax.dispose();
   }
 }

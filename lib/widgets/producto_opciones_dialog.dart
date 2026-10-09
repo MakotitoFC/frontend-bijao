@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/presentaciones_store.dart';
+import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
 import '../models/carta_presentacion.dart';
+import '../models/carta_variante.dart';
 import '../models/modificador.dart';
 import '../models/taper.dart';
 import '../services/catalog_service.dart';
@@ -15,6 +17,7 @@ import '../utils/agregados_utils.dart';
 typedef ProductoConfigurado = ({
   int cantidad,
   CartaPresentacion? presentacion,
+  CartaVariante? variante,
   List<Modificador> modificadores,
   String? comentario,
   double precioUnitario,
@@ -47,6 +50,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       .where((p) => p.cartaId == widget.item.id)
       .toList();
   CartaPresentacion? _presentacion;
+  // Tamaños con precio propio (`carta_variante`): si el plato los tiene, se
+  // elige uno y reemplaza a las presentaciones.
+  late final List<CartaVariante> _variantes = variantesDeCarta(
+    widget.item.id,
+    soloActivas: true,
+  );
+  CartaVariante? _variante;
   final Set<String> _agregadosElegidos = {};
   // Selección por grupo de extras: nombre del grupo -> ítems elegidos.
   final Map<String, Set<String>> _seleccionPorGrupo = {};
@@ -67,7 +77,11 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   @override
   void initState() {
     super.initState();
-    if (_presentaciones.isNotEmpty) _presentacion = _presentaciones.first;
+    if (_variantes.isNotEmpty) {
+      _variante = _variantes.first;
+    } else if (_presentaciones.isNotEmpty) {
+      _presentacion = _presentaciones.first;
+    }
     final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
     if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
       _taperSeleccionado = tapers.where((t) => t.id == widget.item.taperId).firstOrNull;
@@ -84,7 +98,11 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   }
 
   double get _precioUnitario {
-    final base = _presentacion?.precioCliente ?? widget.item.precioCliente ?? 0;
+    final base =
+        _variante?.precioCliente ??
+        _presentacion?.precioCliente ??
+        widget.item.precioCliente ??
+        0;
     final extrasSimples = _extrasSimples
         .where((a) => _agregadosElegidos.contains('${a['nombre']}'))
         .fold(0.0, (s, a) => s + (precioDeAgregado(a) ?? 0));
@@ -154,6 +172,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     Navigator.of(context).pop<ProductoConfigurado>((
       cantidad: _cantidad,
       presentacion: _presentacion,
+      variante: _variante,
       modificadores: modificadores,
       comentario: _comentarioController.text.trim().isEmpty
           ? null
@@ -245,7 +264,12 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    if (_presentaciones.isNotEmpty) ...[
+                    if (_variantes.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      _tituloSeccion('Elige el tamaño', obligatorio: true),
+                      const SizedBox(height: 6),
+                      for (final v in _variantes) _filaVariante(v),
+                    ] else if (_presentaciones.isNotEmpty) ...[
                       const SizedBox(height: 18),
                       _tituloSeccion('Elige el tamaño', obligatorio: true),
                       const SizedBox(height: 6),
@@ -541,6 +565,37 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _filaVariante(CartaVariante v) {
+    final activo = _variante?.id == v.id;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => setState(() => _variante = v),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(
+                activo ? Icons.radio_button_checked : Icons.radio_button_off,
+                size: 20,
+                color: activo ? AppColors.primaryGreen : Colors.grey.shade400,
+              ),
+            ),
+            Expanded(child: Text(v.nombre)),
+            Text(
+              'S/ ${v.precioCliente.toStringAsFixed(2)}',
+              style: TextStyle(
+                fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
+                color: activo ? AppColors.primaryGreenDark : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

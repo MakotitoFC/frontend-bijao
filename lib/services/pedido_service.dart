@@ -50,6 +50,7 @@ class PedidoService {
           ? l.id
           : UuidHelper.v7();
       final esCarta = l.cartaId.isNotEmpty && UuidHelper.isValid(l.cartaId) && !l.esLibre;
+      final esPromo = l.promocion != null && UuidHelper.isValid(l.promocion!.id);
       final aplicaTaper = l.aplicaTaper || (taperId != null && taperId.isNotEmpty);
       final idTaper = l.taperId ?? taperId;
       final pTaper = l.aplicaTaper ? l.precioTaper : precioTaper;
@@ -59,6 +60,9 @@ class PedidoService {
         'id': detUuid,
         'pedidos_id': pedidoUuid,
         if (esCarta) 'carta_id': l.cartaId,
+        if (esPromo) 'promocion_id': l.promocion!.id,
+        if (esPromo)
+          'componentes': [for (final e in l.componentes) e.toJson()],
         'cantidad': l.cantidad,
         'tipo_entrega': tipoEnt,
         'aplica_taper': aplicaTaper,
@@ -67,8 +71,11 @@ class PedidoService {
         'precio_taper': aplicaTaper ? pTaper : 0.0,
         if (l.presentacion != null && UuidHelper.isValid(l.presentacion!.id))
           'carta_presentacion_id': l.presentacion!.id,
-        'es_libre': l.esLibre || !esCarta,
-        if (l.esLibre || !esCarta) 'nombre_libre': (l.nombreLibre ?? l.nombrePlato),
+        if (l.variante != null && UuidHelper.isValid(l.variante!.id))
+          'carta_variante_id': l.variante!.id,
+        'es_libre': l.esLibre || (!esCarta && !esPromo),
+        if (l.esLibre || (!esCarta && !esPromo))
+          'nombre_libre': (l.nombreLibre ?? l.nombrePlato),
         if (l.descripcionLibre != null && l.descripcionLibre!.isNotEmpty)
           'descripcion_libre': l.descripcionLibre,
         'precio_base': l.precioBase > 0 ? l.precioBase : l.precioUnitario,
@@ -188,13 +195,6 @@ class PedidoService {
         nuevoEstado == 'cancelado') {
       await CatalogService.instance.cargarMesas();
     }
-  }
-
-  /// Reserva una mesa directamente en PostgreSQL
-  Future<void> reservarMesa(String mesaId, int numeroMesa) async {
-    final body = {'estado': 'reservada'};
-    await _api.put('/api/mesas/$mesaId/estado', body: body);
-    actualizarEstadoMesa(numeroMesa, 'reservada');
   }
 
   /// Libera una mesa a 'disponible' directamente en PostgreSQL

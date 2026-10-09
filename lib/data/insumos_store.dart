@@ -1,6 +1,7 @@
 import '../models/carta_insumo.dart';
 import '../models/inventario_movimiento.dart';
 import '../models/pedido_detalle_insumo.dart';
+import '../models/promocion_componente.dart';
 import '../models/pedido_line.dart';
 import 'catalogos_store.dart';
 import 'inventario_store.dart';
@@ -72,7 +73,67 @@ void registrarConsumoDirecto(
 
 // Descuenta automáticamente las recetas de cantidad fija de una línea recién
 // confirmada. Las variables quedan pendientes (ver insumosPendientesDe).
+// Línea de producto equivalente a un componente de una promoción, para reutilizar
+// las recetas de ese plato.
+PedidoLine _lineaDeComponente(PedidoLine linea, ComponenteElegido e) =>
+    PedidoLine(
+      id: linea.id,
+      cartaId: e.cartaId,
+      nombrePlato: e.nombre,
+      cantidad: linea.cantidad * e.cantidad,
+      modificadores: const [],
+      presentacion: null,
+      promocion: null,
+      comentario: null,
+      precioUnitario: 0,
+      descuentoAplicado: 0,
+      precioTotalLinea: 0,
+    );
+
+// Si a pedido del cliente se cambian productos de una promoción: devuelve al
+// stock lo de los componentes que dejaron de estar y descuenta los nuevos.
+void reajustarConsumoDePromocion(PedidoLine anterior, PedidoLine nueva) {
+  for (final e in anterior.componentes) {
+    final sigue = nueva.componentes.any(
+      (n) => n.componenteId == e.componenteId && n.opcionId == e.opcionId,
+    );
+    if (sigue) continue;
+    final virtual = _lineaDeComponente(anterior, e);
+    for (final receta in recetaDeCarta(virtual.cartaId)) {
+      if (receta.esVariable || receta.cantidadEstandar == null) continue;
+      final cantidad = receta.cantidadEstandar! * virtual.cantidad;
+      pedidoDetalleInsumos.removeWhere(
+        (pdi) =>
+            pdi.pedidoDetalleId == anterior.id &&
+            pdi.productoInventarioId == receta.productoInventarioId,
+      );
+      registrarMovimientoInventario(
+        InventarioMovimiento(
+          productoInventarioId: receta.productoInventarioId,
+          tipoMovimiento: movEntradaManual,
+          cantidad: cantidad,
+          notas: 'Cambio de producto en promoción: ${e.nombre}',
+          fecha: DateTime.now(),
+        ),
+      );
+    }
+  }
+  for (final e in nueva.componentes) {
+    final existia = anterior.componentes.any(
+      (a) => a.componenteId == e.componenteId && a.opcionId == e.opcionId,
+    );
+    if (existia) continue;
+    registrarConsumoAutomaticoDeLinea(_lineaDeComponente(nueva, e));
+  }
+}
+
 void registrarConsumoAutomaticoDeLinea(PedidoLine linea) {
+  if (linea.promocion != null) {
+    for (final e in linea.componentes) {
+      registrarConsumoAutomaticoDeLinea(_lineaDeComponente(linea, e));
+    }
+    return;
+  }
   for (final receta in recetaDeCarta(linea.cartaId)) {
     if (!receta.esVariable && receta.cantidadEstandar != null) {
       registrarConsumoInsumo(

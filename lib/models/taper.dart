@@ -1,3 +1,5 @@
+import '../utils/json_num.dart';
+
 class Taper {
   final String id;
   final String nombre;
@@ -17,7 +19,7 @@ class Taper {
     return Taper(
       id: json['id'] as String,
       nombre: json['nombre'] as String? ?? '',
-      precio: (json['precio'] is num) ? (json['precio'] as num).toDouble() : 0.0,
+      precio: jsonDouble(json['precio']) ?? 0.0,
       estado: json['estado'] as bool? ?? true,
       sedeId: json['sede_id'] as String?,
     );

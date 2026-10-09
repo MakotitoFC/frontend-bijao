@@ -1,3 +1,5 @@
+import '../utils/json_num.dart';
+
 // Refleja la tabla `modificador` en PostgreSQL.
 class Modificador {
   final String id;
@@ -22,7 +24,7 @@ class Modificador {
       cartaId: json['carta_id'] as String? ?? '',
       nombre: json['nombre'] as String? ?? '',
       tipo: json['tipo'] as String? ?? 'ajuste',
-      precioAjuste: (json['precio_ajuste'] is num) ? (json['precio_ajuste'] as num).toDouble() : 0.0,
+      precioAjuste: jsonDouble(json['precio_ajuste']) ?? 0.0,
       estado: json['estado'] as bool? ?? true,
     );
   }

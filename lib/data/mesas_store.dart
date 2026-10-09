@@ -5,6 +5,9 @@ import '../models/mesa.dart';
 // Mesas del local (tabla `mesa`). Se cargan desde el backend.
 final List<Mesa> mesas = [];
 
+// Una mesa se crea con 2 sillas como mínimo.
+const capacidadMinimaMesa = 2;
+
 // Cantidad de clientes que caben en la mesa (define sus sillas). Las mesas
 // sin capacidad definida usan 2 o 4, de forma estable según su número.
 int capacidadDe(int numero) {
@@ -60,7 +63,14 @@ void actualizarMesa(
   required String zona,
 }) {
   final i = mesas.indexWhere((m) => m.numero == numero);
-  if (i != -1) mesas[i] = mesas[i].copyWith(capacidad: capacidad, zona: zona);
+  if (i != -1) {
+    mesas[i] = mesas[i].copyWith(
+      capacidad: capacidad < capacidadMinimaMesa
+          ? capacidadMinimaMesa
+          : capacidad,
+      zona: zona,
+    );
+  }
 }
 
 bool puedeEliminarMesa(int numero) {
@@ -79,7 +89,9 @@ Mesa agregarMesa({
     id: 'm$numero',
     numero: numero,
     estado: 'disponible',
-    capacidad: capacidad,
+    capacidad: capacidad < capacidadMinimaMesa
+        ? capacidadMinimaMesa
+        : capacidad,
     zona: zona,
   );
   mesas

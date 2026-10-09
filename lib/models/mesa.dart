@@ -2,7 +2,7 @@
 class Mesa {
   final String id;
   final int numero;
-  final String estado; // 'disponible' | 'ocupada' | 'reservada'
+  final String estado; // 'disponible' | 'ocupada'
   final int capacidad;
   final String zonaId;
   final String zona;
@@ -18,7 +18,6 @@ class Mesa {
 
   bool get estaLibre => estado == 'disponible' || estado == 'libre';
   bool get estaOcupada => estado == 'ocupada';
-  bool get estaReservada => estado == 'reservada';
 
   int get numeroSillas => capacidad;
 
@@ -33,7 +32,10 @@ class Mesa {
 
   factory Mesa.fromJson(Map<String, dynamic> json) {
     final rawEstado = (json['estado'] as String?)?.toLowerCase() ?? 'disponible';
-    final estado = (rawEstado == 'libre') ? 'disponible' : rawEstado;
+    // 'reservada' ya no se maneja: una mesa con ese estado heredado se toma como libre.
+    final estado = (rawEstado == 'libre' || rawEstado == 'reservada')
+        ? 'disponible'
+        : rawEstado;
 
     return Mesa(
       id: json['id'] as String,

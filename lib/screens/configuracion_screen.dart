@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
 import '../data/usuarios_store.dart';
@@ -14,6 +14,7 @@ import '../widgets/app_select.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/config_widgets.dart';
 import '../widgets/pestanas_vista.dart';
+import '../widgets/promociones_config.dart';
 import '../widgets/usuario_permisos_dialog.dart';
 
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
@@ -121,6 +122,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               etiqueta: 'Usuarios y roles',
               contenido: (_) => _pagina(_usuarios()),
             ),
+          (
+            etiqueta: 'Promociones',
+            contenido: (_) => const PromocionesConfig(),
+          ),
           (etiqueta: 'Negocio', contenido: (_) => _pagina(_negocio())),
         ],
       ),

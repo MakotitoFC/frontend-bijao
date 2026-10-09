@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
 import '../data/configuracion_store.dart';
@@ -7,6 +7,8 @@ import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
 import '../data/categorias_store.dart';
 import '../data/pedidos_store.dart';
+import '../data/promociones_store.dart';
+import '../data/variantes_store.dart';
 import '../models/app_role.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
@@ -28,6 +30,7 @@ import 'dotted_divider.dart';
 import 'plato_del_dia_picker.dart';
 import 'plato_libre_dialog.dart';
 import 'producto_opciones_dialog.dart';
+import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'tupper_dialog.dart';
 
@@ -132,6 +135,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
       cantidad: l.cantidad,
       modificadores: l.modificadores,
       presentacion: l.presentacion,
+      variante: l.variante,
+      componentes: l.componentes,
       promocion: l.promocion,
       comentario: l.comentario,
       precioUnitario: l.precioUnitario,
@@ -158,6 +163,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           cantidad: resultado.cantidad,
           modificadores: resultado.modificadores,
           presentacion: resultado.presentacion,
+          variante: resultado.variante,
           promocion: null,
           comentario: resultado.comentario,
           precioUnitario: resultado.precioUnitario,
@@ -168,10 +174,41 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           taperId: resultado.taperId,
           precioTaper: resultado.precioTaper,
           esLibre: false,
-          precioBase: item.precioCliente ?? 0.0,
+          precioBase:
+              resultado.variante?.precioCliente ?? item.precioCliente ?? 0.0,
         ),
       );
     });
+  }
+
+  // Agrega una promoción tal como la configuró el admin; el mozo solo cambia un
+  // producto si el cliente lo pide.
+  Future<void> _abrirPromocion() async {
+    final r = await elegirPromocion(context);
+    if (r == null || !mounted) return;
+    setState(() => _carrito.add(lineaDePromocion(r)));
+  }
+
+  // Cambia productos de una promoción del carrito (a pedido del cliente).
+  Future<void> _cambiarProductosPromocion(int index) async {
+    final linea = _carrito[index];
+    final promo = linea.promocion;
+    if (promo == null) return;
+    final r = await showBlurDialog<PromocionConfigurada>(
+      context: context,
+      builder: (_) => PromocionOpcionesDialog(
+        promocion: promo,
+        inicial: linea.componentes,
+        edicion: true,
+      ),
+    );
+    if (r == null || !mounted) return;
+    setState(
+      () => _carrito[index] = linea.conComponentes(
+        r.componentes,
+        r.precioUnitario,
+      ),
+    );
   }
 
   // Tag naranja del resumen: agrega el plato del día registrado en Productos.
@@ -207,6 +244,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           cantidad: nueva,
           modificadores: linea.modificadores,
           presentacion: linea.presentacion,
+          variante: linea.variante,
+          componentes: linea.componentes,
           promocion: linea.promocion,
           comentario: linea.comentario,
           precioUnitario: linea.precioUnitario,
@@ -352,10 +391,9 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
 
   void _elegirMesa(Mesa mesa) {
     if (!mesa.estaLibre) {
-      final motivo = mesa.estaReservada ? 'está reservada' : 'está ocupada';
       showAppToast(
         context,
-        'La mesa ${mesa.numero} $motivo.',
+        'La mesa ${mesa.numero} está ocupada.',
         type: ToastType.error,
       );
       return;
@@ -644,7 +682,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           ),
           const SizedBox(height: 2),
           Text(
-            'S/ ${(item.precioCliente ?? 0).toStringAsFixed(2)}',
+            item.precioCliente == null &&
+                    precioMinimoDeVariantes(item.id) != null
+                ? 'Desde S/ ${precioMinimoDeVariantes(item.id)!.toStringAsFixed(2)}'
+                : 'S/ ${(item.precioCliente ?? 0).toStringAsFixed(2)}',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -821,6 +862,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         Wrap(
           runSpacing: 8,
           children: [
+            AppTag(
+              etiqueta: 'Promoción',
+              icono: LucideIcons.tag,
+              activo: false,
+              color: AppColors.platoDelDia,
+              onTap: _abrirPromocion,
+            ),
             AppTag(
               etiqueta: 'Plato libre',
               icono: LucideIcons.sparkles,
@@ -1065,6 +1113,39 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                     fontSize: 12,
                   ),
                 ),
+                for (final e in linea.componentes)
+                  Text(
+                    textoDeComponente(e),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: e.esCambio
+                          ? AppColors.platoDelDia
+                          : Colors.grey.shade500,
+                    ),
+                  ),
+                if (linea.promocion != null &&
+                    linea.componentes.any(
+                      (e) => opcionesDe(e.componenteId, soloActivas: true).length > 1,
+                    ))
+                  InkWell(
+                    onTap: () => _cambiarProductosPromocion(index),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 2),
+                      child: Text(
+                        'Cambiar productos',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.platoDelDia,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (linea.variante != null)
+                  Text(
+                    linea.variante!.nombre,
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
                 if (linea.presentacion != null)
                   Text(
                     '${linea.presentacion!.unidad.unidadPresentacion} ${linea.presentacion!.volumenMl}ml',

@@ -1,6 +1,8 @@
 import 'carta_presentacion.dart';
+import 'carta_variante.dart';
 import 'modificador.dart';
 import 'promocion.dart';
+import 'promocion_componente.dart';
 
 // Línea del carrito en memoria; su forma corresponde a `pedidos_detalle`
 // (+ `pedidos_detalle_modificador`) que se enviará al backend más adelante.
@@ -11,7 +13,12 @@ class PedidoLine {
   final int cantidad;
   final List<Modificador> modificadores;
   final CartaPresentacion? presentacion;
+  // Tamaño con precio propio elegido (`pedidos_detalle.carta_variante_id`).
+  final CartaVariante? variante;
   final Promocion? promocion;
+  // Si es una promoción: el producto que quedó en cada hueco del combo
+  // (`pedidos_detalle_componente`).
+  final List<ComponenteElegido> componentes;
   final String? comentario;
   final double precioUnitario; // base + modificadores, por unidad
   final double descuentoAplicado; // total de la línea
@@ -49,6 +56,8 @@ class PedidoLine {
     this.descripcionLibre,
     this.precioBase = 0.0,
     this.estado,
+    this.variante,
+    this.componentes = const [],
   });
 
   factory PedidoLine.fromJson(Map<String, dynamic> json) {
@@ -95,6 +104,8 @@ class PedidoLine {
       cantidad: nueva,
       modificadores: modificadores,
       presentacion: presentacion,
+      variante: variante,
+    componentes: componentes,
       promocion: promocion,
       comentario: comentario,
       precioUnitario: precioUnitario,
@@ -119,6 +130,8 @@ class PedidoLine {
     cantidad: cantidad,
     modificadores: modificadores,
     presentacion: presentacion,
+      variante: variante,
+    componentes: componentes,
     promocion: promocion,
     comentario: nuevo,
     precioUnitario: precioUnitario,
@@ -142,6 +155,8 @@ class PedidoLine {
     cantidad: cantidad,
     modificadores: modificadores,
     presentacion: presentacion,
+      variante: variante,
+    componentes: componentes,
     promocion: promocion,
     comentario: comentario,
     precioUnitario: precioUnitario,
@@ -157,4 +172,37 @@ class PedidoLine {
     precioBase: precioBase,
     estado: estado ?? this.estado,
   );
+
+  // Cambia los productos de una promoción (a pedido del cliente): actualiza los
+  // componentes y el precio de la línea.
+  PedidoLine conComponentes(
+    List<ComponenteElegido> nuevos,
+    double nuevoPrecioUnitario,
+  ) {
+    final desc = descuentoAplicado;
+    return PedidoLine(
+      id: id,
+      cartaId: cartaId,
+      nombrePlato: nombrePlato,
+      cantidad: cantidad,
+      modificadores: modificadores,
+      presentacion: presentacion,
+      variante: variante,
+      componentes: nuevos,
+      promocion: promocion,
+      comentario: comentario,
+      precioUnitario: nuevoPrecioUnitario,
+      descuentoAplicado: desc,
+      precioTotalLinea: nuevoPrecioUnitario * cantidad - desc,
+      tipoEntrega: tipoEntrega,
+      aplicaTaper: aplicaTaper,
+      taperId: taperId,
+      precioTaper: precioTaper,
+      esLibre: esLibre,
+      nombreLibre: nombreLibre,
+      descripcionLibre: descripcionLibre,
+      precioBase: precioBase,
+      estado: estado,
+    );
+  }
 }

@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 // Fondo decorativo: íconos de cocina (platos, ollas, cubiertos, bebidas…)
 // repartidos en filas desfasadas y ligeramente girados.

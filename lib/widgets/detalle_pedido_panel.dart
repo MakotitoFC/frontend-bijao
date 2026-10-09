@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/incidencias_store.dart';
 import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
+import '../data/promociones_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/incidencia.dart';
 import '../models/pedido.dart';
@@ -25,6 +26,7 @@ import 'pago_compartido_dialog.dart';
 import 'pago_dialogs.dart';
 import 'plato_del_dia_picker.dart';
 import 'producto_opciones_dialog.dart';
+import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'reportar_problema_dialog.dart';
 import 'tupper_dialog.dart';
@@ -156,6 +158,7 @@ class DetallePedidoPanel extends StatelessWidget {
 
   String _descripcionLinea(PedidoLine l) {
     final partes = <String>[
+      if (l.variante != null) l.variante!.nombre,
       if (l.presentacion != null)
         '${l.presentacion!.unidad.unidadPresentacion} ${l.presentacion!.volumenMl}ml',
       ...l.modificadores.map((m) => m.nombre),
@@ -468,6 +471,47 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // Tag naranja: agrega al pedido el plato del día registrado en Productos.
+  // Agrega una promoción tal como la configuró el admin al pedido.
+  Future<void> _agregarPromocion(BuildContext context) async {
+    final r = await elegirPromocion(context);
+    if (r == null || !context.mounted) return;
+    final linea = lineaDePromocion(r);
+    agregarLineaAPedido(pedido.id, linea);
+    registrarConsumoAutomaticoDeLinea(linea);
+    onCambio();
+    if (context.mounted) {
+      showAppToast(
+        context,
+        '"${r.promocion.nombre}" se agregó al pedido #${pedido.numeroPedido}.',
+        type: ToastType.success,
+        titulo: 'Promoción',
+      );
+    }
+  }
+
+  // El cliente pide cambiar un producto de la promoción: solo entre las
+  // opciones que registró el admin.
+  Future<void> _cambiarProductosPromocion(
+    BuildContext context,
+    PedidoLine l,
+  ) async {
+    final promo = l.promocion;
+    if (promo == null || _bloqueadaPorPago(context, l)) return;
+    final r = await showBlurDialog<PromocionConfigurada>(
+      context: context,
+      builder: (_) => PromocionOpcionesDialog(
+        promocion: promo,
+        inicial: l.componentes,
+        edicion: true,
+      ),
+    );
+    if (r == null) return;
+    final nueva = l.conComponentes(r.componentes, r.precioUnitario);
+    reajustarConsumoDePromocion(l, nueva);
+    reemplazarLineaDePedido(pedido.id, nueva);
+    onCambio();
+  }
+
   Future<void> _platoDelDia(BuildContext context) async {
     final item = await elegirPlatoDelDia(context);
     if (item == null || !context.mounted) return;
@@ -487,6 +531,7 @@ class DetallePedidoPanel extends StatelessWidget {
       cantidad: r.cantidad,
       modificadores: r.modificadores,
       presentacion: r.presentacion,
+      variante: r.variante,
       promocion: null,
       comentario: r.comentario,
       precioUnitario: r.precioUnitario,
@@ -581,6 +626,13 @@ class DetallePedidoPanel extends StatelessWidget {
             child: Wrap(
               runSpacing: 8,
               children: [
+                AppTag(
+                  etiqueta: 'Promoción',
+                  icono: LucideIcons.tag,
+                  activo: false,
+                  color: AppColors.platoDelDia,
+                  onTap: () => _agregarPromocion(context),
+                ),
                 AppTag(
                   etiqueta: 'Plato del día',
                   icono: LucideIcons.chefHat,
@@ -929,6 +981,41 @@ class DetallePedidoPanel extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (l.promocion != null) ...[
+                  for (final e in l.componentes)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        textoDeComponente(e),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: e.esCambio
+                              ? AppColors.platoDelDia
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  if (l.componentes.any(
+                    (e) => opcionesDe(e.componenteId, soloActivas: true).length > 1,
+                  ))
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: InkWell(
+                        onTap: () => _cambiarProductosPromocion(context, l),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            'Cambiar productos',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.platoDelDia,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
                 if (l.comentario != null && esProducto)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),

@@ -4,9 +4,13 @@ import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
 import '../models/categoria_comida.dart';
 import '../services/catalog_service.dart';
+import '../data/subcategorias_store.dart';
 import '../theme/app_theme.dart';
+import '../models/subcategoria.dart';
 
-// Modal "Categorías": lista, agrega, edita (en la misma fila) y elimina.
+// Modal "Categorías": lista, agrega, edita (en la misma fila) y elimina. Cada
+// categoría muestra sus subcategorías como tags naranjas, con un botón para
+// agregar más en la misma fila.
 class CategoriasCrudDialog extends StatefulWidget {
   final ValueNotifier<CategoriaComida?> seleccion;
   final VoidCallback onCambio;
@@ -29,11 +33,245 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
   String? _errorEdicion;
   final _editController = TextEditingController();
 
+  // Subcategorías: categoría donde se está escribiendo una nueva, subcategoría
+  // que se renombra y el error mostrado bajo los tags de una categoría.
+  String? _agregandoSubEn;
+  String? _editandoSubId;
+  String? _errorSubEn;
+  String? _errorSub;
+  final _subController = TextEditingController();
+
   @override
   void dispose() {
     _nombreController.dispose();
     _editController.dispose();
+    _subController.dispose();
     super.dispose();
+  }
+
+  void _cerrarCampoSub() => setState(() {
+    _agregandoSubEn = null;
+    _editandoSubId = null;
+    _errorSub = null;
+    _errorSubEn = null;
+    _subController.clear();
+  });
+
+  Future<void> _guardarSub(CategoriaComida cat) async {
+    final nombre = _subController.text.trim();
+    if (nombre.isEmpty) {
+      _cerrarCampoSub();
+      return;
+    }
+    if (existeSubcategoria(cat.id, nombre, salvo: _editandoSubId)) {
+      setState(() {
+        _errorSubEn = cat.id;
+        _errorSub = 'Ya existe esa subcategoría';
+      });
+      return;
+    }
+    try {
+      final editando = subcategoriaPorId(_editandoSubId);
+      if (editando != null) {
+        await CatalogService.instance.actualizarSubcategoria(
+          editando,
+          nombre: nombre,
+        );
+      } else {
+        await CatalogService.instance.crearSubcategoria(cat.id, nombre);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorSubEn = cat.id;
+        _errorSub = 'Error al guardar: $e';
+      });
+      return;
+    }
+    if (mounted) _cerrarCampoSub();
+  }
+
+  Future<void> _eliminarSub(CategoriaComida cat, Subcategoria s) async {
+    final enUso = cartasNotifier.value
+        .where((c) => c.subcategoriaIds.contains(s.id))
+        .length;
+    if (enUso > 0) {
+      setState(() {
+        _errorSubEn = cat.id;
+        _errorSub =
+            '"${s.subcategoria}" tiene $enUso producto(s). Quítala de ellos '
+            'antes de eliminarla.';
+      });
+      return;
+    }
+    try {
+      await CatalogService.instance.eliminarSubcategoria(s.id);
+      if (!mounted) return;
+      setState(() {
+        _errorSub = null;
+        _errorSubEn = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorSubEn = cat.id;
+        _errorSub = 'No se pudo eliminar: $e';
+      });
+    }
+  }
+
+  // Campo en línea (mismo estilo de los tags) para escribir una subcategoría.
+  Widget _campoSub(CategoriaComida cat) {
+    return Container(
+      width: 200,
+      height: 32,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.platoDelDia),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _subController,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                hintText: 'Subcategoría...',
+                isDense: true,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+              ),
+              onChanged: (_) {
+                if (_errorSub != null) setState(() => _errorSub = null);
+              },
+              onSubmitted: (_) => _guardarSub(cat),
+            ),
+          ),
+          InkWell(
+            onTap: () => _guardarSub(cat),
+            customBorder: const CircleBorder(),
+            child: const Padding(
+              padding: EdgeInsets.all(5),
+              child: Icon(Icons.check, size: 16, color: AppColors.platoDelDia),
+            ),
+          ),
+          InkWell(
+            onTap: _cerrarCampoSub,
+            customBorder: const CircleBorder(),
+            child: const Padding(
+              padding: EdgeInsets.fromLTRB(0, 5, 8, 5),
+              child: Icon(Icons.close, size: 16, color: Colors.black54),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Tag naranja de una subcategoría: al tocarlo se renombra; la x la elimina.
+  Widget _tagSub(CategoriaComida cat, Subcategoria s) {
+    return Material(
+      color: AppColors.platoDelDia,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => setState(() {
+          _agregandoSubEn = null;
+          _editandoSubId = s.id;
+          _subController.text = s.subcategoria;
+          _errorSub = null;
+        }),
+        child: SizedBox(
+          height: 32,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 14, right: 6),
+                child: Text(
+                  s.subcategoria,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => _eliminarSub(cat, s),
+                customBorder: const CircleBorder(),
+                child: const Padding(
+                  padding: EdgeInsets.fromLTRB(2, 6, 10, 6),
+                  child: Icon(Icons.close, size: 15, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Fila de subcategorías: botón "+ Subcategoría" y los tags; si no caben en
+  // la fila pasan a la siguiente.
+  Widget _zonaSub(CategoriaComida cat) {
+    final lista = subcategoriasDe(cat.id);
+    final agregando = _agregandoSubEn == cat.id;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (agregando)
+                _campoSub(cat)
+              else
+                OutlinedButton.icon(
+                  onPressed: () => setState(() {
+                    _editandoSubId = null;
+                    _agregandoSubEn = cat.id;
+                    _subController.clear();
+                    _errorSub = null;
+                  }),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.platoDelDia,
+                    side: const BorderSide(color: AppColors.platoDelDia),
+                    shape: const StadiumBorder(),
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Subcategoría'),
+                ),
+              for (final s in lista)
+                if (_editandoSubId == s.id) _campoSub(cat) else _tagSub(cat, s),
+            ],
+          ),
+          if (_errorSub != null && _errorSubEn == cat.id)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(
+                _errorSub!,
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _agregar() async {
@@ -168,7 +406,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
             : const BoxConstraints(
                 minWidth: 420,
                 maxWidth: 420,
-                maxHeight: 560,
+                maxHeight: 640,
               ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -260,7 +498,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                             .where((c) => c.categoriaId == cat.id)
                             .length;
                         final editando = _editandoId == cat.id;
-                        return ListTile(
+                        final fila = ListTile(
                           title: editando
                               ? SizedBox(
                                   height: AppSizes.control,
@@ -353,6 +591,10 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                                     ),
                                   ],
                                 ),
+                        );
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [fila, _zonaSub(cat)],
                         );
                       },
                     ),

@@ -156,6 +156,21 @@ const cartaIdCargoDelivery = 'cargo-delivery';
 // cocina no la ve.
 const cartaIdAjuste = 'ajuste-manual';
 
+// Línea de una promoción (combo): su `cartaId` no es un plato de la carta; los
+// platos van en `componentes`.
+const cartaIdPromocion = 'promocion';
+
+bool esLineaPromocion(PedidoLine l) => l.promocion != null;
+
+// Reemplaza una línea ya registrada (mismo id), ej. tras cambiar productos de
+// una promoción.
+void reemplazarLineaDePedido(String pedidoId, PedidoLine nueva) {
+  final lineas = detallesPorPedido[pedidoId];
+  if (lineas == null) return;
+  final i = lineas.indexWhere((l) => l.id == nueva.id);
+  if (i != -1) lineas[i] = nueva;
+}
+
 // ¿Es un producto (y no un cargo de delivery ni un ajuste)?
 bool esLineaDeProducto(PedidoLine l) =>
     l.cartaId != cartaIdCargoDelivery && l.cartaId != cartaIdAjuste;

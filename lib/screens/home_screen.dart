@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/nav_items.dart';
 import '../models/categoria_comida.dart';
@@ -61,7 +61,8 @@ class _HomeScreenState extends State<HomeScreen> {
     'inicio': (titulo: 'Inicio', descripcion: 'Resumen de tu restaurante'),
     'mesas': (
       titulo: 'Mesas',
-      descripcion: 'Visualiza salas, mesas, ocupación y administra el plano del local',
+      descripcion:
+          'Visualiza salas, mesas, ocupación y administra el plano del local',
     ),
     'pedidos': (
       titulo: 'Pedidos',
@@ -150,9 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final items = navItems
-        .where((i) => i.tieneAcceso(widget.usuario))
-        .toList();
+    final items = navItems.where((i) => i.tieneAcceso(widget.usuario)).toList();
 
     if (AppBreakpoints.esMobile(context)) {
       // Mobile: navbar inferior en vez de lateral (ver _BottomNav).
@@ -769,21 +768,29 @@ class _Sidebar extends StatelessWidget {
     required this.onAlternarGrupo,
   });
 
-  static const double _anchoExpandido = 200;
+  static const double _anchoExpandido = 256;
   static const double _anchoContraido = 68;
 
   List<NavItem> _hijosPermitidos(NavItem item) =>
       item.hijos.where((h) => h.tieneAcceso(usuario)).toList();
 
+  static const _claveConfiguracion = 'configuracion';
+
   List<Widget> _construirTiles() {
     final tiles = <Widget>[];
     for (final item in items) {
+      if (item.clave == _claveConfiguracion) continue;
       if (item.esGrupo) {
         final hijos = _hijosPermitidos(item);
         tiles.add(_navTile(item, hijos: hijos));
         if (!colapsado && gruposAbiertos.contains(item.clave)) {
           for (final hijo in hijos) {
-            tiles.add(_navTile(hijo, indentado: true));
+            tiles.add(
+              KeyedSubtree(
+                key: _claveNav(hijo.clave),
+                child: _navTile(hijo),
+              ),
+            );
           }
         }
       } else {
@@ -796,47 +803,115 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeInOutCubic,
       width: colapsado ? _anchoContraido : _anchoExpandido,
       color: AppColors.navbar,
       clipBehavior: Clip.hardEdge,
-      child: OverflowBox(
-        alignment: Alignment.topLeft,
-        minWidth: colapsado ? _anchoContraido : _anchoExpandido,
-        maxWidth: colapsado ? _anchoContraido : _anchoExpandido,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _cabecera(),
-            const Divider(height: 1, color: Colors.white12),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                children: _construirTiles(),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: const Interval(0.3, 1, curve: Curves.easeOut),
+        switchOutCurve: const Interval(0.3, 1, curve: Curves.easeIn),
+        layoutBuilder: (actual, anteriores) => Stack(
+          fit: StackFit.expand,
+          alignment: Alignment.topLeft,
+          children: [...anteriores, ?actual],
+        ),
+        child: OverflowBox(
+          key: ValueKey(colapsado),
+          alignment: Alignment.topLeft,
+          minWidth: colapsado ? _anchoContraido : _anchoExpandido,
+          maxWidth: colapsado ? _anchoContraido : _anchoExpandido,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _cabecera(),
+              const Divider(height: 1, color: Colors.white12),
+              Expanded(
+                child: _ListaNav(
+                  gruposAbiertos: Set.of(gruposAbiertos),
+                  ultimoHijoPorGrupo: {
+                    for (final i in items)
+                      if (i.esGrupo && _hijosPermitidos(i).isNotEmpty)
+                        i.clave: _hijosPermitidos(i).last.clave,
+                  },
+                  children: _construirTiles(),
+                ),
               ),
-            ),
-            const Divider(height: 1, color: Colors.white12),
-            _pie(),
-          ],
+              _seccionCuenta(),
+              const Divider(height: 1, color: Colors.white12),
+              _pie(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // Cabecera: solo el botón para contraer/expandir (un ">" que gira).
+  static const double _altoCabecera = 80;
+
+  // Cabecera. Expandido: logo centrado y botón "<" para contraer. Contraído:
+  // solo la hoja del logo, que al tocarla expande el menú.
   Widget _cabecera() {
-    return Container(
-      height: 68,
-      alignment: colapsado ? Alignment.center : Alignment.centerRight,
-      padding: EdgeInsets.only(right: colapsado ? 0 : 14),
-      child: _botonToggle(),
+    if (colapsado) {
+      return SizedBox(
+        height: _altoCabecera,
+        child: Center(
+          child: Tooltip(
+            message: 'Expandir menú',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: onToggle,
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: _hojaLogo(),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: _altoCabecera,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // La imagen trae margen transparente: se muestra más grande y se
+          // recorta al área visible.
+          ClipRect(
+            child: SizedBox(
+              width: 120,
+              height: 56,
+              child: OverflowBox(
+                maxWidth: 124,
+                maxHeight: 82,
+                child: Image.asset(
+                  'assets/images/el_bijao_blanco.png',
+                  height: 82,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+          Positioned(right: 8, child: _botonToggle()),
+        ],
+      ),
+    );
+  }
+
+  // Ícono de la hoja (el mismo del tab del navegador).
+  Widget _hojaLogo() {
+    return Image.asset(
+      'assets/images/icono_bijao.png',
+      width: 40,
+      height: 40,
+      fit: BoxFit.contain,
     );
   }
 
   Widget _botonToggle() {
     return Tooltip(
-      message: colapsado ? 'Expandir menú' : 'Contraer menú',
+      message: 'Contraer menú',
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: onToggle,
@@ -845,7 +920,7 @@ class _Sidebar extends StatelessWidget {
           height: 36,
           child: Center(
             child: AnimatedRotation(
-              turns: colapsado ? 0 : 0.5,
+              turns: 0.5,
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeInOut,
               child: const Icon(
@@ -860,75 +935,74 @@ class _Sidebar extends StatelessWidget {
     );
   }
 
-  List<PopupMenuEntry<String>> _opcionesUsuario() => const [
-    PopupMenuItem(
-      value: 'logout',
-      child: Row(
+  // Sección CUENTA (arriba del separador): Configuración y Cerrar sesión.
+  Widget _seccionCuenta() {
+    final configuracion = items
+        .where((i) => i.clave == _claveConfiguracion)
+        .firstOrNull;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(LucideIcons.logOut, size: 18),
-          SizedBox(width: 12),
-          Text('Cerrar sesión'),
+          if (colapsado)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Divider(height: 1, color: Colors.white12),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.fromLTRB(28, 6, 16, 6),
+              child: Text(
+                'CUENTA',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.9,
+                ),
+              ),
+            ),
+          if (configuracion != null) _navTile(configuracion),
+          _tile(
+            icono: LucideIcons.logOut,
+            etiqueta: 'Cerrar sesión',
+            activo: false,
+            onTap: onLogout,
+          ),
         ],
       ),
-    ),
-  ];
-
-  void _onSeleccionarOpcionUsuario(String v) {
-    if (v == 'logout') onLogout();
+    );
   }
 
-  // Pie del navbar: usuario + menú (Cerrar sesión).
+  // Pie del navbar: avatar circular, nombre y rol del usuario.
   Widget _pie() {
     final avatar = Container(
       width: 38,
       height: 38,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.primaryGreen,
-        borderRadius: BorderRadius.circular(10),
+        shape: BoxShape.circle,
       ),
       child: const Icon(LucideIcons.user, size: 20, color: Colors.white),
     );
     if (colapsado) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
-        child: PopupMenuButton<String>(
-          tooltip: 'Opciones',
-          padding: EdgeInsets.zero,
-          offset: const Offset(48, 0),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadii.card),
+        padding: const EdgeInsets.fromLTRB(0, 14, 0, 14),
+        child: Center(
+          child: Tooltip(
+            message: '${usuario.nombre} · ${usuario.rol.label}',
+            child: avatar,
           ),
-          onSelected: _onSeleccionarOpcionUsuario,
-          itemBuilder: (_) => _opcionesUsuario(),
-          child: avatar,
         ),
       );
     }
-    final menu = PopupMenuButton<String>(
-      tooltip: 'Opciones',
-      padding: EdgeInsets.zero,
-      offset: const Offset(0, -60),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadii.card),
-      ),
-      onSelected: _onSeleccionarOpcionUsuario,
-      itemBuilder: (_) => _opcionesUsuario(),
-      child: const SizedBox(
-        width: 28,
-        height: 38,
-        child: Icon(
-          LucideIcons.ellipsisVertical,
-          size: 20,
-          color: Colors.white70,
-        ),
-      ),
-    );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
       child: Row(
         children: [
           avatar,
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -953,40 +1027,27 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          menu,
         ],
       ),
     );
   }
 
-  // `hijos` solo en un ítem grupo (ej. "Ventas"): despliega su lista.
-  Widget _navTile(
-    NavItem item, {
-    List<NavItem>? hijos,
-    bool indentado = false,
+  // Ítem del menú. En un módulo contenedor (`esGrupo`) la flecha va al inicio,
+  // antes del nombre; todos los ítems reservan ese espacio para que los íconos
+  // queden alineados. Módulos y submódulos tienen el mismo tamaño.
+  Widget _tile({
+    required IconData icono,
+    required String etiqueta,
+    required bool activo,
+    required VoidCallback onTap,
+    bool esGrupo = false,
+    bool abierto = false,
   }) {
-    final esGrupo = hijos != null;
-    final abierto = esGrupo && gruposAbiertos.contains(item.clave);
-    final activo = esGrupo
-        ? hijos.any((h) => h.clave == seleccionado)
-        : seleccionado == item.clave;
     final color = activo ? AppColors.primaryGreen : Colors.white70;
-    final icono = Icon(item.icono, size: indentado ? 18 : 22, color: color);
-    void onTap() {
-      if (!esGrupo) {
-        onSeleccionar(item.clave);
-      } else if (colapsado) {
-        // Colapsado: el ícono del grupo lleva directo a su primer hijo.
-        if (hijos.isNotEmpty) onSeleccionar(hijos.first.clave);
-      } else {
-        onAlternarGrupo(item.clave);
-      }
-    }
-
     return Padding(
-      padding: EdgeInsets.fromLTRB(indentado ? 20 : 12, 3, 12, 3),
+      padding: const EdgeInsets.fromLTRB(10, 3, 10, 3),
       child: Tooltip(
-        message: colapsado ? item.label : '',
+        message: colapsado ? etiqueta : '',
         child: Material(
           color: activo
               ? AppColors.primaryGreen.withValues(alpha: 0.16)
@@ -997,45 +1058,130 @@ class _Sidebar extends StatelessWidget {
             onTap: onTap,
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: colapsado ? 0 : 16,
-                vertical: indentado ? 9 : 12,
+                horizontal: colapsado ? 0 : 10,
+                vertical: 12,
               ),
               child: colapsado
-                  ? Center(child: icono)
+                  ? Center(child: Icon(icono, size: 24, color: color))
                   : Row(
                       children: [
-                        icono,
-                        const SizedBox(width: 14),
+                        SizedBox(
+                          width: 18,
+                          child: esGrupo
+                              ? AnimatedRotation(
+                                  turns: abierto ? 0.25 : 0,
+                                  duration: const Duration(milliseconds: 200),
+                                  child: Icon(
+                                    LucideIcons.chevronRight,
+                                    size: 16,
+                                    color: color,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(icono, size: 24, color: color),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            item.label,
+                            etiqueta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: color,
-                              fontSize: indentado ? 13 : null,
                               fontWeight: activo
                                   ? FontWeight.w700
                                   : FontWeight.w500,
                             ),
                           ),
                         ),
-                        if (esGrupo)
-                          AnimatedRotation(
-                            turns: abierto ? 0.25 : 0,
-                            duration: const Duration(milliseconds: 200),
-                            child: Icon(
-                              LucideIcons.chevronRight,
-                              size: 16,
-                              color: color,
-                            ),
-                          ),
                       ],
                     ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  // `hijos` solo en un ítem grupo (ej. "Ventas"): despliega su lista.
+  Widget _navTile(NavItem item, {List<NavItem>? hijos}) {
+    final esGrupo = hijos != null;
+    final activo = esGrupo
+        ? hijos.any((h) => h.clave == seleccionado)
+        : seleccionado == item.clave;
+    return _tile(
+      icono: item.icono,
+      etiqueta: item.label,
+      activo: activo,
+      esGrupo: esGrupo,
+      abierto: esGrupo && gruposAbiertos.contains(item.clave),
+      onTap: () {
+        if (!esGrupo) {
+          onSeleccionar(item.clave);
+        } else if (colapsado) {
+          // Colapsado: el ícono del grupo lleva directo a su primer hijo.
+          if (hijos.isNotEmpty) onSeleccionar(hijos.first.clave);
+        } else {
+          onAlternarGrupo(item.clave);
+        }
+      },
+    );
+  }
+}
+
+// Claves globales de los submódulos, para poder desplazar la lista hasta ellos.
+final _clavesNav = <String, GlobalKey>{};
+GlobalKey _claveNav(String clave) =>
+    _clavesNav.putIfAbsent(clave, () => GlobalKey(debugLabel: 'nav-$clave'));
+
+// Lista de módulos del menú. Al expandir un módulo contenedor se desplaza sola
+// lo justo para que se vean sus submódulos y el usuario note que se abrió.
+class _ListaNav extends StatefulWidget {
+  final List<Widget> children;
+  final Set<String> gruposAbiertos;
+  // Clave del último submódulo de cada módulo contenedor.
+  final Map<String, String> ultimoHijoPorGrupo;
+
+  const _ListaNav({
+    required this.children,
+    required this.gruposAbiertos,
+    required this.ultimoHijoPorGrupo,
+  });
+
+  @override
+  State<_ListaNav> createState() => _ListaNavState();
+}
+
+class _ListaNavState extends State<_ListaNav> {
+  @override
+  void didUpdateWidget(covariant _ListaNav old) {
+    super.didUpdateWidget(old);
+    final nuevos = widget.gruposAbiertos.difference(old.gruposAbiertos);
+    if (nuevos.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final grupo in nuevos) {
+        final ultimo = widget.ultimoHijoPorGrupo[grupo];
+        final contexto = ultimo == null
+            ? null
+            : _claveNav(ultimo).currentContext;
+        if (contexto != null && contexto.mounted) {
+          Scrollable.ensureVisible(
+            contexto,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeInOut,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(children: widget.children),
     );
   }
 }

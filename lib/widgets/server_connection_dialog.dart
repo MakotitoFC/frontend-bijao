@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../services/api_client.dart';
 import '../services/network_discovery_service.dart';
@@ -49,7 +49,7 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
     setState(() {
       _isTesting = false;
       _testSuccess = ok;
-      _statusMessage = ok ? 'Conectado al servidor Bijao POS' : 'No se pudo conectar';
+      _statusMessage = ok ? 'Conectado al servidor El Bijao' : 'No se pudo conectar';
     });
   }
 

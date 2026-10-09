@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../utils/json_num.dart';
 
 // Refleja la tabla `carta` en PostgreSQL (con soporte para modificadores/agregados).
 class CartaItem {
@@ -7,6 +8,9 @@ class CartaItem {
   final String descripcion;
   final String categoriaId;
   final String? categoriaNombre;
+  // Subcategorías del plato (Segundo, Bebida, Snack…). El backend solo guarda
+  // una (`carta.subcategoria_id`): se envía la primera.
+  final List<String> subcategoriaIds;
   final String? taperId;
   final String? taperNombre;
   final double? precioCliente;
@@ -28,6 +32,7 @@ class CartaItem {
     required this.descripcion,
     required this.categoriaId,
     this.categoriaNombre,
+    this.subcategoriaIds = const [],
     this.taperId,
     this.taperNombre,
     this.precioCliente,
@@ -44,6 +49,9 @@ class CartaItem {
     this.platoDelDia = false,
   });
 
+  String? get subcategoriaId =>
+      subcategoriaIds.isEmpty ? null : subcategoriaIds.first;
+
   bool get disponible => estado != 'inactivo' && estado != 'agotado';
 
   CartaItem copyWith({
@@ -52,6 +60,7 @@ class CartaItem {
     String? descripcion,
     String? categoriaId,
     String? categoriaNombre,
+    List<String>? subcategoriaIds,
     String? taperId,
     String? taperNombre,
     double? precioCliente,
@@ -72,6 +81,7 @@ class CartaItem {
     descripcion: descripcion ?? this.descripcion,
     categoriaId: categoriaId ?? this.categoriaId,
     categoriaNombre: categoriaNombre ?? this.categoriaNombre,
+    subcategoriaIds: subcategoriaIds ?? this.subcategoriaIds,
     taperId: taperId ?? this.taperId,
     taperNombre: taperNombre ?? this.taperNombre,
     precioCliente: precioCliente ?? this.precioCliente,
@@ -98,21 +108,30 @@ class CartaItem {
             'id': m['id'],
             'nombre': m['nombre'] ?? '',
             'tipo': m['tipo'] ?? 'ajuste',
-            'precio': (m['precio_ajuste'] is num) ? (m['precio_ajuste'] as num).toDouble() : 0.0,
+            'precio': jsonDouble(m['precio_ajuste']) ?? 0.0,
           });
         }
       }
     }
 
-    final pCli = (json['precio_cliente'] is num) ? (json['precio_cliente'] as num).toDouble() : null;
-    final pPer = (json['precio_personal'] is num) ? (json['precio_personal'] as num).toDouble() : null;
+    final pCli = jsonDouble(json['precio_cliente']);
+    final pPer = jsonDouble(json['precio_personal']);
 
     return CartaItem(
       id: json['id'] as String,
       nombrePlato: json['nombre_plato'] as String? ?? json['nombre'] as String? ?? '',
       descripcion: json['descripcion'] as String? ?? '',
-      categoriaId: json['categoria_id'] as String? ?? '',
+      categoriaId:
+          json['categoria_comida_id'] as String? ??
+          json['categoria_id'] as String? ??
+          '',
       categoriaNombre: json['categoria_nombre'] as String?,
+      subcategoriaIds: json['subcategoria_ids'] is List
+          ? [for (final s in json['subcategoria_ids']) s.toString()]
+          : [
+              if (json['subcategoria_id'] is String)
+                json['subcategoria_id'] as String,
+            ],
       taperId: json['taper_id'] as String?,
       taperNombre: json['taper_nombre'] as String?,
       precioCliente: pCli,
@@ -120,7 +139,7 @@ class CartaItem {
       estado: json['estado'] as String? ?? 'disponible',
       sedeId: json['sede_id'] as String?,
       agregados: rawMods.isNotEmpty ? rawMods : const [],
-      costo: (json['costo'] is num) ? (json['costo'] as num).toDouble() : null,
+      costo: jsonDouble(json['costo']),
       sku: json['sku'] as String?,
       stock: (json['stock'] is int) ? json['stock'] as int : 0,
       platoDelDia: json['plato_del_dia'] as bool? ?? false,
@@ -132,6 +151,7 @@ class CartaItem {
     'nombre_plato': nombrePlato,
     'descripcion': descripcion,
     'categoria_id': categoriaId,
+    if (subcategoriaId != null) 'subcategoria_id': subcategoriaId,
     if (taperId != null) 'taper_id': taperId,
     if (taperNombre != null) 'taper_nombre': taperNombre,
     'estado': estado,

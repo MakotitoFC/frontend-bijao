@@ -4,6 +4,8 @@ import '../data/catalogos_store.dart';
 import '../data/compras_store.dart';
 import '../data/inventario_store.dart';
 import '../data/utensilios_store.dart';
+import '../models/compra.dart';
+import '../models/compra_detalle.dart';
 import '../models/inventario_movimiento.dart';
 import '../models/producto_inventario.dart';
 import '../models/rbac.dart';
@@ -16,6 +18,7 @@ import '../widgets/ajustar_stock_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/compra_detalle_form.dart';
 import '../widgets/compra_form_dialog.dart';
 import '../widgets/pago_cuenta_empleado_dialog.dart';
 import '../widgets/pestanas_vista.dart';
@@ -1036,92 +1039,284 @@ class _ComprasTabState extends State<_ComprasTab> {
           .firstOrNull ??
       'Producto eliminado';
 
+  // Compras colapsadas por el usuario (por defecto todas están expandidas) y
+  // compras con el formulario de detalle abierto.
+  final Set<String> _colapsadas = {};
+  final Set<String> _conFormulario = {};
+  // Compras que se están guardando en el backend.
+  final Set<String> _guardando = {};
+
+  // Envía el borrador (compra + detalles) al backend y repone el stock.
+  Future<void> _guardarCompra(Compra c) async {
+    setState(() => _guardando.add(c.id));
+    try {
+      await CatalogService.instance.guardarCompra(c.id);
+      if (!mounted) return;
+      setState(() => _conFormulario.remove(c.id));
+      showAppToast(
+        context,
+        'Compra guardada y stock actualizado.',
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        e.toString().replaceFirst('Exception: ', ''),
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _guardando.remove(c.id));
+    }
+  }
+
+  // "+ Compra": crea el registro de la compra. Queda expandida en la lista, con
+  // el formulario de detalle abierto para ingresar sus productos.
   Future<void> _nuevaCompra() async {
-    final creada = await showBlurDialog<bool>(
+    final creada = await showBlurDialog<Compra>(
       context: context,
       builder: (_) => const CompraFormDialog(),
     );
-    if (creada == true) setState(() {});
+    if (creada == null || !mounted) return;
+    setState(() => _conFormulario.add(creada.id));
   }
 
-  void _verDetalle(String compraId, String proveedor) {
-    final detalles = detallesPorCompra[compraId] ?? [];
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => Material(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppRadii.sheet),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Compra · $proveedor',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ListView.separated(
-                    controller: scrollController,
-                    itemCount: detalles.length,
-                    separatorBuilder: (_, _) =>
-                        Divider(height: 1, color: Colors.grey.shade200),
-                    itemBuilder: (context, index) {
-                      final d = detalles[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
+  // Compra como acordeón: cabecera (fecha, total) y, al expandir, sus
+  // detalles. Un borrador permite agregar productos y se guarda con "Guardar".
+  Widget _tarjetaCompra(Compra c) {
+    final expandida = !_colapsadas.contains(c.id);
+    final detalles = detallesPorCompra[c.id] ?? [];
+    final borrador = !c.guardada;
+    final conFormulario = borrador && _conFormulario.contains(c.id);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => setState(() {
+              if (!_colapsadas.remove(c.id)) _colapsadas.add(c.id);
+            }),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _nombreProducto(d.productoInventarioId),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${d.cantidad} ${_unidadDe(d.unidadProductoId)} × S/ ${d.precioUnitario.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                             Text(
-                              'S/ ${d.precioTotal.toStringAsFixed(2)}',
+                              'Compra del ${_fecha(c.fechaCompra)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
+                                fontSize: 14,
                               ),
                             ),
+                            if (borrador) ...[
+                              const SizedBox(width: 8),
+                              const AppTag(
+                                etiqueta: 'Borrador',
+                                activo: false,
+                                color: AppColors.platoDelDia,
+                              ),
+                            ],
                           ],
                         ),
-                      );
-                    },
+                        const SizedBox(height: 2),
+                        Text(
+                          '${detalles.length} producto(s)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'S/ ${c.total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: expandida ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            alignment: Alignment.topCenter,
+            child: !expandida
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Divider(height: 1, color: Colors.grey.shade200),
+                        if (c.notas != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(
+                              c.notas!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'DETALLES',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  letterSpacing: 0.8,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF9CA3AF),
+                                ),
+                              ),
+                            ),
+                            if (borrador && !conFormulario)
+                              FilledButton.icon(
+                                onPressed: () =>
+                                    setState(() => _conFormulario.add(c.id)),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppColors.primaryGreen,
+                                ),
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Detalle'),
+                              ),
+                          ],
+                        ),
+                        if (conFormulario) ...[
+                          const SizedBox(height: 8),
+                          CompraDetalleForm(
+                            key: ValueKey('detalle-${c.id}'),
+                            compraId: c.id,
+                            onAgregado: () => setState(() {}),
+                            onCerrar: () =>
+                                setState(() => _conFormulario.remove(c.id)),
+                          ),
+                        ],
+                        if (detalles.isEmpty && !conFormulario)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Text(
+                                'Aún no agregaste productos a esta compra',
+                                style: TextStyle(color: Colors.grey.shade500),
+                              ),
+                            ),
+                          ),
+                        for (final d in detalles) _filaDetalleCompra(d, c),
+                        if (borrador) ...[
+                          const SizedBox(height: 14),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: _guardando.contains(c.id)
+                                    ? null
+                                    : () => setState(() {
+                                        descartarCompra(c.id);
+                                        _conFormulario.remove(c.id);
+                                      }),
+                                child: const Text('Descartar'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton.icon(
+                                onPressed:
+                                    detalles.isEmpty || _guardando.contains(c.id)
+                                    ? null
+                                    : () => _guardarCompra(c),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppColors.primaryGreen,
+                                ),
+                                icon: _guardando.contains(c.id)
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.check, size: 18),
+                                label: const Text('Guardar compra'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filaDetalleCompra(CompraDetalle d, Compra c) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _nombreProducto(d.productoInventarioId),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
                 ),
+                Text(
+                  '${d.cantidad} ${_unidadDe(d.unidadProductoId)} × S/ ${d.precioUnitario.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                if (d.factorABase != 1)
+                  Text(
+                    '1 ${_unidadDe(d.unidadProductoId)} = ${d.factorABase} · ${d.cantidadBase} en unidad base',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
               ],
             ),
           ),
-        ),
+          Text(
+            'S/ ${d.precioTotal.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (!c.guardada)
+            IconButton(
+              tooltip: 'Quitar',
+              visualDensity: VisualDensity.compact,
+              onPressed: () =>
+                  setState(() => quitarDetalleDeCompra(c.id, d.id)),
+              icon: const Icon(Icons.close, size: 18),
+            ),
+        ],
       ),
     );
   }
@@ -1163,54 +1358,8 @@ class _ComprasTabState extends State<_ComprasTab> {
                 : ListView.separated(
                     itemCount: compras.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final c = compras[index];
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () => _verDetalle(c.id, c.proveedor),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.grey.shade200),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      c.proveedor,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _fecha(c.fechaCompra),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                'S/ ${c.total.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                    itemBuilder: (context, index) =>
+                        _tarjetaCompra(compras[index]),
                   ),
           ),
         ],

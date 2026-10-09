@@ -1,17 +1,24 @@
 import 'dart:developer' as developer;
 import '../data/cartas_store.dart';
 import '../data/catalogos_store.dart';
+import '../data/compras_store.dart';
 import '../data/categorias_store.dart';
 import '../data/inventario_store.dart';
 import '../data/mesas_store.dart';
+import '../data/subcategorias_store.dart';
+import '../data/variantes_store.dart';
 import '../data/utensilios_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_variante.dart';
+import '../models/compra.dart';
+import '../models/compra_detalle.dart';
+import '../models/inventario_movimiento.dart';
 import '../models/categoria_comida.dart';
 import '../models/mesa.dart';
-import '../models/modificador.dart';
 import '../models/pago_cuenta_empleado.dart';
 import '../models/producto_inventario.dart';
 import '../models/rbac.dart';
+import '../models/subcategoria.dart';
 import '../models/taper.dart';
 import '../models/tipo_producto.dart';
 import '../models/unidad_producto.dart';
@@ -42,7 +49,10 @@ class CatalogService {
         cargarZonas(),
         cargarMesas(),
         cargarCategorias(),
+        cargarSubcategorias(),
         cargarCarta(),
+        cargarVariantes(),
+        cargarCompras(),
         cargarTapers(),
         cargarTiposProducto(),
         cargarUnidadesProducto(),
@@ -310,15 +320,76 @@ class CatalogService {
   }
 
   // ==========================================
+  // SUBCATEGORIAS
+  // ==========================================
+
+  Future<List<Subcategoria>> cargarSubcategorias() async {
+    try {
+      final res = await _api.get('/api/subcategorias');
+      if (res is List) {
+        final lista = res
+            .map((item) => Subcategoria.fromJson(item as Map<String, dynamic>))
+            .toList();
+        subcategorias
+          ..clear()
+          ..addAll(lista);
+        return lista;
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error al obtener subcategorías: $e');
+    }
+    return subcategorias;
+  }
+
+  Future<Subcategoria> crearSubcategoria(
+    String categoriaId,
+    String nombre,
+  ) async {
+    final body = {
+      'id': UuidHelper.v7(),
+      'subcategoria': nombre.trim(),
+      'categoria_comida_id': categoriaId,
+    };
+    final res = await _api.post('/api/subcategorias', body: body);
+    if (res is Map<String, dynamic>) {
+      final nueva = Subcategoria.fromJson(res);
+      subcategorias.add(nueva);
+      return nueva;
+    }
+    throw Exception('Error al crear subcategoría');
+  }
+
+  Future<Subcategoria> actualizarSubcategoria(
+    Subcategoria s, {
+    String? nombre,
+    bool? estado,
+  }) async {
+    final body = {
+      if (nombre != null) 'subcategoria': nombre.trim(),
+      'estado': ?estado,
+    };
+    final res = await _api.put('/api/subcategorias/${s.id}', body: body);
+    if (res is Map<String, dynamic>) {
+      final actualizada = Subcategoria.fromJson(res);
+      final idx = subcategorias.indexWhere((x) => x.id == s.id);
+      if (idx != -1) subcategorias[idx] = actualizada;
+      return actualizada;
+    }
+    throw Exception('Error al actualizar subcategoría');
+  }
+
+  Future<void> eliminarSubcategoria(String id) async {
+    await _api.delete('/api/subcategorias/$id');
+    subcategorias.removeWhere((s) => s.id == id);
+  }
+
+  // ==========================================
   // CARTA (PLATOS Y BEBIDAS)
   // ==========================================
 
   Future<List<CartaItem>> cargarCarta({String? categoriaId, String? estado}) async {
     try {
       final params = <String, String>{};
-      if (categoriaId != null && categoriaId.isNotEmpty) {
-        params['categoria_id'] = categoriaId;
-      }
       if (estado != null && estado.isNotEmpty) {
         params['estado'] = estado;
       }
@@ -351,7 +422,7 @@ class CatalogService {
       'id': clientUuid,
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
-      'categoria_id': item.categoriaId,
+      if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
       if (item.taperId != null && item.taperId!.isNotEmpty) 'taper_id': item.taperId,
       'estado': item.estado,
       if (item.precioCliente != null) 'precio_cliente': item.precioCliente,
@@ -362,27 +433,15 @@ class CatalogService {
     final res = await _api.post('/api/carta', body: body);
     if (res is Map<String, dynamic>) {
       final nuevo = CartaItem.fromJson(res).copyWith(
+        subcategoriaIds: item.subcategoriaIds,
         platoDelDia: item.platoDelDia,
         costo: item.costo,
         sku: item.sku,
         stock: item.stock,
       );
 
-      // Crear modificadores asociados si los tuviera
-      if (item.agregados.isNotEmpty) {
-        for (final extra in item.agregados) {
-          final modUuid = UuidHelper.v7();
-          await crearModificador(Modificador(
-            id: modUuid,
-            cartaId: nuevo.id,
-            nombre: extra['nombre'] ?? '',
-            tipo: extra['tipo'] ?? 'ajuste',
-            precioAjuste: (extra['precio'] is num) ? (extra['precio'] as num).toDouble() : 0.0,
-          ));
-        }
-      }
-
       cartasNotifier.value = [...cartasNotifier.value, nuevo];
+      await _guardarTamanos(nuevo.id);
       return nuevo;
     }
     throw Exception('Error al crear plato');
@@ -392,7 +451,7 @@ class CatalogService {
     final body = {
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
-      'categoria_id': item.categoriaId,
+      if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
       'taper_id': (item.taperId != null && item.taperId!.isNotEmpty)
           ? item.taperId
           : '00000000-0000-0000-0000-000000000000',
@@ -405,6 +464,7 @@ class CatalogService {
     final res = await _api.put('/api/carta/${item.id}', body: body);
     if (res is Map<String, dynamic>) {
       final actualizado = CartaItem.fromJson(res).copyWith(
+        subcategoriaIds: item.subcategoriaIds,
         platoDelDia: item.platoDelDia,
         costo: item.costo,
         sku: item.sku,
@@ -416,6 +476,7 @@ class CatalogService {
           .map((c) => c.id == item.id ? actualizado : c)
           .toList();
 
+      await _guardarTamanos(item.id);
       return actualizado;
     }
     throw Exception('Error al actualizar plato');
@@ -428,9 +489,193 @@ class CatalogService {
   }
 
   Future<void> eliminarPlato(String id) async {
-    await _api.delete('/api/carta/$id');
+    // Sus tamaños dependen del plato: se eliminan primero.
+    for (final varianteId in [...?_variantesRemotas[id]]) {
+      await _api.delete('/api/carta-variantes/$varianteId');
+    }
+    _variantesRemotas.remove(id);
+    try {
+      await _api.delete('/api/carta/$id');
+    } on ApiException catch (e) {
+      throw Exception(_explicarBloqueoDePlato(e.message));
+    }
     cartasNotifier.value = cartasNotifier.value.where((c) => c.id != id).toList();
   }
+
+  // Traduce el error de llave foránea de Postgres al motivo por el que un plato
+  // no se puede eliminar.
+  String _explicarBloqueoDePlato(String mensaje) {
+    final fk = mensaje.contains('llave for') || mensaje.contains('foreign key');
+    if (!fk) return mensaje;
+    const motivos = {
+      'pedidos_detalle': 'ya tiene pedidos registrados',
+      'promocion_componente_opcion': 'es opción de una promoción',
+      'promocion_carta': 'forma parte de una promoción',
+      'carta_insumo': 'tiene insumos (receta) asociados',
+      'carta_presentacion': 'tiene presentaciones asociadas',
+      'modificador': 'tiene extras registrados (falta aplicar la migración 00016)',
+    };
+    for (final e in motivos.entries) {
+      if (mensaje.contains(e.key)) {
+        return 'No se puede eliminar el plato porque ${e.value}. '
+            'Puedes desactivarlo para que no aparezca en la carta.';
+      }
+    }
+    return 'No se puede eliminar el plato porque tiene datos asociados. '
+        'Puedes desactivarlo para que no aparezca en la carta.\n($mensaje)';
+  }
+
+  // ==========================================
+  // TAMAÑOS (carta_variante)
+  // ==========================================
+
+  // Ids de los tamaños que ya existen en el backend, por plato.
+  final Map<String, Set<String>> _variantesRemotas = {};
+
+  Future<List<CartaVariante>> cargarVariantes() async {
+    try {
+      final res = await _api.get('/api/carta-variantes');
+      if (res is List) {
+        final lista = res
+            .map((item) => CartaVariante.fromJson(item as Map<String, dynamic>))
+            .toList();
+        variantes
+          ..clear()
+          ..addAll(lista);
+        _variantesRemotas.clear();
+        for (final v in lista) {
+          _variantesRemotas.putIfAbsent(v.cartaId, () => {}).add(v.id);
+        }
+        return lista;
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error al obtener tamaños: $e');
+    }
+    return variantes;
+  }
+
+  // Deja en el backend los tamaños de un plato igual a los del formulario
+  // (guardados en `variantes`): crea los nuevos, actualiza los existentes y
+  // elimina los que se quitaron.
+  Future<void> _guardarTamanos(String cartaId) async {
+    final locales = variantesDeCarta(cartaId);
+    final remotos = _variantesRemotas.putIfAbsent(cartaId, () => {});
+    final idsLocales = locales.map((v) => v.id).toSet();
+
+    for (final id in remotos.where((id) => !idsLocales.contains(id)).toList()) {
+      await _api.delete('/api/carta-variantes/$id');
+      remotos.remove(id);
+    }
+    for (final v in locales) {
+      if (remotos.contains(v.id)) {
+        await _api.put(
+          '/api/carta-variantes/${v.id}',
+          body: {
+            'nombre': v.nombre,
+            'precio_cliente': v.precioCliente,
+            'precio_personal': v.precioPersonal,
+            'peso_min_kg': v.pesoMinKg,
+            'peso_max_kg': v.pesoMaxKg,
+            'estado': v.estado,
+          },
+        );
+      } else {
+        await _api.post('/api/carta-variantes', body: v.toJson());
+        remotos.add(v.id);
+      }
+    }
+  }
+
+  // ==========================================
+  // COMPRAS
+  // ==========================================
+
+  // `tipo_movimiento` "ingreso_compra" (semilla fija de la migración 00010).
+  static const _tipoIngresoCompra = '55551111-1111-1111-1111-111111111101';
+
+  Future<void> cargarCompras() async {
+    try {
+      final res = await _api.get('/api/compras');
+      if (res is List) {
+        final borradores = compras.where((c) => !c.guardada).toList();
+        compras.clear();
+        detallesPorCompra.removeWhere(
+          (id, _) => !borradores.any((b) => b.id == id),
+        );
+        for (final item in res) {
+          final json = item as Map<String, dynamic>;
+          final detalles = [
+            for (final d in (json['detalles'] as List? ?? const []))
+              CompraDetalle.fromJson(d as Map<String, dynamic>),
+          ];
+          reemplazarCompra(Compra.fromJson(json), detalles);
+        }
+        compras.insertAll(0, borradores);
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error al obtener compras: $e');
+    }
+  }
+
+  // Envía la compra con todos sus detalles (el backend calcula cantidad base,
+  // totales y costo unitario base) y registra la entrada de stock de cada uno.
+  Future<void> guardarCompra(String compraId) async {
+    final compra = compras.firstWhere((c) => c.id == compraId);
+    final detalles = detallesPorCompra[compraId] ?? const [];
+    if (detalles.isEmpty) {
+      throw Exception('Agrega al menos un producto a la compra');
+    }
+
+    final res = await _api.post(
+      '/api/compras',
+      body: {
+        ...compra.toJson(),
+        'detalles': [for (final d in detalles) d.toJson()],
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('Error al guardar la compra');
+    }
+    final guardados = [
+      for (final d in (res['detalles'] as List? ?? const []))
+        CompraDetalle.fromJson(d as Map<String, dynamic>),
+    ];
+    reemplazarCompra(Compra.fromJson(res), guardados);
+
+    // El backend no repone el stock al guardar la compra: se registra la
+    // entrada en el libro de inventario (su trigger suma al stock).
+    for (final d in guardados) {
+      try {
+        await _api.post(
+          '/api/inventario-movimientos',
+          body: {
+            'producto_inventario_id': d.productoInventarioId,
+            'tipo_movimiento_id': _tipoIngresoCompra,
+            'cantidad': d.cantidadBase,
+            'costo_unitario': d.costoUnitarioBase,
+            'costo_total': d.precioTotal,
+            'compra_detalle_id': d.id,
+          },
+        );
+        registrarMovimientoInventario(
+          InventarioMovimiento(
+            productoInventarioId: d.productoInventarioId,
+            tipoMovimiento: movEntradaCompra,
+            cantidad: d.cantidadBase,
+            notas: 'Compra del ${_fechaCorta(compra.fechaCompra)}',
+            fecha: compra.fechaCompra,
+          ),
+        );
+      } catch (e) {
+        throw Exception(
+          'La compra se guardó, pero no se pudo actualizar el stock: $e',
+        );
+      }
+    }
+  }
+
+  String _fechaCorta(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   // ==========================================
   // TAPERS
@@ -511,49 +756,6 @@ class CatalogService {
   Future<void> eliminarTaper(String id) async {
     await _api.delete('/api/tapers/$id');
     tapers.removeWhere((t) => t.id == id);
-  }
-
-  // ==========================================
-  // MODIFICADORES
-  // ==========================================
-
-  Future<List<Modificador>> cargarModificadores({String? cartaId}) async {
-    try {
-      final query = (cartaId != null && cartaId.isNotEmpty) ? '?carta_id=$cartaId' : '';
-      final res = await _api.get('/api/modificadores$query');
-      if (res is List) {
-        return res
-            .map((item) => Modificador.fromJson(item as Map<String, dynamic>))
-            .toList();
-      }
-    } catch (e) {
-      developer.log('[CatalogService] Error al obtener modificadores: $e');
-    }
-    return [];
-  }
-
-  Future<Modificador> crearModificador(Modificador mod) async {
-    final clientUuid = (mod.id.isNotEmpty && UuidHelper.isValid(mod.id))
-        ? mod.id
-        : UuidHelper.v7();
-
-    final body = {
-      'id': clientUuid,
-      'carta_id': mod.cartaId,
-      'nombre': mod.nombre,
-      'tipo': mod.tipo,
-      'precio_ajuste': mod.precioAjuste,
-    };
-
-    final res = await _api.post('/api/modificadores', body: body);
-    if (res is Map<String, dynamic>) {
-      return Modificador.fromJson(res);
-    }
-    throw Exception('Error al crear modificador');
-  }
-
-  Future<void> eliminarModificador(String id) async {
-    await _api.delete('/api/modificadores/$id');
   }
 
   // ==========================================

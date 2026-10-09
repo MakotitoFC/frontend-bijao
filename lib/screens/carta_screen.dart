@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
 import '../data/presentaciones_store.dart';
+import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
@@ -212,6 +214,7 @@ class _CartaScreenState extends State<CartaScreen> {
     if (confirmar == true) {
       try {
         await CatalogService.instance.eliminarPlato(item.id);
+        eliminarVariantesDeCarta(item.id);
         if (!mounted) return;
         showAppToast(
           context,
@@ -223,7 +226,7 @@ class _CartaScreenState extends State<CartaScreen> {
         if (!mounted) return;
         showAppToast(
           context,
-          'Error al eliminar: $e',
+          e.toString().replaceFirst('Exception: ', ''),
           type: ToastType.error,
           titulo: 'Error',
         );
@@ -232,9 +235,12 @@ class _CartaScreenState extends State<CartaScreen> {
   }
 
   double _precioMinimo(String cartaId) {
-    final precios = presentaciones
-        .where((p) => p.cartaId == cartaId)
-        .map((p) => p.precioCliente);
+    final precios = [
+      ...presentaciones
+          .where((p) => p.cartaId == cartaId)
+          .map((p) => p.precioCliente),
+      ...variantesDeCarta(cartaId, soloActivas: true).map((v) => v.precioCliente),
+    ];
     if (precios.isEmpty) return 0;
     return precios.reduce((a, b) => a < b ? a : b);
   }
@@ -470,6 +476,26 @@ class _CartaScreenState extends State<CartaScreen> {
                       _dato('SKU', item.sku ?? '—'),
                     ],
                   ),
+                  if (variantesDeCarta(item.id).isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Tamaños',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final v in variantesDeCarta(item.id))
+                          _chipVariante(v),
+                      ],
+                    ),
+                  ],
                   if (item.agregados.isNotEmpty ||
                       item.limiteAgregados != null) ...[
                     const SizedBox(height: 10),
@@ -612,6 +638,24 @@ class _CartaScreenState extends State<CartaScreen> {
             padding: const EdgeInsets.all(6),
             child: Icon(icono, size: 16, color: Colors.grey.shade800),
           ),
+        ),
+      ),
+    );
+  }
+
+  // Tamaño con precio propio; los desactivados se ven apagados.
+  Widget _chipVariante(CartaVariante v) {
+    return Opacity(
+      opacity: v.estado ? 1 : 0.45,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.primaryGreen.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          '${v.nombre} · S/ ${v.precioCliente.toStringAsFixed(2)}',
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         ),
       ),
     );

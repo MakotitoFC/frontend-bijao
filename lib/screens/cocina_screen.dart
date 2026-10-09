@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
@@ -489,6 +489,9 @@ class _CocinaScreenState extends State<CocinaScreen> {
     const rojo = Color(0xFFE53935);
     const estiloRojo = TextStyle(fontSize: 12, color: rojo);
     final opciones = <String>[
+      if (l.variante != null) l.variante!.nombre,
+      for (final e in l.componentes)
+        '${e.cantidad} × ${e.nombre}${e.esCambio ? ' (cambio)' : ''}',
       if (l.presentacion != null)
         '${l.presentacion!.unidad.unidadPresentacion} ${l.presentacion!.volumenMl}ml',
       ...l.modificadores.map((m) => m.nombre),

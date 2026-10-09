@@ -1,4 +1,4 @@
-# El Bijao POS (frontend)
+# El El Bijao (frontend)
 
 Sistema POS para el restaurante El Bijao: pedidos (mesa y delivery), mesas, cocina,
 productos, caja, reportes, inventario y configuración.
@@ -85,7 +85,9 @@ el horario (11:00–22:00 todos los días) y los medios de pago base (ver más a
 | `categorias_store.dart` | `categorias` | Categorías de la carta, con `orden`. |
 | `cartas_store.dart` | `productos` | Platos y bebidas (`cartasNotifier`). |
 | `presentaciones_store.dart` | `carta_presentacion` | Tamaños o envases por plato (vaso, botella…). |
-| `promociones_store.dart` | `promocion`, `promocion_carta` | Promoción asociada a cada plato (solo lectura en la UI). |
+| `subcategorias_store.dart` | `subcategoria` | Subcategorías de cada categoría (Segundo, Bebida, Snack…). Aún sin endpoint: en memoria. |
+| `variantes_store.dart` | `carta_variante` | Tamaños con precio propio de un plato. Aún sin endpoint: en memoria. |
+| `promociones_store.dart` | `promocion`, `promocion_componente`, `promocion_componente_opcion` | Promociones, sus componentes (por subcategoría) y opciones. Aún sin endpoint: en memoria. |
 | `insumos_store.dart` | `carta_insumo`, `pedidos_detalle_insumo` | Receta por plato y consumo de insumos por línea. |
 | `mesas_store.dart` | `mesa` | Mesas, zonas y mesas unidas (ver "Pendientes"). |
 | `pedidos_store.dart` | `pedidos`, `pedidos_detalle` | Pedidos y sus líneas. |
@@ -152,6 +154,13 @@ Los pedidos pagados, cancelados o anulados salen de la cola.
   personalizado. Un ticket aplicado se puede quitar. No puede superar el saldo.
 - **Plato del día:** elige entre los productos marcados con estrella naranja
   (`CartaItem.platoDelDia`) y lo agrega al pedido.
+- **Promoción** (botón naranja, en Nuevo pedido y en el detalle): lista las promociones
+  disponibles. La promoción llega armada con el producto incluido de cada hueco; el mozo
+  no agrega nada. Si el cliente lo pide, usa **Cambiar** para reemplazar un producto por
+  otra opción que el admin registró (queda con `es_cambio`). El precio es la suma de los
+  componentes; con `se_mantiene` en falso, el producto cambiado se cobra a su precio normal.
+  En una línea ya agregada, **Cambiar productos** reajusta el stock (devuelve lo del
+  producto que sale y descuenta el nuevo).
 - **Propina:** porcentajes sugeridos (5, 10, 15 y el sugerido de configuración) o monto
   libre. **Tupper:** grande o mediano, con cantidad y precio por unidad editable.
   Ninguno se puede editar si ya tiene pagos.
@@ -179,7 +188,10 @@ Carta en tarjetas con pestañas por categoría. El administrador puede crear, ed
 activar/desactivar y eliminar productos y categorías (la edición de categoría es en
 línea). Formulario del producto: nombre, descripción, imagen, categoría, precio, costo,
 stock, SKU, límite de agregados, **extras sueltos y grupos de extras** y la marca
-**Plato del día** (estrella naranja en la tarjeta). El mesero solo consulta.
+**Plato del día** (estrella naranja en la tarjeta), **subcategoría** (se elige tras la
+categoría) y **tamaños con precio propio** (`carta_variante`: nombre, precio público y
+personal, peso mín./máx. opcional). Las subcategorías se administran desde el diálogo de
+categorías (botón de cada fila). El mesero solo consulta.
 
 ### Cocina
 Una tarjeta (ticket) por pedido, con filtro por estado. El color de la cabecera indica
@@ -211,7 +223,19 @@ compra repone el stock) y **Utensilios rotos** (descuenta stock como merma).
 Pestañas: **Servicio** (servicios activos, propina sugerida, descuento de empleado y
 cargo por delivery), **Restaurantes**, **Métodos de pago** (activar y comisión; siempre
 debe quedar al menos uno activo), **Usuarios y roles** (crear, cambiar rol, activar) y
-**Negocio**.
+**Negocio**, y **Promociones** (solo administrador):
+
+- Cada **promoción** es un acordeón con nombre, descripción, descuento % opcional
+  (`porcentaje_descuento`), vigencia, activa y `se_mantiene` (si al hacer un cambio se
+  conserva el precio de promoción o el producto cambiado se cobra a su precio normal).
+- Sus **componentes** son los huecos del combo, definidos por una subcategoría y una
+  cantidad (ej. 1 Segundo, 1 Bebida).
+- Cada componente tiene **opciones**: los productos permitidos (con su presentación si es
+  bebida) y su precio de promoción (`precio`; vacío = precio normal con el descuento de la
+  promoción). El producto **incluido** es la primera opción activa (el admin puede
+  "Hacer incluida" a otra); las demás son los cambios posibles.
+- Una promoción solo llega al mozo si está activa, vigente y todos sus componentes tienen
+  al menos una opción activa.
 
 ## Reglas de negocio que el backend debe respetar
 

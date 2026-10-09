@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/mesas_store.dart';
 import '../theme/app_theme.dart';
@@ -29,7 +29,7 @@ class MesaCard extends StatelessWidget {
   final VoidCallback? onEditar;
   // Zona de la mesa: se muestra como tag transparente.
   final String? zona;
-  // Estado explícito: disponible, ocupada, reservada
+  // Estado explícito: disponible, ocupada
   final String? estado;
   // Escala del dibujo (1 = escritorio, <1 = mobile/tablet).
   final double scale;
@@ -116,11 +116,9 @@ class MesaCard extends StatelessWidget {
     final grosorSilla = _grosorSilla * scale;
     final largoSilla = _largoSilla * scale;
     final separacion = _separacion * scale;
-    // Libre/disponible = verde, ocupada = rojo, reservada = ámbar.
+    // Libre/disponible = verde, ocupada = rojo.
     final Color base;
-    if (estado == 'reservada') {
-      base = const Color(0xFFE5A000);
-    } else if (ocupada || estado == 'ocupada') {
+    if (ocupada || estado == 'ocupada') {
       base = AppColors.error;
     } else {
       base = AppColors.primaryGreen;
@@ -298,9 +296,7 @@ class MesaCard extends StatelessWidget {
   // Tarjeta compacta: mesas unidas + total de clientes, sin dibujar sillas.
   Widget _cardCompacta(BuildContext context) {
     final Color base;
-    if (estado == 'reservada') {
-      base = const Color(0xFFE5A000);
-    } else if (ocupada || estado == 'ocupada') {
+    if (ocupada || estado == 'ocupada') {
       base = AppColors.error;
     } else {
       base = AppColors.primaryGreen;

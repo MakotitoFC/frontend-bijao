@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
@@ -416,7 +416,6 @@ class _MesasPlanoState extends State<MesasPlano> {
                 AppSelectItem(value: null, label: 'Todos los estados'),
                 AppSelectItem(value: 'disponible', label: 'Disponible'),
                 AppSelectItem(value: 'ocupada', label: 'Ocupada'),
-                AppSelectItem(value: 'reservada', label: 'Reservada'),
               ],
               onChanged: (v) => setState(() => _estado = v),
               hint: 'Todos los estados',
@@ -918,11 +917,10 @@ class MesasScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: mesa.estaReservada
-                            ? const Color(0xFFE5A000).withValues(alpha: 0.15)
-                            : (mesa.estaOcupada
-                                ? AppColors.error.withValues(alpha: 0.15)
-                                : AppColors.primaryGreen.withValues(alpha: 0.15)),
+                        color: (mesa.estaOcupada
+                                ? AppColors.error
+                                : AppColors.primaryGreen)
+                            .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -930,54 +928,14 @@ class MesasScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: mesa.estaReservada
-                              ? const Color(0xFFE5A000)
-                              : (mesa.estaOcupada ? AppColors.error : AppColors.primaryGreen),
+                          color: mesa.estaOcupada ? AppColors.error : AppColors.primaryGreen,
                         ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (mesa.estaLibre) ...[
-                  ListTile(
-                    leading: const Icon(LucideIcons.calendarCheck, color: Color(0xFFE5A000)),
-                    title: const Text('Reservar mesa'),
-                    subtitle: const Text('Bloquear mesa para reservación'),
-                    onTap: () async {
-                      Navigator.of(sheetCtx).pop();
-                      try {
-                        await PedidoService.instance.reservarMesa(mesa.id, mesa.numero);
-                        if (context.mounted) {
-                          showAppToast(context, 'Mesa ${mesa.numero} reservada.', type: ToastType.success);
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          showAppToast(context, 'Error al reservar mesa: $e', type: ToastType.error);
-                        }
-                      }
-                    },
-                  ),
-                ] else if (mesa.estaReservada) ...[
-                  ListTile(
-                    leading: const Icon(LucideIcons.checkCircle, color: AppColors.primaryGreen),
-                    title: const Text('Liberar mesa'),
-                    subtitle: const Text('Marcar la mesa como disponible'),
-                    onTap: () async {
-                      Navigator.of(sheetCtx).pop();
-                      try {
-                        await PedidoService.instance.liberarMesa(mesa.id, mesa.numero);
-                        if (context.mounted) {
-                          showAppToast(context, 'Mesa ${mesa.numero} liberada a disponible.', type: ToastType.success);
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          showAppToast(context, 'Error al liberar mesa: $e', type: ToastType.error);
-                        }
-                      }
-                    },
-                  ),
-                ] else if (mesa.estaOcupada) ...[
+                if (mesa.estaOcupada) ...[
                   ListTile(
                     leading: const Icon(LucideIcons.checkCircle2, color: AppColors.primaryGreen),
                     title: const Text('Liberar mesa manualmente'),

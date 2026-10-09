@@ -28,16 +28,20 @@ class MesaFormDialog extends StatefulWidget {
 }
 
 class _MesaFormDialogState extends State<MesaFormDialog> {
-  static const _minimo = 1;
+  static const _minimo = capacidadMinimaMesa;
   static const _maximo = 12;
 
   final _formKey = GlobalKey<FormState>();
   late final _numeroController = TextEditingController(
     text: '${widget.mesa?.numero ?? siguienteNumeroMesa()}',
   );
+  // Mínimo 2 sillas: una mesa existente con menos se sube a 2 al editarla.
   late int _capacidad = widget.mesa == null
       ? 4
-      : (widget.mesa!.capacidad > 0 ? widget.mesa!.capacidad : capacidadDe(widget.mesa!.numero));
+      : (widget.mesa!.capacidad > 0
+                ? widget.mesa!.capacidad
+                : capacidadDe(widget.mesa!.numero))
+            .clamp(_minimo, _maximo);
   late String _zona = widget.mesa?.zona ?? widget.zonaInicial;
   late String _estado = widget.mesa?.estado ?? 'disponible';
 
@@ -175,7 +179,6 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                   items: const [
                     AppSelectItem(value: 'disponible', label: 'Disponible'),
                     AppSelectItem(value: 'ocupada', label: 'Ocupada'),
-                    AppSelectItem(value: 'reservada', label: 'Reservada'),
                   ],
                   onChanged: (v) => setState(() => _estado = v ?? _estado),
                 ),
@@ -208,7 +211,7 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                             ),
                           ),
                           Text(
-                            _capacidad == 1 ? '1 silla' : '$_capacidad sillas',
+                            '$_capacidad sillas',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.verdeTexto,

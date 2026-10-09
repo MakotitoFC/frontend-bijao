@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/cartas_store.dart';
 import '../data/insumos_store.dart';
 import '../data/pedidos_store.dart';
+import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -57,6 +58,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
       cantidad: r.cantidad,
       modificadores: r.modificadores,
       presentacion: r.presentacion,
+      variante: r.variante,
       promocion: null,
       comentario: r.comentario,
       precioUnitario: r.precioUnitario,
@@ -195,9 +197,11 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                 ),
               ),
               Text(
-                p.precioCliente == null
-                    ? 'Según tamaño'
-                    : 'S/ ${p.precioCliente!.toStringAsFixed(2)}',
+                p.precioCliente != null
+                    ? 'S/ ${p.precioCliente!.toStringAsFixed(2)}'
+                    : (precioMinimoDeVariantes(p.id) != null
+                          ? 'Desde S/ ${precioMinimoDeVariantes(p.id)!.toStringAsFixed(2)}'
+                          : 'Según tamaño'),
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,

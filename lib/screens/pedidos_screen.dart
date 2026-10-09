@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
@@ -16,6 +16,7 @@ import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/elegir_tipo_pedido_dialog.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
+import '../widgets/tabs_desplazables.dart';
 
 // Vista de Pedidos en dos secciones: cola de pedidos activos (`pedidos`,
 // `pedidos_detalle`) a la izquierda y detalle del pedido elegido a la derecha.
@@ -299,9 +300,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
           '${_cola.length}',
           style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
         ),
-        const Spacer(),
-        const SizedBox(width: 8),
-        _botonNuevoPedido(),
       ],
     );
   }
@@ -328,15 +326,23 @@ class _PedidosScreenState extends State<PedidosScreen> {
       ('entregado', 'Entregado'),
       ('en_cuenta', 'En cuenta'),
     ];
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [for (final o in opciones) _pastillaEstado(o.$1, o.$2)],
+    // Tabs y "Nuevo Pedido" en la misma fila; si los tabs no caben aparecen las
+    // flechas para desplazarlos.
+    return Row(
+      children: [
+        Expanded(
+          child: TabsDesplazables(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final o in opciones) _pastillaEstado(o.$1, o.$2),
+              ],
+            ),
+          ),
         ),
-      ),
+        const SizedBox(width: 8),
+        _botonNuevoPedido(),
+      ],
     );
   }
 
