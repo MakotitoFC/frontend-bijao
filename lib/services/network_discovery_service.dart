@@ -7,10 +7,12 @@ import 'package:http/http.dart' as http;
 import 'package:multicast_dns/multicast_dns.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_config.dart';
+
 class DiscoveredServer {
   final String ip;
   final int port;
-  final String method; // 'mdns', 'udp', 'cache', 'manual'
+  final String method; // 'mdns', 'udp', 'cache', 'lan', 'subnet_scan', 'manual'
 
   const DiscoveredServer({
     required this.ip,
@@ -22,10 +24,10 @@ class DiscoveredServer {
 }
 
 /// Servicio de descubrimiento automático de la laptop del cajero (servidor Go)
-/// mediante mDNS (Bonjour), UDP Beacon y verificación de salud HTTP.
+/// mediante mDNS (Bonjour), UDP Beacon, Subnet Sweep y verificación de salud HTTP.
 class NetworkDiscoveryService {
   static const String _prefKeyServerUrl = 'server_api_url';
-  static const int defaultPort = 6050;
+  static int get defaultPort => AppConfig.serverPort;
   static const int udpBeaconPort = 8989;
 
   /// Obtiene la URL base del servidor guardada en memoria persistente
@@ -56,9 +58,11 @@ class NetworkDiscoveryService {
 
   /// Descubre el servidor en la red local probando:
   /// 1. URL guardada en SharedPreferences (rápido)
-  /// 2. Localhost (si corre en la misma laptop en Desktop/Web)
-  /// 3. Beacon / Broadcast UDP (puerto 8989)
-  /// 4. mDNS / Bonjour (_bijao-server._tcp.local)
+  /// 2. IP configurada por defecto (.env / AppConfig)
+  /// 3. Localhost (si corre en la misma laptop en Desktop/Web)
+  /// 4. Beacon / Broadcast UDP (puerto 8989)
+  /// 5. mDNS / Bonjour (_bijao-server._tcp.local / joel.local)
+  /// 6. Barrido rápido de la subred local (para Android cuando mDNS/UDP están bloqueados por el router)
   static Future<DiscoveredServer?> discoverServer({
     Duration timeout = const Duration(seconds: 4),
   }) async {
@@ -84,16 +88,24 @@ class NetworkDiscoveryService {
       }
     }
 
-    // 2. Si no es Web y estamos en la misma máquina local, probar localhost
+    // 3. Probar IP preconfigurada en AppConfig (.env)
+    final configuredUrl = AppConfig.defaultBaseUrl;
+    if (await pingServer(configuredUrl, timeout: const Duration(seconds: 2))) {
+      final server = DiscoveredServer(ip: AppConfig.serverIp, port: AppConfig.serverPort, method: 'config');
+      await saveServerUrl(server.baseUrl);
+      return server;
+    }
+
+    // 4. Si no es Web y estamos en la misma máquina local, probar localhost
     if (!kIsWeb) {
       if (await pingServer('http://127.0.0.1:$defaultPort', timeout: const Duration(milliseconds: 600))) {
-        const server = DiscoveredServer(ip: '127.0.0.1', port: defaultPort, method: 'localhost');
+        final server = DiscoveredServer(ip: '127.0.0.1', port: defaultPort, method: 'localhost');
         await saveServerUrl(server.baseUrl);
         return server;
       }
     }
 
-    // 3. Probar UDP Broadcast (rápido y robusto en Wi-Fi)
+    // 5. Probar UDP Broadcast (rápido y robusto en Wi-Fi)
     if (!kIsWeb) {
       final udpServer = await _discoverViaUDP(timeout: const Duration(seconds: 2));
       if (udpServer != null) {
@@ -104,7 +116,7 @@ class NetworkDiscoveryService {
       }
     }
 
-    // 4. Probar mDNS / Bonjour
+    // 6. Probar mDNS / Bonjour
     if (!kIsWeb) {
       final mdnsServer = await _discoverViaMDNS(timeout: timeout);
       if (mdnsServer != null) {
@@ -115,8 +127,8 @@ class NetworkDiscoveryService {
       }
     }
 
-    // 5. Probar hosts conocidos en la red Wi-Fi
-    for (final host in ['192.168.0.243', 'joel.local']) {
+    // 7. Probar hosts conocidos en la red Wi-Fi
+    for (final host in [AppConfig.serverIp, 'joel.local']) {
       final cand = 'http://$host:$defaultPort';
       if (await pingServer(cand, timeout: const Duration(milliseconds: 1200))) {
         final uri = Uri.parse(cand);
@@ -126,7 +138,50 @@ class NetworkDiscoveryService {
       }
     }
 
+    // 8. Escaneo rápido de la subred local (fallback definitivo para Android)
+    if (!kIsWeb) {
+      final scannedServer = await _scanSubnetForServer();
+      if (scannedServer != null) {
+        await saveServerUrl(scannedServer.baseUrl);
+        return scannedServer;
+      }
+    }
+
     return null;
+  }
+
+  /// Escanea en paralelo las IPs más probables de la subred local
+  static Future<DiscoveredServer?> _scanSubnetForServer() async {
+    try {
+      final baseIpParts = AppConfig.serverIp.split('.');
+      if (baseIpParts.length != 4) return null;
+      final subnetPrefix = '${baseIpParts[0]}.${baseIpParts[1]}.${baseIpParts[2]}';
+
+      // Probar un grupo de IPs comunes en LAN (1 al 100)
+      final candidates = <String>[];
+      for (int i = 1; i <= 80; i++) {
+        candidates.add('$subnetPrefix.$i');
+      }
+
+      final completer = Completer<DiscoveredServer?>();
+
+      Future.wait(
+        candidates.map((ip) async {
+          if (completer.isCompleted) return;
+          final candUrl = 'http://$ip:$defaultPort';
+          final ok = await pingServer(candUrl, timeout: const Duration(milliseconds: 1500));
+          if (ok && !completer.isCompleted) {
+            completer.complete(DiscoveredServer(ip: ip, port: defaultPort, method: 'subnet_scan'));
+          }
+        }),
+      ).then((_) {
+        if (!completer.isCompleted) completer.complete(null);
+      });
+
+      return await completer.future;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Escucha el beacon UDP o envía consulta "BIJAO_DISCOVER"

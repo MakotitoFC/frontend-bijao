@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_config.dart';
 import 'network_discovery_service.dart';
 
 class ApiException implements Exception {
@@ -40,7 +41,7 @@ class ApiClient {
         return origin;
       }
     }
-    return 'http://192.168.0.243:6050';
+    return AppConfig.defaultBaseUrl;
   }
 
   String get baseUrl => _baseUrl;
