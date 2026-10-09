@@ -11,15 +11,16 @@ import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
-import 'carta_screen.dart';
-import 'cocina_screen.dart';
-import 'configuracion_screen.dart';
-import 'inventario_screen.dart';
+import '../widgets/deferred_loader.dart';
+import 'carta_screen.dart' deferred as carta;
+import 'cocina_screen.dart' deferred as cocina;
+import 'configuracion_screen.dart' deferred as configuracion;
+import 'inventario_screen.dart' deferred as inventario;
 import 'login_screen.dart';
 import 'mesas_screen.dart';
-import 'pagos_screen.dart';
+import 'pagos_screen.dart' deferred as pagos;
 import 'pedidos_screen.dart';
-import 'reportes_screen.dart';
+import 'reportes_screen.dart' deferred as reportes;
 
 // Shell principal: navbar lateral + header global + contenido según la
 // vista elegida. Ver nav_items.dart para las vistas disponibles.
@@ -113,11 +114,14 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'pedidos':
         return PedidosScreen(usuario: widget.usuario);
       case 'productos':
-        return CartaScreen(
-          esAdmin: widget.usuario.rol == AppRole.administrador,
-          seleccion: _categoriaProductos,
-          busqueda: _busquedaProductos,
-          cabeceraPropia: true,
+        return DeferredWidget(
+          loader: carta.loadLibrary,
+          builder: () => carta.CartaScreen(
+            esAdmin: widget.usuario.rol == AppRole.administrador,
+            seleccion: _categoriaProductos,
+            busqueda: _busquedaProductos,
+            cabeceraPropia: true,
+          ),
         );
       // Vistas aún sin desarrollar: comparten el mismo placeholder.
       case 'inicio':
@@ -127,13 +131,25 @@ class _HomeScreenState extends State<HomeScreen> {
           nombreVista: 'Inicio',
         );
       case 'cocina':
-        return const CocinaScreen();
+        return DeferredWidget(
+          loader: cocina.loadLibrary,
+          builder: () => cocina.CocinaScreen(),
+        );
       case 'historial_pedidos':
-        return HistorialPedidosScreen(usuario: widget.usuario);
+        return DeferredWidget(
+          loader: pagos.loadLibrary,
+          builder: () => pagos.HistorialPedidosScreen(usuario: widget.usuario),
+        );
       case 'caja':
-        return CajaScreen(usuario: widget.usuario);
+        return DeferredWidget(
+          loader: pagos.loadLibrary,
+          builder: () => pagos.CajaScreen(usuario: widget.usuario),
+        );
       case 'reportes':
-        return const ReportesScreen();
+        return DeferredWidget(
+          loader: reportes.loadLibrary,
+          builder: () => reportes.ReportesScreen(),
+        );
       case 'finanzas':
         return _InicioContent(
           usuario: widget.usuario,
@@ -141,9 +157,15 @@ class _HomeScreenState extends State<HomeScreen> {
           nombreVista: 'Finanzas',
         );
       case 'inventario':
-        return const InventarioScreen();
+        return DeferredWidget(
+          loader: inventario.loadLibrary,
+          builder: () => inventario.InventarioScreen(),
+        );
       case 'configuracion':
-        return ConfiguracionScreen(usuario: widget.usuario);
+        return DeferredWidget(
+          loader: configuracion.loadLibrary,
+          builder: () => configuracion.ConfiguracionScreen(usuario: widget.usuario),
+        );
       default:
         return const SizedBox.shrink();
     }
