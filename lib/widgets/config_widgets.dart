@@ -1,50 +1,132 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'app_switch.dart';
+import 'campo_texto.dart';
 
 // Piezas de la pantalla de Configuración.
 
-// Tarjeta blanca con título y filas de ajustes.
+// Sección de ajustes: título y descripción arriba, y debajo una tarjeta blanca
+// con las filas separadas por líneas finas.
 class SeccionConfig extends StatelessWidget {
   final String titulo;
   final String? descripcion;
   final List<Widget> filas;
+  // Botón u otro control a la derecha del título (ej. "+ Usuario").
+  final Widget? accion;
 
   const SeccionConfig({
     super.key,
     required this.titulo,
     this.descripcion,
     required this.filas,
+    this.accion,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            titulo,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-          if (descripcion != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              descripcion!,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                titulo,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
             ),
+            ?accion,
           ],
-          const SizedBox(height: 8),
-          for (var i = 0; i < filas.length; i++) ...[
-            if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
-            filas[i],
-          ],
+        ),
+        if (descripcion != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            descripcion!,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+        ],
+        const SizedBox(height: 14),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < filas.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
+                filas[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Ruta de la vista (ej. "Configuración › Servicio"): la última parte en negrita.
+class EncabezadoRuta extends StatelessWidget {
+  final List<String> ruta;
+
+  const EncabezadoRuta({super.key, required this.ruta});
+
+  @override
+  Widget build(BuildContext context) {
+    final estilo = TextStyle(fontSize: 14, color: Colors.grey.shade600);
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      children: [
+        for (var i = 0; i < ruta.length; i++) ...[
+          if (i > 0)
+            Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade500),
+          Text(
+            ruta[i],
+            style: i == ruta.length - 1
+                ? const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)
+                : estilo,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// Fila de solo lectura: etiqueta a la izquierda y valor a la derecha.
+class FilaDato extends StatelessWidget {
+  final String etiqueta;
+  final String valor;
+
+  const FilaDato({super.key, required this.etiqueta, required this.valor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              etiqueta,
+              style: TextStyle(fontSize: 13.5, color: Colors.grey.shade600),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              valor,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
     );
@@ -104,7 +186,7 @@ class FilaSwitch extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Switch(
+              AppSwitch(
                 value: valor,
                 onChanged: onChanged,
                 activeThumbColor: Colors.white,
@@ -148,7 +230,7 @@ class CampoNumeroConfig extends StatelessWidget {
         ),
         SizedBox(
           width: 120,
-          child: TextFormField(
+          child: CampoTexto(
             initialValue: valor == valor.roundToDouble()
                 ? valor.toStringAsFixed(0)
                 : valor.toString(),
@@ -192,7 +274,7 @@ class CampoTextoConfig extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
+    return CampoTexto(
       initialValue: valor,
       keyboardType: teclado,
       style: const TextStyle(fontSize: 13),

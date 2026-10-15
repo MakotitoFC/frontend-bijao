@@ -15,9 +15,9 @@ import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import 'app_select.dart';
 import 'pago_dialogs.dart';
-
-String _fechaTexto(DateTime d) =>
-    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+import 'app_switch.dart';
+import 'campo_texto.dart';
+import 'selector_fecha.dart';
 
 // "Categoría › Subcategoría" para elegir sin confundirse entre categorías.
 String etiquetaSubcategoria(Subcategoria s) {
@@ -63,24 +63,6 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
     super.dispose();
   }
 
-  Future<void> _elegirFecha(bool inicio) async {
-    final base = (inicio ? _inicio : _fin) ?? DateTime.now();
-    final elegida = await showDatePicker(
-      context: context,
-      initialDate: base,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (elegida == null) return;
-    setState(() {
-      if (inicio) {
-        _inicio = DateTime(elegida.year, elegida.month, elegida.day);
-      } else {
-        _fin = DateTime(elegida.year, elegida.month, elegida.day, 23, 59, 59);
-      }
-    });
-  }
-
   void _guardar() {
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
@@ -117,34 +99,6 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
     );
   }
 
-  Widget _campoFecha(String etiqueta, DateTime? valor, bool inicio) {
-    return Expanded(
-      child: InkWell(
-        onTap: () => _elegirFecha(inicio),
-        borderRadius: BorderRadius.circular(AppRadii.tag),
-        child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: etiqueta,
-            suffixIcon: valor == null
-                ? const Icon(Icons.calendar_today_outlined, size: 18)
-                : IconButton(
-                    tooltip: 'Quitar fecha',
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => setState(() {
-                      if (inicio) {
-                        _inicio = null;
-                      } else {
-                        _fin = null;
-                      }
-                    }),
-                  ),
-          ),
-          child: Text(valor == null ? 'Sin límite' : _fechaTexto(valor)),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ModalPago(
@@ -158,7 +112,7 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            CampoTexto(
               controller: _nombre,
               maxLength: 80,
               decoration: const InputDecoration(
@@ -167,7 +121,7 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            TextField(
+            CampoTexto(
               controller: _descripcion,
               maxLines: 2,
               decoration: const InputDecoration(
@@ -175,7 +129,7 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            TextField(
+            CampoTexto(
               controller: _porcentaje,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -190,16 +144,29 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _campoFecha('Desde', _inicio, true),
-                const SizedBox(width: 10),
-                _campoFecha('Hasta', _fin, false),
-              ],
+            SelectorFecha(
+              etiqueta: 'Desde',
+              valor: _inicio,
+              permiteVacio: true,
+              anioMin: DateTime.now().year - 1,
+              anioMax: DateTime.now().year + 5,
+              onChanged: (d) => setState(() => _inicio = d),
             ),
-            const SizedBox(height: 10),
-            SwitchListTile(
+            const SizedBox(height: 14),
+            SelectorFecha(
+              etiqueta: 'Hasta',
+              valor: _fin,
+              permiteVacio: true,
+              anioMin: DateTime.now().year - 1,
+              anioMax: DateTime.now().year + 5,
+              onChanged: (d) => setState(
+                () => _fin = d == null
+                    ? null
+                    : DateTime(d.year, d.month, d.day, 23, 59, 59),
+              ),
+            ),
+            const SizedBox(height: 18),
+            AppSwitchTile(
               contentPadding: EdgeInsets.zero,
               value: _seMantiene,
               activeThumbColor: Colors.white,
@@ -213,7 +180,7 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
               ),
               onChanged: (v) => setState(() => _seMantiene = v),
             ),
-            SwitchListTile(
+            AppSwitchTile(
               contentPadding: EdgeInsets.zero,
               value: _estado,
               activeThumbColor: Colors.white,
@@ -305,7 +272,9 @@ class _ComponenteFormDialogState extends State<ComponenteFormDialog> {
       child: Icon(
         icono,
         size: 18,
-        color: onTap == null ? Colors.grey.shade400 : AppColors.primaryGreenDark,
+        color: onTap == null
+            ? Colors.grey.shade400
+            : AppColors.primaryGreenDark,
       ),
     ),
   );
@@ -314,7 +283,9 @@ class _ComponenteFormDialogState extends State<ComponenteFormDialog> {
   Widget build(BuildContext context) {
     final disponibles = subcategorias.where((s) => s.estado).toList();
     return ModalPago(
-      titulo: widget.componente == null ? 'Nuevo componente' : 'Editar componente',
+      titulo: widget.componente == null
+          ? 'Nuevo componente'
+          : 'Editar componente',
       subtitulo: 'Un hueco del combo (ej. 1 Segundo, 1 Bebida)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -421,9 +392,7 @@ class OpcionFormDialog extends StatefulWidget {
 }
 
 class _OpcionFormDialogState extends State<OpcionFormDialog> {
-  late CartaItem? _item = cartasNotifier.value
-      .where((c) => c.id == widget.opcion?.cartaId)
-      .firstOrNull;
+  late CartaItem? _item = cartaPorId(widget.opcion?.cartaId);
   late CartaPresentacion? _presentacion = presentaciones
       .where((p) => p.id == widget.opcion?.cartaPresentacionId)
       .firstOrNull;
@@ -507,8 +476,10 @@ class _OpcionFormDialogState extends State<OpcionFormDialog> {
         componenteId: widget.componente.id,
         cartaId: item.id,
         cartaPresentacionId: _presentacion?.id,
+        cartaVarianteId: widget.opcion?.cartaVarianteId,
         precio: _precioValor,
         estado: _estado,
+        esFijo: widget.opcion?.esFijo ?? false,
       ),
     );
   }
@@ -581,7 +552,7 @@ class _OpcionFormDialogState extends State<OpcionFormDialog> {
               ),
             ],
             const SizedBox(height: 14),
-            TextField(
+            CampoTexto(
               controller: _precio,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -624,7 +595,7 @@ class _OpcionFormDialogState extends State<OpcionFormDialog> {
                 ),
               ),
             ],
-            SwitchListTile(
+            AppSwitchTile(
               contentPadding: EdgeInsets.zero,
               value: _estado,
               activeThumbColor: Colors.white,

@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/dialogo_app.dart';
 
 // Diálogo reutilizado por cualquier modal de la app.
 // - Escritorio: centrado con transición suave (blur + fade + escala) en vez
@@ -14,6 +15,13 @@ Future<T?> showBlurDialog<T>({
   required WidgetBuilder builder,
   bool barrierDismissible = true,
 }) {
+  // El modal expone su rectángulo para que los selectores no se salgan de él.
+  final llave = GlobalKey(debugLabel: 'limite-modal');
+  final contenido = builder;
+  builder = (c) => LimiteModal(
+    llave: llave,
+    child: SizedBox(key: llave, child: contenido(c)),
+  );
   if (AppBreakpoints.esMobile(context)) {
     return showModalBottomSheet<T>(
       context: context,

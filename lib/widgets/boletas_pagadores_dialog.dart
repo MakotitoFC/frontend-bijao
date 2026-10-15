@@ -5,6 +5,7 @@ import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
 import 'pago_compartido_dialog.dart';
+import 'dialogo_app.dart';
 
 // Una boleta por pagador, para cuando cada uno pide la suya tras un pago
 // compartido.
@@ -129,14 +130,11 @@ class BoletasPagadoresDialog extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
-              const SizedBox(height: 8),
-              Flexible(
+              const SeparadorDialogo(),
+Flexible(
                 child: ListView(
                   shrinkWrap: true,
                   children: [

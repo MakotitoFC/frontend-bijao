@@ -1,7 +1,10 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
+import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
@@ -9,6 +12,7 @@ import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
+import '../services/disponibilidad_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/agregados_utils.dart';
 import '../utils/blur_dialog.dart';
@@ -17,6 +21,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
 import '../widgets/estrella_plato_del_dia.dart';
+import '../widgets/imagen_plato.dart';
 import 'carta_form_screen.dart';
 
 // Filtro gris para tarjetas de productos inactivos.
@@ -56,6 +61,10 @@ class _CartaScreenState extends State<CartaScreen> {
   bool get _puedeEliminar =>
       widget.esAdmin || (widget.usuario?.tienePermiso('DELETE.CARTA') ?? false);
   bool get _puedeGestionar => _puedeEditar || _puedeEliminar;
+  // Marcar "se acabó" hoy (cantidades diarias).
+  bool get _puedeAgotar =>
+      widget.esAdmin ||
+      (widget.usuario?.tienePermiso('UPDATE.CARTA_DISPONIBILIDAD') ?? false);
 
   @override
   void initState() {
@@ -66,6 +75,11 @@ class _CartaScreenState extends State<CartaScreen> {
   List<CartaItem> get _cartaFiltrada {
     final categoria = widget.seleccion.value;
     var base = cartasNotifier.value;
+    // Los productos inhabilitados solo los ve quien administra la carta: el
+    // resto (mozos, cajeros) no debe poder verlos ni pedirlos.
+    if (!_puedeEditar) {
+      base = base.where((c) => !c.inhabilitado).toList();
+    }
     if (categoria != null) {
       base = base.where((c) => c.categoriaId == categoria.id).toList();
     }
@@ -83,13 +97,21 @@ class _CartaScreenState extends State<CartaScreen> {
   }
 
   Future<void> _editarPlato(CartaItem item) async {
-    final editado = await showBlurDialog<CartaItem>(
+    final r = await showBlurDialog<ResultadoPlato>(
       context: context,
       builder: (_) => CartaFormScreen(item: item),
     );
-    if (editado != null) {
+    if (r != null) {
+      final editado = r.item;
       try {
-        await CatalogService.instance.actualizarPlato(editado);
+        final guardado = await CatalogService.instance.actualizarPlato(editado);
+        if (r.foto != null) {
+          await CatalogService.instance.subirImagenPlato(
+            guardado,
+            r.foto!,
+            r.nombreFoto ?? 'plato.jpg',
+          );
+        }
         if (!mounted) return;
         showAppToast(
           context,
@@ -109,6 +131,61 @@ class _CartaScreenState extends State<CartaScreen> {
     }
   }
 
+  // "Se acabó" hoy / reabrir: no cambia el estado del plato, solo su
+  // disponibilidad del día.
+  Future<void> _alternarAgotadoHoy(CartaItem item, bool agotadoAhora) async {
+    try {
+      await DisponibilidadService.instance.marcarAgotado(
+        item.id,
+        !agotadoAhora,
+      );
+      if (!mounted) return;
+      showAppToast(
+        context,
+        agotadoAhora
+            ? '${item.nombrePlato} se reabrió.'
+            : '${item.nombrePlato} se marcó como agotado hoy.',
+        type: agotadoAhora ? ToastType.success : ToastType.info,
+        titulo: agotadoAhora ? 'Plato reabierto' : 'Plato agotado',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo actualizar: $e',
+        type: ToastType.error,
+        titulo: 'Error',
+      );
+    }
+  }
+
+  // Elige una imagen del equipo, la sube al servidor y la deja como foto del
+  // plato.
+  Future<void> _subirFoto(CartaItem item) async {
+    try {
+      final archivos = await FilePicker.pickFiles(type: FileType.image);
+      if (archivos.isEmpty) return;
+      final f = archivos.first;
+      final bytes = await f.readAsBytes();
+      await CatalogService.instance.subirImagenPlato(item, bytes, f.name);
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'La foto de ${item.nombrePlato} se guardó.',
+        type: ToastType.success,
+        titulo: 'Foto actualizada',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo subir la foto: ${e.toString().replaceFirst('Exception: ', '')}',
+        type: ToastType.error,
+        titulo: 'Error',
+      );
+    }
+  }
+
   Future<void> _alternarDisponible(CartaItem item) async {
     try {
       await CatalogService.instance.alternarEstadoPlato(item);
@@ -118,9 +195,11 @@ class _CartaScreenState extends State<CartaScreen> {
         context,
         nuevoDisponible
             ? '${item.nombrePlato} está disponible.'
-            : '${item.nombrePlato} se desactivó.',
+            : '${item.nombrePlato} se inhabilitó.',
         type: nuevoDisponible ? ToastType.success : ToastType.info,
-        titulo: nuevoDisponible ? 'Producto activado' : 'Producto desactivado',
+        titulo: nuevoDisponible
+            ? 'Producto habilitado'
+            : 'Producto inhabilitado',
       );
     } catch (e) {
       if (!mounted) return;
@@ -182,7 +261,7 @@ class _CartaScreenState extends State<CartaScreen> {
                   const SizedBox(height: 8),
                   Text(
                     '¿Seguro que deseas eliminar "${item.nombrePlato}" de la carta? '
-                    'Esta acción no se puede deshacer.',
+                    'Dejará de mostrarse, pero su historial de pedidos se conserva.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                   ),
@@ -214,7 +293,6 @@ class _CartaScreenState extends State<CartaScreen> {
     if (confirmar == true) {
       try {
         await CatalogService.instance.eliminarPlato(item.id);
-        eliminarVariantesDeCarta(item.id);
         if (!mounted) return;
         showAppToast(
           context,
@@ -239,7 +317,10 @@ class _CartaScreenState extends State<CartaScreen> {
       ...presentaciones
           .where((p) => p.cartaId == cartaId)
           .map((p) => p.precioCliente),
-      ...variantesDeCarta(cartaId, soloActivas: true).map((v) => v.precioCliente),
+      ...variantesDeCarta(
+        cartaId,
+        soloActivas: true,
+      ).map((v) => v.precioCliente),
     ];
     if (precios.isEmpty) return 0;
     return precios.reduce((a, b) => a < b ? a : b);
@@ -262,6 +343,8 @@ class _CartaScreenState extends State<CartaScreen> {
           widget.seleccion,
           widget.busqueda,
           cartasNotifier,
+          disponibilidadHoyNotifier,
+          configStockNotifier,
         ]),
         builder: (context, _) {
           final items = _cartaFiltrada;
@@ -345,9 +428,8 @@ class _CartaScreenState extends State<CartaScreen> {
     if (widget.esAdmin) return tarjeta;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => showModalBottomSheet(
+      onTap: () => showBlurDialog<void>(
         context: context,
-        isScrollControlled: true,
         builder: (_) => CartaItemDetailSheet(item: item),
       ),
       child: tarjeta,
@@ -358,6 +440,7 @@ class _CartaScreenState extends State<CartaScreen> {
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   Widget _contenidoTarjeta(CartaItem item) {
+    final estadoDisp = estadoDisponibilidadDe(item.id);
     final desdePrecio = item.precioCliente == null;
     final precio = desdePrecio ? _precioMinimo(item.id) : item.precioCliente!;
     final categoria = _nombreCategoria(item.categoriaId);
@@ -393,31 +476,41 @@ class _CartaScreenState extends State<CartaScreen> {
                           child: Container(
                             width: double.infinity,
                             color: const Color(0xFFF1F3F0),
-                            child: item.imagenBytes != null
-                                ? Image.memory(
-                                    item.imagenBytes!,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Center(
-                                    child: Icon(
-                                      Icons.restaurant_outlined,
-                                      size: 36,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                  ),
+                            child: ImagenPlato(item: item, tamanoIcono: 36),
                           ),
                         ),
                       ),
                       Positioned(
                         top: 8,
                         left: 8,
-                        child: _chipDisponible(item.disponible),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _chipEstado(item),
+                            if (estadoDisp.etiqueta != null) ...[
+                              const SizedBox(width: 4),
+                              _chipDisponibilidad(estadoDisp),
+                            ],
+                          ],
+                        ),
                       ),
                       if (item.platoDelDia)
                         const Positioned(
                           bottom: 8,
                           left: 8,
                           child: EstrellaPlatoDelDia(),
+                        ),
+                      if (_puedeEditar)
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: _botonAccion(
+                            LucideIcons.camera,
+                            item.urlImagen == null
+                                ? 'Subir foto'
+                                : 'Cambiar foto',
+                            () => _subirFoto(item),
+                          ),
                         ),
                     ],
                   ),
@@ -559,28 +652,43 @@ class _CartaScreenState extends State<CartaScreen> {
         ],
       ),
     );
-    // Inactivo: tarjeta gris salvo los botones de activar/editar/eliminar.
+    // Inactivo o agotado hoy: tarjeta gris salvo los botones de acción.
     return Stack(
       fit: StackFit.expand,
       children: [
-        item.disponible
+        (item.disponible && estadoDisp.vendible)
             ? tarjeta
             : Opacity(
                 opacity: 0.55,
                 child: ColorFiltered(colorFilter: _filtroGris, child: tarjeta),
               ),
-        if (_puedeGestionar)
+        if (_puedeGestionar || _puedeAgotar)
           Positioned(
             top: 18,
             right: 18,
             child: Row(
               children: [
+                if (_puedeAgotar && item.disponible) ...[
+                  _botonAccion(
+                    estadoDisp.tipo == TipoDisponibilidad.agotado
+                        ? Icons.restart_alt
+                        : Icons.block,
+                    estadoDisp.tipo == TipoDisponibilidad.agotado
+                        ? 'Reabrir'
+                        : 'Se acabó (agotado hoy)',
+                    () => _alternarAgotadoHoy(
+                      item,
+                      estadoDisp.tipo == TipoDisponibilidad.agotado,
+                    ),
+                  ),
+                  if (_puedeEditar) const SizedBox(width: 6),
+                ],
                 if (_puedeEditar)
                   _botonAccion(
                     item.disponible
                         ? Icons.visibility_outlined
                         : Icons.visibility_off_outlined,
-                    item.disponible ? 'Desactivar' : 'Activar',
+                    item.disponible ? 'Inhabilitar' : 'Habilitar',
                     () => _alternarDisponible(item),
                   ),
                 if (_puedeEditar) const SizedBox(width: 6),
@@ -604,17 +712,40 @@ class _CartaScreenState extends State<CartaScreen> {
     );
   }
 
-  Widget _chipDisponible(bool disponible) {
+  // Disponibilidad de hoy: "Quedan N", "Agotado hoy" o "Sin abrir hoy".
+  Widget _chipDisponibilidad(EstadoDisponibilidad e) {
+    final alerta = !e.vendible;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: disponible
+        color: alerta ? AppColors.error : AppColors.platoDelDia,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        e.etiqueta!,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _chipEstado(CartaItem item) {
+    final etiqueta = item.disponible
+        ? 'Disponible'
+        : (item.agotado ? 'Agotado' : 'Inhabilitado');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: item.disponible
             ? AppColors.primaryGreen
             : Colors.black.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        disponible ? 'Disponible' : 'No disponible',
+        etiqueta,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 10,

@@ -20,11 +20,10 @@ const navItems = [
     clave: 'mesas',
     label: 'Mesas',
     icono: LucideIcons.layoutGrid,
-    rolesPermitidos: {
-      AppRole.administrador,
-      AppRole.mesero,
-      AppRole.cajero,
-    },
+    rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+    // El mozo elige la mesa dentro de "Nuevo pedido": no necesita esta vista,
+    // aunque su rol tenga el permiso LEER.MESA.
+    rolesOcultos: {AppRole.mesero},
     permisoRequerido: 'LEER.MESA',
   ),
   NavItem(

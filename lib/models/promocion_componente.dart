@@ -56,18 +56,25 @@ class PromocionOpcion {
   final String componenteId;
   final String cartaId;
   final String? cartaPresentacionId;
+  // Tamaño con precio propio (`carta_variante`), p. ej. del pescado.
+  final String? cartaVarianteId;
   // Precio de promoción; 0 = sin precio propio (se usa el precio normal con el
   // porcentaje de descuento de la promoción).
   final double precio;
   final bool estado;
+  // El producto incluido en la promoción (`es_fijo`); las demás opciones son
+  // los cambios que puede pedir el cliente.
+  final bool esFijo;
 
   const PromocionOpcion({
     required this.id,
     required this.componenteId,
     required this.cartaId,
     this.cartaPresentacionId,
+    this.cartaVarianteId,
     this.precio = 0,
     this.estado = true,
+    this.esFijo = false,
   });
 
   factory PromocionOpcion.fromJson(Map<String, dynamic> json) =>
@@ -76,8 +83,10 @@ class PromocionOpcion {
         componenteId: json['componente_id']?.toString() ?? '',
         cartaId: json['carta_id']?.toString() ?? '',
         cartaPresentacionId: json['carta_presentacion_id']?.toString(),
+        cartaVarianteId: json['carta_variante_id']?.toString(),
         precio: jsonDouble(json['precio']) ?? 0,
         estado: json['estado'] != false,
+        esFijo: json['es_fijo'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -85,18 +94,36 @@ class PromocionOpcion {
     'componente_id': componenteId,
     'carta_id': cartaId,
     'carta_presentacion_id': cartaPresentacionId,
+    'carta_variante_id': cartaVarianteId,
     'precio': precio,
     'estado': estado,
+    'es_fijo': esFijo,
   };
 
-  PromocionOpcion copyWith({double? precio, bool? estado}) => PromocionOpcion(
-    id: id,
-    componenteId: componenteId,
-    cartaId: cartaId,
-    cartaPresentacionId: cartaPresentacionId,
-    precio: precio ?? this.precio,
-    estado: estado ?? this.estado,
-  );
+  // Cuerpo para el backend. Un precio 0 no se envía (sin precio propio).
+  Map<String, dynamic> aBackend({bool incluirId = true}) => {
+    if (incluirId) 'id': id,
+    'componente_id': componenteId,
+    'carta_id': cartaId,
+    'carta_presentacion_id': ?cartaPresentacionId,
+    'carta_variante_id': ?cartaVarianteId,
+    'cantidad': 1,
+    if (precio > 0) 'precio': precio,
+    'estado': estado,
+    'es_fijo': esFijo,
+  };
+
+  PromocionOpcion copyWith({double? precio, bool? estado, bool? esFijo}) =>
+      PromocionOpcion(
+        id: id,
+        componenteId: componenteId,
+        cartaId: cartaId,
+        cartaPresentacionId: cartaPresentacionId,
+        cartaVarianteId: cartaVarianteId,
+        precio: precio ?? this.precio,
+        estado: estado ?? this.estado,
+        esFijo: esFijo ?? this.esFijo,
+      );
 }
 
 // Refleja `pedidos_detalle_componente`: lo que quedó en cada hueco de una
@@ -107,6 +134,7 @@ class ComponenteElegido {
   final String opcionId;
   final String cartaId;
   final String? cartaPresentacionId;
+  final String? cartaVarianteId;
   // Para mostrar en pantalla y en cocina.
   final String nombre;
   final int cantidad;
@@ -121,6 +149,7 @@ class ComponenteElegido {
     required this.opcionId,
     required this.cartaId,
     this.cartaPresentacionId,
+    this.cartaVarianteId,
     required this.nombre,
     this.cantidad = 1,
     this.esCambio = false,
@@ -134,6 +163,7 @@ class ComponenteElegido {
     'opcion_id': opcionId,
     'carta_id': cartaId,
     if (cartaPresentacionId != null) 'carta_presentacion_id': cartaPresentacionId,
+    if (cartaVarianteId != null) 'carta_variante_id': cartaVarianteId,
     'es_cambio': esCambio,
     'precio_ajuste': precioAjuste,
   };

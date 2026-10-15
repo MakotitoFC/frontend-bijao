@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/horario.dart';
 import '../models/medio_pago.dart';
@@ -26,6 +27,65 @@ class Configuracion {
   // Cobro adicional por delivery (`pedidos.cargo_servicio`), en soles.
   bool cargoDeliveryHabilitado = false;
   double cargoDeliveryMonto = 3;
+
+  static const _prefijo = 'config_';
+
+  // Lee lo guardado en este dispositivo (si no hay nada, quedan los valores
+  // por defecto). Se llama al iniciar la app.
+  Future<void> cargar() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      bool b(String k, bool d) => p.getBool('$_prefijo$k') ?? d;
+      double n(String k, double d) => p.getDouble('$_prefijo$k') ?? d;
+      servicioLocal = b('servicioLocal', servicioLocal);
+      servicioDelivery = b('servicioDelivery', servicioDelivery);
+      propinaSugerida = n('propinaSugerida', propinaSugerida);
+      tupperGrande = n('tupperGrande', tupperGrande);
+      tupperMediano = n('tupperMediano', tupperMediano);
+      descuentoEmpleadoHabilitado = b(
+        'descuentoEmpleadoHabilitado',
+        descuentoEmpleadoHabilitado,
+      );
+      descuentoEmpleadoPorcentaje = n(
+        'descuentoEmpleadoPorcentaje',
+        descuentoEmpleadoPorcentaje,
+      );
+      cargoDeliveryHabilitado = b(
+        'cargoDeliveryHabilitado',
+        cargoDeliveryHabilitado,
+      );
+      cargoDeliveryMonto = n('cargoDeliveryMonto', cargoDeliveryMonto);
+    } catch (_) {
+      // Sin almacenamiento disponible: se usan los valores por defecto.
+    }
+  }
+
+  // Guarda los valores en este dispositivo. Se llama al cambiar un ajuste.
+  Future<void> guardar() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool('${_prefijo}servicioLocal', servicioLocal);
+      await p.setBool('${_prefijo}servicioDelivery', servicioDelivery);
+      await p.setDouble('${_prefijo}propinaSugerida', propinaSugerida);
+      await p.setDouble('${_prefijo}tupperGrande', tupperGrande);
+      await p.setDouble('${_prefijo}tupperMediano', tupperMediano);
+      await p.setBool(
+        '${_prefijo}descuentoEmpleadoHabilitado',
+        descuentoEmpleadoHabilitado,
+      );
+      await p.setDouble(
+        '${_prefijo}descuentoEmpleadoPorcentaje',
+        descuentoEmpleadoPorcentaje,
+      );
+      await p.setBool(
+        '${_prefijo}cargoDeliveryHabilitado',
+        cargoDeliveryHabilitado,
+      );
+      await p.setDouble('${_prefijo}cargoDeliveryMonto', cargoDeliveryMonto);
+    } catch (_) {
+      // Si no se puede guardar, el ajuste vale solo mientras la app esté abierta.
+    }
+  }
 }
 
 final Configuracion config = Configuracion();

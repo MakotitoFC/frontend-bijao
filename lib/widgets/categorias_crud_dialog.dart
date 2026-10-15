@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/blur_dialog.dart';
+
 import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
 import '../models/categoria_comida.dart';
@@ -7,6 +9,8 @@ import '../services/catalog_service.dart';
 import '../data/subcategorias_store.dart';
 import '../theme/app_theme.dart';
 import '../models/subcategoria.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 // Modal "Categorías": lista, agrega, edita (en la misma fila) y elimina. Cada
 // categoría muestra sus subcategorías como tags naranjas, con un botón para
@@ -92,7 +96,8 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
   }
 
   Future<void> _eliminarSub(CategoriaComida cat, Subcategoria s) async {
-    final enUso = cartasNotifier.value
+    // Incluye los platos eliminados: siguen apuntando a la subcategoría.
+    final enUso = todasLasCartas()
         .where((c) => c.subcategoriaIds.contains(s.id))
         .length;
     if (enUso > 0) {
@@ -132,7 +137,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       child: Row(
         children: [
           Expanded(
-            child: TextField(
+            child: CampoTexto(
               controller: _subController,
               autofocus: true,
               style: const TextStyle(fontSize: 13),
@@ -336,9 +341,9 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
         .where((c) => c.categoriaId == cat.id)
         .length;
     if (cantidad > 0) {
-      await showDialog<void>(
+      await showBlurDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => AlertaApp(
           title: const Text('No se puede eliminar'),
           content: Text(
             '"${cat.categoria}" tiene $cantidad producto(s). Muévelos a otra '
@@ -354,9 +359,9 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       );
       return;
     }
-    final confirmar = await showDialog<bool>(
+    final confirmar = await showBlurDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => AlertaApp(
         title: const Text('Eliminar categoría'),
         content: Text('¿Seguro que deseas eliminar "${cat.categoria}"?'),
         actions: [
@@ -425,12 +430,13 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: SeparadorDialogo(aire: 12),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
@@ -440,7 +446,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
+                        child: CampoTexto(
                           controller: _nombreController,
                           autofocus: true,
                           decoration: const InputDecoration(
@@ -502,7 +508,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                           title: editando
                               ? SizedBox(
                                   height: AppSizes.control,
-                                  child: TextField(
+                                  child: CampoTexto(
                                     controller: _editController,
                                     expands: true,
                                     maxLines: null,
@@ -564,7 +570,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                                     ),
                                     IconButton(
                                       tooltip: 'Cancelar',
-                                      icon: const Icon(Icons.close, size: 20),
+                                      icon: const Icon(Icons.close, size: 18),
                                       onPressed: _cancelarEdicion,
                                     ),
                                   ],

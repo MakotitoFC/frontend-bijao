@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_config.dart';
 import '../data/cartas_store.dart';
+import '../data/disponibilidad_store.dart';
 import '../data/insumos_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/variantes_store.dart';
+import '../services/api_client.dart';
+import '../services/disponibilidad_service.dart';
+import '../services/pedido_mozo_service.dart';
 import '../models/carta_item.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'app_search_field.dart';
+import 'app_toast.dart';
+import 'imagen_plato.dart';
 import 'producto_opciones_dialog.dart';
+import 'dialogo_app.dart';
 
 // Agrega productos de la carta a un pedido ya registrado. Devuelve true si se
 // agregó algo. (El plato del día se agrega con su propio tag.)
@@ -30,6 +38,12 @@ class AgregarProductoDialog extends StatefulWidget {
 
 class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   final _busqueda = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    DisponibilidadService.instance.cargarHoy();
+  }
 
   @override
   void dispose() {
@@ -64,7 +78,35 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
       precioUnitario: r.precioUnitario,
       descuentoAplicado: 0,
       precioTotalLinea: r.precioUnitario * r.cantidad,
+      tipoEntrega: r.tipoEntrega,
+      aplicaTaper: r.llevaTaper,
+      taperId: r.taperId,
+      precioTaper: r.precioTaper,
+      precioBase: r.variante?.precioCliente ?? item.precioCliente ?? 0.0,
     );
+    if (AppConfig.usarApiPedidosMozo &&
+        PedidoMozoService.instance.puedeOperar(widget.pedido)) {
+      try {
+        await PedidoMozoService.instance.agregarProducto(
+          widget.pedido.id,
+          linea,
+        );
+      } on PedidoCambioException catch (e) {
+        if (mounted) showAppToast(context, e.mensaje, type: ToastType.info);
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        DisponibilidadService.instance.cargarHoy();
+        showAppToast(
+          context,
+          e is ApiException ? e.message : e.toString(),
+          type: ToastType.error,
+        );
+        return;
+      }
+      if (mounted) Navigator.of(context).pop(true);
+      return;
+    }
     agregarLineaAPedido(widget.pedido.id, linea);
     registrarConsumoAutomaticoDeLinea(linea);
     Navigator.of(context).pop(true);
@@ -109,14 +151,11 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop(false)),
                 ],
               ),
-              const SizedBox(height: 12),
-              Align(
+              const SeparadorDialogo(),
+Align(
                 alignment: Alignment.centerLeft,
                 child: AppSearchField(
                   controller: _busqueda,
@@ -154,11 +193,27 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   }
 
   Widget _fila(CartaItem p) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        disponibilidadHoyNotifier,
+        configStockNotifier,
+      ]),
+      builder: (context, _) {
+        final estado = estadoDisponibilidadDe(p.id);
+        return Opacity(
+          opacity: estado.vendible ? 1 : 0.55,
+          child: _filaContenido(p, estado),
+        );
+      },
+    );
+  }
+
+  Widget _filaContenido(CartaItem p, EstadoDisponibilidad estado) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _elegir(p),
+        onTap: estado.vendible ? () => _elegir(p) : null,
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -172,28 +227,35 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                 child: SizedBox(
                   width: 44,
                   height: 44,
-                  child: p.imagenBytes != null
-                      ? Image.memory(p.imagenBytes!, fit: BoxFit.cover)
-                      : ColoredBox(
-                          color: const Color(0xFFF1F3F0),
-                          child: Icon(
-                            Icons.restaurant_outlined,
-                            size: 20,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
+                  child: ImagenPlato(item: p, tamanoIcono: 20),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  p.nombrePlato,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      p.nombrePlato,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (estado.etiqueta != null)
+                      Text(
+                        estado.etiqueta!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: estado.vendible
+                              ? AppColors.platoDelDia
+                              : AppColors.error,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Text(

@@ -1,68 +1,72 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'campo_texto.dart';
 
-// Buscador común de todas las vistas: mismo alto que tags y selects, esquinas
-// de tag, y un ancho que se ajusta al texto de su placeholder.
+// Buscador común de todas las vistas: un solo campo con lupa, del mismo alto
+// que tags y selects, con el borde y el placeholder del resto de campos y un
+// ancho que se ajusta al texto de su placeholder.
 class AppSearchField extends StatelessWidget {
   final String hint;
   final TextEditingController? controller;
   final ValueChanged<String>? onChanged;
+  // false: ocupa todo el ancho disponible en vez del que pide su placeholder.
+  final bool ajustarAlTexto;
 
   const AppSearchField({
     super.key,
     required this.hint,
     this.controller,
     this.onChanged,
+    this.ajustarAlTexto = true,
   });
 
-  static const double _tamanoTexto = 13;
-  // Icono + separaciones + algo de espacio para escribir.
-  static const double _extra = 14 + 18 + 10 + 18 + 24;
+  // Lupa + márgenes + algo de espacio para escribir.
+  static const double _extra = 14 + 22 + 12 + 24;
+
+  static OutlineInputBorder _borde(Color color, [double ancho = 1]) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadii.tag),
+        borderSide: BorderSide(color: color, width: ancho),
+      );
 
   @override
   Widget build(BuildContext context) {
-    final base = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
-    final estilo = base.copyWith(fontSize: _tamanoTexto);
+    const estiloHint = TextStyle(fontSize: CampoTexto.tamanoPlaceholder);
     final medida = TextPainter(
-      text: TextSpan(text: hint, style: estilo),
+      text: TextSpan(text: hint, style: estiloHint),
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout();
     return SizedBox(
-      width: medida.width + _extra,
+      width: ajustarAlTexto ? medida.width + _extra + 20 : double.infinity,
       height: AppSizes.control,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppRadii.tag),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 12),
-            Icon(Icons.search, size: 18, color: Colors.grey.shade500),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                onChanged: onChanged,
-                style: estilo.copyWith(color: Colors.black87),
-                cursorColor: AppColors.primaryGreen,
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  filled: false,
-                  hintText: hint,
-                  hintStyle: estilo.copyWith(color: Colors.grey.shade500),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        cursorColor: AppColors.primaryGreen,
+        style: const TextStyle(fontSize: CampoTexto.tamanoTexto),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: Colors.white,
+          hintText: hint,
+          hintStyle: TextStyle(
+            fontSize: CampoTexto.tamanoPlaceholder,
+            color: Colors.grey.shade500,
+          ),
+          prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey.shade500),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 38,
+            minHeight: 18,
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 9,
+          ),
+          border: _borde(Colors.grey.shade300),
+          enabledBorder: _borde(Colors.grey.shade300),
+          focusedBorder: _borde(AppColors.primaryGreen, 1.4),
         ),
       ),
     );

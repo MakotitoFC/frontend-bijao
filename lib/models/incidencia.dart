@@ -4,6 +4,9 @@ typedef ReporteProblema = ({
   String categoria,
   String detalle,
   String? evidencia,
+  // Foto de evidencia elegida (bytes y nombre del archivo), si la hay.
+  List<int>? foto,
+  String? nombreFoto,
   // 'reembolso' | 'cambio' | 'nota_credito' | 'vale' | 'rechazado'
   String resolucion,
   // Cambio de producto: producto que se entrega en su lugar.

@@ -17,5 +17,13 @@ class AppConfig {
     defaultValue: 6050,
   );
 
+  // Pedidos por `/api/v1/mozo/pedidos` (precios calculados por el backend,
+  // táper en fila aparte, versiones y operaciones del mozo). Para volver al
+  // servicio anterior: `--dart-define=USAR_API_MOZO=false`.
+  static const bool usarApiPedidosMozo = bool.fromEnvironment(
+    'USAR_API_MOZO',
+    defaultValue: true,
+  );
+
   static String get defaultBaseUrl => 'http://$serverIp:$serverPort';
 }

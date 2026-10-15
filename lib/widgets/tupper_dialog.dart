@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/configuracion_store.dart';
 import '../theme/app_theme.dart';
 import 'pago_dialogs.dart';
+import 'campo_texto.dart';
 
 // Tupper para llevar: cantidad y precio de cada tamaño (grande o mediano).
 typedef TupperConfigurado = ({
@@ -48,6 +49,7 @@ class _TupperDialogState extends State<TupperDialog> {
   void _aplicar() {
     config.tupperGrande = _pGrande;
     config.tupperMediano = _pMediano;
+    config.guardar();
     Navigator.of(context).pop<TupperConfigurado>((
       grande: _grande,
       precioGrande: _pGrande,
@@ -202,7 +204,7 @@ class _TupperDialogState extends State<TupperDialog> {
             ],
           ),
           const SizedBox(height: 10),
-          TextField(
+          CampoTexto(
             controller: precio,
             onChanged: (_) => setState(() {}),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),

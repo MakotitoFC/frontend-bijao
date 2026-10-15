@@ -7,6 +7,11 @@ import '../models/taper.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
+import 'app_toast.dart';
+import 'selector_taper.dart';
+import 'app_switch.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 class PlatoLibreDialog extends StatefulWidget {
   const PlatoLibreDialog({super.key});
@@ -31,7 +36,8 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
     super.initState();
     final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
     if (tapers.isNotEmpty) {
-      _taperSeleccionado = tapers.first;
+      _taperSeleccionado =
+          SelectorTaper.primeroConStock(tapers, 1) ?? tapers.first;
     }
   }
 
@@ -50,6 +56,16 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
 
   void _confirmar() {
     if (!_formKey.currentState!.validate()) return;
+    if (_llevaTaper &&
+        _taperSeleccionado != null &&
+        _taperSeleccionado!.stock < _cantidad) {
+      showAppToast(
+        context,
+        'No hay stock suficiente de "${_taperSeleccionado!.nombre}". Elige otro táper.',
+        type: ToastType.error,
+      );
+      return;
+    }
 
     final nombre = _nombreController.text.trim();
     final notas = _descripcionController.text.trim().isEmpty ? null : _descripcionController.text.trim();
@@ -115,14 +131,14 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
+                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: SeparadorDialogo(aire: 4),
+              ),
 
               // Contenido con scroll
               Flexible(
@@ -137,7 +153,7 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                       ),
                       const SizedBox(height: 6),
-                      TextFormField(
+                      CampoTexto(
                         controller: _nombreController,
                         decoration: InputDecoration(
                           hintText: 'Ej. Arroz a la cubana, Ensalada especial...',
@@ -159,7 +175,7 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                       ),
                       const SizedBox(height: 6),
-                      TextFormField(
+                      CampoTexto(
                         controller: _precioController,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         inputFormatters: [
@@ -229,7 +245,7 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                                     ),
                                   ),
                                 ),
-                                Switch(
+                                AppSwitch(
                                   value: _llevaTaper,
                                   activeThumbColor: Colors.white,
                                   activeTrackColor: AppColors.primaryGreen,
@@ -247,27 +263,12 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                 )
                               else
-                                DropdownButtonFormField<String>(
-                                  initialValue: _taperSeleccionado?.id,
-                                  decoration: InputDecoration(
-                                    labelText: 'Seleccionar tipo de táper',
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  items: [
-                                    for (final t in tapers)
-                                      DropdownMenuItem(
-                                        value: t.id,
-                                        child: Text('${t.nombre} (+S/ ${t.precio.toStringAsFixed(2)})'),
-                                      ),
-                                  ],
-                                  onChanged: (val) {
-                                    if (val != null) {
-                                      setState(() {
-                                        _taperSeleccionado = tapers.firstWhere((t) => t.id == val);
-                                      });
-                                    }
-                                  },
+                                SelectorTaper(
+                                  tapers: tapers,
+                                  seleccionado: _taperSeleccionado,
+                                  cantidadNecesaria: _cantidad,
+                                  onElegir: (t) =>
+                                      setState(() => _taperSeleccionado = t),
                                 ),
                             ],
                           ],
@@ -281,7 +282,7 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                       ),
                       const SizedBox(height: 6),
-                      TextFormField(
+                      CampoTexto(
                         controller: _descripcionController,
                         maxLines: 2,
                         maxLength: 100,

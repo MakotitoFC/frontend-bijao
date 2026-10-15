@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'dialogo_app.dart';
 
 import '../data/promociones_store.dart';
 import '../data/subcategorias_store.dart';
 import '../models/promocion.dart';
 import '../models/promocion_componente.dart';
+import '../services/api_client.dart';
+import '../services/promocion_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import 'app_toast.dart';
+import 'menu_flotante.dart';
 import 'promocion_dialogs.dart';
 
 // Configuración de promociones (administrador): cada promoción es un acordeón
@@ -23,13 +28,41 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
   // Promociones colapsadas por el usuario (por defecto todas expandidas).
   final Set<String> _colapsadas = {};
 
+  @override
+  void initState() {
+    super.initState();
+    PromocionService.instance.cargar().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  // Envía el cambio al servidor y, si sale bien, refresca la pantalla; si no,
+  // muestra el motivo.
+  Future<void> _ejecutar(Future<void> Function() accion) async {
+    try {
+      await accion();
+      if (mounted) setState(() {});
+    } catch (e) {
+      // Se vuelve a leer lo que quedó guardado, por si el cambio se aplicó a
+      // medias.
+      await PromocionService.instance.cargar();
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        e is ApiException ? e.message : 'No se pudo guardar: $e',
+        type: ToastType.error,
+      );
+    }
+  }
+
   String _fecha(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   Future<bool> _confirmar(String titulo, String texto) async {
-    final r = await showDialog<bool>(
+    final r = await showBlurDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => AlertaApp(
         title: Text(titulo),
         content: Text(texto),
         actions: [
@@ -56,7 +89,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => const PromocionFormDialog(),
     );
     if (p == null || !mounted) return;
-    setState(() => agregarPromocion(p));
+    await _ejecutar(() => PromocionService.instance.crearPromocion(p));
   }
 
   Future<void> _editarPromocion(Promocion p) async {
@@ -65,7 +98,9 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => PromocionFormDialog(promocion: p),
     );
     if (r == null || !mounted) return;
-    setState(() => actualizarPromocion(r));
+    await _ejecutar(
+      () => PromocionService.instance.actualizarPromocionEnServidor(r),
+    );
   }
 
   Future<void> _eliminarPromocion(Promocion p) async {
@@ -75,7 +110,9 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     )) {
       return;
     }
-    setState(() => eliminarPromocion(p.id));
+    await _ejecutar(
+      () => PromocionService.instance.eliminarPromocionEnServidor(p.id),
+    );
   }
 
   Future<void> _agregarComponente(Promocion p) async {
@@ -84,7 +121,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => ComponenteFormDialog(promocionId: p.id),
     );
     if (c == null || !mounted) return;
-    setState(() => agregarComponente(c));
+    await _ejecutar(() => PromocionService.instance.crearComponente(c));
   }
 
   Future<void> _editarComponente(Promocion p, PromocionComponente c) async {
@@ -93,7 +130,9 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => ComponenteFormDialog(promocionId: p.id, componente: c),
     );
     if (r == null || !mounted) return;
-    setState(() => actualizarComponente(r));
+    await _ejecutar(
+      () => PromocionService.instance.actualizarComponenteEnServidor(r),
+    );
   }
 
   Future<void> _eliminarComponente(PromocionComponente c) async {
@@ -103,7 +142,9 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     )) {
       return;
     }
-    setState(() => eliminarComponente(c.id));
+    await _ejecutar(
+      () => PromocionService.instance.eliminarComponenteEnServidor(c.id),
+    );
   }
 
   Future<void> _agregarOpcion(Promocion p, PromocionComponente c) async {
@@ -112,7 +153,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => OpcionFormDialog(promocion: p, componente: c),
     );
     if (o == null || !mounted) return;
-    setState(() => agregarOpcion(o));
+    await _ejecutar(() => PromocionService.instance.crearOpcion(o));
   }
 
   Future<void> _editarOpcion(
@@ -125,7 +166,9 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => OpcionFormDialog(promocion: p, componente: c, opcion: o),
     );
     if (r == null || !mounted) return;
-    setState(() => actualizarOpcion(r));
+    await _ejecutar(
+      () => PromocionService.instance.actualizarOpcionEnServidor(r),
+    );
   }
 
   // ---------- UI ----------
@@ -133,60 +176,52 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Promociones',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _nuevaPromocion,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                    ),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Promoción'),
-                  ),
-                ],
+              const Expanded(
+                child: Text(
+                  'Promociones',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'El mozo vende cada promoción tal como la configuras. Solo puede '
-                'cambiar un producto por otra opción que registres aquí, y solo '
-                'si el cliente lo pide.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              FilledButton.icon(
+                onPressed: _nuevaPromocion,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Promoción'),
               ),
-              const SizedBox(height: 14),
-              if (promociones.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: Center(
-                    child: Text(
-                      'Aún no hay promociones registradas',
-                      style: TextStyle(color: Colors.grey.shade500),
-                    ),
-                  ),
-                )
-              else
-                for (final p in promociones) ...[
-                  _tarjeta(p),
-                  const SizedBox(height: 12),
-                ],
             ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            'El mozo vende cada promoción tal como la configuras. Solo puede '
+            'cambiar un producto por otra opción que registres aquí, y solo '
+            'si el cliente lo pide.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 14),
+          if (promociones.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 36),
+              child: Center(
+                child: Text(
+                  'Aún no hay promociones registradas',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          else
+            for (final p in promociones) ...[
+              _tarjeta(p),
+              const SizedBox(height: 12),
+            ],
+        ],
       ),
     );
   }
@@ -414,7 +449,8 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
               ),
             )
           else ...[
-            for (final o in opciones) _filaOpcion(p, c, o, o.id == incluida?.id),
+            for (final o in opciones)
+              _filaOpcion(p, c, o, o.id == incluida?.id),
             Padding(
               padding: const EdgeInsets.fromLTRB(0, 4, 6, 4),
               child: Text(
@@ -480,34 +516,43 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
               ),
             ),
           ),
-          PopupMenuButton<String>(
+          MenuFlotante<String>(
             tooltip: 'Acciones',
-            icon: const Icon(Icons.more_vert, size: 18),
-            onSelected: (v) {
+            anchoMinimo: 170,
+            opciones: [
+              const OpcionMenu(valor: 'editar', etiqueta: 'Editar'),
+              if (!incluida && o.estado)
+                const OpcionMenu(valor: 'incluida', etiqueta: 'Hacer incluida'),
+              OpcionMenu(
+                valor: 'estado',
+                etiqueta: o.estado ? 'Desactivar' : 'Activar',
+              ),
+              const OpcionMenu(valor: 'eliminar', etiqueta: 'Eliminar'),
+            ],
+            onSeleccionar: (v) {
               switch (v) {
                 case 'editar':
                   _editarOpcion(p, c, o);
                 case 'incluida':
-                  setState(() => hacerIncluida(o.id));
+                  _ejecutar(
+                    () => PromocionService.instance.hacerIncluidaEnServidor(o),
+                  );
                 case 'estado':
-                  setState(() => actualizarOpcion(o.copyWith(estado: !o.estado)));
+                  _ejecutar(
+                    () => PromocionService.instance.actualizarOpcionEnServidor(
+                      o.copyWith(estado: !o.estado),
+                    ),
+                  );
                 case 'eliminar':
-                  setState(() => eliminarOpcion(o.id));
+                  _ejecutar(
+                    () => PromocionService.instance.eliminarOpcionEnServidor(o),
+                  );
               }
             },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'editar', child: Text('Editar')),
-              if (!incluida && o.estado)
-                const PopupMenuItem(
-                  value: 'incluida',
-                  child: Text('Hacer incluida'),
-                ),
-              PopupMenuItem(
-                value: 'estado',
-                child: Text(o.estado ? 'Desactivar' : 'Activar'),
-              ),
-              const PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
-            ],
+            disparador: (context, abierto) => const Padding(
+              padding: EdgeInsets.all(6),
+              child: Icon(Icons.more_vert, size: 18),
+            ),
           ),
         ],
       ),

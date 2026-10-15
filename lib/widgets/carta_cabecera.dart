@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dialogo_app.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
@@ -11,6 +13,7 @@ import '../utils/blur_dialog.dart';
 import 'carta_acciones.dart';
 import 'app_search_field.dart';
 import 'app_tag.dart';
+import 'apertura_diaria_dialog.dart';
 import 'categorias_crud_dialog.dart';
 import 'tabs_desplazables.dart';
 
@@ -43,8 +46,12 @@ class CartaCabecera extends StatefulWidget {
 class _CartaCabeceraState extends State<CartaCabecera> {
   bool get _puedeCrearProducto =>
       widget.esAdmin || (widget.usuario?.tienePermiso('CREAR.CARTA') ?? false);
+  bool get _puedeAbrirDia =>
+      widget.esAdmin ||
+      (widget.usuario?.tienePermiso('CREAR.CARTA_DISPONIBILIDAD') ?? false);
   bool get _puedeCrearCategoria =>
-      widget.esAdmin || (widget.usuario?.tienePermiso('CREAR.CATEGORIA_COMIDA') ?? false);
+      widget.esAdmin ||
+      (widget.usuario?.tienePermiso('CREAR.CATEGORIA_COMIDA') ?? false);
 
   late final _busquedaController = TextEditingController(
     text: widget.busqueda.value,
@@ -54,6 +61,13 @@ class _CartaCabeceraState extends State<CartaCabecera> {
   void dispose() {
     _busquedaController.dispose();
     super.dispose();
+  }
+
+  Future<void> _abrirDia() async {
+    await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => const AperturaDiariaDialog(),
+    );
   }
 
   Future<void> _agregar() async {
@@ -71,9 +85,9 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         .where((c) => c.categoriaId == cat.id)
         .length;
     if (cantidad > 0) {
-      await showDialog<void>(
+      await showBlurDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => AlertaApp(
           title: const Text('No se puede eliminar'),
           content: Text(
             '"${cat.categoria}" tiene $cantidad producto(s). Muévelos a otra '
@@ -89,9 +103,9 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       );
       return;
     }
-    final confirmar = await showDialog<bool>(
+    final confirmar = await showBlurDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => AlertaApp(
         title: const Text('Eliminar categoría'),
         content: Text('¿Seguro que deseas eliminar "${cat.categoria}"?'),
         actions: [
@@ -114,14 +128,14 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       widget.onCambio();
     } catch (e) {
       if (!mounted) return;
-      showDialog(
+      showBlurDialog(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogContext) => AlertaApp(
           title: const Text('Error'),
           content: Text('No se pudo eliminar la categoría: $e'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Entendido'),
             ),
           ],
@@ -207,9 +221,15 @@ class _CartaCabeceraState extends State<CartaCabecera> {
               if (widget.esAdmin) ...[
                 const SizedBox(width: 8),
                 IconButton.outlined(
+                  tooltip: 'Apertura del día',
+                  onPressed: _abrirDia,
+                  icon: const Icon(LucideIcons.calendarCheck),
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
                   tooltip: 'Nueva categoría',
                   onPressed: _agregar,
-                  icon: const Icon(Icons.category_outlined),
+                  icon: const Icon(LucideIcons.folderPlus),
                 ),
                 const SizedBox(width: 6),
                 IconButton.filled(
@@ -242,6 +262,17 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         Row(
           children: [
             Expanded(child: tabs),
+            if (_puedeAbrirDia) ...[
+              const SizedBox(width: 24),
+              OutlinedButton.icon(
+                onPressed: _abrirDia,
+                icon: const Icon(Icons.event_available_outlined, size: 18),
+                label: const Text(
+                  'Abrir el día',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+            ],
             if (_puedeCrearCategoria) ...[
               const SizedBox(width: 24),
               _botonCategoria(),

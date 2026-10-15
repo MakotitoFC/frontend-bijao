@@ -48,7 +48,8 @@ class Promocion {
     nombre: json['nombre']?.toString() ?? '',
     descripcion: json['descripcion']?.toString(),
     porcentajeDescuento: jsonDouble(json['porcentaje_descuento']),
-    seMantiene: json['se_mantiene'] == true,
+    // El backend lo llama `se_mantiene_porcentaje`.
+    seMantiene: (json['se_mantiene_porcentaje'] ?? json['se_mantiene']) != false,
     fechaInicio: DateTime.tryParse(json['fecha_inicio']?.toString() ?? ''),
     fechaFin: DateTime.tryParse(json['fecha_fin']?.toString() ?? ''),
     estado: json['estado'] != false,
@@ -60,11 +61,26 @@ class Promocion {
     'nombre': nombre,
     'descripcion': descripcion,
     'porcentaje_descuento': porcentajeDescuento,
-    'se_mantiene': seMantiene,
+    'se_mantiene_porcentaje': seMantiene,
     'fecha_inicio': fechaInicio?.toIso8601String(),
     'fecha_fin': fechaFin?.toIso8601String(),
     'estado': estado,
     'sede_id': sedeId,
+  };
+
+  // Cuerpo para crear o actualizar en el backend (fechas en UTC, RFC 3339).
+  // Los campos vacíos no se envían: el backend entiende "no cambiar".
+  Map<String, dynamic> aBackend({bool incluirId = true}) => {
+    if (incluirId) 'id': id,
+    'nombre': nombre,
+    if (descripcion != null && descripcion!.isNotEmpty)
+      'descripcion': descripcion,
+    'porcentaje_descuento': ?porcentajeDescuento,
+    'se_mantiene_porcentaje': seMantiene,
+    if (fechaInicio != null)
+      'fecha_inicio': fechaInicio!.toUtc().toIso8601String(),
+    if (fechaFin != null) 'fecha_fin': fechaFin!.toUtc().toIso8601String(),
+    'estado': estado,
   };
 
   Promocion copyWith({

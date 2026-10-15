@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
 import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
 import '../models/modificador.dart';
+import '../models/pedido_line.dart';
 import '../models/taper.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
+import 'app_toast.dart';
+import 'imagen_plato.dart';
+import 'selector_taper.dart';
 import '../utils/agregados_utils.dart';
+import 'app_switch.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 // Resultado al agregar un producto configurado al pedido.
 typedef ProductoConfigurado = ({
@@ -33,12 +41,16 @@ class ProductoOpcionesDialog extends StatefulWidget {
   final bool esAdmin;
   // Color del botón principal (ej. naranja para el plato del día).
   final Color? acento;
+  // Productos que ya están en el carrito (aún sin guardar): cuentan contra las
+  // porciones que quedan hoy.
+  final List<PedidoLine> enCarrito;
 
   const ProductoOpcionesDialog({
     super.key,
     required this.item,
     required this.esAdmin,
     this.acento,
+    this.enCarrito = const [],
   });
 
   @override
@@ -87,7 +99,8 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       _taperSeleccionado = tapers.where((t) => t.id == widget.item.taperId).firstOrNull;
     }
     if (_taperSeleccionado == null && tapers.isNotEmpty) {
-      _taperSeleccionado = tapers.first;
+      _taperSeleccionado =
+          SelectorTaper.primeroConStock(tapers, 1) ?? tapers.first;
     }
   }
 
@@ -119,6 +132,25 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
 
   double get _total => _precioUnitario * _cantidad;
 
+  // Porciones que aún se pueden agregar de lo elegido (null = sin tope).
+  int? get _tope {
+    final quedan = topeDeUnidades(
+      widget.item.id,
+      presentacionId: _presentacion?.id,
+      varianteId: _variante?.id,
+    );
+    if (quedan == null) return null;
+    final ya = widget.enCarrito
+        .where(
+          (l) =>
+              l.cartaId == widget.item.id &&
+              l.presentacion?.id == _presentacion?.id &&
+              l.variante?.id == _variante?.id,
+        )
+        .fold(0, (s, l) => s + l.cantidad);
+    return quedan - ya < 0 ? 0 : quedan - ya;
+  }
+
   void _alternarAgregado(String nombre) {
     setState(() {
       if (_agregadosElegidos.contains(nombre)) {
@@ -146,6 +178,27 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   }
 
   void _confirmar() {
+    final tope = _tope;
+    if (tope != null && _cantidad > tope) {
+      showAppToast(
+        context,
+        tope == 0
+            ? '"${widget.item.nombrePlato}" ya no tiene porciones disponibles.'
+            : 'Solo quedan $tope de "${widget.item.nombrePlato}".',
+        type: ToastType.error,
+      );
+      return;
+    }
+    if (_llevaTaper &&
+        _taperSeleccionado != null &&
+        _taperSeleccionado!.stock < _cantidad) {
+      showAppToast(
+        context,
+        'No hay stock suficiente de "${_taperSeleccionado!.nombre}". Elige otro táper.',
+        type: ToastType.error,
+      );
+      return;
+    }
     final modificadores = [
       for (final a in _extrasSimples)
         if (_agregadosElegidos.contains('${a['nombre']}'))
@@ -220,12 +273,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: SeparadorDialogo(aire: 12),
             ),
             Flexible(
               child: SingleChildScrollView(
@@ -316,7 +370,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     const SizedBox(height: 18),
                     _tituloSeccion('Notas (opcional)'),
                     const SizedBox(height: 6),
-                    TextField(
+                    CampoTexto(
                       controller: _comentarioController,
                       maxLength: 60,
                       maxLines: 2,
@@ -362,7 +416,12 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       ),
                     ),
                   ),
-                  _botonCantidad(Icons.add, () => setState(() => _cantidad++)),
+                  _botonCantidad(
+                    Icons.add,
+                    (_tope == null || _cantidad < _tope!)
+                        ? () => setState(() => _cantidad++)
+                        : null,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
@@ -480,7 +539,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                   ),
                 ),
               ),
-              Switch(
+              AppSwitch(
                 value: _llevaTaper,
                 activeThumbColor: Colors.white,
                 activeTrackColor: AppColors.primaryGreen,
@@ -498,27 +557,11 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               )
             else
-              DropdownButtonFormField<String>(
-                initialValue: _taperSeleccionado?.id,
-                decoration: InputDecoration(
-                  labelText: 'Seleccionar tipo de táper',
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                items: [
-                  for (final t in tapers)
-                    DropdownMenuItem(
-                      value: t.id,
-                      child: Text('${t.nombre} (+S/ ${t.precio.toStringAsFixed(2)})'),
-                    ),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() {
-                      _taperSeleccionado = tapers.firstWhere((t) => t.id == val);
-                    });
-                  }
-                },
+              SelectorTaper(
+                tapers: tapers,
+                seleccionado: _taperSeleccionado,
+                cantidadNecesaria: _cantidad,
+                onElegir: (t) => setState(() => _taperSeleccionado = t),
               ),
           ],
         ],
@@ -687,18 +730,5 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     );
   }
 
-  Widget _imagen(CartaItem item) {
-    return ColoredBox(
-      color: const Color(0xFFF1F3F0),
-      child: item.imagenBytes != null
-          ? Image.memory(item.imagenBytes!, fit: BoxFit.cover)
-          : Center(
-              child: Icon(
-                Icons.restaurant_outlined,
-                size: 26,
-                color: Colors.grey.shade400,
-              ),
-            ),
-    );
-  }
+  Widget _imagen(CartaItem item) => ImagenPlato(item: item, tamanoIcono: 26);
 }

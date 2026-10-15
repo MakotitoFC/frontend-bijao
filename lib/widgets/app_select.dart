@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'dialogo_app.dart';
 
 class AppSelectItem<T> {
   final T value;
@@ -9,8 +10,9 @@ class AppSelectItem<T> {
   const AppSelectItem({required this.value, required this.label});
 }
 
-// Select reutilizable: panel de opciones flotante sobre el contenido, con
-// flecha que rota al abrir.
+// Select reutilizable. Al abrirse, las opciones salen en un panel flotante
+// pegado al selector: debajo de él, y si no hay espacio, encima. Nunca lo tapa ni
+// se sale del modal que lo contiene. La flecha rota al abrir.
 class AppSelect<T> extends StatefulWidget {
   final String? label;
   final T? value;
@@ -56,10 +58,34 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
 
   void _alternar() => _abierto ? _cerrar() : _abrir();
 
+  // Alto aproximado de una opción, para decidir si cabe debajo.
+  static const double _altoOpcion = 40;
+  static const double _altoMaximo = 260;
+
   void _abrir() {
-    final renderBox = _campoKey.currentContext!.findRenderObject() as RenderBox;
-    final ancho = renderBox.size.width;
-    final alto = renderBox.size.height;
+    final caja = _campoKey.currentContext!.findRenderObject() as RenderBox;
+    final origen = caja.localToGlobal(Offset.zero);
+    final ancho = caja.size.width;
+    final alto = caja.size.height;
+
+    // Zona permitida: el modal que contiene al selector o, si no hay, la
+    // pantalla.
+    final pantalla = Offset.zero & MediaQuery.sizeOf(context);
+    final limite = LimiteModal.rectDe(context) ?? pantalla;
+    const separacion = 6.0;
+    const margen = 8.0;
+    final espacioAbajo =
+        limite.bottom - (origen.dy + alto) - separacion - margen;
+    final espacioArriba = origen.dy - limite.top - separacion - margen;
+    final necesario = (widget.items.length * _altoOpcion + 2).clamp(
+      0.0,
+      _altoMaximo,
+    );
+    // Debajo si cabe (o si hay más sitio que arriba); si no, encima.
+    final abajo = espacioAbajo >= necesario || espacioAbajo >= espacioArriba;
+    final disponible = abajo ? espacioAbajo : espacioArriba;
+    final altoPanel = disponible.clamp(60.0, _altoMaximo);
+
     _overlayEntry = OverlayEntry(
       builder: (context) => Stack(
         children: [
@@ -72,10 +98,12 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
           CompositedTransformFollower(
             link: _link,
             showWhenUnlinked: false,
-            offset: Offset(0, alto + 6),
+            targetAnchor: abajo ? Alignment.bottomLeft : Alignment.topLeft,
+            followerAnchor: abajo ? Alignment.topLeft : Alignment.bottomLeft,
+            offset: Offset(0, abajo ? separacion : -separacion),
             child: Material(
               color: Colors.transparent,
-              child: SizedBox(width: ancho, child: _panelOpciones()),
+              child: SizedBox(width: ancho, child: _panelOpciones(altoPanel)),
             ),
           ),
         ],
@@ -91,9 +119,9 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     if (mounted) setState(() => _abierto = false);
   }
 
-  Widget _panelOpciones() {
+  Widget _panelOpciones(double altoMaximo) {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 260),
+      constraints: BoxConstraints(maxHeight: altoMaximo),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(AppRadii.tag),
@@ -182,23 +210,23 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
   @override
   Widget build(BuildContext context) {
     if (widget.flotante) return _campoFlotante(context);
-    return CompositedTransformTarget(
-      link: _link,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.label != null) ...[
-            Text(
-              widget.label!,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600,
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.label != null) ...[
+          Text(
+            widget.label!,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
             ),
-            const SizedBox(height: 6),
-          ],
-          Material(
+          ),
+          const SizedBox(height: 6),
+        ],
+        CompositedTransformTarget(
+          link: _link,
+          child: Material(
             key: _campoKey,
             color: Colors.white,
             borderRadius: BorderRadius.circular(AppRadii.tag),
@@ -224,7 +252,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                         _etiquetaActual,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: widget.value == null ? 12.5 : 13.5,
                           color: widget.value == null
                               ? Colors.grey.shade500
                               : Colors.black87,
@@ -246,8 +274,8 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

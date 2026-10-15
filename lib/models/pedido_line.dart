@@ -34,6 +34,8 @@ class PedidoLine {
   // Estado de la línea (pedidos_detalle.estado): null = normal, 'incidencia'
   // = tiene una devolución/reclamo reportado (ver incidencias_store.dart).
   final String? estado;
+  // `pedidos_detalle.version` (concurrencia optimista del backend).
+  final int version;
 
   const PedidoLine({
     required this.id,
@@ -58,6 +60,7 @@ class PedidoLine {
     this.estado,
     this.variante,
     this.componentes = const [],
+    this.version = 1,
   });
 
   factory PedidoLine.fromJson(Map<String, dynamic> json) {
@@ -91,6 +94,7 @@ class PedidoLine {
       descripcionLibre: json['descripcion_libre']?.toString(),
       precioBase: pUnit,
       estado: json['estado']?.toString(),
+      version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -146,6 +150,7 @@ class PedidoLine {
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
     estado: estado,
+    version: version,
   );
 
   PedidoLine copyWith({String? estado}) => PedidoLine(
@@ -171,6 +176,7 @@ class PedidoLine {
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
     estado: estado ?? this.estado,
+    version: version,
   );
 
   // Cambia los productos de una promoción (a pedido del cliente): actualiza los
@@ -203,6 +209,39 @@ class PedidoLine {
       descripcionLibre: descripcionLibre,
       precioBase: precioBase,
       estado: estado,
+      version: version,
     );
   }
+
+  // Reemplaza lo calculado por el backend (id, versión y precios). El táper
+  // pasa a ser una fila aparte, así que esta línea ya no lo lleva.
+  PedidoLine conDatosServidor({
+    required String id,
+    required int version,
+    required double precioUnitario,
+    required double descuento,
+    required double totalFila,
+    String? estado,
+  }) => PedidoLine(
+    id: id,
+    cartaId: cartaId,
+    nombrePlato: nombrePlato,
+    cantidad: cantidad,
+    modificadores: modificadores,
+    presentacion: presentacion,
+    variante: variante,
+    componentes: componentes,
+    promocion: promocion,
+    comentario: comentario,
+    precioUnitario: precioUnitario,
+    descuentoAplicado: descuento,
+    precioTotalLinea: totalFila,
+    tipoEntrega: tipoEntrega,
+    esLibre: esLibre,
+    nombreLibre: nombreLibre,
+    descripcionLibre: descripcionLibre,
+    precioBase: precioUnitario,
+    estado: estado,
+    version: version,
+  );
 }

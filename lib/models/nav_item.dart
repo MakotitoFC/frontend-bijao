@@ -11,6 +11,9 @@ class NavItem {
   final Set<AppRole> rolesPermitidos;
   final List<NavItem> hijos;
   final String? permisoRequerido;
+  // Roles a los que el ítem se les oculta aunque tengan el permiso (el
+  // administrador siempre lo ve).
+  final Set<AppRole> rolesOcultos;
 
   const NavItem({
     required this.clave,
@@ -19,6 +22,7 @@ class NavItem {
     required this.rolesPermitidos,
     this.hijos = const [],
     this.permisoRequerido,
+    this.rolesOcultos = const {},
   });
 
   bool get esGrupo => hijos.isNotEmpty;
@@ -26,6 +30,7 @@ class NavItem {
   /// Determina si un usuario tiene acceso a este ítem (por permiso específico o por rol).
   bool tieneAcceso(Usuario usuario) {
     if (usuario.esAdmin) return true;
+    if (rolesOcultos.contains(usuario.rol)) return false;
     if (permisoRequerido != null && usuario.tienePermiso(permisoRequerido)) {
       return true;
     }

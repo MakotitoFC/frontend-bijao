@@ -5,6 +5,9 @@ import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
+import 'app_switch.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 /// Modal dialog para crear o editar un Táper (tabla `taper` en BD.txt).
 /// Columnas: id, nombre, precio, estado, sede_id, created_at.
@@ -21,6 +24,10 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nombreController;
   late final TextEditingController _precioController;
+  // Stock actual y mínimo (se pueden corregir al editar; las compras y salidas
+  // de inventario también lo mueven).
+  late final TextEditingController _stockController;
+  late final TextEditingController _stockMinController;
   late bool _estado;
   bool _guardando = false;
 
@@ -31,13 +38,24 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
     _precioController = TextEditingController(
       text: widget.taper != null ? widget.taper!.precio.toStringAsFixed(2) : '',
     );
+    _stockController = TextEditingController(
+      text: widget.taper != null ? _numero(widget.taper!.stock) : '',
+    );
+    _stockMinController = TextEditingController(
+      text: widget.taper != null ? _numero(widget.taper!.stockMinimo) : '',
+    );
     _estado = widget.taper?.estado ?? true;
   }
+
+  String _numero(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
   @override
   void dispose() {
     _nombreController.dispose();
     _precioController.dispose();
+    _stockController.dispose();
+    _stockMinController.dispose();
     super.dispose();
   }
 
@@ -47,16 +65,19 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
     final nombre = _nombreController.text.trim();
     final precio = double.tryParse(_precioController.text.trim());
     if (precio == null || precio < 0) {
-      showAppToast(context, 'Ingresa un precio válido mayor o igual a 0',
-          type: ToastType.error);
+      showAppToast(
+        context,
+        'Ingresa un precio válido mayor o igual a 0',
+        type: ToastType.error,
+      );
       return;
     }
 
     setState(() => _guardando = true);
 
     try {
-      final sedeActual = widget.taper?.sedeId ??
-          AuthService.instance.currentUser?.sedeId;
+      final sedeActual =
+          widget.taper?.sedeId ?? AuthService.instance.currentUser?.sedeId;
 
       if (widget.taper != null) {
         // Actualizar existente
@@ -66,27 +87,40 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
           precio: precio,
           estado: _estado,
           sedeId: sedeActual,
+          stock: double.tryParse(_stockController.text.trim()),
+          stockMinimo: double.tryParse(_stockMinController.text.trim()),
         );
         if (!mounted) return;
         Navigator.of(context).pop(actualizado);
-        showAppToast(context, 'Táper actualizado correctamente',
-            type: ToastType.success);
+        showAppToast(
+          context,
+          'Táper actualizado correctamente',
+          type: ToastType.success,
+        );
       } else {
         // Crear nuevo
         final nuevo = await CatalogService.instance.crearTaper(
           nombre: nombre,
           precio: precio,
           sedeId: sedeActual,
+          stockInicial: double.tryParse(_stockController.text.trim()),
+          stockMinimo: double.tryParse(_stockMinController.text.trim()),
         );
         if (!mounted) return;
         Navigator.of(context).pop(nuevo);
-        showAppToast(context, 'Táper creado correctamente',
-            type: ToastType.success);
+        showAppToast(
+          context,
+          'Táper creado correctamente',
+          type: ToastType.success,
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      showAppToast(context, 'Error al guardar táper: $e',
-          type: ToastType.error);
+      showAppToast(
+        context,
+        'Error al guardar táper: $e',
+        type: ToastType.error,
+      );
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
@@ -96,36 +130,34 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
   Widget build(BuildContext context) {
     final editando = widget.taper != null;
 
-    return AlertDialog(
-      titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-      actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.takeout_dining,
-              color: AppColors.primaryGreen,
-              size: 20,
-            ),
+    return DialogoApp(
+      titulo: editando ? 'Editar Táper' : 'Nuevo Táper',
+      ancho: 420,
+      acciones: [
+        TextButton(
+          onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _guardando ? null : _guardar,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              editando ? 'Editar Táper' : 'Nuevo Táper',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Form(
+          icon: _guardando
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check, size: 16),
+          label: Text(editando ? 'Guardar cambios' : 'Crear táper'),
+        ),
+      ],
+      children: [
+        Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -136,7 +168,7 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 16),
-              TextFormField(
+              CampoTexto(
                 controller: _nombreController,
                 maxLength: 50,
                 decoration: const InputDecoration(
@@ -155,9 +187,11 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              CampoTexto(
                 controller: _precioController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Precio (S/) *',
                   hintText: '0.00',
@@ -175,8 +209,36 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
                   return null;
                 },
               ),
+              ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CampoTexto(
+                        controller: _stockController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Stock inicial',
+                          hintText: '0',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: CampoTexto(
+                        controller: _stockMinController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Stock mínimo',
+                          hintText: '0',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
-              SwitchListTile(
+              AppSwitchTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text(
                   'Táper Activo',
@@ -194,27 +256,6 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
               ),
             ],
           ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _guardando ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton.icon(
-          onPressed: _guardando ? null : _guardar,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
-          icon: _guardando
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.check, size: 16),
-          label: Text(editando ? 'Guardar cambios' : 'Crear táper'),
         ),
       ],
     );

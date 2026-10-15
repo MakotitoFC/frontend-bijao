@@ -11,6 +11,7 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiClient.instance.initialize();
+  await config.cargar();
   await AuthService.instance.restoreSession();
   runApp(const MyApp());
 }

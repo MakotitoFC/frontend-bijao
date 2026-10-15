@@ -3,8 +3,10 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../services/api_client.dart';
 import '../services/network_discovery_service.dart';
-import '../theme/app_theme.dart';
 import 'app_toast.dart';
+import 'dialogo_app.dart';
+import '../utils/blur_dialog.dart';
+import 'campo_texto.dart';
 
 /// Diálogo interactivo para ver y cambiar la IP del servidor de la laptop
 /// con soporte para auto-descubrimiento en Wi-Fi (mDNS / UDP).
@@ -12,7 +14,7 @@ class ServerConnectionDialog extends StatefulWidget {
   const ServerConnectionDialog({super.key});
 
   static Future<void> show(BuildContext context) {
-    return showDialog(
+    return showBlurDialog<void>(
       context: context,
       builder: (_) => const ServerConnectionDialog(),
     );
@@ -49,7 +51,9 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
     setState(() {
       _isTesting = false;
       _testSuccess = ok;
-      _statusMessage = ok ? 'Conectado al servidor El Bijao' : 'No se pudo conectar';
+      _statusMessage = ok
+          ? 'Conectado al servidor El Bijao'
+          : 'No se pudo conectar';
     });
   }
 
@@ -71,15 +75,24 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
       setState(() {
         _isSearching = false;
         _testSuccess = true;
-        _statusMessage = 'Servidor detectado vía ${discovered.method.toUpperCase()} (${discovered.ip})';
+        _statusMessage =
+            'Servidor detectado vía ${discovered.method.toUpperCase()} (${discovered.ip})';
       });
-      showAppToast(context, 'Servidor conectado: ${discovered.baseUrl}', type: ToastType.success);
+      showAppToast(
+        context,
+        'Servidor conectado: ${discovered.baseUrl}',
+        type: ToastType.success,
+      );
     } else {
       setState(() {
         _isSearching = false;
         _statusMessage = 'No se encontró servidor automáticamente. Ingresa la IP manualmente.';
       });
-      showAppToast(context, 'No se encontró servidor en la red WiFi', type: ToastType.warning);
+      showAppToast(
+        context,
+        'No se encontró servidor en la red WiFi',
+        type: ToastType.warning,
+      );
     }
   }
 
@@ -94,29 +107,39 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
     setState(() {
       _isTesting = false;
       _testSuccess = ok;
-      _statusMessage = ok ? 'Conexión exitosa' : 'Error al conectar a esa dirección';
+      _statusMessage = ok
+          ? 'Conexión exitosa'
+          : 'Error al conectar a esa dirección';
     });
 
     if (ok) {
       ApiClient.instance.setBaseUrl(url);
-      showAppToast(context, 'Dirección guardada correctamente', type: ToastType.success);
+      showAppToast(
+        context,
+        'Dirección guardada correctamente',
+        type: ToastType.success,
+      );
       Navigator.of(context).pop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
-        children: [
-          const Icon(LucideIcons.wifi, color: AppColors.primaryGreen, size: 22),
-          const SizedBox(width: 10),
-          const Text('Conexión con el Servidor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        ],
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Column(
+    return DialogoApp(
+      titulo: 'Conexión con el Servidor',
+      ancho: 420,
+      acciones: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cerrar'),
+        ),
+        ElevatedButton(
+          onPressed: _isTesting ? null : _saveAndTest,
+          child: const Text('Guardar y Conectar'),
+        ),
+      ],
+      children: [
+        Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -125,7 +148,7 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
               style: TextStyle(fontSize: 13, color: Colors.black87),
             ),
             const SizedBox(height: 14),
-            TextField(
+            CampoTexto(
               controller: _urlController,
               decoration: InputDecoration(
                 labelText: 'URL del Backend',
@@ -135,18 +158,22 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
                 suffixIcon: IconButton(
                   tooltip: 'Probar conexión',
                   icon: _isTesting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : Icon(
                           _testSuccess == true
                               ? LucideIcons.checkCircle
                               : _testSuccess == false
-                                  ? LucideIcons.xCircle
-                                  : LucideIcons.refreshCw,
+                              ? LucideIcons.xCircle
+                              : LucideIcons.refreshCw,
                           color: _testSuccess == true
                               ? Colors.green
                               : _testSuccess == false
-                                  ? Colors.red
-                                  : Colors.grey,
+                              ? Colors.red
+                              : Colors.grey,
                           size: 18,
                         ),
                   onPressed: _checkCurrentStatus,
@@ -159,7 +186,9 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
                 _statusMessage,
                 style: TextStyle(
                   fontSize: 12,
-                  color: _testSuccess == true ? Colors.green.shade700 : Colors.red.shade700,
+                  color: _testSuccess == true
+                      ? Colors.green.shade700
+                      : Colors.red.shade700,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -171,21 +200,19 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
               ),
               onPressed: _isSearching ? null : _runAutoDiscovery,
               icon: _isSearching
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(LucideIcons.scan, size: 16),
-              label: Text(_isSearching ? 'Buscando en Wi-Fi...' : 'Auto-detectar Servidor (mDNS / Bonjour)'),
+              label: Text(
+                _isSearching
+                    ? 'Buscando en Wi-Fi...'
+                    : 'Auto-detectar Servidor (mDNS / Bonjour)',
+              ),
             ),
           ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cerrar'),
-        ),
-        ElevatedButton(
-          onPressed: _isTesting ? null : _saveAndTest,
-          child: const Text('Guardar y Conectar'),
         ),
       ],
     );

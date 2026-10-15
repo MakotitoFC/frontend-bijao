@@ -11,6 +11,7 @@ import '../utils/blur_dialog.dart';
 import '../utils/uuid_helper.dart';
 import 'app_toast.dart';
 import 'pago_dialogs.dart';
+import 'campo_texto.dart';
 
 // Promoción lista para agregar al pedido: la promoción tal como la configuró el
 // admin (con los cambios que pidió el cliente, si los hubo).
@@ -297,7 +298,7 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
               const SizedBox(height: 10),
             ],
             if (!widget.edicion) ...[
-              TextField(
+              CampoTexto(
                 controller: _comentario,
                 maxLines: 2,
                 decoration: const InputDecoration(

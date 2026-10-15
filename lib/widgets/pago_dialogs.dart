@@ -8,6 +8,7 @@ import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
+import 'dialogo_app.dart';
 
 const naranjaPago = Color(0xFFF07F13);
 
@@ -75,14 +76,11 @@ class ModalPago extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
-              const SizedBox(height: 16),
-              Flexible(child: SingleChildScrollView(child: child)),
+              const SeparadorDialogo(),
+Flexible(child: SingleChildScrollView(child: child)),
             ],
           ),
         ),

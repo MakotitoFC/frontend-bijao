@@ -1,10 +1,16 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/creditos_store.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 // Reporta un problema con un plato ya pedido (devolución/reclamo): categoría,
 // detalle del motivo, evidencia (opcional) y resolución. Cada resolución pide
@@ -44,6 +50,8 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
     AppSelectItem(value: 'Cliente canceló', label: 'Cliente canceló'),
     AppSelectItem(value: _otro, label: 'Otro'),
   ];
+
+  static const _fotoClave = 'Foto';
 
   static const _evidencias = [
     AppSelectItem<String?>(value: null, label: 'Sin evidencia'),
@@ -113,6 +121,93 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
     return _resolucion == 'cambio' && _diferencia < -0.001;
   }
 
+  List<int>? _foto;
+  String? _nombreFoto;
+  String? _errorFoto;
+
+  Future<void> _elegirFoto() async {
+    try {
+      final archivos = await FilePicker.pickFiles(type: FileType.image);
+      if (archivos.isEmpty) return;
+      final f = archivos.first;
+      final bytes = await f.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _foto = bytes;
+        _nombreFoto = f.name;
+        _errorFoto = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _errorFoto = 'No se pudo leer la foto: $e');
+    }
+  }
+
+  Widget _selectorFoto() {
+    final bytes = _foto;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(AppRadii.tag),
+        border: Border.all(
+          color: _errorFoto != null ? AppColors.error : Colors.grey.shade300,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (bytes != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(
+                Uint8List.fromList(bytes),
+                height: 140,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox(
+                  height: 60,
+                  child: Center(child: Icon(LucideIcons.image, size: 28)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _nombreFoto ?? 'foto',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 8),
+          ] else ...[
+            Icon(LucideIcons.imagePlus, size: 28, color: Colors.grey.shade500),
+            const SizedBox(height: 6),
+            Text(
+              'Sube una foto como evidencia (JPG, PNG o WEBP)',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 10),
+          ],
+          OutlinedButton.icon(
+            onPressed: _elegirFoto,
+            icon: const Icon(LucideIcons.upload, size: 16),
+            label: Text(bytes == null ? 'Subir foto' : 'Cambiar foto'),
+          ),
+          if (_errorFoto != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                _errorFoto!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _elegirReemplazo(String? v) {
     setState(() {
       _reemplazo = v;
@@ -133,6 +228,10 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
     if (!_formKey.currentState!.validate()) return;
     if (_categoria == null || _resolucion == null) return;
     if (_resolucion == 'cambio' && _reemplazo == null) return;
+    if (_evidencia == _fotoClave && _foto == null) {
+      setState(() => _errorFoto = 'Sube la foto o elige "Sin evidencia".');
+      return;
+    }
     final evidencia = _evidencia == _otro
         ? _evidenciaOtraController.text.trim()
         : _evidencia;
@@ -142,7 +241,11 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
           ? _categoriaNuevaController.text.trim()
           : _categoria!,
       detalle: _detalleController.text.trim(),
-      evidencia: evidencia,
+      evidencia: _evidencia == _fotoClave
+          ? 'Foto: ${_nombreFoto ?? 'evidencia'}'
+          : evidencia,
+      foto: _evidencia == _fotoClave ? _foto : null,
+      nombreFoto: _evidencia == _fotoClave ? _nombreFoto : null,
       resolucion: _resolucion!,
       reemplazoNombre: esCambio ? _reemplazoNombreController.text.trim() : null,
       reemplazoPrecio: esCambio ? _precioReemplazo : null,
@@ -199,7 +302,7 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
         if (_reemplazo != null) ...[
           if (_reemplazo == _manual) ...[
             const SizedBox(height: 12),
-            TextFormField(
+            CampoTexto(
               controller: _reemplazoNombreController,
               decoration: const InputDecoration(
                 labelText: 'Nombre del producto',
@@ -208,7 +311,7 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
             ),
           ],
           const SizedBox(height: 12),
-          TextFormField(
+          CampoTexto(
             controller: _reemplazoPrecioController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => setState(() {}),
@@ -295,13 +398,12 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
                         ],
                       ),
                     ),
-                    IconButton(
+                    BotonCerrarCircular(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SeparadorDialogo(),
                 AppSelect<String>(
                   label: 'Categoría',
                   value: _categoria,
@@ -313,7 +415,7 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
                   _errorSelect('Elige la categoría'),
                 if (_categoria == _otro) ...[
                   const SizedBox(height: 12),
-                  TextFormField(
+                  CampoTexto(
                     controller: _categoriaNuevaController,
                     autofocus: true,
                     decoration: const InputDecoration(
@@ -324,7 +426,7 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                TextFormField(
+                CampoTexto(
                   controller: _detalleController,
                   minLines: 3,
                   maxLines: 6,
@@ -344,11 +446,15 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
                   value: _evidencia,
                   items: _evidencias,
                   hint: 'Sin evidencia',
-                  onChanged: (v) => setState(() => _evidencia = v),
+                  onChanged: (v) => setState(() {
+                    _evidencia = v;
+                    _errorFoto = null;
+                  }),
                 ),
+                if (_evidencia == _fotoClave) _selectorFoto(),
                 if (_evidencia == _otro) ...[
                   const SizedBox(height: 12),
-                  TextFormField(
+                  CampoTexto(
                     controller: _evidenciaOtraController,
                     decoration: const InputDecoration(
                       labelText: 'Otra evidencia',

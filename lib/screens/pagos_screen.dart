@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/dialogo_app.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cierres_store.dart';
@@ -15,6 +16,7 @@ import '../widgets/app_search_field.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/detalle_pedido_panel.dart';
+import '../widgets/campo_texto.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
 
@@ -110,7 +112,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 
   // Estado de pago del pedido según sus cobros.
   String _estadoPago(Pedido p) {
-    if (p.estado == 'cancelado' || p.estado == 'anulado') return 'Cancelado';
+    if (p.estado == 'anulado') return 'Anulado';
     if (p.estado == 'pagado') return 'Pagado';
     final hayPagos = pagos.any((x) => x.pedidoId == p.id);
     return hayPagos ? 'Parcial' : 'Por cobrar';
@@ -162,9 +164,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                   setDialogo(() {});
                   setState(() {});
                   final estado = (_pedidoPorId(p.id) ?? p).estado;
-                  if (estado == 'pagado' ||
-                      estado == 'cancelado' ||
-                      estado == 'anulado') {
+                  if (estado == 'pagado' || estado == 'anulado') {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (dialogContext.mounted) {
                         Navigator.of(dialogContext).pop();
@@ -271,7 +271,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
         AppColors.verdeTexto,
       ),
       'Parcial' => (const Color(0xFFFFF3E0), const Color(0xFFEF6C00)),
-      'Cancelado' => (Colors.grey.shade200, const Color(0xFF6B7280)),
+      'Anulado' => (Colors.grey.shade200, const Color(0xFF6B7280)),
       _ => (const Color(0xFFFCE4EC), const Color(0xFFC2185B)),
     };
     return Container(
@@ -313,9 +313,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
               _texto(_fecha(p.fechaPedido)),
               _texto(p.clienteNombre ?? '—', fuerte: true),
               _texto(
-                p.tipoPedido == 'delivery'
-                    ? 'Delivery'
-                    : 'Mesa ${p.todasLasMesas.join(' + ')}',
+                p.ubicacion,
               ),
               _texto(_nombreUsuario(p.usuarioId)),
               _texto(_soles(totalDePedido(p.id))),
@@ -325,7 +323,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
               _texto(_metodos(p)),
               _celda(_chipPago(_estadoPago(p))),
               _celda(
-                _estadoPago(p) == 'Pagado' || _estadoPago(p) == 'Cancelado'
+                _estadoPago(p) == 'Pagado' || _estadoPago(p) == 'Anulado'
                     ? const SizedBox.shrink()
                     : Tooltip(
                         message: 'Cobrar',
@@ -377,12 +375,12 @@ class _CajaScreenState extends State<CajaScreen> {
     final digital = TextEditingController();
     final notas = TextEditingController();
     double n(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
-    final confirmar = await showDialog<bool>(
+    final confirmar = await showBlurDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => AlertaApp(
         title: const Text('Cerrar caja'),
         content: SizedBox(
-          width: 360,
+          width: double.infinity,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -399,7 +397,7 @@ class _CajaScreenState extends State<CajaScreen> {
                 _campoDialogo(efectivo, 'Efectivo declarado (S/)'),
                 _campoDialogo(tarjeta, 'Tarjeta declarada (S/)'),
                 _campoDialogo(digital, 'Digital declarado (S/)'),
-                TextField(
+                CampoTexto(
                   controller: notas,
                   decoration: const InputDecoration(labelText: 'Notas'),
                 ),
@@ -439,7 +437,7 @@ class _CajaScreenState extends State<CajaScreen> {
 
   Widget _campoDialogo(TextEditingController c, String etiqueta) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
-    child: TextField(
+    child: CampoTexto(
       controller: c,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(labelText: etiqueta),

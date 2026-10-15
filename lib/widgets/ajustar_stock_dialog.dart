@@ -6,6 +6,8 @@ import '../models/producto_inventario.dart';
 import '../models/tipo_movimiento.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 // Registra una entrada/salida manual de stock. Devuelve el InventarioMovimiento
 // resultante via Navigator.pop, o null si se cancela.
@@ -87,14 +89,11 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
+                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
+              const SeparadorDialogo(),
+Text(
                   '${widget.producto.nombre} · stock actual '
                   '${widget.producto.stockActual}',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
@@ -113,7 +112,7 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                   }),
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
+                CampoTexto(
                   controller: _cantidadController,
                   autofocus: true,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -138,7 +137,7 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                   },
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
+                CampoTexto(
                   controller: _notasController,
                   maxLines: 2,
                   decoration: const InputDecoration(

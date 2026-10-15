@@ -10,6 +10,8 @@ class Usuario {
   final String? sedeId;
   final bool activo;
   final Set<String> permisos;
+  // El backend pide cambiar el PIN (sigue siendo el predeterminado).
+  final bool debeCambiarPin;
 
   const Usuario({
     required this.id,
@@ -20,7 +22,20 @@ class Usuario {
     this.sedeId,
     this.activo = true,
     this.permisos = const {},
+    this.debeCambiarPin = false,
   });
+
+  Usuario copyWith({bool? debeCambiarPin}) => Usuario(
+    id: id,
+    nombre: nombre,
+    email: email,
+    password: password,
+    rol: rol,
+    sedeId: sedeId,
+    activo: activo,
+    permisos: permisos,
+    debeCambiarPin: debeCambiarPin ?? this.debeCambiarPin,
+  );
 
   bool get esAdmin => rol == AppRole.administrador;
   bool get esMozo => rol == AppRole.mesero;
@@ -54,7 +69,8 @@ class Usuario {
     }
 
     final rolStr = json['rol']?.toString() ?? '';
-    final nombreStr = json['usuario']?.toString() ?? json['nombre']?.toString() ?? '';
+    final nombreStr =
+        json['usuario']?.toString() ?? json['nombre']?.toString() ?? '';
 
     return Usuario(
       id: json['usuario_id']?.toString() ?? json['id']?.toString() ?? '',
@@ -65,16 +81,18 @@ class Usuario {
       sedeId: json['sede_id']?.toString(),
       activo: json['estado'] != false,
       permisos: setPermisos,
+      debeCambiarPin: json['debe_cambiar_pin'] == true,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'usuario': nombre,
-        'email': email,
-        'rol': rol.valorBd,
-        'sede_id': sedeId,
-        'estado': activo,
-        'permisos': permisos.toList(),
-      };
+    'id': id,
+    'usuario': nombre,
+    'email': email,
+    'rol': rol.valorBd,
+    'sede_id': sedeId,
+    'estado': activo,
+    'permisos': permisos.toList(),
+    'debe_cambiar_pin': debeCambiarPin,
+  };
 }

@@ -47,7 +47,7 @@ extension AppRoleLabel on AppRole {
     if (v.contains('ADMIN')) return AppRole.administrador;
     if (v.contains('MOZO') || v.contains('MESERO')) return AppRole.mesero;
     if (v.contains('CAJA') || v.contains('CAJERO')) return AppRole.cajero;
-    if (v.contains('TRABAJ') || v.contains('COCINA')) return AppRole.trabajador;
+    if (v.contains('TRABAJ') || v.contains('COCIN')) return AppRole.trabajador;
     return AppRole.mesero;
   }
 }

@@ -1,5 +1,11 @@
 import 'dart:typed_data';
+
 import '../utils/json_num.dart';
+
+const estadoDisponible = 'disponible';
+const estadoAgotado = 'agotado';
+const estadoInhabilitado = 'inhabilitado';
+const estadoEliminado = 'eliminado';
 
 // Refleja la tabla `carta` en PostgreSQL (con soporte para modificadores/agregados).
 class CartaItem {
@@ -15,7 +21,10 @@ class CartaItem {
   final String? taperNombre;
   final double? precioCliente;
   final double? precioPersonal;
-  final String estado; // 'disponible' | 'agotado' | 'activo' | 'inactivo'
+  // Estados: 'disponible' | 'agotado' | 'inhabilitado' | 'eliminado' (borrado
+  // lógico). El backend aún no lo respalda: es una convención del frontend sobre
+  // el texto libre de `carta.estado` (ver BACKEND_PENDIENTES.md).
+  final String estado;
   final String? sedeId;
   final double? costo;
   final String? sku;
@@ -24,6 +33,8 @@ class CartaItem {
   final int? limiteAgregados;
   final DateTime? creadoEn;
   final Uint8List? imagenBytes;
+  // Foto del plato: dirección guardada en el backend (`carta.url_imagen`).
+  final String? urlImagen;
   final bool platoDelDia;
 
   const CartaItem({
@@ -46,13 +57,17 @@ class CartaItem {
     this.limiteAgregados,
     this.creadoEn,
     this.imagenBytes,
+    this.urlImagen,
     this.platoDelDia = false,
   });
 
   String? get subcategoriaId =>
       subcategoriaIds.isEmpty ? null : subcategoriaIds.first;
 
-  bool get disponible => estado != 'inactivo' && estado != 'agotado';
+  bool get agotado => estado == estadoAgotado;
+  bool get inhabilitado => estado == estadoInhabilitado;
+  bool get eliminado => estado == estadoEliminado;
+  bool get disponible => !agotado && !inhabilitado && !eliminado;
 
   CartaItem copyWith({
     String? id,
@@ -74,6 +89,7 @@ class CartaItem {
     int? limiteAgregados,
     DateTime? creadoEn,
     Uint8List? imagenBytes,
+    String? urlImagen,
     bool? platoDelDia,
   }) => CartaItem(
     id: id ?? this.id,
@@ -95,6 +111,7 @@ class CartaItem {
     limiteAgregados: limiteAgregados ?? this.limiteAgregados,
     creadoEn: creadoEn ?? this.creadoEn,
     imagenBytes: imagenBytes ?? this.imagenBytes,
+    urlImagen: urlImagen ?? this.urlImagen,
     platoDelDia: platoDelDia ?? this.platoDelDia,
   );
 
@@ -119,7 +136,8 @@ class CartaItem {
 
     return CartaItem(
       id: json['id'] as String,
-      nombrePlato: json['nombre_plato'] as String? ?? json['nombre'] as String? ?? '',
+      nombrePlato:
+          json['nombre_plato'] as String? ?? json['nombre'] as String? ?? '',
       descripcion: json['descripcion'] as String? ?? '',
       categoriaId:
           json['categoria_comida_id'] as String? ??
@@ -136,15 +154,27 @@ class CartaItem {
       taperNombre: json['taper_nombre'] as String?,
       precioCliente: pCli,
       precioPersonal: pPer,
-      estado: json['estado'] as String? ?? 'disponible',
+      estado: _normalizarEstado(json['estado'] as String?),
       sedeId: json['sede_id'] as String?,
       agregados: rawMods.isNotEmpty ? rawMods : const [],
       costo: jsonDouble(json['costo']),
       sku: json['sku'] as String?,
       stock: (json['stock'] is int) ? json['stock'] as int : 0,
+      urlImagen:
+          (json['url_imagen'] is String &&
+              (json['url_imagen'] as String).isNotEmpty)
+          ? json['url_imagen'] as String
+          : null,
       platoDelDia: json['plato_del_dia'] as bool? ?? false,
     );
   }
+
+  // Valores antiguos: 'inactivo' pasó a 'inhabilitado' y 'activo' a 'disponible'.
+  static String _normalizarEstado(String? e) => switch (e) {
+    null || '' || 'activo' || 'libre' => estadoDisponible,
+    'inactivo' => estadoInhabilitado,
+    _ => e,
+  };
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -158,5 +188,6 @@ class CartaItem {
     if (precioCliente != null) 'precio_cliente': precioCliente,
     if (precioPersonal != null) 'precio_personal': precioPersonal,
     if (sedeId != null) 'sede_id': sedeId,
+    if (urlImagen != null) 'url_imagen': urlImagen,
   };
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,7 +23,8 @@ class AuthService {
 
   Usuario? get currentUser => userNotifier.value;
   Usuario? get usuarioActual => userNotifier.value;
-  bool get isAuthenticated => userNotifier.value != null && ApiClient.instance.hasToken;
+  bool get isAuthenticated =>
+      userNotifier.value != null && ApiClient.instance.hasToken;
 
   /// Restaura la sesión persistida al iniciar la app y valida contra el backend
   Future<Usuario?> restoreSession() async {
@@ -54,21 +56,24 @@ class AuthService {
     required String password,
     bool rememberEmail = false,
   }) async {
-    final body = {
-      'usuario': usuario.trim(),
-      'password': password,
-    };
+    final body = {'usuario': usuario.trim(), 'password': password};
 
     final res = await ApiClient.instance.post('/api/auth/login', body: body);
 
     if (res is! Map<String, dynamic>) {
-      throw ApiException(statusCode: 500, message: 'Respuesta inválida del servidor');
+      throw ApiException(
+        statusCode: 500,
+        message: 'Respuesta inválida del servidor',
+      );
     }
 
     final token = res['access_token']?.toString();
     final refreshToken = res['refresh_token']?.toString();
     if (token == null || token.isEmpty) {
-      throw ApiException(statusCode: 500, message: 'El servidor no devolvió un token de acceso');
+      throw ApiException(
+        statusCode: 500,
+        message: 'El servidor no devolvió un token de acceso',
+      );
     }
 
     // 1. Guardar tokens JWT en ApiClient y SharedPreferences
@@ -89,6 +94,16 @@ class AuthService {
     }
 
     return user;
+  }
+
+  /// Tras cambiar el PIN con éxito: ya no hay que pedirlo de nuevo.
+  Future<void> marcarPinCambiado() async {
+    final actual = userNotifier.value;
+    if (actual == null) return;
+    final nuevo = actual.copyWith(debeCambiarPin: false);
+    userNotifier.value = nuevo;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefUserSession, jsonEncode(nuevo.toJson()));
   }
 
   /// Cierra la sesión activa

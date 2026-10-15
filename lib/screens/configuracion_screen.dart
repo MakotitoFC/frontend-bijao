@@ -12,10 +12,20 @@ import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_select.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/cambiar_pin_dialog.dart';
+import '../data/disponibilidad_store.dart';
+import '../models/medio_pago.dart';
+import '../services/api_client.dart';
+import '../widgets/campo_texto.dart';
 import '../widgets/config_widgets.dart';
+import '../widgets/dialogo_app.dart';
+import '../widgets/medio_pago_dialog.dart';
+import '../widgets/submenu_lateral.dart';
 import '../widgets/pestanas_vista.dart';
 import '../widgets/promociones_config.dart';
 import '../widgets/usuario_permisos_dialog.dart';
+import '../widgets/stock_diario_config.dart';
+import '../widgets/app_switch.dart';
 
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
 // Usuarios y roles, y Negocio.
@@ -34,11 +44,18 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   List<UserRBACModel> _usuariosRBAC = [];
   String? _rolSeleccionadoId;
   bool _cargandoRBAC = false;
+  // Texto con el que se filtran los permisos de la tabla de roles.
+  String _busquedaPermisos = '';
+  // Página elegida en el submenú (escritorio).
+  String _paginaClave = 'general';
 
   @override
   void initState() {
     super.initState();
     _cargarRBAC();
+    CatalogService.instance.cargarMediosPago().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _cargarRBAC() async {
@@ -52,7 +69,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           _rolesRBAC = roles;
           _permisosRBAC = permisos;
           _usuariosRBAC = usuarios;
-          if ((_rolSeleccionadoId == null || !_rolesRBAC.any((r) => r.id == _rolSeleccionadoId)) &&
+          if ((_rolSeleccionadoId == null ||
+                  !_rolesRBAC.any((r) => r.id == _rolSeleccionadoId)) &&
               _rolesRBAC.isNotEmpty) {
             _rolSeleccionadoId = _rolesRBAC.first.id;
           }
@@ -64,20 +82,38 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     }
   }
 
-  Future<void> _togglePermisoRol(RolModel rol, PermisoModel permiso, bool asignar) async {
+  Future<void> _togglePermisoRol(
+    RolModel rol,
+    PermisoModel permiso,
+    bool asignar,
+  ) async {
     try {
       if (asignar) {
         await CatalogService.instance.asignarPermisoRol(rol.id, permiso.id);
         if (!mounted) return;
-        showAppToast(context, 'Permiso asignado al rol ${rol.rol}', type: ToastType.success);
+        showAppToast(
+          context,
+          'Permiso asignado al rol ${rol.rol}',
+          type: ToastType.success,
+        );
       } else {
         await CatalogService.instance.removerPermisoRol(rol.id, permiso.id);
         if (!mounted) return;
-        showAppToast(context, 'Permiso revocado del rol ${rol.rol}', type: ToastType.info);
+        showAppToast(
+          context,
+          'Permiso revocado del rol ${rol.rol}',
+          type: ToastType.info,
+        );
       }
       await _cargarRBAC();
     } catch (e) {
-      if (mounted) showAppToast(context, 'Error actualizando permiso: $e', type: ToastType.error);
+      if (mounted) {
+        showAppToast(
+          context,
+          'Error actualizando permiso: $e',
+          type: ToastType.error,
+        );
+      }
     }
   }
 
@@ -102,31 +138,128 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     await _cargarRBAC();
   }
 
+  // Páginas de Configuración, agrupadas por sección en el submenú.
+  List<
+    ({
+      String clave,
+      String etiqueta,
+      String? seccion,
+      Widget Function() contenido,
+    })
+  >
+  get _paginas => [
+    (
+      clave: 'general',
+      etiqueta: 'General',
+      seccion: null,
+      contenido: () => _pagina(_general()),
+    ),
+    (
+      clave: 'servicio',
+      etiqueta: 'Servicio',
+      seccion: null,
+      contenido: () => _pagina(_servicio()),
+    ),
+    (
+      clave: 'restaurantes',
+      etiqueta: 'Restaurantes',
+      seccion: null,
+      contenido: () => _pagina(_restaurantes()),
+    ),
+    (
+      clave: 'pagos',
+      etiqueta: 'Métodos de pago',
+      seccion: null,
+      contenido: () => _pagina(_metodosPago()),
+    ),
+    if (widget.usuario.tienePermiso('LEER.USUARIO') || widget.usuario.esAdmin)
+      (
+        clave: 'usuarios',
+        etiqueta: 'Usuarios y roles',
+        seccion: 'Equipo',
+        contenido: () => _pagina(_usuarios()),
+      ),
+    (
+      clave: 'promociones',
+      etiqueta: 'Promociones',
+      seccion: 'Carta y stock',
+      contenido: () => const PromocionesConfig(),
+    ),
+    if (widget.usuario.esAdmin ||
+        widget.usuario.tienePermiso('UPDATE.SEDE_CONFIG_STOCK'))
+      (
+        clave: 'stock',
+        etiqueta: 'Stock diario',
+        seccion: 'Carta y stock',
+        contenido: () => const StockDiarioConfig(),
+      ),
+    (
+      clave: 'negocio',
+      etiqueta: 'Negocio',
+      seccion: 'Negocio',
+      contenido: () => _pagina(_negocio()),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final paginas = _paginas;
+    final actual =
+        paginas.where((p) => p.clave == _paginaClave).firstOrNull ??
+        paginas.first;
+
+    // Celular: no hay lugar para dos columnas; se mantienen las pestañas.
+    if (AppBreakpoints.esMobile(context)) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: PestanasVista(
+          pestanas: [
+            for (final p in paginas)
+              (etiqueta: p.etiqueta, contenido: (_) => p.contenido()),
+          ],
+        ),
+      );
+    }
+
+    // Submenú vertical con las secciones, como en el resto de módulos.
+    final entradas = <SubmenuEntrada>[];
+    String? ultimaSeccion;
+    for (final p in paginas) {
+      if (p.seccion != null && p.seccion != ultimaSeccion) {
+        entradas.add(SubmenuEntrada.seccion(p.seccion!));
+      }
+      ultimaSeccion = p.seccion;
+      entradas.add(SubmenuEntrada.item(p.clave, p.etiqueta));
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: PestanasVista(
-        pestanas: [
-          (etiqueta: 'Servicio', contenido: (_) => _pagina(_servicio())),
-          (
-            etiqueta: 'Restaurantes',
-            contenido: (_) => _pagina(_restaurantes()),
+      body: Row(
+        children: [
+          SubmenuLateral(
+            entradas: entradas,
+            seleccionada: actual.clave,
+            onSeleccionar: (c) => setState(() => _paginaClave = c),
           ),
-          (
-            etiqueta: 'Métodos de pago',
-            contenido: (_) => _pagina(_metodosPago()),
-          ),
-          if (widget.usuario.tienePermiso('LEER.USUARIO') || widget.usuario.esAdmin)
-            (
-              etiqueta: 'Usuarios y roles',
-              contenido: (_) => _pagina(_usuarios()),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 4),
+                  child: EncabezadoRuta(
+                    ruta: ['Configuración', actual.etiqueta],
+                  ),
+                ),
+                Expanded(
+                  child: KeyedSubtree(
+                    key: ValueKey(actual.clave),
+                    child: actual.contenido(),
+                  ),
+                ),
+              ],
             ),
-          (
-            etiqueta: 'Promociones',
-            contenido: (_) => const PromocionesConfig(),
           ),
-          (etiqueta: 'Negocio', contenido: (_) => _pagina(_negocio())),
         ],
       ),
     );
@@ -134,15 +267,16 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
 
   Widget _pagina(List<Widget> secciones) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Center(
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
+      child: Align(
+        alignment: Alignment.topLeft,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: const BoxConstraints(maxWidth: 880),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (var i = 0; i < secciones.length; i++) ...[
-                if (i > 0) const SizedBox(height: 16),
+                if (i > 0) const SizedBox(height: 32),
                 secciones[i],
               ],
             ],
@@ -150,6 +284,89 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         ),
       ),
     );
+  }
+
+  // ---------------- General (solo consulta) ----------------
+
+  String _siNo(bool v) => v ? 'Activado' : 'Desactivado';
+
+  List<Widget> _general() {
+    final sede =
+        sedes.where((s) => s.id == widget.usuario.sedeId).firstOrNull ??
+        sedes.first;
+    final stock = configStockNotifier.value;
+    final servicios = [
+      if (config.servicioLocal) 'En local',
+      if (config.servicioDelivery) 'Delivery',
+    ].join(' y ');
+    final pagos = mediosPago.where((m) => m.activo).map((m) => m.medioPago);
+    return [
+      SeccionConfig(
+        titulo: 'Resumen del negocio',
+        descripcion: 'Datos del local. Se editan en Restaurantes y Negocio.',
+        filas: [
+          FilaDato(etiqueta: 'Negocio', valor: negocio.nombre),
+          FilaDato(etiqueta: 'Dirección', valor: sede.direccion),
+          FilaDato(etiqueta: 'RUC', valor: sede.ruc),
+          FilaDato(
+            etiqueta: 'Teléfono',
+            valor: (sede.celular ?? '').isEmpty
+                ? negocio.telefono
+                : sede.celular!,
+          ),
+          FilaDato(
+            etiqueta: 'Moneda y zona horaria',
+            valor: '${negocio.moneda} · ${negocio.zonaHoraria}',
+          ),
+        ],
+      ),
+      SeccionConfig(
+        titulo: 'Sesión y conexión',
+        filas: [
+          FilaDato(etiqueta: 'Usuario', valor: widget.usuario.nombre),
+          FilaDato(etiqueta: 'Rol', valor: widget.usuario.rol.label),
+          FilaDato(etiqueta: 'Servidor', valor: ApiClient.instance.baseUrl),
+        ],
+      ),
+      SeccionConfig(
+        titulo: 'Cómo está configurado',
+        descripcion: 'Un vistazo a los ajustes activos.',
+        filas: [
+          FilaDato(
+            etiqueta: 'Tipos de servicio',
+            valor: servicios.isEmpty ? 'Ninguno' : servicios,
+          ),
+          FilaDato(
+            etiqueta: 'Propina sugerida',
+            valor: '${config.propinaSugerida.toStringAsFixed(0)} %',
+          ),
+          FilaDato(
+            etiqueta: 'Descuento de empleado',
+            valor: config.descuentoEmpleadoHabilitado
+                ? '${config.descuentoEmpleadoPorcentaje.toStringAsFixed(0)} %'
+                : 'Desactivado',
+          ),
+          FilaDato(
+            etiqueta: 'Cobro por delivery',
+            valor: config.cargoDeliveryHabilitado
+                ? 'S/ ${config.cargoDeliveryMonto.toStringAsFixed(2)}'
+                : 'Desactivado',
+          ),
+          FilaDato(
+            etiqueta: 'Métodos de pago activos',
+            valor: pagos.isEmpty ? 'Ninguno' : pagos.join(', '),
+          ),
+          FilaDato(
+            etiqueta: 'Apertura diaria obligatoria',
+            valor: _siNo(stock?.requiereAperturaDiaria ?? false),
+          ),
+          FilaDato(
+            etiqueta: 'Venta con stock en cero',
+            valor: _siNo(stock?.permiteSobreventa ?? false),
+          ),
+        ],
+      ),
+    ];
   }
 
   // ---------------- Servicio ----------------
@@ -167,6 +384,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             onChanged: (v) {
               if (!v && !config.servicioDelivery) return _minimoUno();
               setState(() => config.servicioLocal = v);
+              config.guardar();
             },
           ),
           FilaSwitch(
@@ -176,6 +394,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             onChanged: (v) {
               if (!v && !config.servicioLocal) return _minimoUno();
               setState(() => config.servicioDelivery = v);
+              config.guardar();
             },
           ),
         ],
@@ -187,7 +406,38 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             etiqueta: 'Propina sugerida (botón Propina de los pedidos)',
             valor: config.propinaSugerida,
             sufijo: '%',
-            onChanged: (n) => config.propinaSugerida = n,
+            onChanged: (n) {
+              config.propinaSugerida = n;
+              config.guardar();
+            },
+          ),
+        ],
+      ),
+      SeccionConfig(
+        titulo: 'Mi PIN de supervisor',
+        filas: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Código para autorizar descuentos cuando otro usuario lo '
+                    'necesita.',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: _cambiarPin,
+                  icon: const Icon(LucideIcons.keyRound, size: 16),
+                  label: const Text('Cambiar mi PIN'),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -198,18 +448,33 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             titulo: 'Permitir descuento de empleado',
             descripcion: 'Aparece como opción al tomar el pedido',
             valor: config.descuentoEmpleadoHabilitado,
-            onChanged: (v) =>
-                setState(() => config.descuentoEmpleadoHabilitado = v),
+            onChanged: (v) {
+              setState(() => config.descuentoEmpleadoHabilitado = v);
+              config.guardar();
+            },
             extra: CampoNumeroConfig(
               etiqueta: 'Descuento',
               valor: config.descuentoEmpleadoPorcentaje,
               sufijo: '%',
-              onChanged: (n) => config.descuentoEmpleadoPorcentaje = n,
+              onChanged: (n) {
+                config.descuentoEmpleadoPorcentaje = n;
+                config.guardar();
+              },
             ),
           ),
         ],
       ),
     ];
+  }
+
+  Future<void> _cambiarPin() async {
+    final ok = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => const CambiarPinDialog(),
+    );
+    if (ok == true && mounted) {
+      showAppToast(context, 'Tu PIN se actualizó.', type: ToastType.success);
+    }
   }
 
   void _minimoUno() => showAppToast(
@@ -260,70 +525,186 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
 
   // ---------------- Métodos de pago ----------------
 
+  Future<void> _editarMedioPago([MedioPago? medio]) async {
+    final guardado = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => MedioPagoDialog(medio: medio),
+    );
+    if (guardado == true && mounted) {
+      setState(() {});
+      showAppToast(
+        context,
+        medio == null
+            ? 'Método de pago creado.'
+            : 'Método de pago actualizado.',
+        type: ToastType.success,
+      );
+    }
+  }
+
+  Future<void> _eliminarMedioPago(MedioPago m) async {
+    if (mediosPago.where((x) => x.activo && x.id != m.id).isEmpty) {
+      showAppToast(
+        context,
+        'Debe quedar al menos un método de pago activo.',
+        type: ToastType.info,
+      );
+      return;
+    }
+    final confirmar = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: const Text('Eliminar método de pago'),
+        content: Text(
+          '¿Eliminar "${m.medioPago}"? Si ya se usó en pagos, no se podrá '
+          'borrar: en ese caso apágalo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+    try {
+      await CatalogService.instance.eliminarMedioPago(m.id);
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        '"${m.medioPago}" se eliminó.',
+        type: ToastType.info,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final texto = e is ApiException ? e.message : e.toString();
+      final enUso =
+          texto.contains('llave for') || texto.contains('foreign key');
+      showAppToast(
+        context,
+        enUso
+            ? 'No se puede eliminar: ya tiene pagos registrados. Apágalo para '
+                  'dejar de ofrecerlo.'
+            : 'No se pudo eliminar: $texto',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  Future<void> _alternarMedioPago(MedioPago m, bool activo) async {
+    if (!activo && mediosPago.where((x) => x.activo).length <= 1) {
+      showAppToast(
+        context,
+        'Debe quedar al menos un método de pago activo.',
+        type: ToastType.info,
+      );
+      return;
+    }
+    try {
+      await CatalogService.instance.actualizarMedioPago(m.id, activo: activo);
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo actualizar: ${e is ApiException ? e.message : e}',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  Widget _filaMedioPago(MedioPago m) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  m.medioPago,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: m.activo ? Colors.black87 : Colors.grey.shade500,
+                  ),
+                ),
+                Text(
+                  [
+                    if (m.descripcion != null && m.descripcion!.isNotEmpty)
+                      m.descripcion!,
+                    if (m.aplicaComision)
+                      'Cobro adicional ${m.porcentajeComision.toStringAsFixed(m.porcentajeComision.truncateToDouble() == m.porcentajeComision ? 0 : 2)} %',
+                    if (!m.activo) 'No se ofrece al cobrar',
+                  ].join(' · '),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Editar',
+            onPressed: () => _editarMedioPago(m),
+            icon: Icon(
+              LucideIcons.pencil,
+              size: 16,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Eliminar',
+            onPressed: () => _eliminarMedioPago(m),
+            icon: const Icon(
+              LucideIcons.trash2,
+              size: 16,
+              color: AppColors.error,
+            ),
+          ),
+          const SizedBox(width: 4),
+          AppSwitch(
+            value: m.activo,
+            onChanged: (v) => _alternarMedioPago(m, v),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _metodosPago() {
     return [
       SeccionConfig(
         titulo: 'Métodos de pago',
         descripcion:
-            'Cuáles se ofrecen al cobrar y si llevan un cobro adicional.',
+            'Los que se ofrecen al cobrar. Si uno ya se usó en pagos no se puede '
+            'borrar: apágalo para dejar de ofrecerlo.',
+        accion: FilledButton.icon(
+          onPressed: () => _editarMedioPago(),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Método'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
+        ),
         filas: [
-          for (var i = 0; i < mediosPago.length; i++)
-            FilaSwitch(
-              titulo: mediosPago[i].medioPago,
-              descripcion: mediosPago[i].activo
-                  ? null
-                  : 'No se ofrece al cobrar',
-              valor: mediosPago[i].activo,
-              onChanged: (v) {
-                if (!v && mediosPagoActivos.length == 1) {
-                  showAppToast(
-                    context,
-                    'Debe quedar al menos un método de pago activo.',
-                    type: ToastType.info,
-                  );
-                  return;
-                }
-                setState(
-                  () => mediosPago[i] = mediosPago[i].copyWith(activo: v),
-                );
-              },
-              extra: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Cobro adicional por usar este método',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: mediosPago[i].aplicaComision,
-                        onChanged: (v) => setState(
-                          () => mediosPago[i] = mediosPago[i].copyWith(
-                            aplicaComision: v,
-                          ),
-                        ),
-                        activeThumbColor: Colors.white,
-                        activeTrackColor: AppColors.primaryGreen,
-                      ),
-                    ],
-                  ),
-                  if (mediosPago[i].aplicaComision)
-                    CampoNumeroConfig(
-                      etiqueta: 'Porcentaje',
-                      valor: mediosPago[i].porcentajeComision,
-                      sufijo: '%',
-                      onChanged: (n) => mediosPago[i] = mediosPago[i].copyWith(
-                        porcentajeComision: n,
-                      ),
-                    ),
-                ],
+          if (mediosPago.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                'No hay métodos de pago registrados. Crea el primero con '
+                '"Método".',
+                style: TextStyle(color: Colors.grey.shade600),
               ),
-            ),
+            )
+          else
+            for (final m in mediosPago) _filaMedioPago(m),
         ],
       ),
       SeccionConfig(
@@ -331,15 +712,20 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         filas: [
           FilaSwitch(
             titulo: 'Cobrar un monto extra en pedidos delivery',
-            descripcion: 'Se suma como una línea más al pedido',
+            descripcion: 'Se sugiere al tomar un pedido de delivery',
             valor: config.cargoDeliveryHabilitado,
-            onChanged: (v) =>
-                setState(() => config.cargoDeliveryHabilitado = v),
+            onChanged: (v) {
+              setState(() => config.cargoDeliveryHabilitado = v);
+              config.guardar();
+            },
             extra: CampoNumeroConfig(
               etiqueta: 'Monto',
               valor: config.cargoDeliveryMonto,
               prefijo: 'S/ ',
-              onChanged: (n) => config.cargoDeliveryMonto = n,
+              onChanged: (n) {
+                config.cargoDeliveryMonto = n;
+                config.guardar();
+              },
             ),
           ),
         ],
@@ -351,133 +737,95 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
 
   List<Widget> _usuarios() {
     return [
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
+      SeccionConfig(
+        titulo: 'Usuarios',
+        descripcion: 'Quién usa el sistema, con qué rol y si está activo.',
+        accion: FilledButton.icon(
+          onPressed: _nuevoUsuario,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Usuario'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
         ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Usuarios',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: _nuevoUsuario,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Usuario'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primaryGreen,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_cargandoRBAC && _usuariosRBAC.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_usuariosRBAC.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text('No hay usuarios registrados.', style: TextStyle(color: Colors.grey.shade600)),
-              )
-            else
-              for (final u in _usuariosRBAC) ...[
-                Divider(height: 1, color: Colors.grey.shade200),
-                _filaUsuario(u),
-              ],
-          ],
-        ),
+        filas: [
+          if (_cargandoRBAC && _usuariosRBAC.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_usuariosRBAC.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                'No hay usuarios registrados.',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            )
+          else
+            for (final u in _usuariosRBAC) _filaUsuario(u),
+        ],
       ),
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Gestión de Permisos por Rol',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Asigna o revoca permisos a cada rol del sistema (tabla rol_permiso).',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 16),
-            if (_cargandoRBAC)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_rolesRBAC.isEmpty)
-              const Text('No se pudieron cargar los roles del sistema.')
-            else ...[
-              // Selector de rol
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _rolesRBAC.map((r) {
-                  final seleccionado = r.id == _rolSeleccionadoId;
-                  return ChoiceChip(
-                    label: Text(
-                      r.rol,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: seleccionado ? Colors.white : Colors.black87,
+      SeccionConfig(
+        titulo: 'Permisos por rol',
+        descripcion:
+            'Marca qué puede hacer cada rol del sistema (tabla rol_permiso).',
+        filas: [
+          if (_cargandoRBAC && _rolesRBAC.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_rolesRBAC.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Text('No se pudieron cargar los roles del sistema.'),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 14, bottom: 8),
+              // El buscador llega hasta donde empiezan las columnas de roles.
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final columnas = _rolesRBAC.length * 104.0;
+                  final ancho = (c.maxWidth - columnas - 16).clamp(220.0, c.maxWidth);
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: ancho,
+                      child: CampoTexto(
+                        onChanged: (v) => setState(() => _busquedaPermisos = v),
+                        decoration: const InputDecoration(
+                          hintText: 'Buscar permiso...',
+                          prefixIcon: Icon(Icons.search, size: 20),
+                        ),
                       ),
                     ),
-                    selected: seleccionado,
-                    selectedColor: AppColors.primaryGreen,
-                    onSelected: (val) {
-                      if (val) setState(() => _rolSeleccionadoId = r.id);
-                    },
                   );
-                }).toList(),
+                },
               ),
-              const SizedBox(height: 20),
-              _seccionPermisosDelRolActual(),
-            ],
+            ),
+            _tablaPermisos(),
           ],
-        ),
+        ],
       ),
     ];
   }
 
-  Widget _seccionPermisosDelRolActual() {
-    final rolActual = _rolesRBAC.firstWhere(
-      (r) => r.id == _rolSeleccionadoId,
-      orElse: () => _rolesRBAC.first,
-    );
-
-    // Agrupar permisos por categorías lógicas
-    final Map<String, List<PermisoModel>> categorias = {
+  // Tabla de permisos: una fila por permiso (agrupadas por tema) y una columna
+  // con casilla por cada rol.
+  Widget _tablaPermisos() {
+    final categorias = <String, List<PermisoModel>>{
       'Mesas y Zonas': [],
       'Carta y Menú': [],
       'Pedidos y Propinas': [],
       'Caja y Pagos': [],
       'Seguridad y Usuarios': [],
     };
-
+    final termino = _busquedaPermisos.trim().toUpperCase();
     for (final p in _permisosRBAC) {
       final perm = p.permiso.toUpperCase();
+      if (termino.isNotEmpty && !perm.contains(termino)) continue;
       if (perm.contains('ZONA') || perm.contains('MESA')) {
         categorias['Mesas y Zonas']!.add(p);
       } else if (perm.contains('CARTA') ||
@@ -496,74 +844,109 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       }
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    if (categorias.values.every((l) => l.isEmpty)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(
+            'Ningún permiso coincide con la búsqueda.',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+        ),
+      );
+    }
+
+    const anchoRol = 104.0;
+    final estiloCabecera = TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w600,
+      color: Colors.grey.shade700,
+    );
+    TableRow separador(String texto) => TableRow(
+      decoration: BoxDecoration(color: Colors.grey.shade50),
       children: [
-        for (final entry in categorias.entries) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 10, 8, 10),
+          child: Text(
+            texto,
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+          ),
+        ),
+        for (final _ in _rolesRBAC) const SizedBox.shrink(),
+      ],
+    );
+
+    final tabla = Table(
+      columnWidths: {
+        0: const FlexColumnWidth(),
+        for (var i = 0; i < _rolesRBAC.length; i++)
+          i + 1: const FixedColumnWidth(anchoRol),
+      },
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+      border: TableBorder(
+        horizontalInside: BorderSide(color: Colors.grey.shade200),
+      ),
+      children: [
+        TableRow(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Permiso', style: estiloCabecera),
+            ),
+            for (final r in _rolesRBAC)
+              Center(child: Text(r.rol, style: estiloCabecera)),
+          ],
+        ),
+        for (final entry in categorias.entries)
           if (entry.value.isNotEmpty) ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            separador(entry.key),
+            for (final p in entry.value)
+              TableRow(
                 children: [
-                  Text(
-                    entry.key,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF2D3748),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      p.permiso,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  for (var i = 0; i < entry.value.length; i++) ...[
-                    if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
-                    () {
-                      final p = entry.value[i];
-                      final asignado = rolActual.tienePermiso(p.permiso);
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                p.permiso,
-                                style: const TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            Switch(
-                              value: asignado,
-                              activeThumbColor: Colors.white,
-                              activeTrackColor: AppColors.primaryGreen,
-                              onChanged: (val) =>
-                                  _togglePermisoRol(rolActual, p, val),
-                            ),
-                          ],
-                        ),
-                      );
-                    }(),
-                  ],
+                  for (final r in _rolesRBAC)
+                    Center(
+                      child: AppCheck(
+                        value: r.tienePermiso(p.permiso),
+                        onChanged: (v) => _togglePermisoRol(r, p, v),
+                      ),
+                    ),
                 ],
               ),
-            ),
           ],
-        ],
       ],
+    );
+
+    // Con muchos roles la tabla se desplaza hacia el lado.
+    return LayoutBuilder(
+      builder: (context, c) {
+        final minimo = 260 + _rolesRBAC.length * anchoRol;
+        if (c.maxWidth >= minimo) return tabla;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(width: minimo, child: tabla),
+        );
+      },
     );
   }
 
   Widget _filaUsuario(UserRBACModel u) {
     final soyYo = u.id == widget.usuario.id;
-    final rolActual = _rolesRBAC.where((r) => r.id == u.rolId).firstOrNull ??
-        RolModel(id: u.rolId, rol: u.rolNombre.isNotEmpty ? u.rolNombre : 'Sin rol');
+    final rolActual =
+        _rolesRBAC.where((r) => r.id == u.rolId).firstOrNull ??
+        RolModel(
+          id: u.rolId,
+          rol: u.rolNombre.isNotEmpty ? u.rolNombre : 'Sin rol',
+        );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -599,41 +982,45 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               ],
             ),
           ),
-          PopupMenuButton<RolModel>(
-            tooltip: 'Cambiar rol',
-            enabled: !soyYo,
-            onSelected: (r) async {
-              try {
-                await CatalogService.instance.actualizarRolUsuario(u.id, r.id);
-                if (!mounted) return;
-                showAppToast(context, 'Rol de ${u.usuario} actualizado a ${r.rol}', type: ToastType.success);
-                await _cargarRBAC();
-              } catch (e) {
-                if (!mounted) return;
-                showAppToast(context, 'Error actualizando rol: $e', type: ToastType.error);
-              }
-            },
-            itemBuilder: (_) => [
-              for (final r in _rolesRBAC)
-                PopupMenuItem(value: r, child: Text(r.rol)),
-            ],
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(rolActual.rol, style: const TextStyle(fontSize: 12)),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.keyboard_arrow_down,
-                    size: 16,
-                    color: Colors.grey.shade600,
-                  ),
-                ],
+          SizedBox(
+            width: 190,
+            child: IgnorePointer(
+              ignoring: soyYo,
+              child: Opacity(
+                opacity: soyYo ? 0.6 : 1,
+                child: AppSelect<String>(
+                  value: rolActual.id,
+                  items: [
+                    for (final r in _rolesRBAC)
+                      AppSelectItem(value: r.id, label: r.rol),
+                  ],
+                  onChanged: (id) async {
+                    if (id == null || id == u.rolId) return;
+                    try {
+                      await CatalogService.instance.actualizarRolUsuario(
+                        u.id,
+                        id,
+                      );
+                      if (!mounted) return;
+                      final nombre = _rolesRBAC
+                          .firstWhere((r) => r.id == id)
+                          .rol;
+                      showAppToast(
+                        context,
+                        'Rol de ${u.usuario} actualizado a $nombre',
+                        type: ToastType.success,
+                      );
+                      await _cargarRBAC();
+                    } catch (e) {
+                      if (!mounted) return;
+                      showAppToast(
+                        context,
+                        'Error actualizando rol: $e',
+                        type: ToastType.error,
+                      );
+                    }
+                  },
+                ),
               ),
             ),
           ),
@@ -642,23 +1029,32 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             message: soyYo
                 ? 'No puedes desactivarte'
                 : (u.estado ? 'Desactivar usuario' : 'Activar usuario'),
-            child: Switch(
+            child: AppSwitch(
               value: u.estado,
               onChanged: soyYo
                   ? null
                   : (v) async {
                       try {
-                        await CatalogService.instance.actualizarEstadoUsuario(u.id, v);
+                        await CatalogService.instance.actualizarEstadoUsuario(
+                          u.id,
+                          v,
+                        );
                         if (!mounted) return;
                         showAppToast(
                           context,
-                          v ? 'Usuario "${u.usuario}" activado' : 'Usuario "${u.usuario}" desactivado',
+                          v
+                              ? 'Usuario "${u.usuario}" activado'
+                              : 'Usuario "${u.usuario}" desactivado',
                           type: v ? ToastType.success : ToastType.info,
                         );
                         await _cargarRBAC();
                       } catch (e) {
                         if (!mounted) return;
-                        showAppToast(context, 'Error actualizando estado: $e', type: ToastType.error);
+                        showAppToast(
+                          context,
+                          'Error actualizando estado: $e',
+                          type: ToastType.error,
+                        );
                       }
                     },
               activeThumbColor: Colors.white,
@@ -687,46 +1083,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     final email = TextEditingController();
     final password = TextEditingController();
     var rol = AppRole.mesero;
-    final creado = await showDialog<bool>(
+    String? error;
+    final creado = await showBlurDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Nuevo usuario'),
-          content: SizedBox(
-            width: 340,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nombre,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Correo'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Contraseña'),
-                ),
-                const SizedBox(height: 12),
-                AppSelect<AppRole>(
-                  label: 'Rol',
-                  value: rol,
-                  items: [
-                    for (final r in AppRole.values)
-                      AppSelectItem(value: r, label: r.label),
-                  ],
-                  onChanged: (r) => setLocal(() => rol = r ?? rol),
-                ),
-              ],
-            ),
-          ),
-          actions: [
+        builder: (context, setLocal) => DialogoApp(
+          titulo: 'Nuevo usuario',
+          acciones: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Cancelar'),
@@ -736,12 +1099,58 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 if (nombre.text.trim().isEmpty ||
                     !email.text.contains('@') ||
                     password.text.isEmpty) {
+                  setLocal(
+                    () => error =
+                        'Completa el nombre, un correo válido y la contraseña.',
+                  );
                   return;
                 }
                 Navigator.of(dialogContext).pop(true);
               },
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+              ),
               child: const Text('Crear'),
             ),
+          ],
+          children: [
+            CampoDialogo(
+              etiqueta: 'Nombre',
+              controller: nombre,
+              hint: 'Nombre de usuario',
+              autofocus: true,
+            ),
+            const SizedBox(height: 14),
+            CampoDialogo(
+              etiqueta: 'Correo',
+              controller: email,
+              hint: 'correo@ejemplo.com',
+              teclado: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 14),
+            CampoDialogo(
+              etiqueta: 'Contraseña',
+              controller: password,
+              hint: 'Contraseña',
+              oculto: true,
+            ),
+            const SizedBox(height: 14),
+            AppSelect<AppRole>(
+              label: 'Rol',
+              value: rol,
+              items: [
+                for (final r in AppRole.values)
+                  AppSelectItem(value: r, label: r.label),
+              ],
+              onChanged: (r) => setLocal(() => rol = r ?? rol),
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                error!,
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ],
           ],
         ),
       ),
@@ -837,78 +1246,167 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           ),
         ],
       ),
-      SeccionConfig(
-        titulo: 'Horario de atención',
-        descripcion: 'Enciende los días que abre el local y elige su horario.',
-        filas: [for (var i = 0; i < horarios.length; i++) _filaHorario(i)],
-      ),
+      _seccionHorario(),
     ];
   }
 
-  String _hora(TimeOfDay? t) => t == null
-      ? '--:--'
-      : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  // ---------------- Horario de atención ----------------
 
-  Future<void> _elegirHora(int i, {required bool inicio}) async {
-    final h = horarios[i];
-    final elegida = await showTimePicker(
-      context: context,
-      initialTime:
-          (inicio ? h.inicio : h.fin) ?? const TimeOfDay(hour: 9, minute: 0),
-    );
-    if (elegida == null) return;
-    setState(
-      () => horarios[i] = inicio
-          ? h.copyWith(inicio: elegida)
-          : h.copyWith(fin: elegida),
+  String _hora12(TimeOfDay t) {
+    final h = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
+    final m = t.minute.toString().padLeft(2, '0');
+    return '${h.toString().padLeft(2, '0')}:$m ${t.period == DayPeriod.am ? 'AM' : 'PM'}';
+  }
+
+  // Horas cada media hora; si el horario guardado cae fuera, se agrega.
+  List<AppSelectItem<TimeOfDay>> _opcionesHora(TimeOfDay? actual) {
+    final horas = <TimeOfDay>[
+      for (var h = 0; h < 24; h++)
+        for (final m in const [0, 30]) TimeOfDay(hour: h, minute: m),
+    ];
+    if (actual != null && !horas.contains(actual)) {
+      horas.add(actual);
+      horas.sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute));
+    }
+    return [for (final t in horas) AppSelectItem(value: t, label: _hora12(t))];
+  }
+
+  Widget _seccionHorario() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Horario de atención',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Enciende los días que abre el local y elige su horario.',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 14),
+        LayoutBuilder(
+          builder: (context, c) {
+            const aire = 16.0;
+            final columnas = c.maxWidth >= 820
+                ? 3
+                : (c.maxWidth >= 520 ? 2 : 1);
+            final ancho = (c.maxWidth - aire * (columnas - 1)) / columnas;
+            return Wrap(
+              spacing: aire,
+              runSpacing: aire,
+              children: [
+                for (var i = 0; i < horarios.length; i++)
+                  SizedBox(width: ancho, child: _tarjetaHorario(i)),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 
-  Widget _filaHorario(int i) {
+  // Un día: encabezado con el interruptor y, debajo, día / desde / hasta.
+  Widget _tarjetaHorario(int i) {
     final Horario h = horarios[i];
-    Widget hora(String etiqueta, TimeOfDay? t, bool inicio) => InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => _elegirHora(i, inicio: inicio),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Text(
-          '$etiqueta ${_hora(t)}',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    Widget fila(String etiqueta, Widget campo) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
           SizedBox(
-            width: 100,
+            width: 52,
             child: Text(
-              h.dia,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              etiqueta,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
           ),
-          Switch(
-            value: h.abierto,
-            onChanged: (v) =>
-                setState(() => horarios[i] = h.copyWith(abierto: v)),
-            activeThumbColor: Colors.white,
-            activeTrackColor: AppColors.primaryGreen,
-          ),
-          const SizedBox(width: 12),
-          if (h.abierto) ...[
-            hora('De', h.inicio, true),
-            const SizedBox(width: 8),
-            hora('a', h.fin, false),
-          ] else
-            Text(
-              'Cerrado',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          Expanded(child: campo),
+        ],
+      ),
+    );
+    final dia = Container(
+      height: AppSizes.control,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadii.tag),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Text(
+        h.dia,
+        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+      ),
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                Icon(LucideIcons.clock, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Horario',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ),
+                Text(
+                  h.abierto ? 'Abierto' : 'Cerrado',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+                const SizedBox(width: 8),
+                AppSwitch(
+                  value: h.abierto,
+                  onChanged: (v) =>
+                      setState(() => horarios[i] = h.copyWith(abierto: v)),
+                ),
+              ],
             ),
+          ),
+          Divider(height: 1, color: Colors.grey.shade200),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: IgnorePointer(
+              ignoring: !h.abierto,
+              child: Opacity(
+                opacity: h.abierto ? 1 : 0.5,
+                child: Column(
+                  children: [
+                    fila('Día', dia),
+                    fila(
+                      'Desde',
+                      AppSelect<TimeOfDay>(
+                        hint: '--:--',
+                        value: h.inicio,
+                        items: _opcionesHora(h.inicio),
+                        onChanged: (t) =>
+                            setState(() => horarios[i] = h.copyWith(inicio: t)),
+                      ),
+                    ),
+                    fila(
+                      'Hasta',
+                      AppSelect<TimeOfDay>(
+                        hint: '--:--',
+                        value: h.fin,
+                        items: _opcionesHora(h.fin),
+                        onChanged: (t) =>
+                            setState(() => horarios[i] = h.copyWith(fin: t)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

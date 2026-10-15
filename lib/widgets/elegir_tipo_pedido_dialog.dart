@@ -3,8 +3,8 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../theme/app_theme.dart';
 
-// Modal de "Nuevo Pedido": elige tipo (Mesa o Delivery) y retorna
-// 'mesa'/'delivery'.
+// Modal de "Nuevo Pedido": elige tipo (Mesa, Para llevar o Delivery) y retorna
+// 'mesa'/'llevar'/'delivery'.
 class ElegirTipoPedidoDialog extends StatefulWidget {
   const ElegirTipoPedidoDialog({super.key});
 
@@ -26,7 +26,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
           : BorderRadius.circular(AppRadii.sheet),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        width: esMobile ? anchoPantalla : 440,
+        width: esMobile ? anchoPantalla : 600,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -82,6 +82,17 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                           'Pedido para consumir en una mesa del local.',
                       seleccionado: _tipoSeleccion == 'mesa',
                       onTap: () => setState(() => _tipoSeleccion = 'mesa'),
+                    ),
+                    SizedBox(
+                      width: esMobile ? 0 : 14,
+                      height: esMobile ? 16 : 0,
+                    ),
+                    _tarjetaTipo(
+                      icono: LucideIcons.packageCheck,
+                      titulo: 'Para llevar',
+                      descripcion: 'El cliente recoge su pedido en el local.',
+                      seleccionado: _tipoSeleccion == 'llevar',
+                      onTap: () => setState(() => _tipoSeleccion = 'llevar'),
                     ),
                     SizedBox(
                       width: esMobile ? 0 : 14,

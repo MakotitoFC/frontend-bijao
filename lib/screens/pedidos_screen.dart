@@ -3,15 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/mesas_por_liberar_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/app_role.dart';
+import '../models/mesa.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
+import '../services/catalog_service.dart';
+import '../services/eventos_service.dart';
+import '../services/pedido_mozo_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_tag.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/elegir_tipo_pedido_dialog.dart';
@@ -42,37 +48,166 @@ class _PedidosScreenState extends State<PedidosScreen> {
   @override
   void initState() {
     super.initState();
-    _cargar();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (mounted) _cargar();
+    cargarMesasPorLiberar().then((_) {
+      if (mounted) setState(() {});
     });
+    _cargar();
+    EventosService.instance.revision.addListener(_alCambiarEnVivo);
+    // Con la conexión en vivo activa, la consulta periódica es solo un respaldo
+    // (cada 32 s); sin ella, cada 4 s.
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      if (EventosService.instance.conectado.value && ++_ciclos % 8 != 0) return;
+      _cargar();
+    });
+  }
+
+  int _ciclos = 0;
+
+  void _alCambiarEnVivo() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    EventosService.instance.revision.removeListener(_alCambiarEnVivo);
     _pollingTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _cargar() async {
     await PedidoService.instance.cargarPedidos();
+    // Para saber qué mesas siguen ocupadas (franja "Mesas por liberar").
+    if (PedidoMozoService.instance.activo) {
+      await CatalogService.instance.cargarMesas();
+    }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _liberarMesa(Mesa mesa) async {
+    try {
+      await PedidoService.instance.liberarMesa(mesa.id, mesa.numero);
+      quitarMesaPorLiberar(mesa.id);
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        'Mesa ${mesa.numero} liberada.',
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo liberar la mesa ${mesa.numero}: '
+        '${e.toString().replaceFirst('Exception: ', '')}',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  // Mesas que el mozo debe liberar: el pago no las libera, las libera él cuando
+  // los clientes se retiran. Dos grupos: las que se vio cobrar y las que están
+  // ocupadas sin ningún pedido abierto (por ejemplo, si se cobró con la app
+  // cerrada).
+  Widget _mesasPorLiberar() {
+    if (!PedidoMozoService.instance.activo) return const SizedBox.shrink();
+    final cobradas = mesasPorLiberar();
+    // Solo el administrador ve todos los pedidos de la sede: el mozo solo ve los
+    // suyos y creería libre una mesa que tiene un pedido de otro mozo.
+    final sinPedido = _esAdmin ? mesasOcupadasSinPedido() : const <Mesa>[];
+    if (cobradas.isEmpty && sinPedido.isEmpty) return const SizedBox.shrink();
+
+    Widget chip(Mesa m) => Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadii.tag),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Mesa ${m.numero}',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: () => _liberarMesa(m),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 30),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            child: const Text('Liberar'),
+          ),
+        ],
+      ),
+    );
+
+    Widget grupo(String texto, List<Mesa> lista) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            texto,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [for (final m in lista) chip(m)],
+        ),
+      ],
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryGreen.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primaryGreen.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                LucideIcons.armchair,
+                size: 15,
+                color: AppColors.primaryGreenDark,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Mesas por liberar',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (cobradas.isNotEmpty)
+            grupo('Ya pagaron. Libera la mesa cuando se retiren.', cobradas),
+          if (cobradas.isNotEmpty && sinPedido.isNotEmpty)
+            const SizedBox(height: 12),
+          if (sinPedido.isNotEmpty)
+            grupo('Ocupadas sin ningún pedido abierto.', sinPedido),
+        ],
+      ),
+    );
   }
 
   // ---------- datos ----------
 
   bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
 
-  bool _esActivo(Pedido p) {
-    final est = p.estado.toLowerCase();
-    if (p.tipoPedido.toLowerCase() == 'delivery') {
-      return est != 'pagado' && est != 'anulado' && est != 'cancelado';
-    }
-    return est != 'pagado' &&
-        est != 'anulado' &&
-        est != 'devuelto' &&
-        est != 'cancelado';
-  }
+  // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
+  bool _esActivo(Pedido p) => p.abierto;
 
   List<Pedido> get _cola {
     final base = pedidos.where(_esActivo);
@@ -148,7 +283,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
       body: SafeArea(
         child: _armandoPedido
             ? Padding(
-                padding: EdgeInsets.all(_margen(context)),
+                // En pantallas angostas el armado ocupa todo el ancho, con su
+                // barra de título fija.
+                padding: EdgeInsets.all(
+                  MediaQuery.sizeOf(context).width < 900 ? 0 : _margen(context),
+                ),
                 child: NuevoPedidoDialog(
                   usuario: widget.usuario,
                   tipo: _tipoNuevoPedido!,
@@ -245,6 +384,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
           const SizedBox(height: 12),
           _filtroEstado(),
           const SizedBox(height: 14),
+          _mesasPorLiberar(),
           Expanded(
             child: cola.isEmpty
                 ? Center(
@@ -305,13 +445,14 @@ class _PedidosScreenState extends State<PedidosScreen> {
   }
 
   Widget _botonNuevoPedido() {
+    final estrecho = MediaQuery.sizeOf(context).width < 400;
     return FilledButton.icon(
       onPressed: _nuevoPedido,
       style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
       icon: const Icon(Icons.add, size: 18),
-      label: const Text(
-        'Nuevo Pedido',
-        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      label: Text(
+        estrecho ? 'Nuevo' : 'Nuevo Pedido',
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
       ),
     );
   }
@@ -322,9 +463,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
       (null, 'Todos'),
       ('pendiente', 'Pendiente'),
       ('servido', 'Servido'),
-      ('en_camino', 'En camino'),
-      ('entregado', 'Entregado'),
-      ('en_cuenta', 'En cuenta'),
     ];
     // Tabs y "Nuevo Pedido" en la misma fila; si los tabs no caben aparecen las
     // flechas para desplazarlos.
@@ -334,9 +472,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
           child: TabsDesplazables(
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final o in opciones) _pastillaEstado(o.$1, o.$2),
-              ],
+              children: [for (final o in opciones) _pastillaEstado(o.$1, o.$2)],
             ),
           ),
         ),
@@ -411,15 +547,25 @@ class _PedidosScreenState extends State<PedidosScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              tituloPedido(p),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: Colors.black87,
-              ),
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    tituloPedido(p),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                if (esPedidoDeEmpleado(p)) ...[
+                  const SizedBox(width: 6),
+                  const TagEmpleado(),
+                ],
+              ],
             ),
             const SizedBox(height: 2),
             Text(

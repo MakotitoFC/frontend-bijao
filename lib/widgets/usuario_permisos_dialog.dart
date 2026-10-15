@@ -7,6 +7,9 @@ import '../models/usuario.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
+import 'app_switch.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 class UsuarioPermisosDialog extends StatefulWidget {
   final Usuario usuario;
@@ -151,13 +154,10 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
-              const Divider(height: 24),
+              const SeparadorDialogo(),
 
               if (_cargando)
                 const Expanded(
@@ -241,7 +241,7 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                         const SizedBox(height: 10),
 
                         // Buscador de permisos
-                        TextField(
+                        CampoTexto(
                           controller: _busquedaController,
                           decoration: InputDecoration(
                             hintText: 'Buscar permiso (ej: ZONA, MESA, CARTA)...',
@@ -254,7 +254,7 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                         ),
                         const SizedBox(height: 10),
 
-                        // Lista de permisos con switches
+                        // Lista de permisos con casillas
                         Container(
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey.shade200),
@@ -289,10 +289,8 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                                             ],
                                           ),
                                         ),
-                                        Switch(
+                                        AppCheck(
                                           value: esDirecto || esHeredado,
-                                          activeThumbColor: Colors.white,
-                                          activeTrackColor: AppColors.primaryGreen,
                                           onChanged: (v) => _togglePermisoDirecto(p, v),
                                         ),
                                       ],

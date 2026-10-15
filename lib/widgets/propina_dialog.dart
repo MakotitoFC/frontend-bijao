@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/configuracion_store.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 // Propina para el mesero: se elige un porcentaje sugerido o se escribe el monto.
 // Devuelve el monto en soles (0 quita la propina) o null si se cancela.
@@ -77,14 +79,11 @@ class _PropinaDialogState extends State<PropinaDialog> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
+                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
+              const SeparadorDialogo(),
+Text(
                 'Consumo: S/ ${widget.base.toStringAsFixed(2)}',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
@@ -104,7 +103,7 @@ class _PropinaDialogState extends State<PropinaDialog> {
                 ],
               ),
               const SizedBox(height: 12),
-              TextField(
+              CampoTexto(
                 controller: _monto,
                 autofocus: true,
                 keyboardType: const TextInputType.numberWithOptions(

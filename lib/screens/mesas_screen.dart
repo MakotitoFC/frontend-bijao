@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/dialogo_app.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/mesas_store.dart';
@@ -13,6 +14,7 @@ import '../models/pedido.dart';
 import '../models/usuario.dart';
 import '../models/zona.dart';
 import '../services/catalog_service.dart';
+import '../services/eventos_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
@@ -32,11 +34,7 @@ const _trazoSala = Color(0xFF9AA7B8);
 // (`todasLasMesas`). Usado por el plano (T-1, T-2...).
 Pedido? _pedidoActivoDeMesa(int mesaNumero) {
   for (final p in pedidos) {
-    if (p.todasLasMesas.contains(mesaNumero) &&
-        p.estado != 'pagado' &&
-        p.estado != 'anulado' &&
-        p.estado != 'devuelto' &&
-        p.estado != 'cancelado') {
+    if (p.todasLasMesas.contains(mesaNumero) && p.abierto) {
       return p;
     }
   }
@@ -116,7 +114,9 @@ class _MesasPlanoState extends State<MesasPlano> {
     PedidoService.instance.cargarPedidos().then((_) {
       if (mounted) setState(() {});
     });
+    EventosService.instance.revision.addListener(_alCambiarEnVivo);
     _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (EventosService.instance.conectado.value && ++_ciclos % 8 != 0) return;
       if (mounted) {
         CatalogService.instance.cargarMesas().then((_) {
           if (mounted) setState(() {});
@@ -128,6 +128,12 @@ class _MesasPlanoState extends State<MesasPlano> {
     });
   }
 
+  int _ciclos = 0;
+
+  void _alCambiarEnVivo() {
+    if (mounted) setState(() {});
+  }
+
   bool _modoUnion = false;
   final Set<int> _paraUnir = {};
   String? _zona;
@@ -136,6 +142,7 @@ class _MesasPlanoState extends State<MesasPlano> {
 
   @override
   void dispose() {
+    EventosService.instance.revision.removeListener(_alCambiarEnVivo);
     _pollingTimer?.cancel();
     _busqueda.dispose();
     super.dispose();
@@ -281,9 +288,9 @@ class _MesasPlanoState extends State<MesasPlano> {
         showAppToast(context, 'No tienes permiso para eliminar zonas.', type: ToastType.error);
         return;
       }
-      final confirmar = await showDialog<bool>(
+      final confirmar = await showBlurDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => AlertaApp(
           title: Text('Eliminar zona "$zona"'),
           content: Text(
             mesasDeZona(zona).isEmpty
@@ -891,95 +898,105 @@ class MesasScreen extends StatelessWidget {
   }
 
   Future<void> _mostrarOpcionesMesa(BuildContext context, Mesa mesa) async {
-    await showModalBottomSheet(
+    await showBlurDialog<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (sheetCtx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Mesa ${mesa.numero}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (mesa.estaOcupada
-                                ? AppColors.error
-                                : AppColors.primaryGreen)
-                            .withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        mesa.estado.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: mesa.estaOcupada ? AppColors.error : AppColors.primaryGreen,
-                        ),
-                      ),
-                    ),
-                  ],
+        return DialogoApp(
+          titulo: 'Mesa ${mesa.numero}',
+          ancho: 400,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (mesa.estaOcupada
+                          ? AppColors.error
+                          : AppColors.primaryGreen)
+                      .withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(height: 16),
-                if (mesa.estaOcupada) ...[
-                  ListTile(
-                    leading: const Icon(LucideIcons.checkCircle2, color: AppColors.primaryGreen),
-                    title: const Text('Liberar mesa manualmente'),
-                    subtitle: const Text('Marcar la mesa como disponible'),
-                    onTap: () async {
-                      Navigator.of(sheetCtx).pop();
-                      final confirmar = await showDialog<bool>(
-                        context: context,
-                        builder: (dCtx) => AlertDialog(
-                          title: Text('¿Liberar Mesa ${mesa.numero}?'),
-                          content: const Text('La mesa volverá al estado disponible.'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(dCtx).pop(false),
-                              child: const Text('Cancelar'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.of(dCtx).pop(true),
-                              child: const Text('Liberar'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmar == true && context.mounted) {
-                        try {
-                          await PedidoService.instance.liberarMesa(mesa.id, mesa.numero);
-                          if (context.mounted) {
-                            showAppToast(context, 'Mesa ${mesa.numero} liberada a disponible.', type: ToastType.success);
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            showAppToast(context, 'Error al liberar mesa: $e', type: ToastType.error);
-                          }
-                        }
-                      }
-                    },
+                child: Text(
+                  mesa.estado.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: mesa.estaOcupada
+                        ? AppColors.error
+                        : AppColors.primaryGreen,
                   ),
-                ],
-              ],
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 8),
+            if (mesa.estaOcupada)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  LucideIcons.checkCircle2,
+                  color: AppColors.primaryGreen,
+                ),
+                title: const Text('Liberar mesa manualmente'),
+                subtitle: const Text('Marcar la mesa como disponible'),
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  final confirmar = await showBlurDialog<bool>(
+                    context: context,
+                    builder: (dCtx) => AlertaApp(
+                      title: Text('¿Liberar Mesa ${mesa.numero}?'),
+                      content: const Text(
+                        'La mesa volverá al estado disponible.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(dCtx).pop(false),
+                          child: const Text('Cancelar'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(dCtx).pop(true),
+                          child: const Text('Liberar'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmar == true && context.mounted) {
+                    try {
+                      await PedidoService.instance.liberarMesa(
+                        mesa.id,
+                        mesa.numero,
+                      );
+                      if (context.mounted) {
+                        showAppToast(
+                          context,
+                          'Mesa ${mesa.numero} liberada a disponible.',
+                          type: ToastType.success,
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        showAppToast(
+                          context,
+                          'Error al liberar mesa: $e',
+                          type: ToastType.error,
+                        );
+                      }
+                    }
+                  }
+                },
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'La mesa está libre.',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ),
+            const SizedBox(height: 12),
+          ],
         );
       },
     );
   }
-}
 
+}

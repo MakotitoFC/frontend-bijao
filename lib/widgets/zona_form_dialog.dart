@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../data/mesas_store.dart';
 import '../theme/app_theme.dart';
+import 'app_switch.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 typedef ZonaFormResultado = ({String nombre, bool estado, bool eliminar});
 
@@ -83,14 +86,11 @@ class _ZonaFormDialogState extends State<ZonaFormDialog> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
+                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                   ],
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
+              const SeparadorDialogo(),
+CampoTexto(
                   controller: _nombreController,
                   autofocus: true,
                   decoration: const InputDecoration(
@@ -120,7 +120,7 @@ class _ZonaFormDialogState extends State<ZonaFormDialog> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                SwitchListTile(
+                AppSwitchTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Zona Activa', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   subtitle: Text(

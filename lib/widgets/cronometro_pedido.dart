@@ -24,12 +24,14 @@ class CronometroPedido extends StatefulWidget {
 
 class CronometroPedidoState extends State<CronometroPedido> {
   Timer? _timer;
+  // Si el pedido terminó y no sabemos cuándo, se congela al verlo terminado.
+  DateTime? _congeladoEn;
 
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && widget.pedido.fechaFinalizacion == null) setState(() {});
+      if (mounted && !widget.pedido.terminado) setState(() {});
     });
   }
 
@@ -50,8 +52,15 @@ class CronometroPedidoState extends State<CronometroPedido> {
   @override
   Widget build(BuildContext context) {
     final p = widget.pedido;
-    final fin = p.fechaFinalizacion ?? DateTime.now();
-    final terminado = p.fechaFinalizacion != null;
+    final terminado = p.terminado || p.fechaFinalizacion != null;
+    if (terminado) {
+      _congeladoEn ??= DateTime.now();
+    } else {
+      _congeladoEn = null;
+    }
+    final fin = terminado
+        ? (p.fechaFinalizacion ?? _congeladoEn!)
+        : DateTime.now();
     final duracion = fin.difference(p.fechaPedido);
     final color = widget.sobreVerde
         ? (terminado ? Colors.white70 : Colors.white)

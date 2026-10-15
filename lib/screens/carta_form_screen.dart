@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/categorias_store.dart';
 import '../data/subcategorias_store.dart';
@@ -14,6 +18,16 @@ import '../utils/uuid_helper.dart';
 import '../widgets/app_select.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/subcategorias_acordeon.dart';
+import '../widgets/campo_texto.dart';
+import '../widgets/imagen_plato.dart';
+
+// Lo que devuelve el formulario: el plato y, si se eligió una foto nueva, sus
+// bytes y nombre (se suben al guardar el plato).
+typedef ResultadoPlato = ({
+  CartaItem item,
+  Uint8List? foto,
+  String? nombreFoto,
+});
 
 /// Formulario para Crear / Editar un plato en la `carta` (según BD.txt).
 /// Campos en tabla `carta`:
@@ -30,11 +44,7 @@ class CartaFormScreen extends StatefulWidget {
   final CartaItem? item; // null = crear nuevo
   final String? categoriaInicialId;
 
-  const CartaFormScreen({
-    super.key,
-    this.item,
-    this.categoriaInicialId,
-  });
+  const CartaFormScreen({super.key, this.item, this.categoriaInicialId});
 
   @override
   State<CartaFormScreen> createState() => _CartaFormScreenState();
@@ -57,8 +67,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   String _estado = 'disponible';
   bool _mostrarListaTapers = false;
   bool _cargandoTapers = false;
-  // Tamaños con precio propio (`carta_variante`).
-  final List<_VarianteEditable> _variantes = [];
+  // Foto elegida en este formulario (aún no subida).
+  Uint8List? _fotoBytes;
+  String? _fotoNombre;
+  String? _errorFoto;
 
   @override
   void initState() {
@@ -66,12 +78,18 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
 
     final item = widget.item;
     _nombreController = TextEditingController(text: item?.nombrePlato ?? '');
-    _descripcionController = TextEditingController(text: item?.descripcion ?? '');
+    _descripcionController = TextEditingController(
+      text: item?.descripcion ?? '',
+    );
     _precioClienteController = TextEditingController(
-      text: item?.precioCliente != null ? item!.precioCliente!.toStringAsFixed(2) : '',
+      text: item?.precioCliente != null
+          ? item!.precioCliente!.toStringAsFixed(2)
+          : '',
     );
     _precioPersonalController = TextEditingController(
-      text: item?.precioPersonal != null ? item!.precioPersonal!.toStringAsFixed(2) : '',
+      text: item?.precioPersonal != null
+          ? item!.precioPersonal!.toStringAsFixed(2)
+          : '',
     );
 
     // Categoría preseleccionada
@@ -82,14 +100,12 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     }
 
     _subcategoriaIds = {...?item?.subcategoriaIds};
-    _estado = (item?.estado == 'agotado') ? 'agotado' : 'disponible';
+    _estado = (item?.agotado ?? false)
+        ? estadoAgotado
+        : ((item?.inhabilitado ?? false)
+              ? estadoInhabilitado
+              : estadoDisponible);
     _selectedTaperId = item?.taperId;
-
-    if (item != null) {
-      for (final v in variantesDeCarta(item.id)) {
-        _variantes.add(_VarianteEditable.desde(v));
-      }
-    }
 
     _taperSearchController = TextEditingController();
     _taperFocusNode = FocusNode();
@@ -136,19 +152,8 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     _precioPersonalController.dispose();
     _taperSearchController.dispose();
     _taperFocusNode.dispose();
-    for (final v in _variantes) {
-      v.dispose();
-    }
     super.dispose();
   }
-
-  void _agregarVariante() =>
-      setState(() => _variantes.add(_VarianteEditable()));
-
-  void _quitarVariante(int index) => setState(() {
-    _variantes[index].dispose();
-    _variantes.removeAt(index);
-  });
 
   void _seleccionarTaper(Taper? taper) {
     setState(() {
@@ -171,8 +176,11 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_categoria == null) {
-      showAppToast(context, 'Selecciona una categoría para el plato',
-          type: ToastType.error);
+      showAppToast(
+        context,
+        'Selecciona una categoría para el plato',
+        type: ToastType.error,
+      );
       return;
     }
 
@@ -192,15 +200,17 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       return;
     }
 
-    // Con tamaños, el precio base del plato es opcional (cada tamaño trae el suyo).
+    // El precio es opcional: un plato por tamaños lo deja vacío y sus precios
+    // se registran en Inventario > Tamaños.
     final textoPrecio = _precioClienteController.text.trim();
     final pCliente = double.tryParse(textoPrecio);
-    if (textoPrecio.isNotEmpty || _variantes.isEmpty) {
-      if (pCliente == null || pCliente < 0) {
-        showAppToast(context, 'Ingresa un precio de cliente válido',
-            type: ToastType.error);
-        return;
-      }
+    if (textoPrecio.isNotEmpty && (pCliente == null || pCliente < 0)) {
+      showAppToast(
+        context,
+        'Ingresa un precio de cliente válido',
+        type: ToastType.error,
+      );
+      return;
     }
 
     double? pPersonal;
@@ -208,14 +218,17 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     if (pPersText.isNotEmpty) {
       pPersonal = double.tryParse(pPersText);
       if (pPersonal == null || pPersonal < 0) {
-        showAppToast(context, 'Ingresa un precio de personal válido',
-            type: ToastType.error);
+        showAppToast(
+          context,
+          'Ingresa un precio de personal válido',
+          type: ToastType.error,
+        );
         return;
       }
     }
 
-    final sedeActual = widget.item?.sedeId ??
-        AuthService.instance.currentUser?.sedeId;
+    final sedeActual =
+        widget.item?.sedeId ?? AuthService.instance.currentUser?.sedeId;
 
     final resultado = CartaItem(
       id: widget.item?.id ?? UuidHelper.v7(),
@@ -230,14 +243,105 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       precioCliente: pCliente,
       precioPersonal: pPersonal,
       sedeId: sedeActual,
+      urlImagen: widget.item?.urlImagen,
       creadoEn: widget.item?.creadoEn ?? DateTime.now(),
     );
 
-    reemplazarVariantesDeCarta(resultado.id, [
-      for (final v in _variantes) v.aVariante(resultado.id),
-    ]);
+    final ResultadoPlato salida = (
+      item: resultado,
+      foto: _fotoBytes,
+      nombreFoto: _fotoNombre,
+    );
+    Navigator.of(context).pop(salida);
+  }
 
-    Navigator.of(context).pop(resultado);
+  static const _tamanoMaxFoto = 5 * 1024 * 1024;
+  static const _plato = CartaItem(
+    id: '',
+    nombrePlato: '',
+    descripcion: '',
+    categoriaId: '',
+  );
+
+  Future<void> _elegirFoto() async {
+    try {
+      final archivos = await FilePicker.pickFiles(type: FileType.image);
+      if (archivos.isEmpty) return;
+      final f = archivos.first;
+      final bytes = await f.readAsBytes();
+      if (!mounted) return;
+      if (bytes.length > _tamanoMaxFoto) {
+        setState(() => _errorFoto = 'La foto pesa más de 5 MB.');
+        return;
+      }
+      setState(() {
+        _fotoBytes = Uint8List.fromList(bytes);
+        _fotoNombre = f.name;
+        _errorFoto = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _errorFoto = 'No se pudo leer la foto: $e');
+    }
+  }
+
+  // Foto del plato: vista previa y botón para subirla o cambiarla.
+  Widget _bloqueFoto() {
+    final hayFoto = _fotoBytes != null || widget.item?.urlImagen != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 104,
+                height: 72,
+                child: _fotoBytes != null
+                    ? Image.memory(_fotoBytes!, fit: BoxFit.cover)
+                    : ImagenPlato(item: widget.item ?? _plato, tamanoIcono: 26),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Foto del plato',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _fotoNombre ?? 'JPG, PNG o WEBP · máximo 5 MB',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _elegirFoto,
+                    icon: const Icon(LucideIcons.camera, size: 16),
+                    label: Text(hayFoto ? 'Cambiar foto' : 'Subir foto'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (_errorFoto != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _errorFoto!,
+              style: const TextStyle(fontSize: 12, color: AppColors.error),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -280,14 +384,21 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // 0. Foto del plato
+                      _bloqueFoto(),
+                      const SizedBox(height: 16),
+
                       // 1. Nombre del plato
-                      TextFormField(
+                      CampoTexto(
                         controller: _nombreController,
                         maxLength: 50,
                         decoration: InputDecoration(
                           labelText: 'Nombre del plato *',
                           hintText: 'Ej. Arroz Chaufa Especial',
-                          prefixIcon: const Icon(Icons.restaurant_menu, size: 20),
+                          prefixIcon: const Icon(
+                            Icons.restaurant_menu,
+                            size: 20,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -310,7 +421,8 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                         value: _categoria,
                         items: categorias
                             .map(
-                              (c) => AppSelectItem(value: c, label: c.categoria),
+                              (c) =>
+                                  AppSelectItem(value: c, label: c.categoria),
                             )
                             .toList(),
                         onChanged: (cat) => setState(() {
@@ -324,8 +436,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                         }),
                       ),
                       if (_categoria != null &&
-                          subcategoriasDe(_categoria!.id, soloActivas: true)
-                              .isNotEmpty) ...[
+                          subcategoriasDe(
+                            _categoria!.id,
+                            soloActivas: true,
+                          ).isNotEmpty) ...[
                         const SizedBox(height: 16),
                         SubcategoriasAcordeon(
                           opciones: subcategoriasDe(
@@ -340,7 +454,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       const SizedBox(height: 16),
 
                       // 3. Descripción
-                      TextFormField(
+                      CampoTexto(
                         controller: _descripcionController,
                         maxLines: 3,
                         decoration: InputDecoration(
@@ -369,15 +483,15 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: TextFormField(
+                            child: CampoTexto(
                               controller: _precioClienteController,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: InputDecoration(
-                                labelText: _variantes.isEmpty
-                                    ? 'Precio público (S/) *'
-                                    : 'Precio público (S/)',
+                                labelText: 'Precio público (S/)',
+                                helperText: 'Vacío si se vende por tamaños (Inventario > Tamaños)',
                                 hintText: '0.00',
                                 prefixText: 'S/ ',
                                 border: OutlineInputBorder(
@@ -385,11 +499,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                                 ),
                               ),
                               validator: (v) {
-                                if (v == null || v.trim().isEmpty) {
-                                  return _variantes.isEmpty
-                                      ? 'Precio requerido'
-                                      : null;
-                                }
+                                if (v == null || v.trim().isEmpty) return null;
                                 final p = double.tryParse(v.trim());
                                 if (p == null || p < 0) {
                                   return 'Precio inválido';
@@ -400,11 +510,12 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                           ),
                           const SizedBox(width: 14),
                           Expanded(
-                            child: TextFormField(
+                            child: CampoTexto(
                               controller: _precioPersonalController,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: InputDecoration(
                                 labelText: 'Precio personal (S/)',
                                 hintText: 'Opcional',
@@ -429,8 +540,8 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 6. Tamaños con precio propio (carta_variante)
-                      _buildVariantes(),
+                      // 6. Tamaños (solo lectura: se registran en Inventario)
+                      _resumenTamanos(),
                       const SizedBox(height: 16),
 
                       // 7. Selector de Estado (disponible / agotado)
@@ -438,8 +549,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       const SizedBox(height: 24),
 
                       // Botones de acción
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 12,
+                        runSpacing: 8,
                         children: [
                           OutlinedButton(
                             onPressed: () => Navigator.of(context).pop(),
@@ -452,7 +565,6 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                             ),
                             child: const Text('Cancelar'),
                           ),
-                          const SizedBox(width: 12),
                           FilledButton.icon(
                             onPressed: _guardar,
                             style: FilledButton.styleFrom(
@@ -465,7 +577,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                             icon: const Icon(Icons.check, size: 18),
                             label: Text(
                               editando ? 'Guardar cambios' : 'Crear plato',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],
@@ -505,7 +619,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  editando ? 'Editar plato de la carta' : 'Nuevo plato en la carta',
+                  editando
+                      ? 'Editar plato de la carta'
+                      : 'Nuevo plato en la carta',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -513,10 +629,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 ),
                 Text(
                   'Configura los datos del plato según la carta oficial',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
             ),
@@ -537,7 +650,8 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
 
     final tapersFiltrados = todosTapers.where((t) {
       if (query.isEmpty) return true;
-      final format = '${t.nombre} · s/ ${t.precio.toStringAsFixed(2)}'.toLowerCase();
+      final format = '${t.nombre} · s/ ${t.precio.toStringAsFixed(2)}'
+          .toLowerCase();
       return format.contains(query) || t.nombre.toLowerCase().contains(query);
     }).toList();
 
@@ -545,7 +659,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Input para buscar táper
-        TextField(
+        CampoTexto(
           controller: _taperSearchController,
           focusNode: _taperFocusNode,
           onTap: () {
@@ -558,16 +672,16 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
             labelText: 'Táper para llevar (opcional)',
             hintText: 'Haz clic para buscar táper...',
             prefixIcon: const Icon(Icons.takeout_dining_outlined, size: 20),
-            suffixIcon: _selectedTaperId != null || _taperSearchController.text.isNotEmpty
+            suffixIcon:
+                _selectedTaperId != null ||
+                    _taperSearchController.text.isNotEmpty
                 ? IconButton(
                     tooltip: 'Quitar táper (Sin táper)',
                     icon: const Icon(Icons.close, size: 18),
                     onPressed: () => _seleccionarTaper(null),
                   )
                 : const Icon(Icons.arrow_drop_down),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
 
@@ -579,7 +693,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.5), width: 1.5),
+              border: Border.all(
+                color: AppColors.primaryGreen.withValues(alpha: 0.5),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.08),
@@ -600,300 +717,177 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                     ),
                   )
                 : todosTapers.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.inventory_2_outlined,
-                                size: 28, color: Colors.grey.shade400),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Aún no hay tápers registrados en inventario.',
+                ? Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.inventory_2_outlined,
+                          size: 28,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Aún no hay tápers registrados en inventario.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Scrollbar(
+                    thumbVisibility: true,
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      children: [
+                        // Opción explícita: "Sin táper"
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(
+                            Icons.block,
+                            size: 18,
+                            color: Colors.grey,
+                          ),
+                          title: const Text(
+                            'Sin táper',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          subtitle: const Text(
+                            'Este plato no requiere táper por defecto',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          selected: _selectedTaperId == null,
+                          selectedTileColor: Colors.grey.shade100,
+                          onTap: () => _seleccionarTaper(null),
+                        ),
+                        const Divider(height: 1),
+
+                        // Lista filtrada de tápers
+                        for (final t in tapersFiltrados)
+                          ListTile(
+                            dense: true,
+                            leading: Icon(
+                              Icons.takeout_dining,
+                              size: 18,
+                              color: _selectedTaperId == t.id
+                                  ? AppColors.primaryGreen
+                                  : Colors.grey.shade700,
+                            ),
+                            title: Text(
+                              t.nombre,
+                              style: TextStyle(
+                                fontWeight: _selectedTaperId == t.id
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryGreen.withValues(
+                                  alpha: 0.1,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'S/ ${t.precio.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: AppColors.primaryGreen,
+                                ),
+                              ),
+                            ),
+                            selected: _selectedTaperId == t.id,
+                            selectedTileColor: AppColors.primaryGreen
+                                .withValues(alpha: 0.08),
+                            onTap: () => _seleccionarTaper(t),
+                          ),
+                        if (tapersFiltrados.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              'No se encontró ningún táper con "$query"',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey.shade600,
+                                color: Colors.grey.shade500,
                               ),
                             ),
-                          ],
-                        ),
-                      )
-                    : Scrollbar(
-                        thumbVisibility: true,
-                        child: ListView(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          children: [
-                            // Opción explícita: "Sin táper"
-                            ListTile(
-                              dense: true,
-                              leading: const Icon(
-                                Icons.block,
-                                size: 18,
-                                color: Colors.grey,
-                              ),
-                              title: const Text(
-                                'Sin táper',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              subtitle: const Text(
-                                'Este plato no requiere táper por defecto',
-                                style: TextStyle(fontSize: 11),
-                              ),
-                              selected: _selectedTaperId == null,
-                              selectedTileColor: Colors.grey.shade100,
-                              onTap: () => _seleccionarTaper(null),
-                            ),
-                            const Divider(height: 1),
-
-                            // Lista filtrada de tápers
-                            for (final t in tapersFiltrados)
-                              ListTile(
-                                dense: true,
-                                leading: Icon(
-                                  Icons.takeout_dining,
-                                  size: 18,
-                                  color: _selectedTaperId == t.id
-                                      ? AppColors.primaryGreen
-                                      : Colors.grey.shade700,
-                                ),
-                                title: Text(
-                                  t.nombre,
-                                  style: TextStyle(
-                                    fontWeight: _selectedTaperId == t.id
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryGreen.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    'S/ ${t.precio.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                ),
-                                selected: _selectedTaperId == t.id,
-                                selectedTileColor:
-                                    AppColors.primaryGreen.withValues(alpha: 0.08),
-                                onTap: () => _seleccionarTaper(t),
-                              ),
-                            if (tapersFiltrados.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(
-                                  'No se encontró ningún táper con "$query"',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
+                          ),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ],
+    );
+  }
+
+  // Tamaños del plato (`carta_variante`): aquí solo se muestran. Se registran y
+  // editan en Inventario > Tamaños.
+  Widget _resumenTamanos() {
+    final tamanos = widget.item == null
+        ? const <CartaVariante>[]
+        : variantesDeCarta(widget.item!.id);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tamaños',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            tamanos.isEmpty
+                ? 'Si este plato se vende por tamaños (por ejemplo, pescado), '
+                      'regístralos en Inventario > Tamaños.'
+                : 'Se administran en Inventario > Tamaños.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          if (tamanos.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final t in tamanos)
+                  Chip(
+                    label: Text(
+                      '${t.nombre} · S/ ${t.precioCliente.toStringAsFixed(2)}'
+                      '${t.estado ? '' : ' (inactivo)'}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   /// Selector visual de Estado ('disponible' vs 'agotado')
-  // Tamaños con precio propio: nombre, precios y peso opcional por tamaño.
-  Widget _buildVariantes() {
-    InputDecoration deco(String label, {String? hint, String? prefijo}) =>
-        InputDecoration(
-          labelText: label,
-          hintText: hint,
-          prefixText: prefijo,
-          isDense: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        );
-    String? precio(String? v, {bool requerido = true}) {
-      final t = v?.trim() ?? '';
-      if (t.isEmpty) return requerido ? 'Requerido' : null;
-      final n = double.tryParse(t.replaceAll(',', '.'));
-      return (n == null || n < 0) ? 'Inválido' : null;
-    }
-
-    String? peso(String? v) {
-      final t = v?.trim() ?? '';
-      if (t.isEmpty) return null;
-      final n = double.tryParse(t.replaceAll(',', '.'));
-      return (n == null || n < 0) ? 'Inválido' : null;
-    }
-
-    const teclado = TextInputType.numberWithOptions(decimal: true);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Tamaños con precio propio',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  Text(
-                    'Ej. pescado: pequeño, mediano, grande',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  ),
-                ],
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: _agregarVariante,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Tamaño'),
-            ),
-          ],
-        ),
-        for (var i = 0; i < _variantes.length; i++) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F8FA),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _variantes[i].nombre,
-                        maxLength: 50,
-                        decoration: deco('Nombre *', hint: 'Ej. Mediano')
-                            .copyWith(counterText: ''),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Requerido'
-                            : null,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Quitar tamaño',
-                      onPressed: () => _quitarVariante(i),
-                      icon: const Icon(Icons.delete_outline, size: 20),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _variantes[i].precioCliente,
-                        keyboardType: teclado,
-                        decoration: deco('Precio público *', prefijo: 'S/ '),
-                        validator: precio,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _variantes[i].precioPersonal,
-                        keyboardType: teclado,
-                        decoration: deco('Precio personal *', prefijo: 'S/ '),
-                        validator: precio,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _variantes[i].pesoMin,
-                        keyboardType: teclado,
-                        decoration: deco('Peso mín. (kg)', hint: 'Opcional'),
-                        validator: peso,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _variantes[i].pesoMax,
-                        keyboardType: teclado,
-                        decoration: deco('Peso máx. (kg)', hint: 'Opcional'),
-                        validator: (v) {
-                          final base = peso(v);
-                          if (base != null) return base;
-                          final max = double.tryParse(
-                            (v ?? '').trim().replaceAll(',', '.'),
-                          );
-                          final min = double.tryParse(
-                            _variantes[i].pesoMin.text.trim().replaceAll(
-                              ',',
-                              '.',
-                            ),
-                          );
-                          if (max != null && min != null && max < min) {
-                            return 'Menor que el mín.';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Switch(
-                      value: _variantes[i].estado,
-                      activeThumbColor: Colors.white,
-                      activeTrackColor: AppColors.primaryGreen,
-                      onChanged: (v) =>
-                          setState(() => _variantes[i].estado = v),
-                    ),
-                    Text(
-                      _variantes[i].estado ? 'Activo' : 'Inactivo',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildEstadoSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -914,7 +908,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 borderRadius: BorderRadius.circular(10),
                 onTap: () => setState(() => _estado = 'disponible'),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: _estado == 'disponible'
                         ? AppColors.primaryGreen.withValues(alpha: 0.12)
@@ -938,14 +935,18 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                             : Colors.grey.shade500,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Disponible',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: _estado == 'disponible'
-                              ? AppColors.primaryGreen
-                              : Colors.grey.shade700,
+                      Flexible(
+                        child: Text(
+                          'Disponible',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: _estado == 'disponible'
+                                ? AppColors.primaryGreen
+                                : Colors.grey.shade700,
+                          ),
                         ),
                       ),
                     ],
@@ -959,7 +960,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 borderRadius: BorderRadius.circular(10),
                 onTap: () => setState(() => _estado = 'agotado'),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: _estado == 'agotado'
                         ? AppColors.error.withValues(alpha: 0.12)
@@ -983,14 +987,18 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                             : Colors.grey.shade500,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Agotado',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: _estado == 'agotado'
-                              ? AppColors.error
-                              : Colors.grey.shade700,
+                      Flexible(
+                        child: Text(
+                          'Agotado',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: _estado == 'agotado'
+                                ? AppColors.error
+                                : Colors.grey.shade700,
+                          ),
                         ),
                       ),
                     ],
@@ -1002,49 +1010,5 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
         ),
       ],
     );
-  }
-}
-
-// Fila editable de un tamaño (`carta_variante`) dentro del formulario.
-class _VarianteEditable {
-  final String? id;
-  final nombre = TextEditingController();
-  final precioCliente = TextEditingController();
-  final precioPersonal = TextEditingController();
-  final pesoMin = TextEditingController();
-  final pesoMax = TextEditingController();
-  bool estado = true;
-
-  _VarianteEditable() : id = null;
-
-  _VarianteEditable.desde(CartaVariante v) : id = v.id {
-    nombre.text = v.nombre;
-    precioCliente.text = v.precioCliente.toStringAsFixed(2);
-    precioPersonal.text = v.precioPersonal.toStringAsFixed(2);
-    pesoMin.text = v.pesoMinKg?.toString() ?? '';
-    pesoMax.text = v.pesoMaxKg?.toString() ?? '';
-    estado = v.estado;
-  }
-
-  double? _numero(TextEditingController c) =>
-      double.tryParse(c.text.trim().replaceAll(',', '.'));
-
-  CartaVariante aVariante(String cartaId) => CartaVariante(
-    id: id ?? UuidHelper.v7(),
-    cartaId: cartaId,
-    nombre: nombre.text.trim(),
-    precioCliente: _numero(precioCliente) ?? 0,
-    precioPersonal: _numero(precioPersonal) ?? 0,
-    pesoMinKg: _numero(pesoMin),
-    pesoMaxKg: _numero(pesoMax),
-    estado: estado,
-  );
-
-  void dispose() {
-    nombre.dispose();
-    precioCliente.dispose();
-    precioPersonal.dispose();
-    pesoMin.dispose();
-    pesoMax.dispose();
   }
 }

@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/dialogo_app.dart';
+
+import '../utils/blur_dialog.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
@@ -12,15 +15,18 @@ import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
+import '../services/eventos_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/tabs_desplazables.dart';
+import '../widgets/campo_texto.dart';
 
 // Vista de cocina: tabs por estado y una tarjeta por pedido
-// (`pedidos` + `pedido_items`).
+// (`pedidos` + `pedido_items`). Solo consulta: el backend no tiene estados de
+// preparación; el pedido pasa a "servido" cuando lo marca el mozo.
 class CocinaScreen extends StatefulWidget {
   const CocinaScreen({super.key});
 
@@ -29,14 +35,10 @@ class CocinaScreen extends StatefulWidget {
 }
 
 class _CocinaScreenState extends State<CocinaScreen> {
-  // Estados de `pedidos.estado` que se pueden filtrar con los tabs.
+  // Estados abiertos de `pedidos.estado` que se pueden filtrar con los tabs.
   static const _estados = <(String, String)>[
     ('pendiente', 'Pendiente'),
-    ('preparando', 'Preparando'),
-    ('listo', 'Listo'),
-    ('entregado', 'Entregado'),
-    ('cancelado', 'Cancelado'),
-    ('anulado', 'Anulado'),
+    ('servido', 'Servido'),
   ];
 
   // null = Todos.
@@ -47,13 +49,23 @@ class _CocinaScreenState extends State<CocinaScreen> {
   void initState() {
     super.initState();
     _cargar();
+    EventosService.instance.revision.addListener(_alCambiarEnVivo);
     _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (mounted) _cargar();
+      if (!mounted) return;
+      if (EventosService.instance.conectado.value && ++_ciclos % 8 != 0) return;
+      _cargar();
     });
+  }
+
+  int _ciclos = 0;
+
+  void _alCambiarEnVivo() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    EventosService.instance.revision.removeListener(_alCambiarEnVivo);
     _pollingTimer?.cancel();
     super.dispose();
   }
@@ -63,18 +75,19 @@ class _CocinaScreenState extends State<CocinaScreen> {
     if (mounted) setState(() {});
   }
 
-  // Un pedido ya cobrado ('pagado') se considera entregado.
-  String _estadoDe(Pedido p) => p.estado == 'pagado' ? 'entregado' : p.estado;
+  String _estadoDe(Pedido p) => p.estado == 'pedido' ? 'pendiente' : p.estado;
 
-  bool _esActivo(String estado) =>
-      estado == 'pendiente' || estado == 'preparando' || estado == 'listo';
+  bool _esActivo(String estado) => estado == 'pendiente';
+
+  // Cocina solo ve los pedidos abiertos (pendientes y servidos sin cobrar).
+  Iterable<Pedido> get _abiertos => pedidos.where((p) => p.abierto);
 
   int _contar(String? estado) =>
-      pedidos.where((p) => estado == null || _estadoDe(p) == estado).length;
+      _abiertos.where((p) => estado == null || _estadoDe(p) == estado).length;
 
-  // Los activos primero (por orden de llegada) y después los ya cerrados.
+  // Los pendientes primero (por orden de llegada) y después los servidos.
   List<Pedido> get _visibles {
-    final lista = pedidos
+    final lista = _abiertos
         .where((p) => _filtro == null || _estadoDe(p) == _filtro)
         .toList();
     lista.sort((a, b) {
@@ -86,30 +99,13 @@ class _CocinaScreenState extends State<CocinaScreen> {
     return lista;
   }
 
-  ({String texto, String siguiente})? _siguientePaso(String estado) {
-    switch (estado) {
-      case 'pendiente':
-        return (texto: 'Iniciar', siguiente: 'preparando');
-      case 'preparando':
-        return (texto: 'Marcar listo', siguiente: 'listo');
-      case 'listo':
-        return (texto: 'Entregado', siguiente: 'entregado');
-      default:
-        return null;
-    }
-  }
-
-  // Color del ticket según el estado: oscuro, naranja o verde.
+  // Color del ticket según el estado: oscuro (pendiente) o verde (servido).
   Color _colorEstado(String estado) => switch (estado) {
-    'preparando' => AppColors.platoDelDia,
-    'listo' || 'entregado' => AppColors.primaryGreen,
+    'servido' => AppColors.primaryGreen,
     _ => AppColors.navbar,
   };
 
-  String _titulo(Pedido p) => switch (p.tipoPedido) {
-    'delivery' => 'Delivery',
-    _ => 'Mesa ${p.todasLasMesas.join(' + ')}',
-  };
+  String _titulo(Pedido p) => p.ubicacion;
 
   String _mesero(Pedido p) {
     for (final u in usuarios) {
@@ -124,9 +120,9 @@ class _CocinaScreenState extends State<CocinaScreen> {
     final controladores = {
       for (final r in pendientes) r.id: TextEditingController(),
     };
-    final guardado = await showDialog<bool>(
+    final guardado = await showBlurDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => AlertaApp(
         title: Text('Insumo porcionado · ${linea.nombrePlato}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -135,7 +131,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
             for (final r in pendientes)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: TextField(
+                child: CampoTexto(
                   controller: controladores[r.id],
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -270,7 +266,6 @@ class _CocinaScreenState extends State<CocinaScreen> {
     for (final l in lineas) {
       grupos.putIfAbsent(_categoriaDe(l), () => []).add(l);
     }
-    final paso = _siguientePaso(estado);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -334,6 +329,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
           if (p.clienteNombre != null ||
               p.clienteCelular != null ||
               p.direccionDelivery != null ||
+              (p.referenciaDelivery ?? '').isNotEmpty ||
               p.notas != null) ...[
             Divider(height: 1, color: Colors.grey.shade300),
             Padding(
@@ -347,34 +343,15 @@ class _CocinaScreenState extends State<CocinaScreen> {
                     _dato(LucideIcons.phone, p.clienteCelular!),
                   if (p.direccionDelivery != null)
                     _dato(LucideIcons.mapPin, p.direccionDelivery!),
+                  if (p.referenciaDelivery != null &&
+                      p.referenciaDelivery!.isNotEmpty)
+                    _dato(LucideIcons.signpost, p.referenciaDelivery!),
                   if (p.notas != null) _dato(LucideIcons.stickyNote, p.notas!),
                 ],
               ),
             ),
           ],
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: FilledButton(
-              onPressed: paso == null
-                  ? null
-                  : () => setState(
-                      () => actualizarEstadoPedido(p.id, paso.siguiente),
-                    ),
-              style: FilledButton.styleFrom(
-                backgroundColor: color,
-                disabledBackgroundColor: Colors.grey.shade300,
-                disabledForegroundColor: Colors.white,
-              ),
-              child: Text(
-                (paso?.texto ?? _etiquetaEstado(estado)).toUpperCase(),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                  letterSpacing: 0.6,
-                ),
-              ),
-            ),
-          ),
+          const SizedBox(height: 10),
         ],
       ),
     );
@@ -384,9 +361,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
 
   // Categoría del producto de la línea ('' si no se conoce).
   String _categoriaDe(PedidoLine l) {
-    final item = cartasNotifier.value
-        .where((c) => c.id == l.cartaId)
-        .firstOrNull;
+    final item = cartaPorId(l.cartaId);
     if (item == null) return '';
     final cat = categorias.where((c) => c.id == item.categoriaId).firstOrNull;
     return cat?.categoria ?? '';
@@ -394,11 +369,10 @@ class _CocinaScreenState extends State<CocinaScreen> {
 
   String _etiquetaEstado(String estado) => switch (estado) {
     'pendiente' => 'Pendiente',
-    'preparando' => 'Preparando',
-    'listo' => 'Listo',
-    'entregado' => 'Entregado',
-    'cancelado' => 'Cancelado',
+    'servido' => 'Servido',
+    'pagado' => 'Pagado',
     'anulado' => 'Anulado',
+    'devuelto' => 'Devuelto',
     _ => estado,
   };
 

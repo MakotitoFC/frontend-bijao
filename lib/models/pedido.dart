@@ -6,15 +6,22 @@ class Pedido {
   final String numeroPedido; // pedidos.numero_pedido
   final int mesaNumero;
   final List<int> mesasUnidas; // otras mesas unidas a esta, comparten cuenta
-  final String estado; // 'pendiente' | 'preparando' | 'listo' | 'entregado' | 'cancelado' | 'anulado'
+  // Estados del backend: 'pendiente' | 'servido' | 'pagado' | 'anulado' | 'devuelto'.
+  final String estado;
   final String tipoPedido; // 'mesa' | 'delivery'
   final DateTime fechaPedido;
   final String? notas; // pedidos.notas
   final String? clienteNombre; // pedidos.cliente_nombre
   final String? clienteCelular; // pedidos.cliente_celular
   final String? direccionDelivery; // pedidos.direccion_delivery
+  final String? referenciaDelivery; // delivery.referencia
   final DateTime? fechaFinalizacion; // pedidos.fecha_finalizacion
   final String? usuarioId; // pedidos.usuario_id (mesero que tomó el pedido)
+  // `pedidos.version` (concurrencia optimista del backend).
+  final int version;
+  final String? mozoNombre; // nombre del mozo que devuelve el backend
+  // `pedidos.tipo = 'empleado'`: el pedido es para el personal.
+  final bool esEmpleado;
 
   const Pedido({
     required this.id,
@@ -28,14 +35,20 @@ class Pedido {
     this.clienteNombre,
     this.clienteCelular,
     this.direccionDelivery,
+    this.referenciaDelivery,
     this.fechaFinalizacion,
     this.usuarioId,
+    this.version = 1,
+    this.mozoNombre,
+    this.esEmpleado = false,
   });
 
   factory Pedido.fromJson(Map<String, dynamic> json) {
     DateTime fecha;
     if (json['created_at'] != null) {
-      fecha = DateTime.tryParse(json['created_at'].toString())?.toLocal() ?? DateTime.now();
+      fecha =
+          DateTime.tryParse(json['created_at'].toString())?.toLocal() ??
+          DateTime.now();
     } else if (json['fecha_pedido'] != null) {
       final fStr = json['fecha_pedido'].toString();
       final hStr = json['hora_inicio']?.toString() ?? '00:00:00';
@@ -47,9 +60,15 @@ class Pedido {
     final rawEstado = (json['estado']?.toString() ?? 'pendiente').toLowerCase();
     final estadoNormalizado = rawEstado == 'pedido' ? 'pendiente' : rawEstado;
 
+    final fin = fechaDeFin(
+      json['fecha_finalizacion'] ?? json['hora_fin'],
+      fecha,
+    );
+
     return Pedido(
       id: json['id']?.toString() ?? '',
-      numeroPedido: json['numero_pedido']?.toString() ??
+      numeroPedido:
+          json['numero_pedido']?.toString() ??
           (json['id'] != null && json['id'].toString().length >= 4
               ? json['id'].toString().substring(0, 4)
               : '0000'),
@@ -59,14 +78,41 @@ class Pedido {
       tipoPedido: json['tipo']?.toString() ?? 'mesa',
       fechaPedido: fecha,
       notas: json['comentarios']?.toString(),
-      clienteNombre: json['cliente_nombre']?.toString() ?? json['mozo_nombre']?.toString(),
+      clienteNombre:
+          json['cliente_nombre']?.toString() ?? json['mozo_nombre']?.toString(),
       clienteCelular: json['cliente_celular']?.toString(),
       direccionDelivery: json['direccion_delivery']?.toString(),
+      referenciaDelivery: json['referencia']?.toString(),
+      fechaFinalizacion: fin,
       usuarioId: json['usuario_id']?.toString(),
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      mozoNombre: json['mozo_nombre']?.toString(),
+      esEmpleado: json['tipo']?.toString() == 'empleado',
     );
   }
 
   List<int> get todasLasMesas => [mesaNumero, ...mesasUnidas];
+
+  // Estados en los que el pedido ya no corre contra el reloj: se sirvió, se
+  // cobró, se anuló o se devolvió.
+  static const estadosTerminales = {'servido', 'pagado', 'anulado', 'devuelto'};
+
+  bool get terminado => estadosTerminales.contains(estado.toLowerCase());
+
+  // Pedido que sigue abierto (pendiente o servido, aún sin cobrar).
+  bool get abierto {
+    final e = estado.toLowerCase();
+    return e == 'pendiente' || e == 'pedido' || e == 'servido';
+  }
+
+  // Dónde se atiende: 'Delivery', 'Para llevar', 'Mesa 3' o 'Sin mesa'
+  // (nunca "Mesa 0").
+  String get ubicacion {
+    if (tipoPedido == 'delivery') return 'Delivery';
+    if (tipoPedido == 'llevar') return 'Para llevar';
+    if (mesaNumero == 0 && mesasUnidas.isEmpty) return 'Sin mesa';
+    return 'Mesa ${todasLasMesas.join(' + ')}';
+  }
 
   String get codigoCorto {
     if (id.length <= 6) return id;
@@ -80,24 +126,12 @@ class Pedido {
         return 'Pendiente';
       case 'servido':
         return 'Servido';
-      case 'en_camino':
-        return 'En camino';
-      case 'entregado':
-        return 'Entregado';
-      case 'en_cuenta':
-        return 'En cuenta';
       case 'pagado':
         return 'Pagado';
       case 'devuelto':
         return 'Devuelto';
       case 'anulado':
         return 'Anulado';
-      case 'cancelado':
-        return 'Cancelado';
-      case 'preparando':
-        return 'En preparación';
-      case 'listo':
-        return 'Listo';
       default:
         return estado;
     }
@@ -107,6 +141,8 @@ class Pedido {
     switch (tipoPedido.toLowerCase()) {
       case 'delivery':
         return 'Delivery';
+      case 'llevar':
+        return 'Para llevar';
       case 'empleado':
         return 'Empleado';
       default:
@@ -132,12 +168,16 @@ class Pedido {
     clienteNombre: clienteNombre,
     clienteCelular: clienteCelular,
     direccionDelivery: direccionDelivery,
+    referenciaDelivery: referenciaDelivery,
     fechaFinalizacion: fechaFinalizacion,
     usuarioId: usuarioId,
+    version: version,
+    mozoNombre: mozoNombre,
+    esEmpleado: esEmpleado,
   );
 
-  // Al pasar a 'listo' o 'entregado' se fija la fecha de finalización (corta
-  // el cronómetro del pedido).
+  // Al pasar a un estado terminal se fija la fecha de finalización (corta el
+  // cronómetro del pedido).
   Pedido copyWith({
     String? id,
     String? numeroPedido,
@@ -150,11 +190,15 @@ class Pedido {
     String? clienteNombre,
     String? clienteCelular,
     String? direccionDelivery,
+    String? referenciaDelivery,
     DateTime? fechaFinalizacion,
     String? usuarioId,
+    int? version,
+    String? mozoNombre,
+    bool? esEmpleado,
   }) {
     final nuevo = estado ?? this.estado;
-    final finaliza = nuevo == 'listo' || nuevo == 'entregado';
+    final finaliza = estadosTerminales.contains(nuevo);
     return Pedido(
       id: id ?? this.id,
       numeroPedido: numeroPedido ?? this.numeroPedido,
@@ -167,8 +211,36 @@ class Pedido {
       clienteNombre: clienteNombre ?? this.clienteNombre,
       clienteCelular: clienteCelular ?? this.clienteCelular,
       direccionDelivery: direccionDelivery ?? this.direccionDelivery,
-      fechaFinalizacion: fechaFinalizacion ?? (finaliza ? DateTime.now() : this.fechaFinalizacion),
+      referenciaDelivery: referenciaDelivery ?? this.referenciaDelivery,
+      fechaFinalizacion:
+          fechaFinalizacion ??
+          (finaliza ? DateTime.now() : this.fechaFinalizacion),
       usuarioId: usuarioId ?? this.usuarioId,
+      version: version ?? this.version,
+      mozoNombre: mozoNombre ?? this.mozoNombre,
+      esEmpleado: esEmpleado ?? this.esEmpleado,
     );
   }
+}
+
+// Momento en que terminó un pedido, a partir de lo que devuelve el servidor:
+// una fecha completa o solo la hora ('HH:MM:SS', del mismo día que [inicio], o
+// del siguiente si cruzó la medianoche). null si no hay dato.
+DateTime? fechaDeFin(Object? valor, DateTime inicio) {
+  final texto = valor?.toString();
+  if (texto == null || texto.isEmpty) return null;
+  final completa = DateTime.tryParse(texto);
+  if (completa != null && texto.contains('-')) return completa.toLocal();
+  final m = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?').firstMatch(texto);
+  if (m == null) return null;
+  var fin = DateTime(
+    inicio.year,
+    inicio.month,
+    inicio.day,
+    int.parse(m.group(1)!),
+    int.parse(m.group(2)!),
+    int.tryParse(m.group(3) ?? '0') ?? 0,
+  );
+  if (fin.isBefore(inicio)) fin = fin.add(const Duration(days: 1));
+  return fin;
 }

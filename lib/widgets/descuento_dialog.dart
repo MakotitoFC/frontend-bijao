@@ -5,6 +5,7 @@ import '../data/configuracion_store.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
 import 'pago_dialogs.dart';
+import 'campo_texto.dart';
 
 // Resultado al elegir un ticket de descuento: aplicarlo o quitar el ya aplicado.
 typedef DescuentoConfigurado = ({
@@ -228,7 +229,7 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
             ),
           ),
           const SizedBox(height: 8),
-          TextField(
+          CampoTexto(
             controller: _nombre,
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(hintText: 'Nombre del descuento'),
@@ -247,7 +248,7 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
                 onTap: () => setState(() => _esPorcentaje = false),
               ),
               Expanded(
-                child: TextField(
+                child: CampoTexto(
                   controller: _monto,
                   onChanged: (_) => setState(() {}),
                   keyboardType: const TextInputType.numberWithOptions(

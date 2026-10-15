@@ -8,6 +8,7 @@ import '../models/producto_inventario.dart';
 import '../models/unidad_producto.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
+import 'campo_texto.dart';
 
 // Formulario en línea para agregar un detalle (`compra_detalle`) a una compra
 // ya creada. El producto se elige de `producto_inventario` y de él se toma la
@@ -186,7 +187,7 @@ class _CompraDetalleFormState extends State<CompraDetalleForm> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextField(
+                child: CampoTexto(
                   controller: _cantidad,
                   decoration: const InputDecoration(
                     labelText: 'Cantidad',
@@ -219,7 +220,7 @@ class _CompraDetalleFormState extends State<CompraDetalleForm> {
           ),
           if (_necesitaFactor) ...[
             const SizedBox(height: 14),
-            TextField(
+            CampoTexto(
               controller: _factor,
               decoration: InputDecoration(
                 labelText: '1 $comprada equivale a… ($base)',
@@ -234,7 +235,7 @@ class _CompraDetalleFormState extends State<CompraDetalleForm> {
             ),
           ],
           const SizedBox(height: 14),
-          TextField(
+          CampoTexto(
             controller: _precio,
             decoration: InputDecoration(
               labelText: _unidad == null
@@ -247,7 +248,7 @@ class _CompraDetalleFormState extends State<CompraDetalleForm> {
             onChanged: (_) => setState(() => _error = null),
           ),
           const SizedBox(height: 14),
-          TextField(
+          CampoTexto(
             controller: _notas,
             maxLines: 2,
             decoration: const InputDecoration(

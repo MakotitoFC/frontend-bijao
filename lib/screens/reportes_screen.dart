@@ -13,7 +13,7 @@ class ReportesScreen extends StatelessWidget {
   const ReportesScreen({super.key});
 
   List<Pedido> get _pedidosValidos => pedidos
-      .where((p) => p.estado != 'cancelado' && p.estado != 'anulado')
+      .where((p) => p.estado != 'anulado')
       .toList();
 
   double _ventasDe(Iterable<Pedido> lista) =>

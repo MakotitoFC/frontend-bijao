@@ -39,11 +39,17 @@ class NetworkDiscoveryService {
   /// Guarda la URL base confirmada del servidor
   static Future<void> saveServerUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefKeyServerUrl, url.trim().replaceAll(RegExp(r'/+$'), ''));
+    await prefs.setString(
+      _prefKeyServerUrl,
+      url.trim().replaceAll(RegExp(r'/+$'), ''),
+    );
   }
 
   /// Verifica si una IP/URL específica responde con éxito al healthcheck
-  static Future<bool> pingServer(String baseUrl, {Duration timeout = const Duration(seconds: 3)}) async {
+  static Future<bool> pingServer(
+    String baseUrl, {
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
     try {
       final cleanUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
       final uri = Uri.parse('$cleanUrl/api/health');
@@ -72,7 +78,11 @@ class NetworkDiscoveryService {
       if (origin.isNotEmpty && origin != 'null') {
         if (await pingServer(origin, timeout: const Duration(seconds: 2))) {
           final uri = Uri.parse(origin);
-          final server = DiscoveredServer(ip: uri.host, port: uri.port, method: 'origen web');
+          final server = DiscoveredServer(
+            ip: uri.host,
+            port: uri.port,
+            method: 'origen web',
+          );
           await saveServerUrl(server.baseUrl);
           return server;
         }
@@ -91,15 +101,26 @@ class NetworkDiscoveryService {
     // 3. Probar IP preconfigurada en AppConfig (.env)
     final configuredUrl = AppConfig.defaultBaseUrl;
     if (await pingServer(configuredUrl, timeout: const Duration(seconds: 2))) {
-      final server = DiscoveredServer(ip: AppConfig.serverIp, port: AppConfig.serverPort, method: 'config');
+      final server = DiscoveredServer(
+        ip: AppConfig.serverIp,
+        port: AppConfig.serverPort,
+        method: 'config',
+      );
       await saveServerUrl(server.baseUrl);
       return server;
     }
 
     // 4. Si no es Web y estamos en la misma máquina local, probar localhost
     if (!kIsWeb) {
-      if (await pingServer('http://127.0.0.1:$defaultPort', timeout: const Duration(milliseconds: 600))) {
-        final server = DiscoveredServer(ip: '127.0.0.1', port: defaultPort, method: 'localhost');
+      if (await pingServer(
+        'http://127.0.0.1:$defaultPort',
+        timeout: const Duration(milliseconds: 600),
+      )) {
+        final server = DiscoveredServer(
+          ip: '127.0.0.1',
+          port: defaultPort,
+          method: 'localhost',
+        );
         await saveServerUrl(server.baseUrl);
         return server;
       }
@@ -107,7 +128,9 @@ class NetworkDiscoveryService {
 
     // 5. Probar UDP Broadcast (rápido y robusto en Wi-Fi)
     if (!kIsWeb) {
-      final udpServer = await _discoverViaUDP(timeout: const Duration(seconds: 2));
+      final udpServer = await _discoverViaUDP(
+        timeout: const Duration(seconds: 2),
+      );
       if (udpServer != null) {
         if (await pingServer(udpServer.baseUrl)) {
           await saveServerUrl(udpServer.baseUrl);
@@ -132,7 +155,11 @@ class NetworkDiscoveryService {
       final cand = 'http://$host:$defaultPort';
       if (await pingServer(cand, timeout: const Duration(milliseconds: 1200))) {
         final uri = Uri.parse(cand);
-        final server = DiscoveredServer(ip: uri.host, port: uri.port, method: 'lan');
+        final server = DiscoveredServer(
+          ip: uri.host,
+          port: uri.port,
+          method: 'lan',
+        );
         await saveServerUrl(server.baseUrl);
         return server;
       }
@@ -155,7 +182,8 @@ class NetworkDiscoveryService {
     try {
       final baseIpParts = AppConfig.serverIp.split('.');
       if (baseIpParts.length != 4) return null;
-      final subnetPrefix = '${baseIpParts[0]}.${baseIpParts[1]}.${baseIpParts[2]}';
+      final subnetPrefix =
+          '${baseIpParts[0]}.${baseIpParts[1]}.${baseIpParts[2]}';
 
       // Probar un grupo de IPs comunes en LAN (1 al 100)
       final candidates = <String>[];
@@ -169,9 +197,18 @@ class NetworkDiscoveryService {
         candidates.map((ip) async {
           if (completer.isCompleted) return;
           final candUrl = 'http://$ip:$defaultPort';
-          final ok = await pingServer(candUrl, timeout: const Duration(milliseconds: 1500));
+          final ok = await pingServer(
+            candUrl,
+            timeout: const Duration(milliseconds: 1500),
+          );
           if (ok && !completer.isCompleted) {
-            completer.complete(DiscoveredServer(ip: ip, port: defaultPort, method: 'subnet_scan'));
+            completer.complete(
+              DiscoveredServer(
+                ip: ip,
+                port: defaultPort,
+                method: 'subnet_scan',
+              ),
+            );
           }
         }),
       ).then((_) {
@@ -185,7 +222,9 @@ class NetworkDiscoveryService {
   }
 
   /// Escucha el beacon UDP o envía consulta "BIJAO_DISCOVER"
-  static Future<DiscoveredServer?> _discoverViaUDP({required Duration timeout}) async {
+  static Future<DiscoveredServer?> _discoverViaUDP({
+    required Duration timeout,
+  }) async {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       socket.broadcastEnabled = true;
@@ -203,7 +242,9 @@ class NetworkDiscoveryService {
                 final ip = json['server_ip'].toString();
                 final port = (json['port'] as num?)?.toInt() ?? defaultPort;
                 if (!completer.isCompleted) {
-                  completer.complete(DiscoveredServer(ip: ip, port: port, method: 'udp'));
+                  completer.complete(
+                    DiscoveredServer(ip: ip, port: port, method: 'udp'),
+                  );
                 }
               }
             } catch (_) {}
@@ -229,7 +270,9 @@ class NetworkDiscoveryService {
   }
 
   /// Busca el servicio mDNS "_bijao-server._tcp.local"
-  static Future<DiscoveredServer?> _discoverViaMDNS({required Duration timeout}) async {
+  static Future<DiscoveredServer?> _discoverViaMDNS({
+    required Duration timeout,
+  }) async {
     try {
       final client = MDnsClient();
       await client.start();
@@ -237,15 +280,20 @@ class NetworkDiscoveryService {
       DiscoveredServer? found;
       final ptrResource = '_bijao-server._tcp.local';
 
-      await for (final PtrResourceRecord ptr in client.lookup<PtrResourceRecord>(
-        ResourceRecordQuery.serverPointer(ptrResource),
-      ).timeout(timeout, onTimeout: (sink) => sink.close())) {
-        await for (final SrvResourceRecord srv in client.lookup<SrvResourceRecord>(
-          ResourceRecordQuery.service(ptr.domainName),
-        )) {
-          await for (final IPAddressResourceRecord ipRecord in client.lookup<IPAddressResourceRecord>(
-            ResourceRecordQuery.addressIPv4(srv.target),
-          )) {
+      await for (final PtrResourceRecord ptr
+          in client
+              .lookup<PtrResourceRecord>(
+                ResourceRecordQuery.serverPointer(ptrResource),
+              )
+              .timeout(timeout, onTimeout: (sink) => sink.close())) {
+        await for (final SrvResourceRecord srv
+            in client.lookup<SrvResourceRecord>(
+              ResourceRecordQuery.service(ptr.domainName),
+            )) {
+          await for (final IPAddressResourceRecord ipRecord
+              in client.lookup<IPAddressResourceRecord>(
+                ResourceRecordQuery.addressIPv4(srv.target),
+              )) {
             found = DiscoveredServer(
               ip: ipRecord.address.address,
               port: srv.port,

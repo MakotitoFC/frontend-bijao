@@ -65,13 +65,12 @@ void actualizarDatosPedido(
   );
 }
 
-// Agrega un producto a un pedido ya registrado; si ya estaba listo o entregado
-// vuelve a pendiente para que cocina lo prepare.
+// Agrega un producto a un pedido ya registrado; si ya estaba servido vuelve a
+// pendiente, porque hay algo nuevo por servir.
 void agregarLineaAPedido(String pedidoId, PedidoLine linea) {
   detallesPorPedido[pedidoId]?.add(linea);
   final i = pedidos.indexWhere((p) => p.id == pedidoId);
-  if (i != -1 &&
-      (pedidos[i].estado == 'listo' || pedidos[i].estado == 'entregado')) {
+  if (i != -1 && pedidos[i].estado == 'servido') {
     actualizarEstadoPedido(pedidoId, 'pendiente');
   }
 }
@@ -156,6 +155,12 @@ const cartaIdCargoDelivery = 'cargo-delivery';
 // cocina no la ve.
 const cartaIdAjuste = 'ajuste-manual';
 
+// Fila de táper (`pedidos_detalle` solo con `taper_id`): se cobra aparte del
+// plato, con su propia cantidad.
+const cartaIdTaper = 'taper-fila';
+
+bool esLineaTaper(PedidoLine l) => l.cartaId == cartaIdTaper;
+
 // Línea de una promoción (combo): su `cartaId` no es un plato de la carta; los
 // platos van en `componentes`.
 const cartaIdPromocion = 'promocion';
@@ -174,6 +179,17 @@ void reemplazarLineaDePedido(String pedidoId, PedidoLine nueva) {
 // ¿Es un producto (y no un cargo de delivery ni un ajuste)?
 bool esLineaDeProducto(PedidoLine l) =>
     l.cartaId != cartaIdCargoDelivery && l.cartaId != cartaIdAjuste;
+
+// ¿Es un pedido para el personal? Lo marca el tipo del pedido o un descuento de
+// empleado aplicado después.
+bool esPedidoDeEmpleado(Pedido p) =>
+    p.esEmpleado ||
+    (detallesPorPedido[p.id] ?? const <PedidoLine>[]).any(
+      (l) =>
+          l.cartaId == cartaIdAjuste &&
+          l.nombrePlato.startsWith('Descuento: ') &&
+          l.nombrePlato.toLowerCase().contains('empleado'),
+    );
 
 // Propina para el mesero: una línea de ajuste con monto positivo.
 const ajustePropina = 'Propina: ';

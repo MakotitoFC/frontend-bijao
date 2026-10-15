@@ -10,8 +10,8 @@ import 'variantes_store.dart';
 // opciones de cada componente (`promocion_componente_opcion`). El admin las
 // configura; el mozo solo las vende y, si el cliente lo pide, cambia un
 // producto por otra opción registrada.
-// TODO: reemplazar por la carga y el guardado reales cuando el backend exponga
-// estas tablas.
+// Se cargan y se guardan en el backend con `PromocionService`; estas listas son
+// la copia en memoria.
 final List<Promocion> promociones = [];
 final List<PromocionComponente> promocionComponentes = [];
 final List<PromocionOpcion> promocionOpciones = [];
@@ -31,9 +31,29 @@ List<PromocionOpcion> opcionesDe(
     .where((o) => o.componenteId == componenteId && (!soloActivas || o.estado))
     .toList();
 
+// El producto incluido: la opción activa marcada como fija (`es_fijo`) o, si
+// ninguna lo está, la primera activa.
 PromocionOpcion? opcionIncluida(String componenteId) {
   final activas = opcionesDe(componenteId, soloActivas: true);
-  return activas.isEmpty ? null : activas.first;
+  if (activas.isEmpty) return null;
+  return activas.where((o) => o.esFijo).firstOrNull ?? activas.first;
+}
+
+// Reemplaza lo que hay en memoria por lo que devuelve el servidor.
+void reemplazarPromociones({
+  required List<Promocion> nuevas,
+  required List<PromocionComponente> componentes,
+  required List<PromocionOpcion> opciones,
+}) {
+  promociones
+    ..clear()
+    ..addAll(nuevas);
+  promocionComponentes
+    ..clear()
+    ..addAll(componentes);
+  promocionOpciones
+    ..clear()
+    ..addAll(opciones);
 }
 
 // Una promoción se puede vender si tiene componentes y todos tienen al menos
@@ -124,8 +144,7 @@ void hacerIncluida(String opcionId) {
 
 // ---------- precios ----------
 
-CartaItem? _cartaDe(String id) =>
-    cartasNotifier.value.where((c) => c.id == id).firstOrNull;
+CartaItem? _cartaDe(String id) => cartaPorId(id);
 
 CartaPresentacion? _presentacionDe(String? id) =>
     id == null ? null : presentaciones.where((p) => p.id == id).firstOrNull;
@@ -177,6 +196,7 @@ ComponenteElegido elegirOpcion(
     opcionId: o.id,
     cartaId: o.cartaId,
     cartaPresentacionId: o.cartaPresentacionId,
+    cartaVarianteId: o.cartaVarianteId,
     nombre: nombreDeOpcion(o),
     cantidad: c.cantidad,
     esCambio: esCambio,

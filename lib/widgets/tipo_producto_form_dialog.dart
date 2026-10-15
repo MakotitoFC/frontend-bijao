@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../models/tipo_producto.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
+import 'app_switch.dart';
 import 'app_toast.dart';
+import 'campo_texto.dart';
+import 'dialogo_app.dart';
 
+// Alta y edición de un tipo de producto (clasificación del inventario).
 class TipoProductoFormDialog extends StatefulWidget {
   final TipoProducto? item;
 
@@ -40,12 +43,10 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _guardando = true);
-
     try {
       final user = AuthService.instance.usuarioActual;
       final sedeId = _esGlobal ? null : user?.sedeId;
       final nombre = _nombreController.text.trim();
-
       if (widget.item == null) {
         await CatalogService.instance.crearTipoProducto(
           tipoProducto: nombre,
@@ -75,232 +76,88 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: Colors.white,
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Encabezado
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryGreen.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(LucideIcons.tag, color: AppColors.primaryGreen, size: 22),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.item == null ? 'Nuevo Tipo de Producto' : 'Editar Tipo de Producto',
-                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            'Clasificación para el catálogo de inventario',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Campo Nombre
-                TextFormField(
-                  controller: _nombreController,
-                  maxLength: 20,
-                  decoration: InputDecoration(
-                    labelText: 'Tipo de producto *',
-                    hintText: 'Ej. Insumo, Bebida, Menaje...',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    prefixIcon: const Icon(LucideIcons.shapes, size: 18),
+    final editando = widget.item != null;
+    return DialogoApp(
+      titulo: editando ? 'Editar tipo de producto' : 'Nuevo tipo de producto',
+      ancho: 420,
+      acciones: [
+        OutlinedButton(
+          onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _guardando ? null : _guardar,
+          style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+          child: _guardando
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
                   ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'El nombre es obligatorio';
-                    return null;
-                  },
+                )
+              : Text(editando ? 'Guardar cambios' : 'Crear tipo'),
+        ),
+      ],
+      children: [
+        Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              CampoTexto(
+                controller: _nombreController,
+                maxLength: 20,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Tipo de producto *',
+                  hintText: 'Ej. Insumo, Bebida, Menaje...',
                 ),
-                const SizedBox(height: 12),
-
-                // Alcance (Global vs Mi Sede)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _esGlobal ? LucideIcons.globe : LucideIcons.mapPin,
-                        size: 20,
-                        color: _esGlobal ? AppColors.primaryGreen : Colors.blueGrey,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _esGlobal ? 'Todas las sedes (Global)' : 'Solo para mi sede',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              _esGlobal
-                                  ? 'Disponible en todos los locales del restaurante'
-                                  : 'Exclusivo para la sede actual',
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: _esGlobal,
-                        activeTrackColor: AppColors.primaryGreen,
-                        onChanged: (v) => setState(() => _esGlobal = v),
-                      ),
-                    ],
-                  ),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'El nombre es obligatorio'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              AppSwitchTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Disponible en todas las sedes',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                 ),
-                const SizedBox(height: 14),
-
-                // Estado (Activo / Inactivo)
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => setState(() => _estado = true),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _estado ? AppColors.primaryGreen.withValues(alpha: 0.1) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _estado ? AppColors.primaryGreen : Colors.grey.shade300,
-                              width: _estado ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                size: 16,
-                                color: _estado ? AppColors.primaryGreen : Colors.grey.shade400,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Activo',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  color: _estado ? AppColors.primaryGreen : Colors.grey.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => setState(() => _estado = false),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: !_estado ? Colors.grey.shade100 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: !_estado ? Colors.grey.shade600 : Colors.grey.shade300,
-                              width: !_estado ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.remove_circle_outline,
-                                size: 16,
-                                color: !_estado ? Colors.grey.shade700 : Colors.grey.shade400,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Inactivo',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  color: !_estado ? Colors.grey.shade800 : Colors.grey.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                subtitle: Text(
+                  _esGlobal
+                      ? 'Se usa en todos los locales del restaurante'
+                      : 'Solo se usa en la sede actual',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
-                const SizedBox(height: 22),
-
-                // Botones Cancelar / Guardar
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _guardando ? null : () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: _guardando ? null : _guardar,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                      ),
-                      icon: _guardando
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Icon(Icons.check, size: 18),
-                      label: Text(widget.item == null ? 'Crear tipo' : 'Guardar cambios'),
-                    ),
-                  ],
+                value: _esGlobal,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.primaryGreen,
+                onChanged: (v) => setState(() => _esGlobal = v),
+              ),
+              AppSwitchTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Activo',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                 ),
-              ],
-            ),
+                subtitle: Text(
+                  _estado
+                      ? 'Se puede elegir al registrar productos'
+                      : 'Inactivo: no aparece al registrar productos',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+                value: _estado,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.primaryGreen,
+                onChanged: (v) => setState(() => _estado = v),
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
         ),
-      ),
+      ],
     );
   }
 }

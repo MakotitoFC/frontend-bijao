@@ -11,6 +11,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/patron_cocina.dart';
 import '../widgets/server_connection_dialog.dart';
 import 'home_screen.dart';
+import '../widgets/campo_texto.dart';
 
 // Login: correo + contraseña contra `usuarios`.
 // TODO backend: reemplazar _submit() por la autenticación real.
@@ -160,7 +161,7 @@ class _LoginScreenState extends State<LoginScreen> {
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 34),
-          TextFormField(
+          CampoTexto(
             controller: _emailController,
             keyboardType: TextInputType.text,
             style: const TextStyle(fontSize: 14),
@@ -177,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
             },
           ),
           const SizedBox(height: 14),
-          TextFormField(
+          CampoTexto(
             controller: _passwordController,
             obscureText: _obscurePassword,
             style: const TextStyle(fontSize: 14),

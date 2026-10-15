@@ -9,10 +9,15 @@ import '../models/nav_item.dart';
 import '../models/sede.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
+import '../services/eventos_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../widgets/cambiar_pin_dialog.dart';
 import '../widgets/deferred_loader.dart';
+import '../widgets/menu_flotante.dart';
+import '../widgets/submenu_lateral.dart';
 import 'carta_screen.dart' deferred as carta;
+import 'inicio_screen.dart';
 import 'cocina_screen.dart' deferred as cocina;
 import 'configuracion_screen.dart' deferred as configuracion;
 import 'inventario_screen.dart' deferred as inventario;
@@ -35,10 +40,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _colapsado = false;
+  // Navbar lateral: se contrae sola al achicarse la pantalla; si el usuario la
+  // abre o cierra a mano, se respeta hasta que cambie el tamaño de pantalla.
+  static const double _anchoParaContraer = 1100;
+  bool? _colapsadoManual;
+  bool? _contraidoAutoPrevio;
   String _seleccionado = 'inicio';
-  // Grupos del navbar (ej. "Ventas") desplegados.
-  final Set<String> _gruposAbiertos = {};
   final ValueNotifier<CategoriaComida?> _categoriaProductos = ValueNotifier(
     null,
   );
@@ -48,10 +55,27 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     CatalogService.instance.cargarCatalogos();
+    EventosService.instance.iniciar();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _pedirCambioDePin());
+  }
+
+  // El backend marca `debe_cambiar_pin` mientras el PIN siga siendo el
+  // predeterminado. Solo importa a quien puede autorizar descuentos.
+  Future<void> _pedirCambioDePin() async {
+    final u = widget.usuario;
+    if (!u.debeCambiarPin) return;
+    if (!(u.esAdmin || u.tienePermiso('OTORGAR.DESCUENTO'))) return;
+    if (!mounted) return;
+    await showBlurDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const CambiarPinDialog(obligatorio: true),
+    );
   }
 
   @override
   void dispose() {
+    EventosService.instance.detener();
     _categoriaProductos.dispose();
     _busquedaProductos.dispose();
     super.dispose();
@@ -107,6 +131,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Atajos de la vista Inicio: solo a lo que el usuario puede abrir.
+  void _irA(String clave) {
+    final permitido = navItems.any(
+      (i) =>
+          i.tieneAcceso(widget.usuario) &&
+          (i.clave == clave ||
+              i.hijos.any(
+                (h) => h.clave == clave && h.tieneAcceso(widget.usuario),
+              )),
+    );
+    if (permitido) setState(() => _seleccionado = clave);
+  }
+
   Widget _contenidoDe(String clave) {
     switch (clave) {
       case 'mesas':
@@ -125,10 +162,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       // Vistas aún sin desarrollar: comparten el mismo placeholder.
       case 'inicio':
-        return _InicioContent(
+        return InicioScreen(
           usuario: widget.usuario,
           sede: widget.sede,
-          nombreVista: 'Inicio',
+          onIrA: _irA,
         );
       case 'cocina':
         return DeferredWidget(
@@ -164,7 +201,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'configuracion':
         return DeferredWidget(
           loader: configuracion.loadLibrary,
-          builder: () => configuracion.ConfiguracionScreen(usuario: widget.usuario),
+          builder: () =>
+              configuracion.ConfiguracionScreen(usuario: widget.usuario),
         );
       default:
         return const SizedBox.shrink();
@@ -211,6 +249,26 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    // Módulo contenedor (ej. "Ventas") al que pertenece la vista elegida: sus
+    // subvistas van en una segunda columna junto al menú.
+    final grupoActivo = items
+        .where(
+          (i) =>
+              i.esGrupo &&
+              i.hijos.any(
+                (h) =>
+                    h.clave == _seleccionado && h.tieneAcceso(widget.usuario),
+              ),
+        )
+        .firstOrNull;
+    final tituloVista = _titulos[_seleccionado]?.titulo;
+    final contraerAuto = MediaQuery.sizeOf(context).width < _anchoParaContraer;
+    if (_contraidoAutoPrevio != contraerAuto) {
+      _contraidoAutoPrevio = contraerAuto;
+      _colapsadoManual = null;
+    }
+    final colapsado = _colapsadoManual ?? contraerAuto;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Row(
@@ -218,23 +276,32 @@ class _HomeScreenState extends State<HomeScreen> {
           _Sidebar(
             usuario: widget.usuario,
             onLogout: () => _logout(context),
-            colapsado: _colapsado,
+            colapsado: colapsado,
             items: items,
             seleccionado: _seleccionado,
-            gruposAbiertos: _gruposAbiertos,
-            onToggle: () => setState(() => _colapsado = !_colapsado),
+            onToggle: () => setState(() => _colapsadoManual = !colapsado),
             onSeleccionar: (clave) => setState(() => _seleccionado = clave),
-            onAlternarGrupo: (clave) => setState(() {
-              if (!_gruposAbiertos.remove(clave)) _gruposAbiertos.add(clave);
-            }),
           ),
+          if (grupoActivo != null)
+            SubmenuLateral(
+              titulo: grupoActivo.label,
+              entradas: [
+                for (final h in grupoActivo.hijos)
+                  if (h.tieneAcceso(widget.usuario))
+                    SubmenuEntrada.item(h.clave, h.label),
+              ],
+              seleccionada: _seleccionado,
+              onSeleccionar: (clave) => setState(() => _seleccionado = clave),
+            ),
           Expanded(
             child: Column(
               children: [
                 _GlobalHeader(
                   usuario: widget.usuario,
                   barraFija: true,
-                  titulo: _titulos[_seleccionado]?.titulo,
+                  titulo: grupoActivo != null && tituloVista != null
+                      ? '${grupoActivo.label}  ›  $tituloVista'
+                      : tituloVista,
                   descripcion: _titulos[_seleccionado]?.descripcion,
                   onLogout: () => _logout(context),
                 ),
@@ -299,36 +366,6 @@ class _GlobalHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final derecha = Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...[
-            const Icon(LucideIcons.bellDot, size: 22, color: Colors.black87),
-            const SizedBox(width: 20),
-            _MenuUsuario(
-              usuario: usuario,
-              mostrarNombre: !mostrarLogo,
-              mostrarFlecha: true,
-              onLogout: onLogout,
-            ),
-          ],
-        ],
-      ),
-    );
-
     if (barraFija) {
       return Container(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
@@ -374,10 +411,26 @@ class _GlobalHeader extends StatelessWidget {
         ),
       );
     }
-    return Padding(
-      padding: EdgeInsets.fromLTRB(mostrarLogo ? 16 : 24, 12, 16, 12),
+    // Mobile: barra fija de ancho completo, con el logo a la izquierda.
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.header,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
       child: Row(
-        children: [if (mostrarLogo) const _Logo(), const Spacer(), derecha],
+        children: [
+          const _Logo(),
+          const Spacer(),
+          _botonIcono(LucideIcons.bell, 'Notificaciones', () {}),
+          const SizedBox(width: 10),
+          _MenuUsuario(
+            usuario: usuario,
+            mostrarNombre: false,
+            mostrarFlecha: true,
+            onLogout: onLogout,
+          ),
+        ],
       ),
     );
   }
@@ -405,27 +458,13 @@ class _MenuUsuario extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      offset: const Offset(0, 48),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadii.card),
-      ),
-      onSelected: (value) {
+    return MenuFlotante<String>(
+      anchoMinimo: 190,
+      opciones: const [OpcionMenu(valor: 'logout', etiqueta: 'Cerrar sesión')],
+      onSeleccionar: (value) {
         if (value == 'logout') onLogout();
       },
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'logout',
-          child: Row(
-            children: const [
-              Icon(LucideIcons.logOut, size: 18, color: Colors.black87),
-              SizedBox(width: 12),
-              Text('Cerrar sesión'),
-            ],
-          ),
-        ),
-      ],
-      child: Row(
+      disparador: (context, abierto) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
@@ -614,6 +653,8 @@ class _HojaMas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sueltos = items.where((i) => !i.esGrupo).toList();
+    final grupos = items.where((i) => i.esGrupo).toList();
     return Material(
       color: Colors.white,
       borderRadius: const BorderRadius.vertical(
@@ -622,68 +663,101 @@ class _HojaMas extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 28, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Más opciones',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-            for (final item in items) ...[
-              if (item.esGrupo) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                  child: Row(
-                    children: [
-                      Icon(item.icono, size: 18, color: Colors.grey.shade600),
-                      const SizedBox(width: 10),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.4,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 28, 16, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 0, 4, 14),
+                  child: Text(
+                    'Más opciones',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
-                for (final hijo in item.hijos)
-                  _fila(context, hijo, indentado: true),
-              ] else
-                _fila(context, item),
-            ],
-            const SizedBox(height: 12),
-          ],
+                if (sueltos.isNotEmpty) _grilla(context, sueltos),
+                for (final g in grupos) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
+                    child: Text(
+                      g.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
+                  _grilla(context, g.hijos),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _fila(BuildContext context, NavItem item, {bool indentado = false}) {
-    final activo = seleccionado == item.clave;
-    return ListTile(
-      contentPadding: EdgeInsets.only(left: indentado ? 36 : 16, right: 16),
-      leading: Icon(
-        item.icono,
-        size: 22,
-        color: activo ? AppColors.primaryGreen : Colors.black87,
-      ),
-      title: Text(
-        item.label,
-        style: TextStyle(
-          fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-          color: activo ? AppColors.primaryGreen : Colors.black87,
+  // Tarjetas en dos columnas.
+  Widget _grilla(BuildContext context, List<NavItem> lista) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        const espacio = 12.0;
+        final ancho = (c.maxWidth - espacio) / 2;
+        return Wrap(
+          spacing: espacio,
+          runSpacing: espacio,
+          children: [
+            for (final item in lista)
+              SizedBox(width: ancho, child: _tarjeta(context, item)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tarjeta(BuildContext context, NavItem item) {
+    final activo =
+        seleccionado == item.clave ||
+        item.hijos.any((h) => h.clave == seleccionado);
+    final color = activo ? AppColors.primaryGreen : Colors.black87;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.of(context).pop(item.clave),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+        decoration: BoxDecoration(
+          color: activo
+              ? AppColors.primaryGreen.withValues(alpha: 0.08)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: activo ? AppColors.primaryGreen : Colors.grey.shade200,
+            width: activo ? 1.4 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(item.icono, size: 24, color: color),
+            const SizedBox(height: 10),
+            Text(
+              item.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: activo ? FontWeight.w700 : FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
-      onTap: () => Navigator.of(context).pop(item.clave),
     );
   }
 }
@@ -771,12 +845,10 @@ class _Sidebar extends StatelessWidget {
   final bool colapsado;
   final List<NavItem> items;
   final String seleccionado;
-  final Set<String> gruposAbiertos;
   final Usuario usuario;
   final VoidCallback onLogout;
   final VoidCallback onToggle;
   final ValueChanged<String> onSeleccionar;
-  final ValueChanged<String> onAlternarGrupo;
 
   const _Sidebar({
     required this.usuario,
@@ -784,10 +856,8 @@ class _Sidebar extends StatelessWidget {
     required this.colapsado,
     required this.items,
     required this.seleccionado,
-    required this.gruposAbiertos,
     required this.onToggle,
     required this.onSeleccionar,
-    required this.onAlternarGrupo,
   });
 
   static const double _anchoExpandido = 256;
@@ -803,18 +873,7 @@ class _Sidebar extends StatelessWidget {
     for (final item in items) {
       if (item.clave == _claveConfiguracion) continue;
       if (item.esGrupo) {
-        final hijos = _hijosPermitidos(item);
-        tiles.add(_navTile(item, hijos: hijos));
-        if (!colapsado && gruposAbiertos.contains(item.clave)) {
-          for (final hijo in hijos) {
-            tiles.add(
-              KeyedSubtree(
-                key: _claveNav(hijo.clave),
-                child: _navTile(hijo),
-              ),
-            );
-          }
-        }
+        tiles.add(_navTile(item, hijos: _hijosPermitidos(item)));
       } else {
         tiles.add(_navTile(item));
       }
@@ -850,14 +909,9 @@ class _Sidebar extends StatelessWidget {
               _cabecera(),
               const Divider(height: 1, color: Colors.white12),
               Expanded(
-                child: _ListaNav(
-                  gruposAbiertos: Set.of(gruposAbiertos),
-                  ultimoHijoPorGrupo: {
-                    for (final i in items)
-                      if (i.esGrupo && _hijosPermitidos(i).isNotEmpty)
-                        i.clave: _hijosPermitidos(i).last.clave,
-                  },
-                  children: _construirTiles(),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(children: _construirTiles()),
                 ),
               ),
               _seccionCuenta(),
@@ -1062,8 +1116,6 @@ class _Sidebar extends StatelessWidget {
     required String etiqueta,
     required bool activo,
     required VoidCallback onTap,
-    bool esGrupo = false,
-    bool abierto = false,
   }) {
     final color = activo ? AppColors.primaryGreen : Colors.white70;
     return Padding(
@@ -1087,21 +1139,6 @@ class _Sidebar extends StatelessWidget {
                   ? Center(child: Icon(icono, size: 24, color: color))
                   : Row(
                       children: [
-                        SizedBox(
-                          width: 18,
-                          child: esGrupo
-                              ? AnimatedRotation(
-                                  turns: abierto ? 0.25 : 0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: Icon(
-                                    LucideIcons.chevronRight,
-                                    size: 16,
-                                    color: color,
-                                  ),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 10),
                         Icon(icono, size: 24, color: color),
                         const SizedBox(width: 12),
                         Expanded(
@@ -1136,74 +1173,16 @@ class _Sidebar extends StatelessWidget {
       icono: item.icono,
       etiqueta: item.label,
       activo: activo,
-      esGrupo: esGrupo,
-      abierto: esGrupo && gruposAbiertos.contains(item.clave),
       onTap: () {
         if (!esGrupo) {
           onSeleccionar(item.clave);
-        } else if (colapsado) {
-          // Colapsado: el ícono del grupo lleva directo a su primer hijo.
-          if (hijos.isNotEmpty) onSeleccionar(hijos.first.clave);
-        } else {
-          onAlternarGrupo(item.clave);
+        } else if (hijos.isNotEmpty) {
+          // Un módulo con subvistas abre la primera; las demás salen en la
+          // segunda columna.
+          final yaDentro = hijos.any((h) => h.clave == seleccionado);
+          if (!yaDentro) onSeleccionar(hijos.first.clave);
         }
       },
-    );
-  }
-}
-
-// Claves globales de los submódulos, para poder desplazar la lista hasta ellos.
-final _clavesNav = <String, GlobalKey>{};
-GlobalKey _claveNav(String clave) =>
-    _clavesNav.putIfAbsent(clave, () => GlobalKey(debugLabel: 'nav-$clave'));
-
-// Lista de módulos del menú. Al expandir un módulo contenedor se desplaza sola
-// lo justo para que se vean sus submódulos y el usuario note que se abrió.
-class _ListaNav extends StatefulWidget {
-  final List<Widget> children;
-  final Set<String> gruposAbiertos;
-  // Clave del último submódulo de cada módulo contenedor.
-  final Map<String, String> ultimoHijoPorGrupo;
-
-  const _ListaNav({
-    required this.children,
-    required this.gruposAbiertos,
-    required this.ultimoHijoPorGrupo,
-  });
-
-  @override
-  State<_ListaNav> createState() => _ListaNavState();
-}
-
-class _ListaNavState extends State<_ListaNav> {
-  @override
-  void didUpdateWidget(covariant _ListaNav old) {
-    super.didUpdateWidget(old);
-    final nuevos = widget.gruposAbiertos.difference(old.gruposAbiertos);
-    if (nuevos.isEmpty) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final grupo in nuevos) {
-        final ultimo = widget.ultimoHijoPorGrupo[grupo];
-        final contexto = ultimo == null
-            ? null
-            : _claveNav(ultimo).currentContext;
-        if (contexto != null && contexto.mounted) {
-          Scrollable.ensureVisible(
-            contexto,
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeInOut,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          );
-        }
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Column(children: widget.children),
     );
   }
 }

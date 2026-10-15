@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../config/app_config.dart';
+import '../data/disponibilidad_store.dart';
 import '../data/incidencias_store.dart';
 import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
@@ -12,16 +14,22 @@ import '../models/incidencia.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
+import '../services/api_client.dart';
+import '../services/disponibilidad_service.dart';
+import '../services/pedido_mozo_service.dart';
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/uuid_helper.dart';
+import 'anulacion_dialog.dart';
 import 'app_toast.dart';
+import 'cambiar_entrega_dialog.dart';
+import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
 import 'agregar_producto_dialog.dart';
 import 'app_tag.dart';
 import 'descuento_dialog.dart';
-import 'editar_pedido_dialog.dart';
 import 'boletas_pagadores_dialog.dart';
+import 'menu_flotante.dart';
 import 'pago_compartido_dialog.dart';
 import 'pago_dialogs.dart';
 import 'plato_del_dia_picker.dart';
@@ -30,16 +38,17 @@ import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'reportar_problema_dialog.dart';
 import 'tupper_dialog.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 const _naranjaPago = Color(0xFFF07F13);
 const _prefijoDescuento = 'Descuento: ';
 
-String tituloPedido(Pedido p) {
-  if (p.tipoPedido == 'delivery') return 'Delivery';
-  return 'Mesa ${p.todasLasMesas.join(' + ')}';
-}
+String tituloPedido(Pedido p) => p.ubicacion;
 
 String nombreMeseroDe(Pedido p) {
+  final nombre = p.mozoNombre;
+  if (nombre != null && nombre.isNotEmpty) return nombre;
   for (final u in usuarios) {
     if (u.id == p.usuarioId) return u.nombre;
   }
@@ -49,29 +58,51 @@ String nombreMeseroDe(Pedido p) {
 // Color por `pedidos.estado`.
 ({Color color, String texto}) paletaEstadoPedido(String estado) {
   switch (estado.toLowerCase()) {
-    case 'preparando':
-      return (color: const Color(0xFFEF6C00), texto: 'Preparando');
-    case 'listo':
-      return (color: AppColors.primaryGreen, texto: 'Listo');
     case 'servido':
       return (color: const Color(0xFF0284C7), texto: 'Servido');
-    case 'en_camino':
-      return (color: const Color(0xFF8B5CF6), texto: 'En camino');
-    case 'entregado':
-      return (color: AppColors.primaryGreenDark, texto: 'Entregado');
-    case 'en_cuenta':
-      return (color: const Color(0xFFD97706), texto: 'En cuenta');
     case 'pagado':
       return (color: const Color(0xFF16A34A), texto: 'Pagado');
     case 'devuelto':
       return (color: const Color(0xFFDC2626), texto: 'Devuelto');
     case 'anulado':
-    case 'cancelado':
       return (color: const Color(0xFF6B7280), texto: 'Anulado');
     case 'pendiente':
     case 'pedido':
     default:
       return (color: const Color(0xFFCA8A04), texto: 'Pendiente');
+  }
+}
+
+// Etiqueta que identifica un pedido para el personal (empleado).
+class TagEmpleado extends StatelessWidget {
+  const TagEmpleado({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFF7C3AED);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.users, size: 11, color: color),
+          SizedBox(width: 4),
+          Text(
+            'Empleado',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -82,20 +113,18 @@ class BadgeEstadoPedido extends StatelessWidget {
 
   const BadgeEstadoPedido(this.estado, {super.key, this.onCambiarEstado});
 
-  @override
-  Widget build(BuildContext context) {
-    final p = paletaEstadoPedido(estado);
-    final badgeWidget = Container(
+  Widget _pastilla(Color color, String texto, {bool abierto = false}) {
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: p.color,
+        color: color,
         borderRadius: BorderRadius.circular(100),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            p.texto,
+            texto,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 10,
@@ -104,27 +133,49 @@ class BadgeEstadoPedido extends StatelessWidget {
           ),
           if (onCambiarEstado != null) ...[
             const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down, size: 14, color: Colors.white70),
+            AnimatedRotation(
+              duration: const Duration(milliseconds: 200),
+              turns: abierto ? 0.5 : 0,
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                size: 14,
+                color: Colors.white70,
+              ),
+            ),
           ],
         ],
       ),
     );
+  }
 
-    if (onCambiarEstado == null) return badgeWidget;
+  @override
+  Widget build(BuildContext context) {
+    final p = paletaEstadoPedido(estado);
+    if (onCambiarEstado == null) return _pastilla(p.color, p.texto);
 
-    return PopupMenuButton<String>(
+    // Mismo menú que los selectores de la app; cada estado conserva su color.
+    final pendiente = paletaEstadoPedido('pendiente');
+    final servido = paletaEstadoPedido('servido');
+    final anulado = paletaEstadoPedido('anulado');
+    return MenuFlotante<String>(
       tooltip: 'Cambiar estado del pedido',
-      onSelected: onCambiarEstado,
-      itemBuilder: (_) => const [
-        PopupMenuItem(value: 'pendiente', child: Text('Pendiente')),
-        PopupMenuItem(value: 'servido', child: Text('Servido')),
-        PopupMenuItem(value: 'en_camino', child: Text('En camino')),
-        PopupMenuItem(value: 'entregado', child: Text('Entregado')),
-        PopupMenuItem(value: 'en_cuenta', child: Text('En cuenta')),
-        PopupMenuItem(value: 'devuelto', child: Text('Devuelto')),
-        PopupMenuItem(value: 'anulado', child: Text('Anulado')),
+      seleccionada: estado == 'pedido' ? 'pendiente' : estado,
+      onSeleccionar: onCambiarEstado!,
+      opciones: [
+        OpcionMenu(
+          valor: 'pendiente',
+          etiqueta: 'Pendiente',
+          color: pendiente.color,
+        ),
+        OpcionMenu(valor: 'servido', etiqueta: 'Servido', color: servido.color),
+        OpcionMenu(
+          valor: 'anulado',
+          etiqueta: 'Anular pedido',
+          color: anulado.color,
+        ),
       ],
-      child: badgeWidget,
+      disparador: (context, abierto) =>
+          _pastilla(p.color, p.texto, abierto: abierto),
     );
   }
 }
@@ -167,6 +218,54 @@ class DetallePedidoPanel extends StatelessWidget {
     return partes.join(' · ');
   }
 
+  // ---------- servidor ----------
+
+  // Pedidos manejados por la API del mozo.
+  bool get _api =>
+      AppConfig.usarApiPedidosMozo &&
+      PedidoMozoService.instance.activo &&
+      UuidHelper.isValid(pedido.id);
+
+  // Con la API del mozo, solo el mozo que tomó el pedido puede modificarlo.
+  bool _puedeModificar(BuildContext context) {
+    if (!_api || PedidoMozoService.instance.puedeOperar(pedido)) return true;
+    showAppToast(
+      context,
+      'Solo el mozo que tomó este pedido puede modificarlo.',
+      type: ToastType.info,
+    );
+    return false;
+  }
+
+  String _textoError(Object e) => e is ApiException
+      ? e.message
+      : e.toString().replaceFirst('Exception: ', '');
+
+  // Ejecuta una operación del servidor y refresca la pantalla; los errores se
+  // muestran como aviso. Devuelve true si salió bien.
+  Future<bool> _ejecutar(
+    BuildContext context,
+    Future<void> Function() operacion,
+  ) async {
+    try {
+      await operacion();
+      // Lo pedido o anulado cambia las porciones que quedan hoy.
+      DisponibilidadService.instance.cargarHoy();
+      onCambio();
+      return true;
+    } on PedidoCambioException catch (e) {
+      onCambio();
+      if (context.mounted) {
+        showAppToast(context, e.mensaje, type: ToastType.info);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showAppToast(context, _textoError(e), type: ToastType.error);
+      }
+    }
+    return false;
+  }
+
   // ---------- acciones ----------
 
   void _imprimir(BuildContext context) {
@@ -179,11 +278,34 @@ class DetallePedidoPanel extends StatelessWidget {
         titulo: tituloPedido(pedido),
         metodoPago: _metodoPago(),
         onImprimir: () {
-          showAppToast(
-            dialogContext,
-            'Pedido #${pedido.numeroPedido} enviado a imprimir.',
-            type: ToastType.success,
-          );
+          if (_api && PedidoMozoService.instance.puedeOperar(pedido)) {
+            PedidoMozoService.instance
+                .reimprimir(pedido.id)
+                .then((_) {
+                  if (context.mounted) {
+                    showAppToast(
+                      context,
+                      'Pedido #${pedido.numeroPedido} enviado a imprimir.',
+                      type: ToastType.success,
+                    );
+                  }
+                })
+                .catchError((Object e) {
+                  if (context.mounted) {
+                    showAppToast(
+                      context,
+                      'No se pudo imprimir: ${_textoError(e)}',
+                      type: ToastType.error,
+                    );
+                  }
+                });
+          } else {
+            showAppToast(
+              dialogContext,
+              'Pedido #${pedido.numeroPedido} enviado a imprimir.',
+              type: ToastType.success,
+            );
+          }
           Navigator.of(dialogContext).pop();
         },
         onCerrar: () => Navigator.of(dialogContext).pop(),
@@ -207,10 +329,41 @@ class DetallePedidoPanel extends StatelessWidget {
       ),
     );
     if (resultado == null || !context.mounted) return;
+    var reporte = resultado;
+    // La foto se sube al servidor y la incidencia guarda su dirección.
+    if (resultado.foto != null && PedidoMozoService.instance.activo) {
+      try {
+        final url = await PedidoMozoService.instance.subirEvidencia(
+          resultado.foto!,
+          resultado.nombreFoto ?? 'evidencia.jpg',
+        );
+        reporte = (
+          categoria: resultado.categoria,
+          detalle: resultado.detalle,
+          evidencia: url,
+          foto: resultado.foto,
+          nombreFoto: resultado.nombreFoto,
+          resolucion: resultado.resolucion,
+          reemplazoNombre: resultado.reemplazoNombre,
+          reemplazoPrecio: resultado.reemplazoPrecio,
+          reemplazoCartaId: resultado.reemplazoCartaId,
+          medioReembolsoId: resultado.medioReembolsoId,
+        );
+      } catch (_) {
+        if (context.mounted) {
+          showAppToast(
+            context,
+            'No se pudo subir la foto; la devolución se registra sin ella.',
+            type: ToastType.info,
+          );
+        }
+      }
+    }
+    if (!context.mounted) return;
     final efecto = registrarIncidencia(
       pedido: pedido,
       linea: linea,
-      reporte: resultado,
+      reporte: reporte,
     );
     showAppToast(
       context,
@@ -251,10 +404,47 @@ class DetallePedidoPanel extends StatelessWidget {
     if (pagado == true) onCambio();
   }
 
-  Future<void> _cancelar(BuildContext context) async {
-    final confirmar = await showDialog<bool>(
+  Future<void> _anularPedidoApi(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
+    final r = await showBlurDialog<ResultadoAnulacion>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (_) => AnulacionDialog(
+        titulo: 'Anular pedido #${pedido.numeroPedido}',
+        detalle:
+            '${tituloPedido(pedido)}. Se liberará la mesa y desaparecerá de '
+            'la cola y de cocina.',
+      ),
+    );
+    if (r == null || !context.mounted) return;
+    final ok = await _ejecutar(context, () async {
+      String? url;
+      if (r.foto != null) {
+        url = await PedidoMozoService.instance.subirEvidencia(
+          r.foto!,
+          r.nombreFoto ?? 'evidencia.jpg',
+        );
+      }
+      await PedidoMozoService.instance.anularPedido(
+        pedido.id,
+        motivo: r.motivo,
+        urlEvidencia: url,
+      );
+    });
+    if (ok && context.mounted) {
+      showAppToast(
+        context,
+        'El pedido #${pedido.numeroPedido} se anuló.',
+        type: ToastType.info,
+        titulo: 'Pedido anulado',
+      );
+    }
+  }
+
+  Future<void> _cancelar(BuildContext context) async {
+    if (_api) return _anularPedidoApi(context);
+    final confirmar = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
         title: Text('Cancelar pedido #${pedido.numeroPedido}'),
         content: Text(
           '¿Seguro que deseas cancelar este pedido de ${tituloPedido(pedido)}? '
@@ -274,14 +464,16 @@ class DetallePedidoPanel extends StatelessWidget {
       ),
     );
     if (confirmar != true || !context.mounted) return;
-    actualizarEstadoPedido(pedido.id, 'cancelado');
+    actualizarEstadoPedido(pedido.id, 'anulado');
     for (final n in pedido.todasLasMesas) {
       if (n == 0) continue;
       actualizarEstadoMesa(n, 'disponible');
       separarMesas(n);
     }
     if (UuidHelper.isValid(pedido.id)) {
-      PedidoService.instance.cambiarEstadoPedido(pedido.id, 'anulado').catchError((_) {});
+      PedidoService.instance
+          .cambiarEstadoPedido(pedido.id, 'anulado')
+          .catchError((_) {});
     }
     onCambio();
     showAppToast(
@@ -303,8 +495,69 @@ class DetallePedidoPanel extends StatelessWidget {
     return true;
   }
 
+  Future<void> _quitarLineaApi(BuildContext context, PedidoLine l) async {
+    if (!_puedeModificar(context)) return;
+    final servicio = PedidoMozoService.instance;
+    if (!esLineaDeProducto(l)) {
+      // Descuento del servidor.
+      await _ejecutar(context, () => servicio.quitarDescuento(pedido.id, l.id));
+      return;
+    }
+    final productos = (detallesPorPedido[pedido.id] ?? []).where(
+      esLineaDeProducto,
+    );
+    if (productos.length <= 1 && l.cantidad <= 1) {
+      showAppToast(
+        context,
+        'El pedido necesita al menos un producto. Para anularlo, anula el pedido.',
+        type: ToastType.error,
+      );
+      return;
+    }
+    final r = await showBlurDialog<ResultadoAnulacion>(
+      context: context,
+      builder: (_) => AnulacionDialog(
+        titulo: 'Anular "${l.nombrePlato}"',
+        detalle: 'Cantidad en el pedido: ${l.cantidad}.',
+        maxCantidad: l.cantidad,
+      ),
+    );
+    if (r == null || !context.mounted) return;
+    final ok = await _ejecutar(context, () async {
+      String? url;
+      if (r.foto != null) {
+        url = await servicio.subirEvidencia(
+          r.foto!,
+          r.nombreFoto ?? 'evidencia.jpg',
+        );
+      }
+      await servicio.anularFila(
+        pedido.id,
+        l,
+        cantidad: r.cantidad,
+        motivo: r.motivo,
+        urlEvidencia: url,
+      );
+    });
+    if (ok && context.mounted) {
+      showAppToast(
+        context,
+        '"${l.nombrePlato}" se anuló del pedido.',
+        type: ToastType.info,
+      );
+    }
+  }
+
   void _quitarLinea(BuildContext context, PedidoLine l) {
     if (_bloqueadaPorPago(context, l)) return;
+    final esDescuentoServidor =
+        l.cartaId == cartaIdAjuste &&
+        l.nombrePlato.startsWith(_prefijoDescuento) &&
+        UuidHelper.isValid(l.id);
+    if (_api && (esLineaDeProducto(l) || esDescuentoServidor)) {
+      _quitarLineaApi(context, l);
+      return;
+    }
     if (esLineaDeProducto(l)) {
       final productos = (detallesPorPedido[pedido.id] ?? []).where(
         esLineaDeProducto,
@@ -327,8 +580,37 @@ class DetallePedidoPanel extends StatelessWidget {
     );
   }
 
+  // Porciones que todavía se pueden sumar a esta línea hoy (null = sin tope).
+  // Lo que ya está en el pedido ya se descontó de "Abrir el día".
+  int? _topeDeLinea(PedidoLine l) => topeDeUnidades(
+    l.cartaId,
+    presentacionId: l.presentacion?.id,
+    varianteId: l.variante?.id,
+  );
+
   void _cambiarCantidad(BuildContext context, PedidoLine l, int delta) {
     if (_bloqueadaPorPago(context, l)) return;
+    final tope = _topeDeLinea(l);
+    if (delta > 0 && tope != null && delta > tope) {
+      showAppToast(
+        context,
+        tope == 0
+            ? '"${l.nombrePlato}" ya no tiene porciones disponibles hoy.'
+            : 'Solo quedan $tope de "${l.nombrePlato}".',
+        type: ToastType.error,
+      );
+      return;
+    }
+    if (_api) {
+      if (!_puedeModificar(context)) return;
+      final nueva = l.cantidad + delta;
+      if (nueva < 1) return;
+      _ejecutar(
+        context,
+        () => PedidoMozoService.instance.cambiarCantidad(pedido.id, l, nueva),
+      );
+      return;
+    }
     cambiarCantidadLineaDePedido(pedido.id, l.id, delta);
     onCambio();
   }
@@ -340,11 +622,67 @@ class DetallePedidoPanel extends StatelessWidget {
           _NotaDialog(nombrePlato: l.nombrePlato, inicial: l.comentario),
     );
     if (nota == null) return;
+    if (_api) {
+      if (!context.mounted || !_puedeModificar(context)) return;
+      await _ejecutar(
+        context,
+        () => PedidoMozoService.instance.comentarioFila(
+          pedido.id,
+          l,
+          nota.isEmpty ? null : nota,
+        ),
+      );
+      return;
+    }
     actualizarNotaLinea(pedido.id, l.id, nota.isEmpty ? null : nota);
     onCambio();
   }
 
+  // Descuento del pedido por el servidor; si el usuario no tiene permiso para
+  // otorgarlo, pide el PIN de un supervisor.
+  Future<void> _descuentoApi(
+    BuildContext context,
+    DescuentoConfigurado r,
+    List<PedidoLine> lineas,
+  ) async {
+    if (!_puedeModificar(context)) return;
+    final servicio = PedidoMozoService.instance;
+    if (r.quitar) {
+      final nombre = '$_prefijoDescuento${r.nombre}';
+      final l = lineas
+          .where(
+            (x) =>
+                x.cartaId == cartaIdAjuste &&
+                x.nombrePlato == nombre &&
+                UuidHelper.isValid(x.id),
+          )
+          .firstOrNull;
+      if (l == null) return;
+      await _ejecutar(context, () => servicio.quitarDescuento(pedido.id, l.id));
+      return;
+    }
+    Future<void> aplicar(String? autorizoId) => servicio.aplicarDescuento(
+      pedido.id,
+      motivo: r.nombre,
+      porcentaje: r.esPorcentaje,
+      valor: r.monto,
+      autorizoId: autorizoId,
+    );
+    await _ejecutar(context, () async {
+      try {
+        await aplicar(null);
+      } on ApiException catch (e) {
+        if (e.statusCode != 403) rethrow;
+        if (!context.mounted) return;
+        final autorizo = await pedirAutorizacionSupervisor(context);
+        if (autorizo == null) return;
+        await aplicar(autorizo);
+      }
+    });
+  }
+
   Future<void> _agregarAjuste(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
     final lineas = detallesPorPedido[pedido.id] ?? [];
     final base = lineas
         .where(esLineaDeProducto)
@@ -360,6 +698,7 @@ class DetallePedidoPanel extends StatelessWidget {
       builder: (_) => DescuentoDialog(base: base, aplicados: aplicados),
     );
     if (r == null || !context.mounted) return;
+    if (_api) return _descuentoApi(context, r, lineas);
     final nombre = '$_prefijoDescuento${r.nombre}';
     if (r.quitar) {
       lineas.removeWhere(
@@ -381,24 +720,8 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  Future<void> _editar(BuildContext context) async {
-    final guardado = await showBlurDialog<bool>(
-      context: context,
-      builder: (_) => EditarPedidoDialog(pedido: pedido),
-    );
-    if (guardado != true) return;
-    onCambio();
-    if (context.mounted) {
-      showAppToast(
-        context,
-        'Los datos del pedido #${pedido.numeroPedido} se actualizaron.',
-        type: ToastType.success,
-        titulo: 'Pedido editado',
-      );
-    }
-  }
-
   Future<void> _agregarProducto(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
     final agregado = await showBlurDialog<bool>(
       context: context,
       builder: (_) => AgregarProductoDialog(pedido: pedido, esAdmin: esAdmin),
@@ -473,12 +796,21 @@ class DetallePedidoPanel extends StatelessWidget {
   // Tag naranja: agrega al pedido el plato del día registrado en Productos.
   // Agrega una promoción tal como la configuró el admin al pedido.
   Future<void> _agregarPromocion(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
     final r = await elegirPromocion(context);
     if (r == null || !context.mounted) return;
     final linea = lineaDePromocion(r);
-    agregarLineaAPedido(pedido.id, linea);
-    registrarConsumoAutomaticoDeLinea(linea);
-    onCambio();
+    if (_api) {
+      final ok = await _ejecutar(
+        context,
+        () => PedidoMozoService.instance.agregarProducto(pedido.id, linea),
+      );
+      if (!ok) return;
+    } else {
+      agregarLineaAPedido(pedido.id, linea);
+      registrarConsumoAutomaticoDeLinea(linea);
+      onCambio();
+    }
     if (context.mounted) {
       showAppToast(
         context,
@@ -497,6 +829,17 @@ class DetallePedidoPanel extends StatelessWidget {
   ) async {
     final promo = l.promocion;
     if (promo == null || _bloqueadaPorPago(context, l)) return;
+    if (_api) {
+      // El servidor no permite cambiar los productos de una promoción ya
+      // pedida: se anula y se vuelve a agregar.
+      showAppToast(
+        context,
+        'Para cambiar los productos de una promoción, anula esa línea y '
+        'agrégala de nuevo.',
+        type: ToastType.info,
+      );
+      return;
+    }
     final r = await showBlurDialog<PromocionConfigurada>(
       context: context,
       builder: (_) => PromocionOpcionesDialog(
@@ -513,6 +856,7 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   Future<void> _platoDelDia(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
     final item = await elegirPlatoDelDia(context);
     if (item == null || !context.mounted) return;
     final r = await showBlurDialog<ProductoConfigurado>(
@@ -537,10 +881,23 @@ class DetallePedidoPanel extends StatelessWidget {
       precioUnitario: r.precioUnitario,
       descuentoAplicado: 0,
       precioTotalLinea: r.precioUnitario * r.cantidad,
+      tipoEntrega: r.tipoEntrega,
+      aplicaTaper: r.llevaTaper,
+      taperId: r.taperId,
+      precioTaper: r.precioTaper,
     );
-    agregarLineaAPedido(pedido.id, linea);
-    registrarConsumoAutomaticoDeLinea(linea);
-    onCambio();
+    if (_api) {
+      if (!context.mounted) return;
+      final ok = await _ejecutar(
+        context,
+        () => PedidoMozoService.instance.agregarProducto(pedido.id, linea),
+      );
+      if (!ok) return;
+    } else {
+      agregarLineaAPedido(pedido.id, linea);
+      registrarConsumoAutomaticoDeLinea(linea);
+      onCambio();
+    }
     if (context.mounted) {
       showAppToast(
         context,
@@ -549,6 +906,54 @@ class DetallePedidoPanel extends StatelessWidget {
         titulo: 'Plato del día',
       );
     }
+  }
+
+  Future<void> _cambiarEntrega(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
+    final c = await showBlurDialog<CambioEntrega>(
+      context: context,
+      builder: (_) => CambiarEntregaDialog(pedido: pedido),
+    );
+    if (c == null || !context.mounted) return;
+    final s = PedidoMozoService.instance;
+    final eraMesa = pedido.tipoPedido == 'mesa' && pedido.mesaNumero > 0;
+    final ok = await _ejecutar(context, () {
+      if (c.tipo == 'mesa' && eraMesa) {
+        return s.cambiarMesa(pedido.id, c.mesaId!);
+      }
+      return s.tipoEntregaPedido(
+        pedido.id,
+        c.tipo,
+        nuevaMesaId: c.mesaId,
+        aplicaTaper: c.aplicaTaper,
+        delivery: c.delivery,
+      );
+    });
+    if (ok && context.mounted) {
+      showAppToast(
+        context,
+        'El pedido #${pedido.numeroPedido} se actualizó.',
+        type: ToastType.success,
+      );
+    }
+  }
+
+  // 'mesa', 'llevar' o 'llevar_taper' (para llevar cobrando táper).
+  Future<void> _cambiarEntregaFila(
+    BuildContext context,
+    PedidoLine l,
+    String opcion,
+  ) async {
+    if (!_puedeModificar(context)) return;
+    await _ejecutar(
+      context,
+      () => PedidoMozoService.instance.tipoEntregaFila(
+        pedido.id,
+        l,
+        opcion == 'mesa' ? 'mesa' : 'llevar',
+        aplicaTaper: opcion == 'llevar_taper',
+      ),
+    );
   }
 
   // ---------- UI ----------
@@ -769,12 +1174,23 @@ class DetallePedidoPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Pedido #${pedido.numeroPedido}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'Pedido #${pedido.numeroPedido}',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (esPedidoDeEmpleado(pedido)) ...[
+                      const SizedBox(width: 6),
+                      const TagEmpleado(),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -797,31 +1213,43 @@ class DetallePedidoPanel extends StatelessWidget {
           BadgeEstadoPedido(
             pedido.estado,
             onCambiarEstado: (nuevo) async {
-              await PedidoService.instance.cambiarEstadoPedido(pedido.id, nuevo);
-              onCambio();
+              if (!_puedeModificar(context)) return;
+              if (_api && nuevo == 'anulado') {
+                await _cancelar(context);
+                return;
+              }
+              await _ejecutar(
+                context,
+                () => PedidoService.instance.cambiarEstadoPedido(
+                  pedido.id,
+                  nuevo,
+                ),
+              );
             },
           ),
-          const SizedBox(width: 6),
-          Tooltip(
-            message: 'Editar pedido',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () => _editar(context),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.grey.shade100,
-                ),
-                child: Icon(
-                  LucideIcons.pencil,
-                  size: 13,
-                  color: Colors.grey.shade700,
+          if (_api) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'Cambiar mesa o entrega',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _cambiarEntrega(context),
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.grey.shade100,
+                  ),
+                  child: Icon(
+                    LucideIcons.arrowLeftRight,
+                    size: 13,
+                    color: Colors.grey.shade700,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
           const SizedBox(width: 6),
           _botonCirculoRojo(
             tooltip: 'Cancelar pedido',
@@ -896,6 +1324,18 @@ class DetallePedidoPanel extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   onChanged: (_) {
+                    if (_api) {
+                      if (!_puedeModificar(context)) return;
+                      _ejecutar(
+                        context,
+                        () => PedidoMozoService.instance.marcarServido(
+                          pedido.id,
+                          l,
+                          !entregado,
+                        ),
+                      );
+                      return;
+                    }
                     alternarLineaEntregada(l.id);
                     onCambio();
                   },
@@ -996,7 +1436,9 @@ class DetallePedidoPanel extends StatelessWidget {
                       ),
                     ),
                   if (l.componentes.any(
-                    (e) => opcionesDe(e.componenteId, soloActivas: true).length > 1,
+                    (e) =>
+                        opcionesDe(e.componenteId, soloActivas: true).length >
+                        1,
                   ))
                     Align(
                       alignment: Alignment.centerLeft,
@@ -1091,6 +1533,10 @@ class DetallePedidoPanel extends StatelessWidget {
                       children: [
                         _stepper(context, l),
                         const Spacer(),
+                        if (_api && !esLineaTaper(l)) ...[
+                          _botonEntregaFila(context, l),
+                          const SizedBox(width: 6),
+                        ],
                         _botonNota(context, l),
                       ],
                     ),
@@ -1141,8 +1587,46 @@ class DetallePedidoPanel extends StatelessWidget {
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
           ),
         ),
-        boton(Icons.add, () => _cambiarCantidad(context, l, 1)),
+        boton(
+          Icons.add,
+          (_topeDeLinea(l) ?? 1) > 0
+              ? () => _cambiarCantidad(context, l, 1)
+              : null,
+        ),
       ],
+    );
+  }
+
+  // Entrega del producto: en mesa o para llevar (con o sin cobro de táper).
+  Widget _botonEntregaFila(BuildContext context, PedidoLine l) {
+    final llevar = l.tipoEntrega == 'llevar' || l.tipoEntrega == 'delivery';
+    return MenuFlotante<String>(
+      tooltip: llevar ? 'Para llevar' : 'En mesa',
+      seleccionada: !llevar
+          ? 'mesa'
+          : (l.aplicaTaper ? 'llevar_taper' : 'llevar'),
+      opciones: const [
+        OpcionMenu(valor: 'mesa', etiqueta: 'En mesa'),
+        OpcionMenu(valor: 'llevar', etiqueta: 'Para llevar'),
+        OpcionMenu(
+          valor: 'llevar_taper',
+          etiqueta: 'Para llevar (cobrar táper)',
+        ),
+      ],
+      anchoMinimo: 220,
+      onSeleccionar: (v) => _cambiarEntregaFila(context, l, v),
+      disparador: (context, abierto) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          llevar ? LucideIcons.package : LucideIcons.utensils,
+          size: 13,
+          color: Colors.grey.shade700,
+        ),
+      ),
     );
   }
 
@@ -1283,35 +1767,21 @@ class DetallePedidoPanel extends StatelessWidget {
         if (pedido.estado == 'pendiente' || pedido.estado == 'pedido') ...[
           const SizedBox(height: 10),
           FilledButton.icon(
-            onPressed: () async {
-              await PedidoService.instance.cambiarEstadoPedido(pedido.id, 'servido');
-              onCambio();
+            onPressed: () {
+              if (!_puedeModificar(context)) return;
+              _ejecutar(
+                context,
+                () => PedidoService.instance.cambiarEstadoPedido(
+                  pedido.id,
+                  'servido',
+                ),
+              );
             },
             icon: const Icon(LucideIcons.utensilsCrossed, size: 16),
             label: const Text('Marcar como Servido', style: texto),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
-          ),
-        ] else if (pedido.tipoPedido == 'delivery' && pedido.estado == 'servido') ...[
-          const SizedBox(height: 10),
-          FilledButton.icon(
-            onPressed: () async {
-              await PedidoService.instance.cambiarEstadoPedido(pedido.id, 'en_camino');
-              onCambio();
-            },
-            icon: const Icon(LucideIcons.bike, size: 16),
-            label: const Text('Marcar En camino', style: texto),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
-          ),
-        ] else if (pedido.tipoPedido == 'delivery' && pedido.estado == 'en_camino') ...[
-          const SizedBox(height: 10),
-          FilledButton.icon(
-            onPressed: () async {
-              await PedidoService.instance.cambiarEstadoPedido(pedido.id, 'entregado');
-              onCambio();
-            },
-            icon: const Icon(LucideIcons.checkCircle2, size: 16),
-            label: const Text('Marcar Entregado', style: texto),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreenDark),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0284C7),
+            ),
           ),
         ],
         const SizedBox(height: 12),
@@ -1426,14 +1896,13 @@ class _NotaDialogState extends State<_NotaDialog> {
                       ],
                     ),
                   ),
-                  IconButton(
+                  BotonCerrarCircular(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              TextField(
+              const SeparadorDialogo(),
+              CampoTexto(
                 controller: _controller,
                 autofocus: true,
                 maxLines: 3,
@@ -1503,13 +1972,12 @@ class _ElegirLineaDialog extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
+                  BotonCerrarCircular(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SeparadorDialogo(),
               Flexible(
                 child: ListView(
                   shrinkWrap: true,

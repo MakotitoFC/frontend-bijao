@@ -6,6 +6,8 @@ import '../theme/app_theme.dart';
 import 'app_select.dart';
 
 import '../services/catalog_service.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
 
 typedef MesaFormResultado = ({
   int numero,
@@ -128,14 +130,11 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
+                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
                   ],
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
+              const SeparadorDialogo(),
+CampoTexto(
                   controller: _numeroController,
                   autofocus: !_editando,
                   enabled: !_editando,

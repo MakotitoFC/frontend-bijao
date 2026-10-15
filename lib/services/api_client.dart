@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,11 +12,7 @@ class ApiException implements Exception {
   final String message;
   final dynamic details;
 
-  ApiException({
-    required this.statusCode,
-    required this.message,
-    this.details,
-  });
+  ApiException({required this.statusCode, required this.message, this.details});
 
   @override
   String toString() => message;
@@ -46,6 +43,7 @@ class ApiClient {
 
   String get baseUrl => _baseUrl;
   bool get hasToken => _jwtToken != null && _jwtToken!.isNotEmpty;
+  String? get accessToken => _jwtToken;
   String? get refreshToken => _refreshToken;
 
   /// Inicializa la URL del servidor y recupera tokens guardados
@@ -134,17 +132,21 @@ class ApiClient {
     _isRefreshing = true;
     try {
       final uri = _buildUri('/api/auth/refresh');
-      final resp = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh_token': _refreshToken}),
-      ).timeout(const Duration(seconds: 8));
+      final resp = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': _refreshToken}),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (resp.statusCode == 200) {
         final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
-        if (decoded is Map<String, dynamic> && decoded['access_token'] != null) {
+        if (decoded is Map<String, dynamic> &&
+            decoded['access_token'] != null) {
           final newAccess = decoded['access_token'].toString();
-          final newRefresh = decoded['refresh_token']?.toString() ?? _refreshToken;
+          final newRefresh =
+              decoded['refresh_token']?.toString() ?? _refreshToken;
           await setToken(newAccess, newRefresh);
           _isRefreshing = false;
           return true;
@@ -180,8 +182,12 @@ class ApiClient {
       message = decoded;
     }
 
-    // Interceptar 401 si no es llamada de login ni refresh
-    if (response.statusCode == 401 && path != '/api/auth/login' && path != '/api/auth/refresh') {
+    // Interceptar 401 si no es llamada de login, refresh ni PIN de supervisor
+    // (un PIN incorrecto responde 401 y no debe cerrar la sesión).
+    if (response.statusCode == 401 &&
+        path != '/api/auth/login' &&
+        path != '/api/auth/refresh' &&
+        path != '/api/auth/validar-pin-supervisor') {
       if (retryCall != null && await _tryRefreshToken()) {
         return retryCall();
       }
@@ -211,7 +217,10 @@ class ApiClient {
       );
     } catch (e) {
       if (e is ApiException) rethrow;
-      throw ApiException(statusCode: 0, message: 'No se pudo conectar al servidor ($baseUrl): $e');
+      throw ApiException(
+        statusCode: 0,
+        message: 'No se pudo conectar al servidor ($baseUrl): $e',
+      );
     }
   }
 
@@ -222,11 +231,13 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path);
-      final resp = await http.post(
-        uri,
-        headers: _headers(),
-        body: body != null ? jsonEncode(body) : null,
-      ).timeout(timeout);
+      final resp = await http
+          .post(
+            uri,
+            headers: _headers(),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(timeout);
       return await _processResponse(
         resp,
         path: path,
@@ -234,7 +245,10 @@ class ApiClient {
       );
     } catch (e) {
       if (e is ApiException) rethrow;
-      throw ApiException(statusCode: 0, message: 'No se pudo conectar al servidor ($baseUrl): $e');
+      throw ApiException(
+        statusCode: 0,
+        message: 'No se pudo conectar al servidor ($baseUrl): $e',
+      );
     }
   }
 
@@ -245,11 +259,13 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path);
-      final resp = await http.put(
-        uri,
-        headers: _headers(),
-        body: body != null ? jsonEncode(body) : null,
-      ).timeout(timeout);
+      final resp = await http
+          .put(
+            uri,
+            headers: _headers(),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(timeout);
       return await _processResponse(
         resp,
         path: path,
@@ -257,7 +273,65 @@ class ApiClient {
       );
     } catch (e) {
       if (e is ApiException) rethrow;
-      throw ApiException(statusCode: 0, message: 'No se pudo conectar al servidor ($baseUrl): $e');
+      throw ApiException(
+        statusCode: 0,
+        message: 'No se pudo conectar al servidor ($baseUrl): $e',
+      );
+    }
+  }
+
+  Future<dynamic> patch(
+    String path, {
+    dynamic body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    try {
+      final uri = _buildUri(path);
+      final resp = await http
+          .patch(
+            uri,
+            headers: _headers(),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(timeout);
+      return await _processResponse(
+        resp,
+        path: path,
+        retryCall: () => patch(path, body: body, timeout: timeout),
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: 'No se pudo conectar al servidor ($baseUrl): $e',
+      );
+    }
+  }
+
+  // Sube un archivo (multipart) en el campo [campo].
+  Future<dynamic> subirArchivo(
+    String path, {
+    required List<int> bytes,
+    required String nombreArchivo,
+    String campo = 'file',
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    try {
+      final peticion = http.MultipartRequest('POST', _buildUri(path));
+      peticion.headers.addAll(_headers()..remove('Content-Type'));
+      peticion.files.add(
+        http.MultipartFile.fromBytes(campo, bytes, filename: nombreArchivo),
+      );
+      final respuesta = await http.Response.fromStream(
+        await peticion.send().timeout(timeout),
+      );
+      return await _processResponse(respuesta, path: path);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: 'No se pudo subir el archivo ($baseUrl): $e',
+      );
     }
   }
 
@@ -275,7 +349,10 @@ class ApiClient {
       );
     } catch (e) {
       if (e is ApiException) rethrow;
-      throw ApiException(statusCode: 0, message: 'No se pudo conectar al servidor ($baseUrl): $e');
+      throw ApiException(
+        statusCode: 0,
+        message: 'No se pudo conectar al servidor ($baseUrl): $e',
+      );
     }
   }
 }

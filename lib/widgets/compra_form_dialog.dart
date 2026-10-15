@@ -4,6 +4,9 @@ import '../data/compras_store.dart';
 import '../models/compra.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
+import 'dialogo_app.dart';
+import 'campo_texto.dart';
+import 'selector_fecha.dart';
 
 // Nueva compra: solo los datos de la tabla `compra` (fecha y notas). Los
 // productos comprados se agregan después, como detalles de esta compra, que se
@@ -25,19 +28,6 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
   void dispose() {
     _notasController.dispose();
     super.dispose();
-  }
-
-  String _fechaTexto(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  Future<void> _elegirFecha() async {
-    final elegida = await showDatePicker(
-      context: context,
-      initialDate: _fecha,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-    );
-    if (elegida != null) setState(() => _fecha = elegida);
   }
 
   void _guardar() {
@@ -91,30 +81,26 @@ class _CompraFormDialogState extends State<CompraFormDialog> {
                         ),
                       ),
                     ),
-                    IconButton(
+                    BotonCerrarCircular(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
                     ),
                   ],
                 ),
+                const SeparadorDialogo(),
                 Text(
                   'Luego agregarás los productos comprados como detalles.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 16),
-                InkWell(
-                  onTap: _elegirFecha,
-                  borderRadius: BorderRadius.circular(AppRadii.tag),
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Fecha de compra',
-                      suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
-                    ),
-                    child: Text(_fechaTexto(_fecha)),
-                  ),
+                SelectorFecha(
+                  etiqueta: 'Fecha de compra',
+                  valor: _fecha,
+                  anioMin: DateTime.now().year - 5,
+                  anioMax: DateTime.now().year,
+                  onChanged: (d) => setState(() => _fecha = d ?? _fecha),
                 ),
                 const SizedBox(height: 14),
-                TextFormField(
+                CampoTexto(
                   controller: _notasController,
                   maxLines: 2,
                   decoration: const InputDecoration(

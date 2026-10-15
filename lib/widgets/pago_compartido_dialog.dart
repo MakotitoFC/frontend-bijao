@@ -14,6 +14,8 @@ import 'app_select.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'pago_dialogs.dart';
+import 'app_switch.dart';
+import 'campo_texto.dart';
 
 // Boleta de un pagador: lo que consumió (o su parte) y cómo pagó.
 typedef BoletaPagador = ({
@@ -112,9 +114,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       l.precioTotalLinea - montoPagadoDeLinea(l.id);
 
   String _categoriaDe(PedidoLine l) {
-    final item = cartasNotifier.value
-        .where((c) => c.id == l.cartaId)
-        .firstOrNull;
+    final item = cartaPorId(l.cartaId);
     if (item == null) return 'Sin categoría';
     final cat = categorias.where((c) => c.id == item.categoriaId).firstOrNull;
     return cat?.categoria ?? 'Sin categoría';
@@ -497,7 +497,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
               Expanded(
                 child: SizedBox(
                   height: AppSizes.boton,
-                  child: TextField(
+                  child: CampoTexto(
                     controller: p.nombre,
                     expands: true,
                     maxLines: null,
@@ -567,7 +567,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                     flex: 4,
                     child: SizedBox(
                       height: AppSizes.boton,
-                      child: TextField(
+                      child: CampoTexto(
                         controller: p.pagos[k].monto,
                         expands: true,
                         maxLines: null,
@@ -724,19 +724,9 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             _tarjetaPagador(i, montos[i]),
           Row(
             children: [
-              // Switch más bajo, escalado de forma uniforme para no deformarlo.
-              SizedBox(
-                width: 44,
-                height: 28,
-                child: FittedBox(
-                  child: Switch(
-                    value: _boletasIndividuales,
-                    onChanged: (v) => setState(() => _boletasIndividuales = v),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    activeThumbColor: Colors.white,
-                    activeTrackColor: AppColors.primaryGreen,
-                  ),
-                ),
+              AppSwitch(
+                value: _boletasIndividuales,
+                onChanged: (v) => setState(() => _boletasIndividuales = v),
               ),
               const SizedBox(width: 8),
               Expanded(

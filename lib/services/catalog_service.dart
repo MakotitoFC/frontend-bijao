@@ -1,6 +1,8 @@
 import 'dart:developer' as developer;
+
 import '../data/cartas_store.dart';
 import '../data/catalogos_store.dart';
+import '../data/configuracion_store.dart';
 import '../data/compras_store.dart';
 import '../data/categorias_store.dart';
 import '../data/inventario_store.dart';
@@ -14,6 +16,7 @@ import '../models/compra.dart';
 import '../models/compra_detalle.dart';
 import '../models/inventario_movimiento.dart';
 import '../models/categoria_comida.dart';
+import '../models/medio_pago.dart';
 import '../models/mesa.dart';
 import '../models/pago_cuenta_empleado.dart';
 import '../models/producto_inventario.dart';
@@ -26,6 +29,9 @@ import '../models/utensilio_roto.dart';
 import '../models/zona.dart';
 import '../utils/uuid_helper.dart';
 import 'api_client.dart';
+import 'auth_service.dart';
+import 'disponibilidad_service.dart';
+import 'promocion_service.dart';
 
 class CatalogService {
   CatalogService._();
@@ -51,6 +57,7 @@ class CatalogService {
         cargarCategorias(),
         cargarSubcategorias(),
         cargarCarta(),
+        DisponibilidadService.instance.cargarHoy(),
         cargarVariantes(),
         cargarCompras(),
         cargarTapers(),
@@ -58,11 +65,86 @@ class CatalogService {
         cargarUnidadesProducto(),
         cargarProductosInventario(),
         cargarUtensiliosRotos(),
+        cargarMediosPago(),
+        PromocionService.instance.cargar(),
       ]);
       developer.log('[CatalogService] Catálogos cargados exitosamente');
     } catch (e) {
       developer.log('[CatalogService] Error cargando catálogos: $e');
     }
+  }
+
+  // ==========================================
+  // MÉTODOS DE PAGO
+  // ==========================================
+
+  Future<void> cargarMediosPago() async {
+    try {
+      final res = await _api.get('/api/medios-pago');
+      if (res is List) {
+        mediosPago
+          ..clear()
+          ..addAll(
+            res.whereType<Map<String, dynamic>>().map(MedioPago.fromJson),
+          );
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error al obtener métodos de pago: $e');
+    }
+  }
+
+  Future<MedioPago> crearMedioPago({
+    required String nombre,
+    String? descripcion,
+    bool aplicaComision = false,
+    double porcentajeComision = 0,
+  }) async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final res = await _api.post(
+      '/api/medios-pago',
+      body: {
+        'id': UuidHelper.v7(),
+        'medio_pago': nombre.trim(),
+        if (descripcion != null && descripcion.trim().isNotEmpty)
+          'descripcion': descripcion.trim(),
+        'aplica_comision': aplicaComision,
+        'porcentaje_comision': aplicaComision ? porcentajeComision : 0,
+        'estado': true,
+        if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
+      },
+    );
+    final nuevo = MedioPago.fromJson(res as Map<String, dynamic>);
+    mediosPago.add(nuevo);
+    return nuevo;
+  }
+
+  Future<MedioPago> actualizarMedioPago(
+    String id, {
+    String? nombre,
+    String? descripcion,
+    bool? aplicaComision,
+    double? porcentajeComision,
+    bool? activo,
+  }) async {
+    final res = await _api.put(
+      '/api/medios-pago/$id',
+      body: {
+        if (nombre != null) 'medio_pago': nombre.trim(),
+        'descripcion': ?descripcion?.trim(),
+        'aplica_comision': ?aplicaComision,
+        'porcentaje_comision': ?porcentajeComision,
+        'estado': ?activo,
+      },
+    );
+    final actualizado = MedioPago.fromJson(res as Map<String, dynamic>);
+    final i = mediosPago.indexWhere((m) => m.id == id);
+    if (i != -1) mediosPago[i] = actualizado;
+    return actualizado;
+  }
+
+  Future<void> eliminarMedioPago(String id) async {
+    await _api.delete('/api/medios-pago/$id');
+    mediosPago.removeWhere((m) => m.id == id);
   }
 
   // ==========================================
@@ -82,7 +164,10 @@ class CatalogService {
           ..addAll(lista);
 
         // Sincronizar zonas activas en el store de la UI
-        final activas = zonas.where((z) => z.estado).map((z) => z.zona).toList();
+        final activas = zonas
+            .where((z) => z.estado)
+            .map((z) => z.zona)
+            .toList();
         zonasMesas
           ..clear()
           ..addAll(activas.isNotEmpty ? activas : ['Salón Principal']);
@@ -95,16 +180,9 @@ class CatalogService {
     return zonas;
   }
 
-  Future<Zona> crearZona({
-    required String nombre,
-    bool estado = true,
-  }) async {
+  Future<Zona> crearZona({required String nombre, bool estado = true}) async {
     final clientUuid = UuidHelper.v7();
-    final body = {
-      'id': clientUuid,
-      'zona': nombre.trim(),
-      'estado': estado,
-    };
+    final body = {'id': clientUuid, 'zona': nombre.trim(), 'estado': estado};
 
     final res = await _api.post('/api/zonas', body: body);
     if (res is Map<String, dynamic>) {
@@ -119,11 +197,7 @@ class CatalogService {
     throw Exception('Error al crear zona');
   }
 
-  Future<Zona> actualizarZona(
-    String id, {
-    String? nombre,
-    bool? estado,
-  }) async {
+  Future<Zona> actualizarZona(String id, {String? nombre, bool? estado}) async {
     final body = <String, dynamic>{};
     if (nombre != null) body['zona'] = nombre.trim();
     if (estado != null) body['estado'] = estado;
@@ -186,7 +260,12 @@ class CatalogService {
     if (idZona == null || idZona.isEmpty) {
       final match = zonas.firstWhere(
         (z) => z.zona.toLowerCase() == zona.toLowerCase(),
-        orElse: () => zonas.isNotEmpty ? zonas.first : const Zona(id: '11111111-2222-3333-4444-555555555555', zona: 'Salón Principal'),
+        orElse: () => zonas.isNotEmpty
+            ? zonas.first
+            : const Zona(
+                id: '11111111-2222-3333-4444-555555555555',
+                zona: 'Salón Principal',
+              ),
       );
       idZona = match.id;
     }
@@ -201,11 +280,8 @@ class CatalogService {
 
     final res = await _api.post('/api/mesas', body: body);
     if (res is Map<String, dynamic>) {
-      final nueva = Mesa.fromJson(res).copyWith(
-        capacidad: capacidad,
-        zona: zona,
-        zonaId: idZona,
-      );
+      final nueva = Mesa.fromJson(res)
+          .copyWith(capacidad: capacidad, zona: zona, zonaId: idZona);
       mesas
         ..removeWhere((m) => m.id == nueva.id || m.numero == nueva.numero)
         ..add(nueva)
@@ -234,7 +310,12 @@ class CatalogService {
     } else if (zona != null) {
       final match = zonas.firstWhere(
         (z) => z.zona.toLowerCase() == zona.toLowerCase(),
-        orElse: () => zonas.isNotEmpty ? zonas.first : const Zona(id: '11111111-2222-3333-4444-555555555555', zona: 'Salón Principal'),
+        orElse: () => zonas.isNotEmpty
+            ? zonas.first
+            : const Zona(
+                id: '11111111-2222-3333-4444-555555555555',
+                zona: 'Salón Principal',
+              ),
       );
       body['zona_id'] = match.id;
     }
@@ -269,7 +350,9 @@ class CatalogService {
       final res = await _api.get('/api/categorias');
       if (res is List) {
         final List<CategoriaComida> lista = res
-            .map((item) => CategoriaComida.fromJson(item as Map<String, dynamic>))
+            .map(
+              (item) => CategoriaComida.fromJson(item as Map<String, dynamic>),
+            )
             .toList();
 
         categorias
@@ -286,10 +369,7 @@ class CatalogService {
 
   Future<CategoriaComida> crearCategoria(String nombre) async {
     final clientUuid = UuidHelper.v7();
-    final body = {
-      'id': clientUuid,
-      'categoria': nombre.trim(),
-    };
+    final body = {'id': clientUuid, 'categoria': nombre.trim()};
 
     final res = await _api.post('/api/categorias', body: body);
     if (res is Map<String, dynamic>) {
@@ -387,7 +467,10 @@ class CatalogService {
   // CARTA (PLATOS Y BEBIDAS)
   // ==========================================
 
-  Future<List<CartaItem>> cargarCarta({String? categoriaId, String? estado}) async {
+  Future<List<CartaItem>> cargarCarta({
+    String? categoriaId,
+    String? estado,
+  }) async {
     try {
       final params = <String, String>{};
       if (estado != null && estado.isNotEmpty) {
@@ -404,8 +487,11 @@ class CatalogService {
             .map((item) => CartaItem.fromJson(item as Map<String, dynamic>))
             .toList();
 
-        cartasNotifier.value = lista;
-        return lista;
+        cartasNotifier.value = lista.where((c) => !c.eliminado).toList();
+        cartasEliminadas
+          ..clear()
+          ..addAll(lista.where((c) => c.eliminado));
+        return cartasNotifier.value;
       }
     } catch (e) {
       developer.log('[CatalogService] Error al obtener carta: $e');
@@ -423,11 +509,13 @@ class CatalogService {
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
       if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
-      if (item.taperId != null && item.taperId!.isNotEmpty) 'taper_id': item.taperId,
+      if (item.taperId != null && item.taperId!.isNotEmpty)
+        'taper_id': item.taperId,
       'estado': item.estado,
       if (item.precioCliente != null) 'precio_cliente': item.precioCliente,
       if (item.precioPersonal != null) 'precio_personal': item.precioPersonal,
       if (item.sedeId != null) 'sede_id': item.sedeId,
+      if (item.urlImagen != null) 'url_imagen': item.urlImagen,
     };
 
     final res = await _api.post('/api/carta', body: body);
@@ -441,7 +529,6 @@ class CatalogService {
       );
 
       cartasNotifier.value = [...cartasNotifier.value, nuevo];
-      await _guardarTamanos(nuevo.id);
       return nuevo;
     }
     throw Exception('Error al crear plato');
@@ -459,6 +546,8 @@ class CatalogService {
       if (item.precioCliente != null) 'precio_cliente': item.precioCliente,
       if (item.precioPersonal != null) 'precio_personal': item.precioPersonal,
       if (item.sedeId != null) 'sede_id': item.sedeId,
+      // Se envía siempre que exista: si no, el PUT podría borrar la foto.
+      if (item.urlImagen != null) 'url_imagen': item.urlImagen,
     };
 
     final res = await _api.put('/api/carta/${item.id}', body: body);
@@ -470,67 +559,65 @@ class CatalogService {
         sku: item.sku,
         stock: item.stock,
         agregados: item.agregados,
+        urlImagen: item.urlImagen,
       );
 
       cartasNotifier.value = cartasNotifier.value
           .map((c) => c.id == item.id ? actualizado : c)
           .toList();
 
-      await _guardarTamanos(item.id);
       return actualizado;
     }
     throw Exception('Error al actualizar plato');
   }
 
+  // Sube la foto de un plato y la guarda en `carta.url_imagen`.
+  // TODO(backend): hoy la única subida que existe es la de evidencias
+  // (`/api/v1/uploads/evidencias`); ver BACKEND_PENDIENTES.md.
+  Future<CartaItem> subirImagenPlato(
+    CartaItem item,
+    List<int> bytes,
+    String nombreArchivo,
+  ) async {
+    final res = await _api.subirArchivo(
+      '/api/v1/uploads/evidencias',
+      bytes: bytes,
+      nombreArchivo: nombreArchivo,
+    );
+    final url = res is Map ? res['url']?.toString() : null;
+    if (url == null || url.isEmpty) {
+      throw Exception('El servidor no devolvió la dirección de la foto');
+    }
+    return actualizarPlato(item.copyWith(urlImagen: url));
+  }
+
   Future<void> alternarEstadoPlato(CartaItem item) async {
-    final nuevoEstado = item.disponible ? 'inactivo' : 'disponible';
+    final nuevoEstado = item.disponible ? estadoInhabilitado : estadoDisponible;
     final actualizado = item.copyWith(estado: nuevoEstado);
     await actualizarPlato(actualizado);
   }
 
+  // Eliminación lógica: el plato pasa al estado `eliminado` y deja de mostrarse,
+  // pero la fila se conserva (pedidos y promociones siguen apuntando a ella).
+  // TODO(backend): hoy es una convención del frontend (PUT del estado). Ver
+  // BACKEND_PENDIENTES.md: cuando `DELETE /api/carta/:id` haga el borrado
+  // lógico, volver a llamar a ese endpoint y pedir `?incluir_eliminados=true`
+  // en `cargarCarta`.
   Future<void> eliminarPlato(String id) async {
-    // Sus tamaños dependen del plato: se eliminan primero.
-    for (final varianteId in [...?_variantesRemotas[id]]) {
-      await _api.delete('/api/carta-variantes/$varianteId');
-    }
-    _variantesRemotas.remove(id);
-    try {
-      await _api.delete('/api/carta/$id');
-    } on ApiException catch (e) {
-      throw Exception(_explicarBloqueoDePlato(e.message));
-    }
-    cartasNotifier.value = cartasNotifier.value.where((c) => c.id != id).toList();
-  }
-
-  // Traduce el error de llave foránea de Postgres al motivo por el que un plato
-  // no se puede eliminar.
-  String _explicarBloqueoDePlato(String mensaje) {
-    final fk = mensaje.contains('llave for') || mensaje.contains('foreign key');
-    if (!fk) return mensaje;
-    const motivos = {
-      'pedidos_detalle': 'ya tiene pedidos registrados',
-      'promocion_componente_opcion': 'es opción de una promoción',
-      'promocion_carta': 'forma parte de una promoción',
-      'carta_insumo': 'tiene insumos (receta) asociados',
-      'carta_presentacion': 'tiene presentaciones asociadas',
-      'modificador': 'tiene extras registrados (falta aplicar la migración 00016)',
-    };
-    for (final e in motivos.entries) {
-      if (mensaje.contains(e.key)) {
-        return 'No se puede eliminar el plato porque ${e.value}. '
-            'Puedes desactivarlo para que no aparezca en la carta.';
-      }
-    }
-    return 'No se puede eliminar el plato porque tiene datos asociados. '
-        'Puedes desactivarlo para que no aparezca en la carta.\n($mensaje)';
+    final item = cartasNotifier.value.where((c) => c.id == id).firstOrNull;
+    if (item == null) return;
+    final eliminado = (await actualizarPlato(
+      item.copyWith(estado: estadoEliminado),
+    )).copyWith(estado: estadoEliminado);
+    cartasNotifier.value = cartasNotifier.value
+        .where((c) => c.id != id)
+        .toList();
+    cartasEliminadas.add(eliminado);
   }
 
   // ==========================================
   // TAMAÑOS (carta_variante)
   // ==========================================
-
-  // Ids de los tamaños que ya existen en el backend, por plato.
-  final Map<String, Set<String>> _variantesRemotas = {};
 
   Future<List<CartaVariante>> cargarVariantes() async {
     try {
@@ -542,10 +629,6 @@ class CatalogService {
         variantes
           ..clear()
           ..addAll(lista);
-        _variantesRemotas.clear();
-        for (final v in lista) {
-          _variantesRemotas.putIfAbsent(v.cartaId, () => {}).add(v.id);
-        }
         return lista;
       }
     } catch (e) {
@@ -554,36 +637,39 @@ class CatalogService {
     return variantes;
   }
 
-  // Deja en el backend los tamaños de un plato igual a los del formulario
-  // (guardados en `variantes`): crea los nuevos, actualiza los existentes y
-  // elimina los que se quitaron.
-  Future<void> _guardarTamanos(String cartaId) async {
-    final locales = variantesDeCarta(cartaId);
-    final remotos = _variantesRemotas.putIfAbsent(cartaId, () => {});
-    final idsLocales = locales.map((v) => v.id).toSet();
+  // Los tamaños se registran en Inventario > Tamaños, cada uno por su cuenta.
+  Future<CartaVariante> crearVariante(CartaVariante v) async {
+    final res = await _api.post('/api/carta-variantes', body: v.toJson());
+    final creada = res is Map<String, dynamic>
+        ? CartaVariante.fromJson(res)
+        : v;
+    variantes.add(creada);
+    return creada;
+  }
 
-    for (final id in remotos.where((id) => !idsLocales.contains(id)).toList()) {
-      await _api.delete('/api/carta-variantes/$id');
-      remotos.remove(id);
-    }
-    for (final v in locales) {
-      if (remotos.contains(v.id)) {
-        await _api.put(
-          '/api/carta-variantes/${v.id}',
-          body: {
-            'nombre': v.nombre,
-            'precio_cliente': v.precioCliente,
-            'precio_personal': v.precioPersonal,
-            'peso_min_kg': v.pesoMinKg,
-            'peso_max_kg': v.pesoMaxKg,
-            'estado': v.estado,
-          },
-        );
-      } else {
-        await _api.post('/api/carta-variantes', body: v.toJson());
-        remotos.add(v.id);
-      }
-    }
+  Future<CartaVariante> actualizarVariante(CartaVariante v) async {
+    final res = await _api.put(
+      '/api/carta-variantes/${v.id}',
+      body: {
+        'nombre': v.nombre,
+        'precio_cliente': v.precioCliente,
+        'precio_personal': v.precioPersonal,
+        'peso_min_kg': v.pesoMinKg,
+        'peso_max_kg': v.pesoMaxKg,
+        'estado': v.estado,
+      },
+    );
+    final actualizada = res is Map<String, dynamic>
+        ? CartaVariante.fromJson(res)
+        : v;
+    final i = variantes.indexWhere((x) => x.id == v.id);
+    if (i != -1) variantes[i] = actualizada;
+    return actualizada;
+  }
+
+  Future<void> eliminarVariante(String id) async {
+    await _api.delete('/api/carta-variantes/$id');
+    variantes.removeWhere((v) => v.id == id);
   }
 
   // ==========================================
@@ -630,6 +716,9 @@ class CatalogService {
       '/api/compras',
       body: {
         ...compra.toJson(),
+        // El backend exige `usuario_id` al leer el cuerpo (luego lo reemplaza
+        // con el de la sesión).
+        'usuario_id': ?AuthService.instance.currentUser?.id,
         'detalles': [for (final d in detalles) d.toJson()],
       },
     );
@@ -705,6 +794,8 @@ class CatalogService {
     required String nombre,
     required double precio,
     String? sedeId,
+    double? stockInicial,
+    double? stockMinimo,
   }) async {
     final clientUuid = UuidHelper.v7();
     final body = {
@@ -712,6 +803,8 @@ class CatalogService {
       'nombre': nombre.trim(),
       'precio': precio,
       'estado': true,
+      'stock': ?stockInicial,
+      'stock_minimo': ?stockMinimo,
       if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
     };
 
@@ -730,11 +823,15 @@ class CatalogService {
     double? precio,
     bool? estado,
     String? sedeId,
+    double? stock,
+    double? stockMinimo,
   }) async {
     final body = <String, dynamic>{};
     if (nombre != null) body['nombre'] = nombre.trim();
     if (precio != null) body['precio'] = precio;
     if (estado != null) body['estado'] = estado;
+    if (stock != null) body['stock'] = stock;
+    if (stockMinimo != null) body['stock_minimo'] = stockMinimo;
     if (sedeId != null && sedeId.isNotEmpty) body['sede_id'] = sedeId;
 
     final res = await _api.put('/api/tapers/$id', body: body);
@@ -791,7 +888,10 @@ class CatalogService {
   }
 
   Future<void> asignarPermisoRol(String rolId, String permisoId) async {
-    await _api.post('/api/roles/$rolId/permisos', body: {'permiso_id': permisoId});
+    await _api.post(
+      '/api/roles/$rolId/permisos',
+      body: {'permiso_id': permisoId},
+    );
   }
 
   Future<void> removerPermisoRol(String rolId, String permisoId) async {
@@ -821,7 +921,10 @@ class CatalogService {
   }
 
   Future<void> asignarPermisoUsuario(String userId, String permisoId) async {
-    await _api.post('/api/usuarios/$userId/permisos', body: {'permiso_id': permisoId});
+    await _api.post(
+      '/api/usuarios/$userId/permisos',
+      body: {'permiso_id': permisoId},
+    );
   }
 
   Future<void> removerPermisoUsuario(String userId, String permisoId) async {
@@ -842,10 +945,14 @@ class CatalogService {
 
   Future<List<TipoProducto>> cargarTiposProducto({String? sedeId}) async {
     try {
-      final query = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
+      final query = (sedeId != null && sedeId.isNotEmpty)
+          ? '?sede_id=$sedeId'
+          : '';
       final res = await _api.get('/api/tipos-producto$query');
       if (res is List) {
-        final lista = res.map((j) => TipoProducto.fromJson(j as Map<String, dynamic>)).toList();
+        final lista = res
+            .map((j) => TipoProducto.fromJson(j as Map<String, dynamic>))
+            .toList();
         tiposProducto
           ..clear()
           ..addAll(lista);
@@ -910,17 +1017,23 @@ class CatalogService {
 
   Future<List<UnidadProducto>> cargarUnidadesProducto({String? sedeId}) async {
     try {
-      final query = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
+      final query = (sedeId != null && sedeId.isNotEmpty)
+          ? '?sede_id=$sedeId'
+          : '';
       final res = await _api.get('/api/unidades-producto$query');
       if (res is List) {
-        final lista = res.map((j) => UnidadProducto.fromJson(j as Map<String, dynamic>)).toList();
+        final lista = res
+            .map((j) => UnidadProducto.fromJson(j as Map<String, dynamic>))
+            .toList();
         unidadesProducto
           ..clear()
           ..addAll(lista);
         return lista;
       }
     } catch (e) {
-      developer.log('[CatalogService] Error al obtener unidades de producto: $e');
+      developer.log(
+        '[CatalogService] Error al obtener unidades de producto: $e',
+      );
     }
     return unidadesProducto;
   }
@@ -946,6 +1059,27 @@ class CatalogService {
     throw Exception('Error al crear unidad de producto');
   }
 
+  Future<UnidadProducto> actualizarUnidadProducto(
+    String id, {
+    required String unidad,
+    bool estado = true,
+    String? sedeId,
+  }) async {
+    final body = {
+      'unidad': unidad.trim(),
+      'estado': estado,
+      if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
+    };
+    final res = await _api.put('/api/unidades-producto/$id', body: body);
+    if (res is Map<String, dynamic>) {
+      final act = UnidadProducto.fromJson(res);
+      final idx = unidadesProducto.indexWhere((u) => u.id == id);
+      if (idx != -1) unidadesProducto[idx] = act;
+      return act;
+    }
+    throw Exception('Error al actualizar unidad de producto');
+  }
+
   Future<void> eliminarUnidadProducto(String id) async {
     await _api.delete('/api/unidades-producto/$id');
     unidadesProducto.removeWhere((u) => u.id == id);
@@ -955,25 +1089,37 @@ class CatalogService {
   // INVENTARIO: PRODUCTOS DE INVENTARIO
   // ==========================================
 
-  Future<List<ProductoInventario>> cargarProductosInventario({String? sedeId}) async {
+  Future<List<ProductoInventario>> cargarProductosInventario({
+    String? sedeId,
+  }) async {
     try {
-      final query = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
+      final query = (sedeId != null && sedeId.isNotEmpty)
+          ? '?sede_id=$sedeId'
+          : '';
       final res = await _api.get('/api/productos-inventario$query');
       if (res is List) {
-        final lista = res.map((j) => ProductoInventario.fromJson(j as Map<String, dynamic>)).toList();
+        final lista = res
+            .map((j) => ProductoInventario.fromJson(j as Map<String, dynamic>))
+            .toList();
         productosInventario
           ..clear()
           ..addAll(lista);
         return lista;
       }
     } catch (e) {
-      developer.log('[CatalogService] Error al obtener productos de inventario: $e');
+      developer.log(
+        '[CatalogService] Error al obtener productos de inventario: $e',
+      );
     }
     return productosInventario;
   }
 
-  Future<ProductoInventario> crearProductoInventario(ProductoInventario prod) async {
-    final id = (prod.id.isNotEmpty && UuidHelper.isValid(prod.id)) ? prod.id : UuidHelper.v7();
+  Future<ProductoInventario> crearProductoInventario(
+    ProductoInventario prod,
+  ) async {
+    final id = (prod.id.isNotEmpty && UuidHelper.isValid(prod.id))
+        ? prod.id
+        : UuidHelper.v7();
     final body = {
       'id': id,
       'nombre': prod.nombre.trim(),
@@ -986,7 +1132,8 @@ class CatalogService {
       'costo_reposicion': prod.costoReposicion,
       'notas': prod.notas?.trim(),
       'estado': prod.estado,
-      if (prod.sedeId != null && prod.sedeId!.isNotEmpty) 'sede_id': prod.sedeId,
+      if (prod.sedeId != null && prod.sedeId!.isNotEmpty)
+        'sede_id': prod.sedeId,
     };
     final res = await _api.post('/api/productos-inventario', body: body);
     if (res is Map<String, dynamic>) {
@@ -1002,7 +1149,9 @@ class CatalogService {
     throw Exception('Error al crear producto de inventario');
   }
 
-  Future<ProductoInventario> actualizarProductoInventario(ProductoInventario prod) async {
+  Future<ProductoInventario> actualizarProductoInventario(
+    ProductoInventario prod,
+  ) async {
     final body = {
       'nombre': prod.nombre.trim(),
       'descripcion': prod.descripcion?.trim(),
@@ -1014,9 +1163,13 @@ class CatalogService {
       'costo_reposicion': prod.costoReposicion,
       'notas': prod.notas?.trim(),
       'estado': prod.estado,
-      if (prod.sedeId != null && prod.sedeId!.isNotEmpty) 'sede_id': prod.sedeId,
+      if (prod.sedeId != null && prod.sedeId!.isNotEmpty)
+        'sede_id': prod.sedeId,
     };
-    final res = await _api.put('/api/productos-inventario/${prod.id}', body: body);
+    final res = await _api.put(
+      '/api/productos-inventario/${prod.id}',
+      body: body,
+    );
     if (res is Map<String, dynamic>) {
       final act = ProductoInventario.fromJson(res);
       final idx = productosInventario.indexWhere((p) => p.id == act.id);
@@ -1027,10 +1180,15 @@ class CatalogService {
   }
 
   Future<void> actualizarCostoReposicion(String id, double costo) async {
-    await _api.put('/api/productos-inventario/$id/costo-reposicion', body: {'costo_reposicion': costo});
+    await _api.put(
+      '/api/productos-inventario/$id/costo-reposicion',
+      body: {'costo_reposicion': costo},
+    );
     final idx = productosInventario.indexWhere((p) => p.id == id);
     if (idx != -1) {
-      productosInventario[idx] = productosInventario[idx].copyWith(costoReposicion: costo);
+      productosInventario[idx] = productosInventario[idx].copyWith(
+        costoReposicion: costo,
+      );
     }
   }
 
@@ -1045,10 +1203,14 @@ class CatalogService {
 
   Future<List<UtensilioRoto>> cargarUtensiliosRotos({String? sedeId}) async {
     try {
-      final query = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
+      final query = (sedeId != null && sedeId.isNotEmpty)
+          ? '?sede_id=$sedeId'
+          : '';
       final res = await _api.get('/api/utensilios-roto$query');
       if (res is List) {
-        final lista = res.map((j) => UtensilioRoto.fromJson(j as Map<String, dynamic>)).toList();
+        final lista = res
+            .map((j) => UtensilioRoto.fromJson(j as Map<String, dynamic>))
+            .toList();
         utensiliosRotos
           ..clear()
           ..addAll(lista);
@@ -1061,14 +1223,17 @@ class CatalogService {
   }
 
   Future<UtensilioRoto> crearUtensilioRoto(UtensilioRoto u) async {
-    final id = (u.id.isNotEmpty && UuidHelper.isValid(u.id)) ? u.id : UuidHelper.v7();
+    final id = (u.id.isNotEmpty && UuidHelper.isValid(u.id))
+        ? u.id
+        : UuidHelper.v7();
     final body = {
       'id': id,
       'producto_inventario_id': u.productoInventarioId,
       'empleado_id': u.empleadoId,
       'cantidad': u.cantidad,
       'costo_total': u.costoTotal,
-      if (u.usuarioId != null && u.usuarioId!.isNotEmpty) 'usuario_id': u.usuarioId,
+      if (u.usuarioId != null && u.usuarioId!.isNotEmpty)
+        'usuario_id': u.usuarioId,
       'notas': u.notas?.trim(),
       'is_pagado': u.isPagado,
       'is_repuesto': u.isRepuesto,
@@ -1109,29 +1274,40 @@ class CatalogService {
   // INVENTARIO: PAGOS A CUENTA DE EMPLEADO
   // ==========================================
 
-  Future<List<PagoCuentaEmpleado>> cargarPagosCuentaEmpleado({String? utensilioRotoId}) async {
+  Future<List<PagoCuentaEmpleado>> cargarPagosCuentaEmpleado({
+    String? utensilioRotoId,
+  }) async {
     try {
       final query = (utensilioRotoId != null && utensilioRotoId.isNotEmpty)
           ? '?utensilio_roto_id=$utensilioRotoId'
           : '';
       final res = await _api.get('/api/pagos-cuenta-empleado$query');
       if (res is List) {
-        return res.map((j) => PagoCuentaEmpleado.fromJson(j as Map<String, dynamic>)).toList();
+        return res
+            .map((j) => PagoCuentaEmpleado.fromJson(j as Map<String, dynamic>))
+            .toList();
       }
     } catch (e) {
-      developer.log('[CatalogService] Error al obtener pagos cuenta empleado: $e');
+      developer.log(
+        '[CatalogService] Error al obtener pagos cuenta empleado: $e',
+      );
     }
     return [];
   }
 
-  Future<PagoCuentaEmpleado> crearPagoCuentaEmpleado(PagoCuentaEmpleado p) async {
-    final id = (p.id.isNotEmpty && UuidHelper.isValid(p.id)) ? p.id : UuidHelper.v7();
+  Future<PagoCuentaEmpleado> crearPagoCuentaEmpleado(
+    PagoCuentaEmpleado p,
+  ) async {
+    final id = (p.id.isNotEmpty && UuidHelper.isValid(p.id))
+        ? p.id
+        : UuidHelper.v7();
     final body = {
       'id': id,
       'empleado_id': p.empleadoId,
       'monto': p.monto,
       'medio_pago_id': p.medioPagoId,
-      if (p.pedidosId != null && p.pedidosId!.isNotEmpty) 'pedidos_id': p.pedidosId,
+      if (p.pedidosId != null && p.pedidosId!.isNotEmpty)
+        'pedidos_id': p.pedidosId,
       'utensilio_roto_id': p.utensilioRotoId,
       if (p.usuarioId.isNotEmpty) 'usuario_id': p.usuarioId,
       'nota': p.nota?.trim(),
