@@ -9,7 +9,7 @@
 class AppConfig {
   static const String serverIp = String.fromEnvironment(
     'SERVER_IP',
-    defaultValue: '192.168.0.50',
+    defaultValue: '192.168.0.169',
   );
 
   static const int serverPort = int.fromEnvironment(
