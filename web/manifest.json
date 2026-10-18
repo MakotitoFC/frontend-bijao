@@ -1,9 +1,9 @@
 {
-    "name": "El El Bijao",
+    "name": "El Bijao",
     "short_name": "El Bijao",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0A3622",
+    "background_color": "#FFFFFF",
     "theme_color": "#0A3622",
     "description": "Sistema POS para restaurantes: pedidos, mesas, cocina y pagos.",
     "orientation": "portrait-primary",

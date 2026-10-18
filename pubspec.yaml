@@ -54,6 +54,25 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# Íconos de la app (APK, PWA y Windows): se generan con
+# `dart run flutter_launcher_icons` a partir de assets/icon/.
+flutter_launcher_icons:
+  image_path: assets/icon/icono_app.png
+  android: true
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/icon/icono_android_primer_plano.png
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: assets/icon/icono_app.png
+    background_color: "#FFFFFF"
+    theme_color: "#0A3622"
+  windows:
+    generate: true
+    image_path: assets/icon/icono_app.png
+    icon_size: 256
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -70,6 +89,7 @@ flutter:
     - assets/images/logo_bijao.png
     - assets/images/el_bijao_blanco.png
     - assets/images/icono_bijao.png
+    - assets/images/login_fondo.jpg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

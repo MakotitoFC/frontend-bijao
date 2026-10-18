@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,7 +7,6 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/patron_cocina.dart';
 import '../widgets/server_connection_dialog.dart';
 import '../widgets/campo_texto.dart';
 
@@ -103,6 +102,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // Título de un campo: verde y en negrita.
+  Widget _etiqueta(String texto) => Padding(
+    padding: const EdgeInsets.only(left: 2, bottom: 4),
+    child: Text(
+      texto,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        color: _fondoVerde,
+      ),
+    ),
+  );
+
   // Formulario sobre el lado blanco.
   Widget _formulario(BuildContext context) {
     return Form(
@@ -113,36 +125,29 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           const Text(
             'Iniciar sesión',
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.start,
             style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
               color: Color(0xFF3D4452),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Center(
-            child: Container(
-              width: 36,
-              height: 3,
-              decoration: BoxDecoration(
-                color: _fondoVerde,
-                borderRadius: BorderRadius.circular(2),
-              ),
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Ingresa tus credenciales para continuar',
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.start,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 34),
+          _etiqueta('Usuario o correo'),
           CampoTexto(
             controller: _emailController,
             keyboardType: TextInputType.text,
             style: const TextStyle(fontSize: 14),
-            decoration: _decoracion('Usuario o correo', LucideIcons.user),
+            decoration: _decoracion(
+              'Ingresa tu usuario o correo',
+              LucideIcons.user,
+            ),
             validator: (value) {
               final v = value?.trim();
               if (v == null || v.isEmpty) {
@@ -154,14 +159,15 @@ class _LoginScreenState extends State<LoginScreen> {
               return null;
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 22),
+          _etiqueta('Contraseña'),
           CampoTexto(
             controller: _passwordController,
             obscureText: _obscurePassword,
             style: const TextStyle(fontSize: 14),
             onFieldSubmitted: (_) => _isLoading ? null : _submit(),
             decoration: _decoracion(
-              'Contraseña',
+              'Ingresa tu contraseña',
               LucideIcons.lock,
               sufijo: IconButton(
                 icon: Icon(
@@ -209,18 +215,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
           ),
           const SizedBox(height: 14),
-          Text.rich(
-            TextSpan(
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              children: const [
-                TextSpan(text: '¿Problemas para ingresar? '),
-                TextSpan(
-                  text: 'Contacta al administrador',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ],
+          Text(
+            '¿Tienes problemas para ingresar?',
+            textAlign: TextAlign.start,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const Text(
+            'Contacta al administrador',
+            textAlign: TextAlign.start,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF4B5563),
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -400,93 +407,148 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Escritorio y tablet: la vista se parte a la mitad, verde (mezclado con el
-  // oscuro) y blanco, cada lado con su patrón de íconos de cocina.
+  // Escritorio y tablet: la vista se parte a la mitad. El lado verde (foto del
+  // salón con degradado) conserva su mitad completa y, pasando el centro, se
+  // desvanece suavemente en el blanco donde está el ingreso.
   Widget _buildEscritorio(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: ClipPath(
-            clipper: const _BordeZigzag(),
-            child: Container(
-              color: _fondoVerde,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: PatronCocina(
-                      color: Colors.white.withValues(alpha: 0.07),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(120, 32, 48, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: SingleChildScrollView(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 440,
-                                ),
-                                child: _bienvenida(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        _copyright(
-                          Colors.white.withValues(alpha: 0.75),
-                          alinear: TextAlign.start,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+    return LayoutBuilder(
+      builder: (context, c) {
+        final mitad = c.maxWidth / 2;
+        // Cuánto entra el verde en el lado blanco, y cuánto mide el desvanecido
+        // (empieza antes del centro, para que se note sin quitar verde).
+        final invade = (mitad * 0.28).clamp(60.0, 170.0);
+        final desvanece = invade * 2.2;
+        final ancho = mitad + invade;
+        return Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: ancho,
+              child: _panelVerde(
+                desvanece: desvanece,
+                izquierda: mitad < 560 ? 48 : 120,
               ),
             ),
-          ),
+            Positioned(
+              left: ancho - desvanece,
+              top: 0,
+              bottom: 0,
+              width: desvanece + 6,
+              child: _desvanecido(desvanece + 6),
+            ),
+            // El ingreso se centra en lo que se ve blanco (desde donde el
+            // desvanecido ya casi no tiene verde), no en la mitad exacta.
+            Positioned(
+              left: math.max(
+                mitad,
+                math.min(ancho - invade * 0.3, c.maxWidth - 400),
+              ),
+              top: 0,
+              bottom: 0,
+              right: 0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 32,
+                ),
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: _formulario(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Capa blanca que cubre el borde derecho de la foto con una curva suave
+  // (smoothstep). Termina en un tramo de blanco puro y sobrepasa la foto unos
+  // píxeles: así el borde de la foto nunca queda a la vista como una línea.
+  Widget _desvanecido(double ancho) {
+    const pasos = 12;
+    double suave(double t) => t * t * (3 - 2 * t);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            for (var i = 0; i <= pasos; i++)
+              Colors.white.withValues(
+                alpha: suave((i / pasos / 0.85).clamp(0.0, 1.0)),
+              ),
+          ],
+          stops: [for (var i = 0; i <= pasos; i++) i / pasos],
         ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
-            child: Center(
-              child: SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 340),
-                  child: _formulario(context),
+      ),
+      child: SizedBox(width: ancho),
+    );
+  }
+
+  // Foto con degradado verde y el texto de bienvenida.
+  Widget _panelVerde({required double desvanece, required double izquierda}) {
+    return Container(
+      color: _fondoVerde,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/login_fondo.jpg',
+              fit: BoxFit.cover,
+              cacheWidth: 1400,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+          // Degradado verde sobre la foto: más fuerte donde va el texto.
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xE60A3622),
+                    Color(0xB30A3622),
+                    Color(0x800F5A38),
+                  ],
+                  stops: [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
-        ),
-      ],
+          Padding(
+            padding: EdgeInsets.fromLTRB(izquierda, 32, desvanece, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: _bienvenida(),
+                      ),
+                    ),
+                  ),
+                ),
+                _copyright(
+                  Colors.white.withValues(alpha: 0.75),
+                  alinear: TextAlign.start,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
-
-// Borde derecho del panel verde en zigzag (dientes hacia la sección blanca).
-class _BordeZigzag extends CustomClipper<Path> {
-  const _BordeZigzag();
-
-  static const _profundidad = 18.0;
-  static const _altoDiente = 36.0;
-
-  @override
-  Path getClip(Size size) {
-    final dientes = math.max(2, (size.height / _altoDiente).round());
-    final paso = size.height / dientes;
-    final camino = Path()..moveTo(0, 0);
-    for (var i = 0; i <= dientes; i++) {
-      final x = i.isEven ? size.width - _profundidad : size.width;
-      camino.lineTo(x, i * paso);
-    }
-    camino
-      ..lineTo(0, size.height)
-      ..close();
-    return camino;
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> old) => false;
 }
