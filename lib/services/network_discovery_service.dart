@@ -151,7 +151,7 @@ class NetworkDiscoveryService {
     }
 
     // 7. Probar hosts conocidos en la red Wi-Fi
-    for (final host in [AppConfig.serverIp, 'joel.local']) {
+    for (final host in [AppConfig.serverIp, 'bijao.local', 'joel.local']) {
       final cand = 'http://$host:$defaultPort';
       if (await pingServer(cand, timeout: const Duration(milliseconds: 1200))) {
         final uri = Uri.parse(cand);
