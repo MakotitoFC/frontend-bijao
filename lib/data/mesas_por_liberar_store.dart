@@ -1,78 +1,119 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/mesa.dart';
+import '../services/api_client.dart';
+import '../services/auth_service.dart';
 import 'mesas_store.dart';
 import 'pedidos_store.dart';
 
-// Mesas que el mozo debe liberar a mano: su pedido ya se pagó (desaparece de su
-// lista) pero la mesa sigue ocupada, porque el pago no la libera (los clientes
-// suelen quedarse un rato más). Se recuerdan en el dispositivo.
-final Set<String> _ids = {};
+// Mesas que el mozo debe liberar: su pedido ya se cobró (estado `pagado`) pero la
+// mesa sigue ocupada, porque el pago no la libera (los clientes suelen quedarse
+// un rato más). La lista la da el backend, ya filtrada: a un mozo solo le
+// devuelve las mesas que atendió él; al administrador, todas las de la sede.
+// No se deduce en la app ni se guarda en el dispositivo.
+final ValueNotifier<List<Mesa>> mesasPorLiberarNotifier =
+    ValueNotifier<List<Mesa>>([]);
 
-const _clavePrefs = 'mesas_por_liberar';
+List<Mesa> mesasPorLiberar() => mesasPorLiberarNotifier.value;
 
-Future<void> cargarMesasPorLiberar() async {
+bool get hayMesasPorLiberarPendientes =>
+    mesasPorLiberarNotifier.value.isNotEmpty;
+
+// Usuario al que pertenece la lista que hay en memoria.
+String? _duenoDeLaLista;
+
+bool _limpiadoLoViejo = false;
+
+// Versiones anteriores guardaban esta lista en el dispositivo, sin distinguir
+// al usuario. Ese dato ya no se usa: se borra una vez.
+Future<void> _borrarLoGuardadoAntes() async {
+  if (_limpiadoLoViejo) return;
+  _limpiadoLoViejo = true;
   try {
     final p = await SharedPreferences.getInstance();
-    _ids
-      ..clear()
-      ..addAll(p.getStringList(_clavePrefs) ?? const []);
-  } catch (_) {
-    // Sin almacenamiento: se usa solo lo de esta sesión.
-  }
-}
-
-Future<void> _guardar() async {
-  try {
-    final p = await SharedPreferences.getInstance();
-    await p.setStringList(_clavePrefs, _ids.toList());
+    await p.remove('mesas_por_liberar');
   } catch (_) {}
 }
 
-bool get hayMesasPorLiberarPendientes => _ids.isNotEmpty;
-
-// Un pedido de mesa se cobró: su mesa queda por liberar.
-void marcarMesaPorLiberar(String mesaId) {
-  if (_ids.add(mesaId)) _guardar();
-}
-
-void quitarMesaPorLiberar(String mesaId) {
-  if (_ids.remove(mesaId)) _guardar();
-}
-
-// Mesas ocupadas que no tienen ningún pedido abierto entre los que la app
-// conoce y que no están ya en la lista de "por liberar". Solo es fiable para
-// quien ve todos los pedidos de la sede (el administrador): un mozo solo ve los
-// suyos y esta lista incluiría mesas con pedidos de otros mozos.
-List<Mesa> mesasOcupadasSinPedido() {
-  final ya = {for (final m in mesasPorLiberar()) m.id};
-  final lista = [
-    for (final m in mesas)
-      if (m.estaOcupada &&
-          !ya.contains(m.id) &&
-          !pedidos.any((p) => p.abierto && p.todasLasMesas.contains(m.numero)))
-        m,
-  ]..sort((a, b) => a.numero.compareTo(b.numero));
-  return lista;
-}
-
-// Mesas marcadas que siguen ocupadas y sin ningún pedido abierto. Las que ya no
-// están ocupadas (alguien las liberó) se descartan.
-List<Mesa> mesasPorLiberar() {
-  final resultado = <Mesa>[];
-  final descartar = <String>[];
-  for (final id in _ids) {
-    final m = mesas.where((x) => x.id == id).firstOrNull;
-    if (m == null || !m.estaOcupada) {
-      if (m != null) descartar.add(id);
-      continue;
-    }
-    final conPedidoAbierto = pedidos.any(
-      (p) => p.abierto && p.todasLasMesas.contains(m.numero),
-    );
-    if (!conPedidoAbierto) resultado.add(m);
+// Pide al backend las mesas por liberar del usuario actual.
+//
+// Además de lo que filtra el backend, la app se protege de mostrar mesas de
+// otro: descarta la lista si cambió el usuario mientras se pedía, ignora las
+// filas de otro mozo y no ofrece una mesa que tiene un pedido abierto que la
+// app conoce.
+Future<void> recargarMesasPorLiberar() async {
+  await _borrarLoGuardadoAntes();
+  final usuario = AuthService.instance.currentUser;
+  if (usuario == null) {
+    limpiarMesasPorLiberar();
+    return;
   }
-  descartar.forEach(quitarMesaPorLiberar);
-  resultado.sort((a, b) => a.numero.compareTo(b.numero));
-  return resultado;
+  // Lo que había era de otro usuario: no se conserva ni siquiera si falla la
+  // lectura.
+  if (_duenoDeLaLista != usuario.id) {
+    mesasPorLiberarNotifier.value = [];
+    _duenoDeLaLista = usuario.id;
+  }
+  try {
+    final res = await ApiClient.instance.get('/api/v1/mozo/mesas/por-liberar');
+    if (res is! List) return;
+    // Cerró sesión o entró otro usuario mientras llegaba la respuesta.
+    if (AuthService.instance.currentUser?.id != usuario.id) return;
+    final lista = <Mesa>[];
+    for (final item in res) {
+      if (item is! Map<String, dynamic>) continue;
+      final mesaId = item['mesa_id']?.toString() ?? '';
+      if (mesaId.isEmpty) continue;
+      // El mozo solo ve las mesas de sus pedidos.
+      final mozoId = item['mozo_id']?.toString();
+      if (!usuario.esAdmin && mozoId != null && mozoId != usuario.id) continue;
+      final numero = (item['mesa_numero'] as num?)?.toInt() ?? 0;
+      // Una mesa con un pedido abierto (que la app conoce) no está lista para
+      // liberarse.
+      if (numero > 0 &&
+          pedidos.any((p) => p.abierto && p.todasLasMesas.contains(numero))) {
+        continue;
+      }
+      final local = mesas.where((m) => m.id == mesaId).firstOrNull;
+      lista.add(
+        local ??
+            Mesa(
+              id: mesaId,
+              numero: numero,
+              estado: 'ocupada',
+              zonaId: item['zona_id']?.toString() ?? '',
+              zona: item['zona_nombre']?.toString() ?? 'Salón Principal',
+            ),
+      );
+    }
+    lista.sort((a, b) => a.numero.compareTo(b.numero));
+    mesasPorLiberarNotifier.value = lista;
+  } catch (_) {
+    // Sin conexión o sin permiso: se conserva lo último que se leyó para este
+    // mismo usuario.
+  }
+}
+
+// Al liberar una mesa deja de estar en la lista sin esperar otra lectura.
+void quitarMesaPorLiberar(String mesaId) {
+  final lista = mesasPorLiberarNotifier.value;
+  if (!lista.any((m) => m.id == mesaId)) return;
+  mesasPorLiberarNotifier.value = [
+    for (final m in lista)
+      if (m.id != mesaId) m,
+  ];
+}
+
+// Al cerrar sesión: lo que se leyó era de otro usuario.
+void limpiarMesasPorLiberar() {
+  _duenoDeLaLista = null;
+  mesasPorLiberarNotifier.value = [];
+}
+
+// Solo para pruebas: deja una lista como si la hubiera leído [usuarioId].
+@visibleForTesting
+void fijarMesasPorLiberar(String usuarioId, List<Mesa> lista) {
+  _duenoDeLaLista = usuarioId;
+  mesasPorLiberarNotifier.value = lista;
 }

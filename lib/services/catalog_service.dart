@@ -15,6 +15,7 @@ import '../models/carta_variante.dart';
 import '../models/compra.dart';
 import '../models/compra_detalle.dart';
 import '../models/inventario_movimiento.dart';
+import '../models/tipo_movimiento.dart';
 import '../models/categoria_comida.dart';
 import '../models/medio_pago.dart';
 import '../models/mesa.dart';
@@ -64,6 +65,7 @@ class CatalogService {
         cargarTiposProducto(),
         cargarUnidadesProducto(),
         cargarProductosInventario(),
+        cargarTiposMovimiento(),
         cargarUtensiliosRotos(),
         cargarMediosPago(),
         PromocionService.instance.cargar(),
@@ -1083,6 +1085,90 @@ class CatalogService {
   Future<void> eliminarUnidadProducto(String id) async {
     await _api.delete('/api/unidades-producto/$id');
     unidadesProducto.removeWhere((u) => u.id == id);
+  }
+
+  // ==========================================
+  // INVENTARIO: TIPOS DE MOVIMIENTO Y KARDEX
+  // ==========================================
+
+  Future<void> cargarTiposMovimiento() async {
+    try {
+      final res = await _api.get('/api/tipos-movimiento');
+      if (res is List && res.isNotEmpty) {
+        tiposMovimiento
+          ..clear()
+          ..addAll([
+            for (final j in res)
+              if (j is Map<String, dynamic>) TipoMovimiento.fromJson(j),
+          ]);
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error cargando tipos de movimiento: $e');
+    }
+  }
+
+  // Movimientos del libro de inventario, del más reciente al más antiguo. Con
+  // [productoId] solo los de ese producto.
+  Future<List<InventarioMovimiento>> cargarMovimientosInventario({
+    String? productoId,
+  }) async {
+    try {
+      final filtro = (productoId != null && productoId.isNotEmpty);
+      final res = await _api.get(
+        '/api/inventario-movimientos${filtro ? '?producto_inventario_id=$productoId' : ''}',
+      );
+      if (res is List) {
+        final lista = [
+          for (final j in res)
+            if (j is Map<String, dynamic>) InventarioMovimiento.fromJson(j),
+        ];
+        if (filtro) {
+          movimientosInventario[productoId] = lista;
+        } else {
+          movimientosInventario.clear();
+          for (final m in lista) {
+            movimientosInventario
+                .putIfAbsent(m.productoInventarioId, () => [])
+                .add(m);
+          }
+        }
+        return lista;
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error cargando movimientos: $e');
+    }
+    return const [];
+  }
+
+  // Registra una entrada, salida o merma en el libro de inventario. El stock lo
+  // actualiza el backend; aquí solo se vuelve a leer.
+  Future<InventarioMovimiento> registrarAjusteInventario({
+    required String productoInventarioId,
+    required String tipoMovimientoId,
+    required double cantidad,
+    double? costoUnitario,
+    String? notas,
+  }) async {
+    final res = await _api.post(
+      '/api/inventario-movimientos',
+      body: {
+        'producto_inventario_id': productoInventarioId,
+        'tipo_movimiento_id': tipoMovimientoId,
+        'cantidad': cantidad,
+        'costo_unitario': ?costoUnitario,
+        if (notas != null && notas.isNotEmpty) 'notas': notas,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('Respuesta inesperada al registrar el movimiento');
+    }
+    final movimiento = InventarioMovimiento.fromJson(res);
+    // El stock real es el de la base de datos.
+    await cargarProductosInventario();
+    movimientosInventario
+        .putIfAbsent(movimiento.productoInventarioId, () => [])
+        .insert(0, movimiento);
+    return movimiento;
   }
 
   // ==========================================

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/borrador_pedido_store.dart';
 import '../data/nav_items.dart';
 import '../models/categoria_comida.dart';
 import '../models/app_role.dart';
@@ -15,13 +16,13 @@ import '../utils/blur_dialog.dart';
 import '../widgets/cambiar_pin_dialog.dart';
 import '../widgets/deferred_loader.dart';
 import '../widgets/menu_flotante.dart';
+import '../widgets/punto_aviso.dart';
 import '../widgets/submenu_lateral.dart';
 import 'carta_screen.dart' deferred as carta;
 import 'inicio_screen.dart';
 import 'cocina_screen.dart' deferred as cocina;
 import 'configuracion_screen.dart' deferred as configuracion;
 import 'inventario_screen.dart' deferred as inventario;
-import 'login_screen.dart';
 import 'mesas_screen.dart';
 import 'pagos_screen.dart' deferred as pagos;
 import 'pedidos_screen.dart';
@@ -68,7 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     await showBlurDialog<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => const CambiarPinDialog(obligatorio: true),
     );
   }
@@ -122,13 +122,12 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   };
 
+  // Cerrar sesión: `main.dart` vuelve solo a la pantalla de inicio de sesión;
+  // aquí solo se cierra lo que haya quedado encima.
   void _logout(BuildContext context) async {
+    final navegador = Navigator.of(context);
     await AuthService.instance.logout();
-    if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    navegador.popUntil((route) => route.isFirst);
   }
 
   // Atajos de la vista Inicio: solo a lo que el usuario puede abrir.
@@ -570,6 +569,8 @@ class _BottomNav extends StatelessWidget {
                   icono: item.icono,
                   etiqueta: item.label,
                   activo: seleccionado == item.clave,
+                  conAviso:
+                      item.clave == 'pedidos' && seleccionado != 'pedidos',
                   onTap: () => onSeleccionar(item.clave),
                 ),
               ),
@@ -577,6 +578,10 @@ class _BottomNav extends StatelessWidget {
               Expanded(
                 child: _botonNavMas(
                   activo: _masActivo,
+                  // El pedido sin confirmar está dentro de "Más".
+                  conAviso:
+                      restantes.any((i) => i.clave == 'pedidos') &&
+                      seleccionado != 'pedidos',
                   onTap: () => _abrirMas(context),
                 ),
               ),
@@ -591,6 +596,7 @@ class _BottomNav extends StatelessWidget {
     required String etiqueta,
     required bool activo,
     required VoidCallback onTap,
+    bool conAviso = false,
   }) {
     final color = activo ? AppColors.primaryGreen : Colors.grey.shade500;
     return InkWell(
@@ -600,7 +606,10 @@ class _BottomNav extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icono, size: 22, color: color),
+            _IconoConAviso(
+              conAviso: conAviso,
+              icono: Icon(icono, size: 22, color: color),
+            ),
             const SizedBox(height: 4),
             Text(
               etiqueta,
@@ -618,7 +627,11 @@ class _BottomNav extends StatelessWidget {
     );
   }
 
-  Widget _botonNavMas({required bool activo, required VoidCallback onTap}) {
+  Widget _botonNavMas({
+    required bool activo,
+    required VoidCallback onTap,
+    bool conAviso = false,
+  }) {
     final color = activo ? AppColors.primaryGreen : Colors.grey.shade500;
     return InkWell(
       onTap: onTap,
@@ -627,7 +640,10 @@ class _BottomNav extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.more_horiz, size: 22, color: color),
+            _IconoConAviso(
+              conAviso: conAviso,
+              icono: Icon(Icons.more_horiz, size: 22, color: color),
+            ),
             const SizedBox(height: 4),
             Text(
               'Más',
@@ -836,6 +852,46 @@ class _InicioContent extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ¿Hay un pedido a medias (sin confirmar) del usuario actual?
+bool _hayPedidoSinConfirmar() {
+  final id = AuthService.instance.currentUser?.id;
+  return id != null && borradorDe(id) != null;
+}
+
+// Ícono de un ítem del menú con el aviso de "pedido sin confirmar" encima: solo
+// en Pedidos y mientras el usuario está en otra vista.
+class _IconoConAviso extends StatelessWidget {
+  final Widget icono;
+  final bool conAviso;
+
+  const _IconoConAviso({required this.icono, required this.conAviso});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!conAviso) return icono;
+    return ValueListenableBuilder<int>(
+      valueListenable: borradorRevision,
+      builder: (context, _, _) {
+        if (!_hayPedidoSinConfirmar()) return icono;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            icono,
+            Positioned(
+              top: -9,
+              right: -9,
+              child: const Tooltip(
+                message: 'Tienes un pedido sin confirmar',
+                child: PuntoAviso(),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1116,6 +1172,7 @@ class _Sidebar extends StatelessWidget {
     required String etiqueta,
     required bool activo,
     required VoidCallback onTap,
+    bool conAviso = false,
   }) {
     final color = activo ? AppColors.primaryGreen : Colors.white70;
     return Padding(
@@ -1136,10 +1193,18 @@ class _Sidebar extends StatelessWidget {
                 vertical: 12,
               ),
               child: colapsado
-                  ? Center(child: Icon(icono, size: 24, color: color))
+                  ? Center(
+                      child: _IconoConAviso(
+                        conAviso: conAviso,
+                        icono: Icon(icono, size: 24, color: color),
+                      ),
+                    )
                   : Row(
                       children: [
-                        Icon(icono, size: 24, color: color),
+                        _IconoConAviso(
+                          conAviso: conAviso,
+                          icono: Icon(icono, size: 24, color: color),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -1173,6 +1238,8 @@ class _Sidebar extends StatelessWidget {
       icono: item.icono,
       etiqueta: item.label,
       activo: activo,
+      // Aviso de pedido sin confirmar, salvo que ya esté en Pedidos.
+      conAviso: !esGrupo && item.clave == 'pedidos' && !activo,
       onTap: () {
         if (!esGrupo) {
           onSeleccionar(item.clave);

@@ -4,13 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/configuracion_store.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/patron_cocina.dart';
 import '../widgets/server_connection_dialog.dart';
-import 'home_screen.dart';
 import '../widgets/campo_texto.dart';
 
 // Login: correo + contraseña contra `usuarios`.
@@ -34,19 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    if (AuthService.instance.isAuthenticated && AuthService.instance.currentUser != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final user = AuthService.instance.currentUser!;
-        final sede = sedes.where((s) => s.id == user.sedeId).firstOrNull ?? sedes.first;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => HomeScreen(sede: sede, usuario: user),
-          ),
-        );
-      });
-    }
-
+    // Con la sesión iniciada, `main.dart` cambia solo a la pantalla principal
+    // (ver `MyApp`): aquí no se navega, o se abriría dos veces.
     AuthService.instance.getSavedEmail().then((saved) {
       if (saved != null && saved.isNotEmpty && mounted) {
         setState(() {
@@ -73,27 +60,17 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final user = await AuthService.instance.login(
+      // Al iniciar sesión, `main.dart` cambia solo a la pantalla principal.
+      await AuthService.instance.login(
         usuario: identifier,
         password: password,
         rememberEmail: _recordarme,
       );
 
       if (!mounted) return;
-
-      final sede = sedes.where((s) => s.id == user.sedeId).firstOrNull ?? sedes.first;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HomeScreen(sede: sede, usuario: user),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
-      showAppToast(
-        context,
-        e.toString(),
-        type: ToastType.error,
-      );
+      showAppToast(context, e.toString(), type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -399,7 +376,10 @@ class _LoginScreenState extends State<LoginScreen> {
         elevation: 1,
         onPressed: () => ServerConnectionDialog.show(context),
         icon: const Icon(LucideIcons.wifi, size: 16),
-        label: const Text('Servidor / Red', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        label: const Text(
+          'Servidor / Red',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
       ),
       body: mobile ? _buildMobile(context) : _buildEscritorio(context),
     );
@@ -509,8 +489,4 @@ class _BordeZigzag extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(covariant CustomClipper<Path> old) => false;
-}
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

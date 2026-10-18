@@ -75,7 +75,8 @@ EstadoDisponibilidad estadoDisponibilidadDe(
         ? const EstadoDisponibilidad(TipoDisponibilidad.sinApertura)
         : const EstadoDisponibilidad(TipoDisponibilidad.libre);
   }
-  if (fila.agotado) return const EstadoDisponibilidad(TipoDisponibilidad.agotado);
+  if (fila.agotado)
+    return const EstadoDisponibilidad(TipoDisponibilidad.agotado);
 
   final disponible = fila.cantidadDisponible;
   if (fila.cantidadInicial != null && disponible != null) {

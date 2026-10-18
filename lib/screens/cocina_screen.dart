@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import '../widgets/dialogo_app.dart';
 
 import '../utils/blur_dialog.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
@@ -14,6 +16,7 @@ import '../data/insumos_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
+import '../utils/nota_pedido.dart';
 import '../models/pedido_line.dart';
 import '../services/eventos_service.dart';
 import '../services/pedido_service.dart';
@@ -298,6 +301,30 @@ class _CocinaScreenState extends State<CocinaScreen> {
               ),
             ),
           ),
+          if (notaGeneralDe(p.notas) != null)
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFFE53935)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text.rich(
+                TextSpan(
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFFE53935),
+                  ),
+                  children: [
+                    const TextSpan(
+                      text: 'NOTA DEL PEDIDO : ',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    TextSpan(text: notaGeneralDe(p.notas)),
+                  ],
+                ),
+              ),
+            ),
           if (lineas.isEmpty)
             Padding(
               padding: const EdgeInsets.all(16),

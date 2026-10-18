@@ -13,7 +13,9 @@ void main() {
 
   group('Paso 2 & 3: Integración de Red y Autenticación con Backend Go', () {
     test('1. Ping al servidor local en puerto 6050', () async {
-      final isAlive = await NetworkDiscoveryService.pingServer('http://127.0.0.1:6050');
+      final isAlive = await NetworkDiscoveryService.pingServer(
+        'http://127.0.0.1:6050',
+      );
       expect(isAlive, isTrue);
     });
 

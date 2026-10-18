@@ -1,17 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/logo_ticket_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
+import '../utils/datos_sede.dart';
+import '../utils/ticket_texto.dart';
+import 'app_tag.dart';
+import 'dialogo_app.dart';
+import 'ticket_papel.dart';
 
-// Boleta imprimible del pedido (`pedidos`, `pedidos_detalle`, `usuarios`, `pagos`).
-class BoletaPedidoDialog extends StatelessWidget {
+// Tickets del pedido, tal como salen en la ticketera (80 mm, blanco y negro):
+//  - Comanda de cocina: lo que se prepara, sin precios. Es la que el servidor
+//    manda a la impresora de cocina y la que se puede reimprimir desde aquí.
+//  - Cuenta: lo consumido con sus precios y el total.
+class BoletaPedidoDialog extends StatefulWidget {
   final Pedido pedido;
   final String mesero;
   final String titulo;
   final String metodoPago;
+  // Reimprime la comanda en la impresora de cocina.
   final VoidCallback onImprimir;
   final VoidCallback onCerrar;
 
@@ -25,164 +35,88 @@ class BoletaPedidoDialog extends StatelessWidget {
     required this.onCerrar,
   });
 
-  String _fecha(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  @override
+  State<BoletaPedidoDialog> createState() => _BoletaPedidoDialogState();
+}
+
+class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
+  // 'comanda' o 'cuenta'.
+  String _tab = 'comanda';
+
+  @override
+  void initState() {
+    super.initState();
+    cargarLogoTicketLocal();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final esMobile = AppBreakpoints.esMobile(context);
-    final ancho = MediaQuery.sizeOf(context).width;
-    final lineas = detallesPorPedido[pedido.id] ?? [];
+    final pedido = widget.pedido;
+    final lineas = detallesPorPedido[pedido.id] ?? const [];
     final total = totalDePedido(pedido.id);
-    const gris = TextStyle(fontSize: 12, color: Color(0xFF6B7280));
-    Widget fila(String a, String b, {TextStyle? estilo}) => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(a, style: estilo ?? gris),
-        Flexible(
-          child: Text(
-            b,
-            textAlign: TextAlign.end,
-            style: (estilo ?? gris).copyWith(color: Colors.black87),
+    final pagado = total - saldoPendienteDePedido(pedido.id);
+    final ticket = _tab == 'comanda'
+        ? ticketComanda(pedido: pedido, lineas: lineas, mozo: widget.mesero)
+        : ticketBoleta(
+            pedido: pedido,
+            lineas: lineas,
+            mozo: widget.mesero,
+            sede: datosDeLaSede(),
+            metodoPago: widget.metodoPago == 'Sin pago'
+                ? ''
+                : widget.metodoPago,
+            pagado: pagado > 0.001 ? pagado : 0,
+          );
+    return DialogoApp(
+      titulo: 'Ticket · Pedido #${pedido.numeroPedido}',
+      ancho: 480,
+      acciones: [
+        OutlinedButton(onPressed: widget.onCerrar, child: const Text('Cerrar')),
+        if (_tab == 'comanda')
+          FilledButton.icon(
+            onPressed: widget.onImprimir,
+            icon: const Icon(LucideIcons.printer, size: 16),
+            label: const Text('Reimprimir comanda'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
           ),
-        ),
       ],
-    );
-    return Material(
-      color: Colors.white,
-      borderRadius: esMobile
-          ? const BorderRadius.vertical(top: Radius.circular(AppRadii.sheet))
-          : BorderRadius.circular(AppRadii.sheet),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: esMobile
-            ? BoxConstraints(minWidth: ancho, maxWidth: ancho)
-            : const BoxConstraints(minWidth: 380, maxWidth: 380),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(28, esMobile ? 32 : 24, 28, 24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Image.asset(
-                    'assets/images/logo_bijao.png',
-                    height: 44,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Center(
-                  child: Text(
-                    'Boleta',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Center(
-                  child: Text('Pedido #${pedido.numeroPedido}', style: gris),
-                ),
-                const SizedBox(height: 14),
-                fila('Fecha', _fecha(pedido.fechaPedido)),
-                const SizedBox(height: 4),
-                fila('Cliente', pedido.clienteNombre ?? '—'),
-                const SizedBox(height: 4),
-                fila('Atendido por', mesero),
-                const SizedBox(height: 4),
-                fila('Tipo', titulo),
-                const SizedBox(height: 14),
-                Divider(height: 1, color: Colors.grey.shade300),
-                const SizedBox(height: 10),
-                for (final l in lineas) ...[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 28,
-                        child: Text(
-                          '${l.cantidad}x',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l.nombrePlato,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            if (l.modificadores.isNotEmpty)
-                              Text(
-                                l.modificadores.map((m) => m.nombre).join(', '),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        'S/ ${l.precioTotalLinea.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                Divider(height: 1, color: Colors.grey.shade300),
-                const SizedBox(height: 10),
-                fila(
-                  'Total',
-                  'S/ ${total.toStringAsFixed(2)}',
-                  estilo: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                fila('Pago', metodoPago),
-                const SizedBox(height: 16),
-                const Center(
-                  child: Text('¡Gracias por su visita!', style: gris),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onCerrar,
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.grey.shade300),
-                          foregroundColor: Colors.black87,
-                        ),
-                        child: const Text('Cerrar'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: onImprimir,
-                        icon: const Icon(LucideIcons.printer, size: 16),
-                        label: const Text('Imprimir'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.navbar,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+      children: [
+        Wrap(
+          spacing: 0,
+          runSpacing: 8,
+          children: [
+            AppTag(
+              etiqueta: 'Comanda de cocina',
+              activo: _tab == 'comanda',
+              onTap: () => setState(() => _tab = 'comanda'),
             ),
-          ),
+            AppTag(
+              etiqueta: 'Boleta',
+              activo: _tab == 'cuenta',
+              onTap: () => setState(() => _tab = 'cuenta'),
+            ),
+          ],
         ),
-      ),
+        const SizedBox(height: 12),
+        Text(
+          _tab == 'comanda'
+              ? 'Así sale en la impresora de cocina (sin precios). Al '
+                    'reimprimirla, el papel lleva el rótulo REIMPRESION.'
+              : 'Boleta de venta electrónica. Todavía no se imprime desde el sistema.',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE5E7EB),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          // La boleta lleva logo; la comanda de cocina no.
+          child: TicketConLogo(lineas: ticket, conLogo: _tab == 'cuenta'),
+        ),
+        const SizedBox(height: 12),
+      ],
     );
   }
 }

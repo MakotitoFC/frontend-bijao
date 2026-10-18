@@ -26,7 +26,10 @@ Stream<EventoSse> abrirFlujoDeEventos({
           ((web.Event e) {
             final dato = (e as web.MessageEvent).data;
             control.add(
-              EventoSse(nombre, dato.isA<JSString>() ? (dato as JSString).toDart : ''),
+              EventoSse(
+                nombre,
+                dato.isA<JSString>() ? (dato as JSString).toDart : '',
+              ),
             );
           }).toJS,
         );

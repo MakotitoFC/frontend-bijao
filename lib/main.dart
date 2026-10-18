@@ -29,7 +29,9 @@ class MyApp extends StatelessWidget {
         valueListenable: AuthService.instance.userNotifier,
         builder: (context, user, _) {
           if (user != null) {
-            final sede = sedes.where((s) => s.id == user.sedeId).firstOrNull ?? sedes.first;
+            final sede =
+                sedes.where((s) => s.id == user.sedeId).firstOrNull ??
+                sedes.first;
             return HomeScreen(sede: sede, usuario: user);
           }
           return const LoginScreen();
@@ -38,4 +40,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

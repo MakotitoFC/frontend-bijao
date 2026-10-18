@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import '../widgets/dialogo_app.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/mesas_store.dart';
@@ -59,11 +61,7 @@ class MesasPlano extends StatefulWidget {
   final ValueChanged<Mesa> onSeleccionarMesa;
   final Usuario? usuario;
 
-  const MesasPlano({
-    super.key,
-    required this.onSeleccionarMesa,
-    this.usuario,
-  });
+  const MesasPlano({super.key, required this.onSeleccionarMesa, this.usuario});
 
   @override
   State<MesasPlano> createState() => _MesasPlanoState();
@@ -168,7 +166,9 @@ class _MesasPlanoState extends State<MesasPlano> {
   }
 
   void _alternarSeleccionParaUnir(Mesa mesa) {
-    if (mesa.estado != 'disponible' && mesa.estado != 'libre' || estaUnida(mesa.numero)) return;
+    if (mesa.estado != 'disponible' && mesa.estado != 'libre' ||
+        estaUnida(mesa.numero))
+      return;
     setState(() {
       if (!_paraUnir.remove(mesa.numero)) _paraUnir.add(mesa.numero);
     });
@@ -204,7 +204,11 @@ class _MesasPlanoState extends State<MesasPlano> {
       );
       setState(() {});
       if (!mounted) return;
-      showAppToast(context, 'Mesa ${datos.numero} creada.', type: ToastType.success);
+      showAppToast(
+        context,
+        'Mesa ${datos.numero} creada.',
+        type: ToastType.success,
+      );
     } catch (e) {
       if (!mounted) return;
       showAppToast(context, 'Error al crear mesa: $e', type: ToastType.error);
@@ -220,14 +224,22 @@ class _MesasPlanoState extends State<MesasPlano> {
     try {
       if (datos.eliminar) {
         if (!_puedeEliminarMesa) {
-          showAppToast(context, 'No tienes permiso para eliminar mesas.', type: ToastType.error);
+          showAppToast(
+            context,
+            'No tienes permiso para eliminar mesas.',
+            type: ToastType.error,
+          );
           return;
         }
         await CatalogService.instance.eliminarMesa(mesa.id, mesa.numero);
         _paraUnir.remove(mesa.numero);
         setState(() {});
         if (!mounted) return;
-        showAppToast(context, 'Mesa ${mesa.numero} eliminada.', type: ToastType.info);
+        showAppToast(
+          context,
+          'Mesa ${mesa.numero} eliminada.',
+          type: ToastType.info,
+        );
       } else {
         await CatalogService.instance.actualizarMesa(
           mesa.id,
@@ -238,11 +250,19 @@ class _MesasPlanoState extends State<MesasPlano> {
         );
         setState(() {});
         if (!mounted) return;
-        showAppToast(context, 'Mesa ${datos.numero} actualizada.', type: ToastType.success);
+        showAppToast(
+          context,
+          'Mesa ${datos.numero} actualizada.',
+          type: ToastType.success,
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      showAppToast(context, 'Error al actualizar mesa: $e', type: ToastType.error);
+      showAppToast(
+        context,
+        'Error al actualizar mesa: $e',
+        type: ToastType.error,
+      );
     }
   }
 
@@ -261,7 +281,11 @@ class _MesasPlanoState extends State<MesasPlano> {
         _zona = nueva.zona;
       });
       if (!mounted) return;
-      showAppToast(context, 'Zona "${nueva.zona}" creada.', type: ToastType.success);
+      showAppToast(
+        context,
+        'Zona "${nueva.zona}" creada.',
+        type: ToastType.success,
+      );
     } catch (e) {
       if (!mounted) return;
       showAppToast(context, 'Error al crear zona: $e', type: ToastType.error);
@@ -276,16 +300,17 @@ class _MesasPlanoState extends State<MesasPlano> {
 
     final datos = await showBlurDialog<ZonaFormResultado>(
       context: context,
-      builder: (_) => ZonaFormDialog(
-        zona: zona,
-        estadoInicial: zonaObj.estado,
-      ),
+      builder: (_) => ZonaFormDialog(zona: zona, estadoInicial: zonaObj.estado),
     );
     if (datos == null || !mounted) return;
 
     if (datos.eliminar) {
       if (!_puedeEliminarZona) {
-        showAppToast(context, 'No tienes permiso para eliminar zonas.', type: ToastType.error);
+        showAppToast(
+          context,
+          'No tienes permiso para eliminar zonas.',
+          type: ToastType.error,
+        );
         return;
       }
       final confirmar = await showBlurDialog<bool>(
@@ -324,7 +349,11 @@ class _MesasPlanoState extends State<MesasPlano> {
         showAppToast(context, 'Zona "$zona" eliminada.', type: ToastType.info);
       } catch (e) {
         if (!mounted) return;
-        showAppToast(context, 'Error al eliminar zona: $e', type: ToastType.error);
+        showAppToast(
+          context,
+          'Error al eliminar zona: $e',
+          type: ToastType.error,
+        );
       }
       return;
     }
@@ -350,7 +379,11 @@ class _MesasPlanoState extends State<MesasPlano> {
       showAppToast(context, 'Zona actualizada.', type: ToastType.success);
     } catch (e) {
       if (!mounted) return;
-      showAppToast(context, 'Error al actualizar zona: $e', type: ToastType.error);
+      showAppToast(
+        context,
+        'Error al actualizar zona: $e',
+        type: ToastType.error,
+      );
     }
   }
 
@@ -501,22 +534,18 @@ class _MesasPlanoState extends State<MesasPlano> {
   // pestaña de acciones encima). Todo su contenido, incluido el rótulo de la
   // zona, hace scroll interno con la barra oculta.
   Widget _sala(String zona, double scale, double anchoDisponible) {
-    final visibles = mesas
-        .where(
-          (m) {
-            final match = CatalogService.instance.zonas.firstWhere(
-              (z) => z.zona.toLowerCase() == m.zona.toLowerCase(),
-              orElse: () => const Zona(id: '', zona: '', estado: true),
-            );
-            if (!match.estado) return false;
+    final visibles = mesas.where((m) {
+      final match = CatalogService.instance.zonas.firstWhere(
+        (z) => z.zona.toLowerCase() == m.zona.toLowerCase(),
+        orElse: () => const Zona(id: '', zona: '', estado: true),
+      );
+      if (!match.estado) return false;
 
-            return m.zona == zona &&
-                esAnclaDeGrupo(m.numero) &&
-                (_estado == null || m.estado == _estado) &&
-                _coincideBusqueda(m);
-          },
-        )
-        .toList();
+      return m.zona == zona &&
+          esAnclaDeGrupo(m.numero) &&
+          (_estado == null || m.estado == _estado) &&
+          _coincideBusqueda(m);
+    }).toList();
     final total = mesasDeZona(zona).length;
     final union = _modoUnion;
     final colorTrazo = union ? _naranjaUnir : Colors.grey.shade400;
@@ -804,7 +833,9 @@ class _MesasPlanoState extends State<MesasPlano> {
               monto: pedido != null ? totalDePedido(pedido.id) : null,
               mesero: _meseroDe(pedido),
               onTap: () => _seleccionarMesa(mesa),
-              onEditar: (_modoUnion || !_puedeEditarMesa) ? null : () => _editarMesa(mesa),
+              onEditar: (_modoUnion || !_puedeEditarMesa)
+                  ? null
+                  : () => _editarMesa(mesa),
               onDesunir: unidas.isNotEmpty && mesa.estaLibre
                   ? () => _desunir(mesa.numero)
                   : null,
@@ -910,10 +941,11 @@ class MesasScreen extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (mesa.estaOcupada
-                          ? AppColors.error
-                          : AppColors.primaryGreen)
-                      .withValues(alpha: 0.15),
+                  color:
+                      (mesa.estaOcupada
+                              ? AppColors.error
+                              : AppColors.primaryGreen)
+                          .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -998,5 +1030,4 @@ class MesasScreen extends StatelessWidget {
       },
     );
   }
-
 }

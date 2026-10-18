@@ -65,7 +65,8 @@ class PedidoLine {
 
   factory PedidoLine.fromJson(Map<String, dynamic> json) {
     final cant = (json['cantidad'] as num?)?.toInt() ?? 1;
-    final pUnit = (json['precio_base'] as num?)?.toDouble() ??
+    final pUnit =
+        (json['precio_base'] as num?)?.toDouble() ??
         (json['precio'] as num?)?.toDouble() ??
         0.0;
     final pTotal = (json['precio'] as num?)?.toDouble() ?? (pUnit * cant);
@@ -74,7 +75,8 @@ class PedidoLine {
     return PedidoLine(
       id: json['id']?.toString() ?? '',
       cartaId: json['carta_id']?.toString() ?? '',
-      nombrePlato: json['plato_nombre']?.toString() ??
+      nombrePlato:
+          json['plato_nombre']?.toString() ??
           json['nombre_libre']?.toString() ??
           'Plato',
       cantidad: cant,
@@ -109,7 +111,7 @@ class PedidoLine {
       modificadores: modificadores,
       presentacion: presentacion,
       variante: variante,
-    componentes: componentes,
+      componentes: componentes,
       promocion: promocion,
       comentario: comentario,
       precioUnitario: precioUnitario,
@@ -134,7 +136,7 @@ class PedidoLine {
     cantidad: cantidad,
     modificadores: modificadores,
     presentacion: presentacion,
-      variante: variante,
+    variante: variante,
     componentes: componentes,
     promocion: promocion,
     comentario: nuevo,
@@ -160,7 +162,7 @@ class PedidoLine {
     cantidad: cantidad,
     modificadores: modificadores,
     presentacion: presentacion,
-      variante: variante,
+    variante: variante,
     componentes: componentes,
     promocion: promocion,
     comentario: comentario,

@@ -25,10 +25,11 @@ class Zona {
     if (sedeId != null) 'sede_id': sedeId,
   };
 
-  Zona copyWith({String? id, String? zona, bool? estado, String? sedeId}) => Zona(
-    id: id ?? this.id,
-    zona: zona ?? this.zona,
-    estado: estado ?? this.estado,
-    sedeId: sedeId ?? this.sedeId,
-  );
+  Zona copyWith({String? id, String? zona, bool? estado, String? sedeId}) =>
+      Zona(
+        id: id ?? this.id,
+        zona: zona ?? this.zona,
+        estado: estado ?? this.estado,
+        sedeId: sedeId ?? this.sedeId,
+      );
 }

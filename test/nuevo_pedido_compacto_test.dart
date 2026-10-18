@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_bijao/data/borrador_pedido_store.dart';
 import 'package:frontend_bijao/data/cartas_store.dart';
 import 'package:frontend_bijao/models/app_role.dart';
 import 'package:frontend_bijao/models/carta_item.dart';
@@ -12,6 +13,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await ApiClient.instance.initialize();
+    limpiarBorradorPedido();
     cartasNotifier.value = [
       const CartaItem(
         id: 'c1',
@@ -24,7 +26,10 @@ void main() {
     ];
   });
 
-  tearDown(() => cartasNotifier.value = []);
+  tearDown(() {
+    cartasNotifier.value = [];
+    limpiarBorradorPedido();
+  });
 
   Widget app(Size tam) => MaterialApp(
     home: Scaffold(
@@ -85,7 +90,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byTooltip('Ver detalle completo'), findsNothing);
     expect(find.text('Nota del pedido (opcional)'), findsOneWidget);
-    expect(find.text('Plato libre'), findsOneWidget); // solo el del detalle
+    expect(find.text('Plato rápido'), findsOneWidget); // solo el del detalle
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

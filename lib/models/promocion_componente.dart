@@ -162,7 +162,8 @@ class ComponenteElegido {
     'componente_id': componenteId,
     'opcion_id': opcionId,
     'carta_id': cartaId,
-    if (cartaPresentacionId != null) 'carta_presentacion_id': cartaPresentacionId,
+    if (cartaPresentacionId != null)
+      'carta_presentacion_id': cartaPresentacionId,
     if (cartaVarianteId != null) 'carta_variante_id': cartaVarianteId,
     'es_cambio': esCambio,
     'precio_ajuste': precioAjuste,

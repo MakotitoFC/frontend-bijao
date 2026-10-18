@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'dialogo_app.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';

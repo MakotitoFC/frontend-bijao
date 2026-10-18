@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 // Paleta de Bijao: verde menta #0CAB7B sobre navbar oscuro #1F1F1F, header
 // #FFFFFC y fondo de vistas #F5F6FF.
 class AppColors {
+  // Mostaza del estado "Pendiente" de un pedido (también el aviso de pedido a
+  // medias en el menú).
+  static const Color pendiente = Color(0xFFCA8A04);
   static const Color primaryGreen = Color(0xFF0CAB7B);
   static const Color primaryGreenDark = Color(0xFF098A63);
   static const Color accentGold = Color(0xFFC98A3E);

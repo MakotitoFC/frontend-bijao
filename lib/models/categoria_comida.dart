@@ -20,7 +20,9 @@ class CategoriaComida {
       categoria: json['categoria'] as String? ?? '',
       orden: json['orden'] as int? ?? 0,
       estado: json['estado'] as bool? ?? true,
-      creadoEn: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
+      creadoEn: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String)
+          : null,
     );
   }
 

@@ -126,7 +126,8 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
     final termino = _busqueda.trim().toLowerCase();
     final visibles = [
       for (final f in _filas)
-        if (termino.isEmpty || f.plato.nombrePlato.toLowerCase().contains(termino))
+        if (termino.isEmpty ||
+            f.plato.nombrePlato.toLowerCase().contains(termino))
           f,
     ];
     return ModalPago(
@@ -172,7 +173,9 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               OutlinedButton(
-                onPressed: _trabajando ? null : () => Navigator.of(context).pop(),
+                onPressed: _trabajando
+                    ? null
+                    : () => Navigator.of(context).pop(),
                 child: const Text('Cancelar'),
               ),
               const SizedBox(width: 8),

@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+
 import 'dialogo_app.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
@@ -7,6 +12,7 @@ import '../data/configuracion_store.dart';
 import '../data/disponibilidad_store.dart';
 import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
+import '../data/borrador_pedido_store.dart';
 import '../data/categorias_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/promociones_store.dart';
@@ -20,6 +26,7 @@ import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../screens/mesas_screen.dart';
 import '../theme/app_theme.dart';
+import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../services/disponibilidad_service.dart';
 import '../services/pedido_service.dart';
@@ -64,13 +71,25 @@ class NuevoPedidoDialog extends StatefulWidget {
   State<NuevoPedidoDialog> createState() => _NuevoPedidoDialogState();
 }
 
-class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
+class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
+    with WidgetsBindingObserver {
   int? _mesaNumero;
   String? _mesaId;
   bool _confirmando = false;
+  // true cuando el pedido terminó (confirmado, cerrado o se volvió atrás): no se
+  // guarda como borrador.
+  bool _descartado = false;
+  // true mientras el pedido se está enviando: el borrador guardado lleva esa
+  // marca y no se toca hasta saber el resultado.
+  bool _enviandoBorrador = false;
+  Timer? _autoguardado;
+  String? _ultimoGuardado;
   // Pantallas angostas: el detalle del pedido va en una hoja inferior que se
   // puede expandir.
   bool _carritoExpandido = false;
+  // La lista de productos de la hoja se puede ocultar para ver más la galería.
+  // Empieza oculta: la galería es lo principal; el total ya se ve en la cabecera.
+  bool _listaOculta = true;
 
   CategoriaComida? _categoria;
   final _busquedaController = TextEditingController();
@@ -110,10 +129,102 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     DisponibilidadService.instance.cargarHoy();
     // La carta puede haber cambiado (productos inhabilitados, precios).
     CatalogService.instance.cargarCarta();
+    _restaurarBorrador();
+    // Se guarda en el dispositivo mientras se arma (no solo al salir de la
+    // vista): si la app se cierra o el sistema la mata, el pedido sigue ahí.
+    WidgetsBinding.instance.addObserver(this);
+    _autoguardado = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _guardarSiCambio(),
+    );
+  }
+
+  // Al minimizar la app (en Android el sistema puede cerrarla después) se guarda
+  // en el acto.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado != AppLifecycleState.resumed) _guardarSiCambio(forzar: true);
+  }
+
+  // Solo se guarda si la sesión sigue siendo de este usuario (al cerrar sesión
+  // no debe quedar ninguna copia).
+  bool get _sesionVigente =>
+      AuthService.instance.currentUser?.id == widget.usuario.id;
+
+  void _guardarSiCambio({bool forzar = false}) {
+    if (!mounted ||
+        _descartado ||
+        _enviandoBorrador ||
+        _confirmando ||
+        !_sesionVigente) {
+      return;
+    }
+    final b = _armarBorrador();
+    final huella = jsonEncode((b.toJson()..remove('guardado_en')));
+    if (!forzar && huella == _ultimoGuardado) return;
+    _ultimoGuardado = huella;
+    borradorPedido = b.tieneContenido ? b : null;
+  }
+
+  // Si se salió de esta vista con el pedido a medias, se retoma tal cual.
+  void _restaurarBorrador() {
+    final b = borradorDe(widget.usuario.id);
+    if (b == null || b.tipo != widget.tipo) return;
+    _carrito.addAll(b.carrito);
+    _descEmpleado = b.descEmpleado;
+    _propina = b.propina;
+    _tupper = b.tupper;
+    _nombreController.text = b.nombre;
+    _telefonoController.text = b.telefono;
+    _direccionController.text = b.direccion;
+    _referenciaController.text = b.referencia;
+    _envioController.text = b.envio;
+    _notasController.text = b.notas;
+    // La mesa elegida puede haberse ocupado mientras tanto.
+    final mesa = b.mesaNumero == null
+        ? null
+        : mesas.where((m) => m.numero == b.mesaNumero).firstOrNull;
+    if (mesa != null && mesa.estaLibre) {
+      _mesaNumero = mesa.numero;
+      _mesaId = mesa.id;
+    }
+  }
+
+  BorradorPedido _armarBorrador() => BorradorPedido(
+    usuarioId: widget.usuario.id,
+    tipo: widget.tipo,
+    mesaNumero: _mesaNumero,
+    mesaId: _mesaId,
+    carrito: List.of(_carrito),
+    descEmpleado: _descEmpleado,
+    propina: _propina,
+    tupper: _tupper,
+    nombre: _nombreController.text,
+    telefono: _telefonoController.text,
+    direccion: _direccionController.text,
+    referencia: _referenciaController.text,
+    envio: _envioController.text,
+    notas: _notasController.text,
+  );
+
+  // Guarda lo que hay para retomarlo al volver a esta vista.
+  void _guardarBorrador() {
+    if (!_sesionVigente) return;
+    final b = _armarBorrador();
+    borradorPedido = b.tieneContenido ? b : null;
+  }
+
+  // El pedido terminó: ya no hay borrador que conservar.
+  void _descartarBorrador() {
+    _descartado = true;
+    limpiarBorradorPedido();
   }
 
   @override
   void dispose() {
+    _autoguardado?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    if (!_descartado && !_enviandoBorrador) _guardarBorrador();
     _busquedaController.dispose();
     _nombreController.dispose();
     _telefonoController.dispose();
@@ -188,6 +299,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         esAdmin: _esAdmin,
         acento: acento,
         enCarrito: _carrito,
+        tipoEntregaInicial: widget.tipo,
       ),
     );
     if (resultado == null || !mounted) return;
@@ -328,14 +440,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     });
   }
 
-  void _imprimir() {
-    showAppToast(
-      context,
-      'Comanda enviada a imprimir.',
-      type: ToastType.success,
-    );
-  }
-
   Future<void> _confirmar() async {
     if (_confirmando) return;
     if (_carrito.isEmpty) {
@@ -410,6 +514,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         ),
     ];
 
+    // Se deja constancia de que se está enviando: si la app se cierra justo
+    // ahora no se sabe si llegó al servidor y el borrador se descartará al
+    // volver (mejor eso que un pedido duplicado).
+    final instantanea = _armarBorrador();
+    _enviandoBorrador = true;
+    await guardarBorradorYEsperar(instantanea.conEnviando(true));
+
     var reintentar = false;
     try {
       final creado = await PedidoService.instance.crearPedido(
@@ -430,6 +541,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           motivo: 'El descuento de empleado necesita la autorización de un supervisor.',
         ),
       );
+
+      // El pedido ya está en el servidor: el borrador se borra de inmediato del
+      // dispositivo (si no, volvería a aparecer y se podría enviar dos veces).
+      _descartado = true;
+      await descartarBorradorYEsperar();
 
       // Con el servidor nuevo el id lo asigna el backend.
       final pedidoId = creado.id;
@@ -464,8 +580,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         type: ToastType.success,
         titulo: 'Pedido confirmado',
       );
+      _descartarBorrador();
       widget.onTerminar(true);
     } catch (e) {
+      // No se envió: el borrador vuelve a quedar como un pedido a medias.
+      _enviandoBorrador = false;
+      if (!_descartado) {
+        borradorPedido = instantanea.conEnviando(false);
+      }
       if (!mounted) return;
       final falta = ErrorDisponibilidad.tryParse(e.toString());
       if (falta?.plato != null) {
@@ -639,6 +761,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         _mesaId = null;
       });
     } else {
+      _descartarBorrador();
       widget.onVolver();
     }
   }
@@ -667,7 +790,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   Widget _botonCerrar() {
     return InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () => widget.onTerminar(false),
+      onTap: () {
+        _descartarBorrador();
+        widget.onTerminar(false);
+      },
       child: Container(
         width: 34,
         height: 34,
@@ -696,7 +822,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: _galeria(buscadorCompleto: true),
+              child: _galeria(buscadorCompleto: true, todoEnScroll: true),
             ),
           ),
           _hojaPedido(altoTotal),
@@ -748,7 +874,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
               ),
               onTap: () => setState(() => _carritoExpandido = true),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                padding: const EdgeInsets.fromLTRB(16, 8, 4, 4),
                 child: Row(
                   children: [
                     const Icon(
@@ -777,9 +903,27 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                    if (_carrito.isNotEmpty)
+                      Tooltip(
+                        message: _listaOculta
+                            ? 'Mostrar productos'
+                            : 'Ocultar productos',
+                        child: IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () =>
+                              setState(() => _listaOculta = !_listaOculta),
+                          icon: Icon(
+                            _listaOculta
+                                ? LucideIcons.chevronUp
+                                : LucideIcons.chevronDown,
+                            size: 18,
+                          ),
+                        ),
+                      ),
                     Tooltip(
                       message: 'Ver detalle completo',
                       child: IconButton(
+                        visualDensity: VisualDensity.compact,
                         onPressed: () =>
                             setState(() => _carritoExpandido = true),
                         icon: const Icon(LucideIcons.maximize2, size: 18),
@@ -789,19 +933,23 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
                 ),
               ),
             ),
-            if (_carrito.isNotEmpty)
+            if (_carrito.isNotEmpty && !_listaOculta)
               ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: altoTotal * 0.28),
+                // Poca altura: la galería de productos es lo principal.
+                constraints: BoxConstraints(
+                  maxHeight: (altoTotal * 0.2).clamp(96.0, 150.0),
+                ),
                 child: ListView(
                   shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
                   children: [
-                    for (var i = 0; i < _carrito.length; i++) _filaCarrito(i),
+                    for (var i = 0; i < _carrito.length; i++)
+                      _filaCarrito(i, compacta: true),
                   ],
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
               child: _botonesDeAccion(),
             ),
           ],
@@ -841,79 +989,98 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     );
   }
 
-  Widget _galeria({bool buscadorCompleto = false}) {
+  // [todoEnScroll] (celular): el buscador, las categorías y los productos se
+  // desplazan juntos, para que los productos tengan toda la pantalla.
+  Widget _galeria({bool buscadorCompleto = false, bool todoEnScroll = false}) {
     final productos = _productos;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Escritorio: el buscador ocupa solo lo que pide su placeholder.
-        if (buscadorCompleto)
-          AppSearchField(
+    // Escritorio: el buscador ocupa solo lo que pide su placeholder.
+    final buscador = buscadorCompleto
+        ? AppSearchField(
             controller: _busquedaController,
             hint: 'Buscar producto...',
             onChanged: (_) => setState(() {}),
             ajustarAlTexto: false,
           )
-        else
-          Align(
+        : Align(
             alignment: Alignment.centerLeft,
             child: AppSearchField(
               controller: _busquedaController,
               hint: 'Buscar producto...',
               onChanged: (_) => setState(() {}),
             ),
-          ),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _pillCategoria('Todos', _categoria == null, () {
-                setState(() => _categoria = null);
-              }),
-              for (final cat in categorias)
-                _pillCategoria(
-                  cat.categoria,
-                  _categoria?.id == cat.id,
-                  () => setState(() => _categoria = cat),
-                ),
-            ],
-          ),
+          );
+    final categoriasFila = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _pillCategoria('Todos', _categoria == null, () {
+            setState(() => _categoria = null);
+          }),
+          for (final cat in categorias)
+            _pillCategoria(
+              cat.categoria,
+              _categoria?.id == cat.id,
+              () => setState(() => _categoria = cat),
+            ),
+        ],
+      ),
+    );
+    Widget grilla() => LayoutBuilder(
+      builder: (context, c) {
+        if (productos.isEmpty) {
+          final vacio = Text(
+            'Sin resultados',
+            style: TextStyle(color: Colors.grey.shade500),
+          );
+          return todoEnScroll
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: vacio),
+                )
+              : Center(child: vacio);
+        }
+        const espacio = 12.0;
+        final columnas = c.maxWidth >= 620 ? 3 : (c.maxWidth >= 400 ? 2 : 1);
+        final ancho = (c.maxWidth - espacio * (columnas - 1)) / columnas;
+        final tarjetas = Wrap(
+          spacing: espacio,
+          runSpacing: espacio,
+          children: [
+            for (final p in productos)
+              SizedBox(
+                width: ancho,
+                child: _tarjetaProducto(p, horizontal: columnas == 1),
+              ),
+          ],
+        );
+        return todoEnScroll ? tarjetas : SingleChildScrollView(child: tarjetas);
+      },
+    );
+
+    if (todoEnScroll) {
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            buscador,
+            const SizedBox(height: 12),
+            categoriasFila,
+            const SizedBox(height: 12),
+            grilla(),
+          ],
         ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        buscador,
+        const SizedBox(height: 12),
+        categoriasFila,
         const SizedBox(height: 12),
         Expanded(
-          child: SizedBox(
-            width: double.infinity,
-            child: LayoutBuilder(
-              builder: (context, c) {
-                if (productos.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'Sin resultados',
-                      style: TextStyle(color: Colors.grey.shade500),
-                    ),
-                  );
-                }
-                const espacio = 12.0;
-                final columnas = c.maxWidth >= 620
-                    ? 3
-                    : (c.maxWidth >= 400 ? 2 : 1);
-                final ancho =
-                    (c.maxWidth - espacio * (columnas - 1)) / columnas;
-                return SingleChildScrollView(
-                  child: Wrap(
-                    spacing: espacio,
-                    runSpacing: espacio,
-                    children: [
-                      for (final p in productos)
-                        SizedBox(width: ancho, child: _tarjetaProducto(p)),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
+          child: SizedBox(width: double.infinity, child: grilla()),
         ),
       ],
     );
@@ -925,7 +1092,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
 
   Widget _imagen(CartaItem item) => ImagenPlato(item: item, tamanoIcono: 30);
 
-  Widget _tarjetaProducto(CartaItem item) {
+  Widget _tarjetaProducto(CartaItem item, {bool horizontal = false}) {
     return ListenableBuilder(
       listenable: Listenable.merge([
         disponibilidadHoyNotifier,
@@ -935,9 +1102,132 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         final estado = estadoDisponibilidadDe(item.id);
         return Opacity(
           opacity: estado.vendible ? 1 : 0.55,
-          child: _tarjetaProductoContenido(item, estado),
+          child: horizontal
+              ? _tarjetaProductoHorizontal(item, estado)
+              : _tarjetaProductoContenido(item, estado),
         );
       },
+    );
+  }
+
+  String _precioTarjeta(CartaItem item) =>
+      item.precioCliente == null && precioMinimoDeVariantes(item.id) != null
+      ? 'Desde S/ ${precioMinimoDeVariantes(item.id)!.toStringAsFixed(2)}'
+      : 'S/ ${(item.precioCliente ?? 0).toStringAsFixed(2)}';
+
+  // Tarjeta para celular: la imagen a la izquierda y, en la misma fila, el
+  // nombre, el precio y el botón. Así se ven más productos sin desplazarse.
+  Widget _tarjetaProductoHorizontal(
+    CartaItem item,
+    EstadoDisponibilidad estado,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 92,
+            height: 92,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _imagen(item),
+                  if (item.platoDelDia)
+                    const Positioned(
+                      top: 4,
+                      right: 4,
+                      child: EstrellaPlatoDelDia(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  item.nombrePlato,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                if (estado.etiqueta != null) ...[
+                  const SizedBox(height: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: estado.vendible
+                          ? AppColors.platoDelDia
+                          : AppColors.error,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      estado.etiqueta!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 2),
+                Text(
+                  _precioTarjeta(item),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryGreen,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 32,
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: estado.vendible
+                        ? () => _abrirOpciones(item)
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.add, size: 15),
+                    label: Text(
+                      estado.vendible
+                          ? 'Agregar'
+                          : (estado.etiqueta ?? 'No disponible'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1120,15 +1410,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Text(
-              'Productos del pedido',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey.shade700,
+            Expanded(
+              child: Text(
+                'Productos del pedido',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ),
-            const Spacer(),
             if (_carrito.isNotEmpty)
               InkWell(
                 onTap: () => setState(_carrito.clear),
@@ -1174,6 +1467,60 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
             ],
           ),
         ],
+        const SizedBox(height: 14),
+        Divider(height: 1, color: Colors.grey.shade200),
+        const SizedBox(height: 12),
+        Text(
+          'Agregar al pedido',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 8,
+          children: [
+            AppTag(
+              etiqueta: 'Promoción',
+              icono: LucideIcons.tag,
+              activo: false,
+              color: AppColors.platoDelDia,
+              onTap: _abrirPromocion,
+            ),
+            AppTag(
+              etiqueta: 'Plato rápido',
+              icono: LucideIcons.sparkles,
+              activo: false,
+              color: AppColors.primaryGreen,
+              onTap: _abrirPlatoLibre,
+            ),
+            AppTag(
+              etiqueta: 'Plato del día',
+              icono: LucideIcons.chefHat,
+              activo: false,
+              color: AppColors.platoDelDia,
+              onTap: _abrirPlatoDelDia,
+            ),
+            AppTag(
+              etiqueta: 'Propina',
+              icono: LucideIcons.handCoins,
+              activo: false,
+              color: AppColors.platoDelDia,
+              onTap: _abrirPropina,
+            ),
+            AppTag(
+              etiqueta: 'Tupper',
+              icono: LucideIcons.package,
+              activo: false,
+              color: Colors.black87,
+              colorBorde: Colors.grey.shade300,
+              onTap: _abrirTupper,
+            ),
+          ],
+        ),
       ],
     );
     final pie = Column(
@@ -1207,50 +1554,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
           ),
         ),
         const SizedBox(height: 10),
-        Wrap(
-          runSpacing: 8,
-          children: [
-            AppTag(
-              etiqueta: 'Promoción',
-              icono: LucideIcons.tag,
-              activo: false,
-              color: AppColors.platoDelDia,
-              onTap: _abrirPromocion,
-            ),
-            AppTag(
-              etiqueta: 'Plato libre',
-              icono: LucideIcons.sparkles,
-              activo: false,
-              color: AppColors.primaryGreen,
-              onTap: _abrirPlatoLibre,
-            ),
-            AppTag(
-              etiqueta: 'Plato del día',
-              icono: LucideIcons.chefHat,
-              activo: false,
-              color: AppColors.platoDelDia,
-              onTap: _abrirPlatoDelDia,
-            ),
-            AppTag(
-              etiqueta: 'Propina',
-              icono: LucideIcons.handCoins,
-              activo: false,
-              color: AppColors.platoDelDia,
-              onTap: _abrirPropina,
-            ),
-            AppTag(
-              etiqueta: 'Tupper',
-              icono: LucideIcons.package,
-              activo: false,
-              color: Colors.black87,
-              colorBorde: Colors.grey.shade300,
-              onTap: _abrirTupper,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         const DottedDivider(),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _botonesDeAccion(),
       ],
     );
@@ -1290,46 +1595,25 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
     );
   }
 
-  // Imprimir y confirmar el pedido.
+  // Confirmar el pedido. La comanda sale sola a la impresora de cocina al
+  // confirmar (la manda el backend), por eso no hay botón de imprimir aquí.
   Widget _botonesDeAccion() {
-    return Row(
-      children: [
-        Expanded(
-          flex: 2,
-          child: FilledButton.icon(
-            onPressed: _carrito.isEmpty ? null : _imprimir,
-            icon: const Icon(LucideIcons.printer, size: 16),
-            label: const Text(
-              'Imprimir',
+    return FilledButton(
+      onPressed: (_carrito.isEmpty || _confirmando) ? null : _confirmar,
+      style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+      child: _confirmando
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Text(
+              'Confirmar pedido',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          flex: 3,
-          child: FilledButton(
-            onPressed: (_carrito.isEmpty || _confirmando) ? null : _confirmar,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-            ),
-            child: _confirmando
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text(
-                    'Confirmar pedido',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1425,7 +1709,84 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog> {
   }
 
   // Fila del carrito para una línea del pedido.
-  Widget _filaCarrito(int index) {
+  // Una línea del carrito en una sola fila (para la hoja de abajo en celular):
+  // nombre, precio con lo elegido y los controles.
+  Widget _filaCarritoCompacta(int index) {
+    final linea = _carrito[index];
+    final detalle = [
+      'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
+      if (linea.variante != null) linea.variante!.nombre,
+      if (linea.presentacion != null)
+        '${linea.presentacion!.unidad.unidadPresentacion} ${linea.presentacion!.volumenMl}ml',
+      ...linea.componentes.map((e) => e.nombre),
+      ...linea.modificadores.map((m) => m.nombre),
+      if (linea.comentario != null) 'nota',
+    ].join(' · ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(10, 4, 2, 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  linea.nombrePlato,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+                Text(
+                  detalle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryGreen,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _iconoCantidad(Icons.remove, () => _cambiarCantidadLinea(index, -1)),
+          SizedBox(
+            width: 20,
+            child: Text(
+              '${linea.cantidad}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+            ),
+          ),
+          _iconoCantidad(
+            Icons.add,
+            () => _cambiarCantidadLinea(index, 1),
+            habilitado:
+                _topeDeLinea(index) == null ||
+                linea.cantidad < _topeDeLinea(index)!,
+          ),
+          _iconoCantidad(
+            Icons.close,
+            () => _quitarLineaCarrito(index),
+            color: AppColors.error,
+            tooltip: 'Quitar del pedido',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filaCarrito(int index, {bool compacta = false}) {
+    if (compacta) return _filaCarritoCompacta(index);
     final linea = _carrito[index];
     final item = cartasNotifier.value
         .where((c) => c.id == linea.cartaId)

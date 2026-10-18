@@ -12,16 +12,16 @@ class UnidadProducto {
   });
 
   factory UnidadProducto.fromJson(Map<String, dynamic> json) => UnidadProducto(
-        id: json['id']?.toString() ?? '',
-        unidad: json['unidad']?.toString() ?? '',
-        estado: json['estado'] != false,
-        sedeId: json['sede_id']?.toString(),
-      );
+    id: json['id']?.toString() ?? '',
+    unidad: json['unidad']?.toString() ?? '',
+    estado: json['estado'] != false,
+    sedeId: json['sede_id']?.toString(),
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'unidad': unidad,
-        'estado': estado,
-        'sede_id': sedeId,
-      };
+    'id': id,
+    'unidad': unidad,
+    'estado': estado,
+    'sede_id': sedeId,
+  };
 }

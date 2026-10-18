@@ -87,8 +87,20 @@ void main() {
       ],
       cartas: [_plato, _agotado],
       tapers: [
-        const Taper(id: 't1', nombre: 'Grande', precio: 1, stock: 1, stockMinimo: 2),
-        const Taper(id: 't2', nombre: 'Mediano', precio: 1, stock: 9, stockMinimo: 2),
+        const Taper(
+          id: 't1',
+          nombre: 'Grande',
+          precio: 1,
+          stock: 1,
+          stockMinimo: 2,
+        ),
+        const Taper(
+          id: 't2',
+          nombre: 'Mediano',
+          precio: 1,
+          stock: 9,
+          stockMinimo: 2,
+        ),
       ],
       ahora: _ahora,
     );

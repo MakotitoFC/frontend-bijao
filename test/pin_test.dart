@@ -16,10 +16,15 @@ void main() {
     expect(u.rol, AppRole.administrador);
     expect(Usuario.fromJson(u.toJson()).debeCambiarPin, true);
     expect(u.copyWith(debeCambiarPin: false).debeCambiarPin, false);
-    expect(Usuario.fromJson({'usuario': 'x', 'rol': 'MOZO'}).debeCambiarPin, false);
+    expect(
+      Usuario.fromJson({'usuario': 'x', 'rol': 'MOZO'}).debeCambiarPin,
+      false,
+    );
   });
 
-  testWidgets('el PIN debe tener de 4 a 10 dígitos y coincidir', (tester) async {
+  testWidgets('el PIN debe tener de 4 a 10 dígitos y coincidir', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: CambiarPinDialog())),
     );
@@ -41,14 +46,16 @@ void main() {
     expect(tester.widget<TextField>(campos.at(0)).controller!.text, '12');
   });
 
-  testWidgets('con PIN obligatorio no hay "x" ni Cancelar', (tester) async {
+  testWidgets('el aviso de PIN obligatorio se puede cerrar con la "x"', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(body: CambiarPinDialog(obligatorio: true)),
       ),
     );
-    expect(find.byTooltip('Cerrar'), findsNothing);
-    expect(find.text('Cancelar'), findsNothing);
+    expect(find.byTooltip('Cerrar'), findsOneWidget);
+    expect(find.text('Más tarde'), findsOneWidget);
     expect(find.text('Cambia tu PIN'), findsOneWidget);
   });
 }

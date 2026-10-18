@@ -39,6 +39,17 @@ void actualizarEstadoPedido(String id, String nuevoEstado) {
   }
 }
 
+// Nota general del pedido ('' o null = quitarla).
+void actualizarNotaPedido(String id, String? nota) {
+  final index = pedidos.indexWhere((p) => p.id == id);
+  if (index == -1) return;
+  final limpia = (nota == null || nota.trim().isEmpty) ? null : nota.trim();
+  pedidos[index] = pedidos[index].copyWith(
+    notas: limpia,
+    quitarNotas: limpia == null,
+  );
+}
+
 // Marca una línea (producto) del pedido con una incidencia (devolución).
 void marcarLineaComoIncidencia(String pedidoId, String lineaId) {
   final lineas = detallesPorPedido[pedidoId];

@@ -125,4 +125,3 @@ class CartaStockBase {
         (json['cantidad_predeterminada'] as num?)?.toInt() ?? 0,
   );
 }
-

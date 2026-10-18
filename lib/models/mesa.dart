@@ -21,7 +21,12 @@ class Mesa {
 
   int get numeroSillas => capacidad;
 
-  Mesa copyWith({String? estado, int? capacidad, String? zonaId, String? zona}) => Mesa(
+  Mesa copyWith({
+    String? estado,
+    int? capacidad,
+    String? zonaId,
+    String? zona,
+  }) => Mesa(
     id: id,
     numero: numero,
     estado: estado ?? this.estado,
@@ -31,7 +36,8 @@ class Mesa {
   );
 
   factory Mesa.fromJson(Map<String, dynamic> json) {
-    final rawEstado = (json['estado'] as String?)?.toLowerCase() ?? 'disponible';
+    final rawEstado =
+        (json['estado'] as String?)?.toLowerCase() ?? 'disponible';
     // 'reservada' ya no se maneja: una mesa con ese estado heredado se toma como libre.
     final estado = (rawEstado == 'libre' || rawEstado == 'reservada')
         ? 'disponible'
@@ -41,7 +47,8 @@ class Mesa {
       id: json['id'] as String,
       numero: json['numero'] as int? ?? 1,
       estado: estado,
-      capacidad: json['numero_sillas'] as int? ?? json['capacidad'] as int? ?? 4,
+      capacidad:
+          json['numero_sillas'] as int? ?? json['capacidad'] as int? ?? 4,
       zonaId: json['zona_id'] as String? ?? '',
       zona: json['zona'] as String? ?? 'Salón Principal',
     );

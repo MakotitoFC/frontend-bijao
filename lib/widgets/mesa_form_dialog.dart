@@ -23,7 +23,11 @@ class MesaFormDialog extends StatefulWidget {
   final Mesa? mesa;
   final String zonaInicial;
 
-  const MesaFormDialog({super.key, this.mesa, this.zonaInicial = 'Salón Principal'});
+  const MesaFormDialog({
+    super.key,
+    this.mesa,
+    this.zonaInicial = 'Salón Principal',
+  });
 
   @override
   State<MesaFormDialog> createState() => _MesaFormDialogState();
@@ -130,11 +134,13 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
                         ),
                       ),
                     ),
-                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                    BotonCerrarCircular(
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ],
                 ),
-              const SeparadorDialogo(),
-CampoTexto(
+                const SeparadorDialogo(),
+                CampoTexto(
                   controller: _numeroController,
                   autofocus: !_editando,
                   enabled: !_editando,
@@ -159,7 +165,9 @@ CampoTexto(
                         .map((z) => z.zona)
                         .toList();
                     final lista = activas.isNotEmpty ? activas : zonasMesas;
-                    final valorZona = lista.contains(_zona) ? _zona : lista.first;
+                    final valorZona = lista.contains(_zona)
+                        ? _zona
+                        : lista.first;
                     return AppSelect<String>(
                       label: 'Zona',
                       value: valorZona,

@@ -16,7 +16,8 @@ class UnidadProductoFormDialog extends StatefulWidget {
   const UnidadProductoFormDialog({super.key, this.item});
 
   @override
-  State<UnidadProductoFormDialog> createState() => _UnidadProductoFormDialogState();
+  State<UnidadProductoFormDialog> createState() =>
+      _UnidadProductoFormDialogState();
 }
 
 class _UnidadProductoFormDialogState extends State<UnidadProductoFormDialog> {
@@ -54,7 +55,11 @@ class _UnidadProductoFormDialogState extends State<UnidadProductoFormDialog> {
           sedeId: sedeId,
         );
         if (!mounted) return;
-        showAppToast(context, 'Unidad de producto creada', type: ToastType.success);
+        showAppToast(
+          context,
+          'Unidad de producto creada',
+          type: ToastType.success,
+        );
       } else {
         await CatalogService.instance.actualizarUnidadProducto(
           widget.item!.id,
@@ -63,7 +68,11 @@ class _UnidadProductoFormDialogState extends State<UnidadProductoFormDialog> {
           sedeId: sedeId,
         );
         if (!mounted) return;
-        showAppToast(context, 'Unidad de producto actualizada', type: ToastType.success);
+        showAppToast(
+          context,
+          'Unidad de producto actualizada',
+          type: ToastType.success,
+        );
       }
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -87,7 +96,9 @@ class _UnidadProductoFormDialogState extends State<UnidadProductoFormDialog> {
         ),
         FilledButton(
           onPressed: _guardando ? null : _guardar,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
           child: _guardando
               ? const SizedBox(
                   width: 16,

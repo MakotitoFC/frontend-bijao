@@ -14,11 +14,7 @@ class ZonaFormDialog extends StatefulWidget {
   final String? zona;
   final bool estadoInicial;
 
-  const ZonaFormDialog({
-    super.key,
-    this.zona,
-    this.estadoInicial = true,
-  });
+  const ZonaFormDialog({super.key, this.zona, this.estadoInicial = true});
 
   @override
   State<ZonaFormDialog> createState() => _ZonaFormDialogState();
@@ -86,11 +82,13 @@ class _ZonaFormDialogState extends State<ZonaFormDialog> {
                         ),
                       ),
                     ),
-                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                    BotonCerrarCircular(
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ],
                 ),
-              const SeparadorDialogo(),
-CampoTexto(
+                const SeparadorDialogo(),
+                CampoTexto(
                   controller: _nombreController,
                   autofocus: true,
                   decoration: const InputDecoration(
@@ -122,9 +120,14 @@ CampoTexto(
                 const SizedBox(height: 16),
                 AppSwitchTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Zona Activa', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Zona Activa',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
                   subtitle: Text(
-                    _estado ? 'Visible en el plano de mesas' : 'Oculta en el plano de mesas',
+                    _estado
+                        ? 'Visible en el plano de mesas'
+                        : 'Oculta en el plano de mesas',
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   value: _estado,
@@ -140,8 +143,11 @@ CampoTexto(
                         message: puedeEliminar ? 'Eliminar zona y sus mesas' : 'No se puede eliminar: es la única zona o tiene mesas ocupadas/unidas',
                         child: OutlinedButton(
                           onPressed: puedeEliminar
-                              ? () => Navigator.of(context)
-                                    .pop((nombre: widget.zona!, estado: _estado, eliminar: true))
+                              ? () => Navigator.of(context).pop((
+                                  nombre: widget.zona!,
+                                  estado: _estado,
+                                  eliminar: true,
+                                ))
                               : null,
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.error,

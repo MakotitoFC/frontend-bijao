@@ -50,7 +50,10 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
     try {
       final usuarios = await CatalogService.instance.cargarUsuariosRBAC();
       final match = usuarios.firstWhere(
-        (u) => u.id == widget.usuario.id || u.usuario == widget.usuario.nombre || u.email == widget.usuario.email,
+        (u) =>
+            u.id == widget.usuario.id ||
+            u.usuario == widget.usuario.nombre ||
+            u.email == widget.usuario.email,
         orElse: () => UserRBACModel(
           id: widget.usuario.id,
           usuario: widget.usuario.nombre,
@@ -76,11 +79,19 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
       if (asignar) {
         await CatalogService.instance.asignarRolUsuario(userId, rol.id);
         if (!mounted) return;
-        showAppToast(context, 'Rol "${rol.rol}" asignado a ${widget.usuario.nombre}', type: ToastType.success);
+        showAppToast(
+          context,
+          'Rol "${rol.rol}" asignado a ${widget.usuario.nombre}',
+          type: ToastType.success,
+        );
       } else {
         await CatalogService.instance.removerRolUsuario(userId, rol.id);
         if (!mounted) return;
-        showAppToast(context, 'Rol "${rol.rol}" retirado de ${widget.usuario.nombre}', type: ToastType.info);
+        showAppToast(
+          context,
+          'Rol "${rol.rol}" retirado de ${widget.usuario.nombre}',
+          type: ToastType.info,
+        );
       }
       await _cargarDetalles();
     } catch (e) {
@@ -94,11 +105,19 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
       if (asignar) {
         await CatalogService.instance.asignarPermisoUsuario(userId, permiso.id);
         if (!mounted) return;
-        showAppToast(context, 'Permiso "${permiso.permiso}" otorgado', type: ToastType.success);
+        showAppToast(
+          context,
+          'Permiso "${permiso.permiso}" otorgado',
+          type: ToastType.success,
+        );
       } else {
         await CatalogService.instance.removerPermisoUsuario(userId, permiso.id);
         if (!mounted) return;
-        showAppToast(context, 'Permiso "${permiso.permiso}" revocado', type: ToastType.info);
+        showAppToast(
+          context,
+          'Permiso "${permiso.permiso}" revocado',
+          type: ToastType.info,
+        );
       }
       await _cargarDetalles();
     } catch (e) {
@@ -135,8 +154,14 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                 children: [
                   CircleAvatar(
                     radius: 20,
-                    backgroundColor: AppColors.primaryGreen.withValues(alpha: 0.15),
-                    child: const Icon(LucideIcons.shieldCheck, color: AppColors.primaryGreen, size: 22),
+                    backgroundColor: AppColors.primaryGreen.withValues(
+                      alpha: 0.15,
+                    ),
+                    child: const Icon(
+                      LucideIcons.shieldCheck,
+                      color: AppColors.primaryGreen,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -145,25 +170,31 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                       children: [
                         Text(
                           'Permisos: ${widget.usuario.nombre}',
-                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         Text(
                           '${widget.usuario.email} • Rol Principal: ${widget.usuario.rol.label}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
               const SeparadorDialogo(),
 
               if (_cargando)
                 const Expanded(
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
+                  child: Center(child: CircularProgressIndicator()),
                 )
               else
                 Expanded(
@@ -184,42 +215,70 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                             children: [
                               const Row(
                                 children: [
-                                  Icon(LucideIcons.users, size: 16, color: Color(0xFF4A5568)),
+                                  Icon(
+                                    LucideIcons.users,
+                                    size: 16,
+                                    color: Color(0xFF4A5568),
+                                  ),
                                   SizedBox(width: 8),
                                   Text(
                                     'Roles asignados al usuario (permiso_usuario)',
-                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
                               Text(
                                 'El usuario hereda todos los permisos de sus roles asignados.',
-                                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Colors.grey.shade600,
+                                ),
                               ),
                               const SizedBox(height: 10),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: widget.roles.map((rol) {
-                                  final tieneRolSecundario = _detalleUsuario?.rolesSecundarios.any((r) => r.id == rol.id) ?? false;
-                                  final esRolPrincipal = _detalleUsuario?.rolId == rol.id || widget.usuario.rol.name.toLowerCase() == rol.rol.toLowerCase();
+                                  final tieneRolSecundario =
+                                      _detalleUsuario?.rolesSecundarios.any(
+                                        (r) => r.id == rol.id,
+                                      ) ??
+                                      false;
+                                  final esRolPrincipal =
+                                      _detalleUsuario?.rolId == rol.id ||
+                                      widget.usuario.rol.name.toLowerCase() ==
+                                          rol.rol.toLowerCase();
 
                                   return FilterChip(
-                                    selected: tieneRolSecundario || esRolPrincipal,
+                                    selected:
+                                        tieneRolSecundario || esRolPrincipal,
                                     label: Text(
-                                      rol.rol + (esRolPrincipal ? ' (Principal)' : ''),
+                                      rol.rol +
+                                          (esRolPrincipal
+                                              ? ' (Principal)'
+                                              : ''),
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: (tieneRolSecundario || esRolPrincipal) ? Colors.white : Colors.black87,
+                                        color:
+                                            (tieneRolSecundario ||
+                                                esRolPrincipal)
+                                            ? Colors.white
+                                            : Colors.black87,
                                       ),
                                     ),
                                     selectedColor: AppColors.primaryGreen,
                                     checkmarkColor: Colors.white,
                                     onSelected: esRolPrincipal
                                         ? null
-                                        : (selected) => _toggleRolSecundario(rol, selected),
+                                        : (selected) => _toggleRolSecundario(
+                                            rol,
+                                            selected,
+                                          ),
                                   );
                                 }).toList(),
                               ),
@@ -231,12 +290,18 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                         // Sección: Permisos directos individuales
                         const Text(
                           'Permisos Directos Individuales',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'Otorga o revoca permisos específicos a este usuario en particular.',
-                          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                         const SizedBox(height: 10),
 
@@ -244,11 +309,17 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                         CampoTexto(
                           controller: _busquedaController,
                           decoration: InputDecoration(
-                            hintText: 'Buscar permiso (ej: ZONA, MESA, CARTA)...',
+                            hintText:
+                                'Buscar permiso (ej: ZONA, MESA, CARTA)...',
                             prefixIcon: const Icon(Icons.search, size: 18),
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           onChanged: (v) => setState(() => _filtro = v.trim()),
                         ),
@@ -262,36 +333,65 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                           ),
                           child: Column(
                             children: [
-                              for (var i = 0; i < permisosFiltrados.length; i++) ...[
-                                if (i > 0) Divider(height: 1, color: Colors.grey.shade100),
+                              for (
+                                var i = 0;
+                                i < permisosFiltrados.length;
+                                i++
+                              ) ...[
+                                if (i > 0)
+                                  Divider(
+                                    height: 1,
+                                    color: Colors.grey.shade100,
+                                  ),
                                 () {
                                   final p = permisosFiltrados[i];
-                                  final esDirecto = _detalleUsuario?.permisosDirectos.any((dir) => dir.id == p.id) ?? false;
-                                  final esHeredado = (_detalleUsuario?.permisosEfectivos.contains(p.permiso) ?? false) && !esDirecto;
+                                  final esDirecto =
+                                      _detalleUsuario?.permisosDirectos.any(
+                                        (dir) => dir.id == p.id,
+                                      ) ??
+                                      false;
+                                  final esHeredado =
+                                      (_detalleUsuario?.permisosEfectivos
+                                              .contains(p.permiso) ??
+                                          false) &&
+                                      !esDirecto;
 
                                   return Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 8,
+                                    ),
                                     child: Row(
                                       children: [
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(
                                                 p.permiso,
-                                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                               ),
                                               if (esHeredado)
                                                 const Text(
                                                   'Heredado de rol (Activo)',
-                                                  style: TextStyle(fontSize: 11, color: AppColors.primaryGreen, fontWeight: FontWeight.w600),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color:
+                                                        AppColors.primaryGreen,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
                                                 ),
                                             ],
                                           ),
                                         ),
                                         AppCheck(
                                           value: esDirecto || esHeredado,
-                                          onChanged: (v) => _togglePermisoDirecto(p, v),
+                                          onChanged: (v) =>
+                                              _togglePermisoDirecto(p, v),
                                         ),
                                       ],
                                     ),
@@ -311,7 +411,9 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                 alignment: Alignment.centerRight,
                 child: FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
                   child: const Text('Listo'),
                 ),
               ),

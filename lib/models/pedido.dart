@@ -187,6 +187,8 @@ class Pedido {
     String? tipoPedido,
     DateTime? fechaPedido,
     String? notas,
+    // true: quita la nota general del pedido (con `notas: null` no se podría).
+    bool quitarNotas = false,
     String? clienteNombre,
     String? clienteCelular,
     String? direccionDelivery,
@@ -207,7 +209,7 @@ class Pedido {
       estado: nuevo,
       tipoPedido: tipoPedido ?? this.tipoPedido,
       fechaPedido: fechaPedido ?? this.fechaPedido,
-      notas: notas ?? this.notas,
+      notas: quitarNotas ? null : (notas ?? this.notas),
       clienteNombre: clienteNombre ?? this.clienteNombre,
       clienteCelular: clienteCelular ?? this.clienteCelular,
       direccionDelivery: direccionDelivery ?? this.direccionDelivery,

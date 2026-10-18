@@ -120,14 +120,19 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
                   const Expanded(
                     child: Text(
                       'Cambiar mesa o entrega',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
               const SeparadorDialogo(),
-Wrap(
+              Wrap(
                 spacing: 8,
                 children: [
                   for (final (valor, texto) in const [
@@ -159,7 +164,9 @@ Wrap(
                     for (final m in destinos)
                       ChoiceChip(
                         label: Text(
-                          m.estaOcupada ? '${m.numero} · ocupada' : '${m.numero}',
+                          m.estaOcupada
+                              ? '${m.numero} · ocupada'
+                              : '${m.numero}',
                         ),
                         selected: _mesaId == m.id,
                         onSelected: (_) => setState(() {
@@ -175,7 +182,10 @@ Wrap(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       'La mesa está ocupada: el pedido se traspasa a esa cuenta.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ),
               ] else ...[
@@ -214,7 +224,10 @@ Wrap(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     _error!,
-                    style: const TextStyle(color: AppColors.error, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               const SizedBox(height: 16),

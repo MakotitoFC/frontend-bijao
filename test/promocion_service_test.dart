@@ -20,53 +20,71 @@ const _carta2 = '22222222-2222-4222-8222-222222222222';
 const _sub = '33333333-3333-4333-8333-333333333333';
 
 void main() {
-  test('lee las promociones del backend: componentes, opciones y la incluida', () {
-    final r = parsearPromociones([
-      {
-        'promocion': {
-          'id': _promo,
-          'nombre': 'Combo del día',
-          'porcentaje_descuento': '10.00',
-          'se_mantiene_porcentaje': false,
-          'fecha_fin': '2026-12-31T23:59:59Z',
-          'estado': true,
-        },
-        'promocion_componentes': [
-          {
-            'id': _comp,
-            'promocion_id': _promo,
-            'subcategoria_id': _sub,
-            'cantidad': 1,
-            'componente_opcion': [
-              {'id': _op2, 'componente_id': _comp, 'carta_id': _carta2, 'precio': null, 'estado': true, 'es_fijo': false},
-              {'id': _op1, 'componente_id': _comp, 'carta_id': _carta, 'precio': '12.50', 'estado': true, 'es_fijo': true},
-            ],
+  test(
+    'lee las promociones del backend: componentes, opciones y la incluida',
+    () {
+      final r = parsearPromociones([
+        {
+          'promocion': {
+            'id': _promo,
+            'nombre': 'Combo del día',
+            'porcentaje_descuento': '10.00',
+            'se_mantiene_porcentaje': false,
+            'fecha_fin': '2026-12-31T23:59:59Z',
+            'estado': true,
           },
-        ],
-      },
-    ]);
-    final p = r.promociones.single;
-    expect(p.nombre, 'Combo del día');
-    expect(p.porcentajeDescuento, 10);
-    expect(p.seMantiene, false);
-    expect(p.fechaFin?.year, 2026);
-    expect(r.componentes.single.orden, 1);
-    // La opción fija queda primera aunque el servidor la devuelva después.
-    expect(r.opciones.map((o) => o.id), [_op1, _op2]);
-    expect(r.opciones.first.precio, 12.5);
-    expect(r.opciones.last.precio, 0);
+          'promocion_componentes': [
+            {
+              'id': _comp,
+              'promocion_id': _promo,
+              'subcategoria_id': _sub,
+              'cantidad': 1,
+              'componente_opcion': [
+                {
+                  'id': _op2,
+                  'componente_id': _comp,
+                  'carta_id': _carta2,
+                  'precio': null,
+                  'estado': true,
+                  'es_fijo': false,
+                },
+                {
+                  'id': _op1,
+                  'componente_id': _comp,
+                  'carta_id': _carta,
+                  'precio': '12.50',
+                  'estado': true,
+                  'es_fijo': true,
+                },
+              ],
+            },
+          ],
+        },
+      ]);
+      final p = r.promociones.single;
+      expect(p.nombre, 'Combo del día');
+      expect(p.porcentajeDescuento, 10);
+      expect(p.seMantiene, false);
+      expect(p.fechaFin?.year, 2026);
+      expect(r.componentes.single.orden, 1);
+      // La opción fija queda primera aunque el servidor la devuelva después.
+      expect(r.opciones.map((o) => o.id), [_op1, _op2]);
+      expect(r.opciones.first.precio, 12.5);
+      expect(r.opciones.last.precio, 0);
 
-    reemplazarPromociones(
-      nuevas: r.promociones,
-      componentes: r.componentes,
-      opciones: r.opciones,
-    );
-    expect(opcionIncluida(_comp)?.id, _op1);
-  });
+      reemplazarPromociones(
+        nuevas: r.promociones,
+        componentes: r.componentes,
+        opciones: r.opciones,
+      );
+      expect(opcionIncluida(_comp)?.id, _op1);
+    },
+  );
 
   group('con el servidor', () {
     late HttpServer servidor;
-    final pedidos = <({String metodo, String ruta, Map<String, dynamic>? cuerpo})>[];
+    final pedidos =
+        <({String metodo, String ruta, Map<String, dynamic>? cuerpo})>[];
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
@@ -77,7 +95,9 @@ void main() {
       ApiClient.instance.setBaseUrl('http://127.0.0.1:${servidor.port}');
       servidor.listen((req) async {
         final texto = await utf8.decoder.bind(req).join();
-        final cuerpo = texto.isEmpty ? null : jsonDecode(texto) as Map<String, dynamic>;
+        final cuerpo = texto.isEmpty
+            ? null
+            : jsonDecode(texto) as Map<String, dynamic>;
         pedidos.add((metodo: req.method, ruta: req.uri.path, cuerpo: cuerpo));
         // El servidor devuelve lo recibido (con estado por defecto).
         final respuesta = {'estado': true, ...?cuerpo};
@@ -91,41 +111,56 @@ void main() {
 
     tearDown(() async => servidor.close(force: true));
 
-    test('crear promoción envía los nombres del backend y fechas en UTC', () async {
-      final fin = DateTime(2026, 12, 31, 23, 59, 59);
-      await PromocionService.instance.crearPromocion(
-        Promocion(
-          id: _promo,
-          nombre: 'Combo',
-          porcentajeDescuento: 15,
-          seMantiene: false,
-          fechaFin: fin,
-        ),
-      );
-      final enviado = pedidos.single;
-      expect(enviado.metodo, 'POST');
-      expect(enviado.ruta, '/api/promociones');
-      expect(enviado.cuerpo!['se_mantiene_porcentaje'], false);
-      expect(enviado.cuerpo!['porcentaje_descuento'], 15);
-      expect(enviado.cuerpo!['fecha_fin'], fin.toUtc().toIso8601String());
-      expect(enviado.cuerpo!.containsKey('fecha_inicio'), false);
-      expect(promociones.single.id, _promo);
-    });
+    test(
+      'crear promoción envía los nombres del backend y fechas en UTC',
+      () async {
+        final fin = DateTime(2026, 12, 31, 23, 59, 59);
+        await PromocionService.instance.crearPromocion(
+          Promocion(
+            id: _promo,
+            nombre: 'Combo',
+            porcentajeDescuento: 15,
+            seMantiene: false,
+            fechaFin: fin,
+          ),
+        );
+        final enviado = pedidos.single;
+        expect(enviado.metodo, 'POST');
+        expect(enviado.ruta, '/api/promociones');
+        expect(enviado.cuerpo!['se_mantiene_porcentaje'], false);
+        expect(enviado.cuerpo!['porcentaje_descuento'], 15);
+        expect(enviado.cuerpo!['fecha_fin'], fin.toUtc().toIso8601String());
+        expect(enviado.cuerpo!.containsKey('fecha_inicio'), false);
+        expect(promociones.single.id, _promo);
+      },
+    );
 
     test('la primera opción es la incluida y se puede cambiar', () async {
       await PromocionService.instance.crearComponente(
-        const PromocionComponente(id: _comp, promocionId: _promo, subcategoriaId: _sub),
+        const PromocionComponente(
+          id: _comp,
+          promocionId: _promo,
+          subcategoriaId: _sub,
+        ),
       );
       pedidos.clear();
       await PromocionService.instance.crearOpcion(
         const PromocionOpcion(id: _op1, componenteId: _comp, cartaId: _carta),
       );
       await PromocionService.instance.crearOpcion(
-        const PromocionOpcion(id: _op2, componenteId: _comp, cartaId: _carta2, precio: 9),
+        const PromocionOpcion(
+          id: _op2,
+          componenteId: _comp,
+          cartaId: _carta2,
+          precio: 9,
+        ),
       );
       expect(pedidos[0].ruta, '/api/promocion-componentes/$_comp/opciones');
       expect(pedidos[0].cuerpo!['es_fijo'], true);
-      expect(pedidos[0].cuerpo!.containsKey('precio'), false); // sin precio propio
+      expect(
+        pedidos[0].cuerpo!.containsKey('precio'),
+        false,
+      ); // sin precio propio
       expect(pedidos[1].cuerpo!['es_fijo'], false);
       expect(pedidos[1].cuerpo!['precio'], 9);
       expect(opcionIncluida(_comp)?.id, _op1);

@@ -1,8 +1,11 @@
+import 'dart:developer' as developer;
+
 import '../models/medio_pago.dart';
 import '../models/pago.dart';
 import '../models/pago_detalle.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
+import 'mesas_por_liberar_store.dart';
 import 'mesas_store.dart';
 import 'pedidos_store.dart';
 import '../services/pedido_service.dart';
@@ -78,17 +81,30 @@ Pago registrarPago({
   return pago;
 }
 
-// Si el pedido ya no tiene saldo por cobrar, pasa a 'pagado' y libera sus mesas.
+// Si el pedido ya no tiene saldo por cobrar, pasa a 'pagado'. La mesa NO se libera
+// aquí: sigue ocupada hasta que el mozo (o el administrador) la libere cuando los
+// clientes se retiran; mientras tanto el backend la informa como "por liberar".
 void cerrarSiSaldado(Pedido pedido) {
   if (saldoPendienteDePedido(pedido.id) > 0.01) return;
   actualizarEstadoPedido(pedido.id, 'pagado');
   for (final numero in pedido.todasLasMesas) {
     if (numero == 0) continue;
-    actualizarEstadoMesa(numero, 'disponible');
     separarMesas(numero);
   }
   if (UuidHelper.isValid(pedido.id)) {
-    PedidoService.instance.cambiarEstadoPedido(pedido.id, 'pagado').catchError((_) {});
+    PedidoService.instance
+        .cambiarEstadoPedido(pedido.id, 'pagado')
+        // Con el estado ya guardado, el backend informa la mesa por liberar.
+        .then((_) => recargarMesasPorLiberar())
+        .catchError((Object e) async {
+          // No se pudo marcar como pagado en el servidor (por ejemplo, falta de
+          // permiso): se vuelve a leer el estado real para no mostrar como
+          // cobrado un pedido que en el servidor sigue abierto.
+          developer.log('[pagos] No se pudo marcar como pagado: $e');
+          try {
+            await PedidoService.instance.cargarPedidos();
+          } catch (_) {}
+        });
   }
 }
 

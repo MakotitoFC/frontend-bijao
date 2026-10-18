@@ -8,6 +8,7 @@ import 'catalog_service.dart';
 import 'disponibilidad_service.dart';
 import 'eventos/evento_sse.dart';
 import 'eventos/flujo.dart';
+import 'pedido_mozo_service.dart';
 import 'pedido_service.dart';
 
 // Qué hay que volver a leer del servidor cuando llega un evento.
@@ -15,19 +16,23 @@ class AccionesDeEvento {
   final bool pedidos;
   final bool mesas;
   final bool stock;
+  // Lista de "mesas por liberar" (la da el backend).
+  final bool porLiberar;
 
   const AccionesDeEvento({
     this.pedidos = false,
     this.mesas = false,
     this.stock = false,
+    this.porLiberar = false,
   });
 
-  bool get ninguna => !pedidos && !mesas && !stock;
+  bool get ninguna => !pedidos && !mesas && !stock && !porLiberar;
 
   AccionesDeEvento unir(AccionesDeEvento o) => AccionesDeEvento(
     pedidos: pedidos || o.pedidos,
     mesas: mesas || o.mesas,
     stock: stock || o.stock,
+    porLiberar: porLiberar || o.porLiberar,
   );
 }
 
@@ -45,12 +50,14 @@ AccionesDeEvento traducirEvento(String nombre) {
         mesas: nombre == 'PEDIDO_NUEVO' || nombre == 'PEDIDO_ANULADO',
       );
     case 'ITEM_SERVIDO':
-    case 'PEDIDO_ESTADO_CAMBIADO':
       return const AccionesDeEvento(pedidos: true);
+    case 'PEDIDO_ESTADO_CAMBIADO':
+      // Pasar a pagado deja la mesa por liberar.
+      return const AccionesDeEvento(pedidos: true, porLiberar: true);
     case 'CAMBIO_MESA':
       return const AccionesDeEvento(pedidos: true, mesas: true);
     case 'MESA_LIBERADA':
-      return const AccionesDeEvento(mesas: true);
+      return const AccionesDeEvento(mesas: true, porLiberar: true);
     case 'PLATO_AGOTADO':
     case 'STOCK_ACTUALIZADO':
     case 'APERTURA_DIARIA_COMPLETA':
@@ -157,6 +164,8 @@ class EventosService {
         if (acciones.pedidos) PedidoService.instance.cargarPedidos(),
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
+        if (acciones.porLiberar && PedidoMozoService.instance.activo)
+          recargarMesasPorLiberar(),
       ]);
     } catch (_) {
       // Las pantallas vuelven a consultar por su cuenta.

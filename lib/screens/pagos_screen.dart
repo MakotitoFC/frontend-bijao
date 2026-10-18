@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../widgets/dialogo_app.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cierres_store.dart';
@@ -312,9 +314,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
               _texto('#${p.numeroPedido}'),
               _texto(_fecha(p.fechaPedido)),
               _texto(p.clienteNombre ?? '—', fuerte: true),
-              _texto(
-                p.ubicacion,
-              ),
+              _texto(p.ubicacion),
               _texto(_nombreUsuario(p.usuarioId)),
               _texto(_soles(totalDePedido(p.id))),
               _texto(

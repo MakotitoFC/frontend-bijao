@@ -11,7 +11,6 @@ import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
-import 'app_tag.dart';
 import 'app_toast.dart';
 import 'pago_dialogs.dart';
 import 'app_switch.dart';
@@ -64,11 +63,13 @@ double _r2(double v) => (v * 100).roundToDouble() / 100;
 class PagoCompartidoDialog extends StatefulWidget {
   final Pedido pedido;
   final String titulo;
+  final bool permiteVolver;
 
   const PagoCompartidoDialog({
     super.key,
     required this.pedido,
     required this.titulo,
+    this.permiteVolver = false,
   });
 
   @override
@@ -341,14 +342,6 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   // ---------- UI ----------
 
-  String get _descripcionModo => switch (_modo) {
-    _Modo.iguales => 'La cuenta se divide en partes iguales.',
-    _Modo.platos => 'Cada persona paga los platos que elijas para ella.',
-    _Modo.categoria => 'Cada pagador asume una categoría (ej. uno las bebidas, otro los platos).',
-    _Modo.grupos =>
-      'Subcuentas por grupo (familia A, familia B…); cada grupo paga lo suyo.',
-  };
-
   Widget _boton(IconData icono, VoidCallback? onTap) => InkWell(
     borderRadius: BorderRadius.circular(AppRadii.tag),
     onTap: onTap,
@@ -377,6 +370,45 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       ),
   ];
 
+  // Un color por pagador, para reconocerlo en las asignaciones y en su tarjeta.
+  static const _coloresPagador = [
+    Color(0xFF0E9F6E),
+    Color(0xFF3B82F6),
+    Color(0xFFF59E0B),
+    Color(0xFF8B5CF6),
+    Color(0xFFEC4899),
+    Color(0xFF14B8A6),
+    Color(0xFFEF4444),
+    Color(0xFF64748B),
+  ];
+
+  Color _colorDe(int i) => _coloresPagador[i % _coloresPagador.length];
+
+  Widget _avatar(int i, {double tam = 28}) => Container(
+    width: tam,
+    height: tam,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(color: _colorDe(i), shape: BoxShape.circle),
+    child: Text(
+      '${i + 1}',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: tam * 0.46,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  );
+
+  Widget _etiquetaSeccion(String texto) => Text(
+    texto,
+    style: TextStyle(
+      fontSize: 11,
+      letterSpacing: 0.8,
+      fontWeight: FontWeight.w700,
+      color: Colors.grey.shade500,
+    ),
+  );
+
   Widget _seccionAsignacion() {
     final porCategoria = _modo == _Modo.categoria;
     final filas = <Widget>[];
@@ -388,7 +420,8 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           _filaAsignacion(
             titulo: c,
             detalle:
-                '${lineasC.length} producto${lineasC.length == 1 ? '' : 's'} · S/ ${total.toStringAsFixed(2)}',
+                '${lineasC.length} producto${lineasC.length == 1 ? '' : 's'}',
+            monto: total,
             valor: (_asignCategoria[c] ?? 0).clamp(0, _pagadores.length - 1),
             onChanged: (v) => _cambiar(() => _asignCategoria[c] = v),
           ),
@@ -398,8 +431,9 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       for (final l in _lineas) {
         filas.add(
           _filaAsignacion(
-            titulo: '${l.cantidad}x ${l.nombrePlato}',
-            detalle: 'S/ ${_saldoLinea(l).toStringAsFixed(2)}',
+            titulo: l.nombrePlato,
+            detalle: 'Cantidad: ${l.cantidad}',
+            monto: _saldoLinea(l),
             valor: _destino(l),
             onChanged: (v) => _cambiar(() => _asignLinea[l.id] = v),
           ),
@@ -409,25 +443,36 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
+        _etiquetaSeccion(
           porCategoria
               ? 'QUIÉN PAGA CADA CATEGORÍA'
               : 'QUIÉN PAGA CADA PRODUCTO',
-          style: TextStyle(
-            fontSize: 11,
-            letterSpacing: 0.8,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey.shade500,
-          ),
         ),
         const SizedBox(height: 8),
-        if (filas.isEmpty)
-          Text(
-            'No hay productos pendientes de pago.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-          )
-        else
-          ...filas,
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F8FA),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: filas.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Text(
+                    'No hay productos pendientes de pago.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (var i = 0; i < filas.length; i++) ...[
+                      if (i > 0)
+                        Divider(height: 1, color: Colors.grey.shade200),
+                      filas[i],
+                    ],
+                  ],
+                ),
+        ),
       ],
     );
   }
@@ -435,11 +480,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   Widget _filaAsignacion({
     required String titulo,
     required String detalle,
+    required double monto,
     required int valor,
     required ValueChanged<int> onChanged,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
           Expanded(
@@ -457,13 +503,17 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                   ),
                 ),
                 Text(
-                  detalle,
+                  '$detalle · S/ ${monto.toStringAsFixed(2)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 8),
+          _avatar(valor, tam: 22),
+          const SizedBox(width: 6),
           Expanded(
             flex: 4,
             child: AppSelect<int>(
@@ -482,158 +532,287 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     final p = _pagadores[i];
     final diff = monto - _sumaPagos(p);
     final cuadra = diff.abs() <= 0.01;
+    final conMonto = monto > 0.005;
+    final color = _colorDe(i);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: conMonto && cuadra
+              ? AppColors.primaryGreen.withValues(alpha: 0.45)
+              : Colors.grey.shade300,
+        ),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: AppSizes.boton,
-                  child: CampoTexto(
-                    controller: p.nombre,
-                    expands: true,
-                    maxLines: null,
-                    minLines: null,
-                    textAlignVertical: TextAlignVertical.center,
-                    onChanged: (_) => setState(() {}),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                      hintText: 'Nombre',
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'S/ ${monto.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primaryGreenDark,
-                ),
-              ),
-              if (_pagadores.length > 2)
-                IconButton(
-                  tooltip: 'Quitar',
-                  onPressed: () => _quitarPagador(i),
-                  icon: Icon(
-                    Icons.close,
-                    size: 18,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          for (var k = 0; k < p.pagos.length; k++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: AppSelect<String>(
-                      value: p.pagos[k].medio.id,
-                      compacto: true,
-                      hint: 'Método',
-                      items: [
-                        for (final m in mediosPagoActivos)
-                          AppSelectItem(value: m.id, label: m.medioPago),
-                      ],
-                      onChanged: (v) => setState(() {
-                        if (v != null) {
-                          p.pagos[k].medio = mediosPagoActivos.firstWhere(
-                            (m) => m.id == v,
-                          );
-                        }
-                      }),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 4,
-                    child: SizedBox(
-                      height: AppSizes.boton,
-                      child: CampoTexto(
-                        controller: p.pagos[k].monto,
-                        expands: true,
-                        maxLines: null,
-                        minLines: null,
-                        textAlignVertical: TextAlignVertical.center,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        onChanged: (_) => setState(() {}),
-                        style: const TextStyle(fontSize: 13),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          prefixText: 'S/ ',
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                        ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+            color: color.withValues(alpha: 0.07),
+            child: Row(
+              children: [
+                _avatar(i),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: AppSizes.boton,
+                    child: CampoTexto(
+                      controller: p.nombre,
+                      expands: true,
+                      maxLines: null,
+                      minLines: null,
+                      textAlignVertical: TextAlignVertical.center,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        hintText: 'Nombre',
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: 36,
-                    child: p.pagos.length > 1
-                        ? IconButton(
-                            tooltip: 'Quitar método',
-                            onPressed: () => _quitarMetodo(p, k),
-                            icon: Icon(
-                              Icons.remove_circle_outline,
-                              size: 18,
-                              color: Colors.grey.shade500,
-                            ),
-                          )
-                        : null,
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'DEBE PAGAR',
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 0.6,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                    Text(
+                      'S/ ${monto.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryGreenDark,
+                      ),
+                    ),
+                  ],
+                ),
+                if (_pagadores.length > 2)
+                  IconButton(
+                    tooltip: 'Quitar',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _quitarPagador(i),
+                    icon: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Colors.grey.shade500,
+                    ),
+                  )
+                else
+                  const SizedBox(width: 8),
+              ],
             ),
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              TextButton.icon(
-                onPressed: monto > 0.005 ? () => _agregarMetodo(p) : null,
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(0, AppSizes.control),
-                  maximumSize: const Size(double.infinity, AppSizes.control),
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Dividir en otro método'),
-              ),
-              if (monto > 0.005)
-                Text(
-                  cuadra
-                      ? 'Completo'
-                      : (diff > 0
-                            ? 'Falta S/ ${diff.toStringAsFixed(2)}'
-                            : 'Sobra S/ ${(-diff).toStringAsFixed(2)}'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: cuadra
-                        ? AppColors.primaryGreenDark
-                        : AppColors.error,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var k = 0; k < p.pagos.length; k++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: AppSelect<String>(
+                            value: p.pagos[k].medio.id,
+                            compacto: true,
+                            hint: 'Método',
+                            items: [
+                              for (final m in mediosPagoActivos)
+                                AppSelectItem(value: m.id, label: m.medioPago),
+                            ],
+                            onChanged: (v) => setState(() {
+                              if (v != null) {
+                                p.pagos[k].medio = mediosPagoActivos.firstWhere(
+                                  (m) => m.id == v,
+                                );
+                              }
+                            }),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 4,
+                          child: SizedBox(
+                            height: AppSizes.boton,
+                            child: CampoTexto(
+                              controller: p.pagos[k].monto,
+                              expands: true,
+                              maxLines: null,
+                              minLines: null,
+                              textAlignVertical: TextAlignVertical.center,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setState(() {}),
+                              style: const TextStyle(fontSize: 13),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                prefixText: 'S/ ',
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          child: p.pagos.length > 1
+                              ? IconButton(
+                                  tooltip: 'Quitar método',
+                                  onPressed: () => _quitarMetodo(p, k),
+                                  icon: Icon(
+                                    Icons.remove_circle_outline,
+                                    size: 18,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
                   ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: conMonto ? () => _agregarMetodo(p) : null,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, AppSizes.control),
+                            maximumSize: const Size(
+                              double.infinity,
+                              AppSizes.control,
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                          ),
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Dividir en otro método'),
+                        ),
+                      ),
+                    ),
+                    if (conMonto) _estadoPagador(cuadra, diff),
+                  ],
                 ),
-            ],
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Si lo que pone el pagador cuadra con lo que debe: "Completo" o lo que falta.
+  Widget _estadoPagador(bool cuadra, double diff) {
+    final color = cuadra ? AppColors.primaryGreenDark : AppColors.error;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            cuadra ? Icons.check_circle : Icons.error_outline,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            cuadra
+                ? 'Completo'
+                : (diff > 0
+                      ? 'Falta S/ ${diff.toStringAsFixed(2)}'
+                      : 'Sobra S/ ${(-diff).toStringAsFixed(2)}'),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Una de las cuatro formas de repartir la cuenta.
+  Widget _modoTile(_Modo modo, IconData icono, String titulo, String detalle) {
+    final activo = _modo == modo;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => setState(() => _reiniciar(modo)),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: activo
+                ? AppColors.primaryGreen.withValues(alpha: 0.08)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
+              width: activo ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icono,
+                size: 20,
+                color: activo ? AppColors.primaryGreenDark : Colors.grey,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titulo,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: activo ? AppColors.primaryGreenDark : null,
+                      ),
+                    ),
+                    Text(
+                      detalle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        height: 1.2,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -642,106 +821,183 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   Widget build(BuildContext context) {
     final montos = _montos;
     final esIguales = _modo == _Modo.iguales;
+    final unidad = esIguales
+        ? 'personas'
+        : (_modo == _Modo.grupos ? 'grupos' : 'pagadores');
     return ModalPago(
-      titulo: 'Pago compartido #${widget.pedido.numeroPedido}',
-      subtitulo: widget.titulo,
+      titulo: 'Pago compartido',
+      subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
       anchoEscritorio: 640,
+      onVolver: widget.permiteVolver
+          ? () => Navigator.of(context).pop(volverAElegirPago)
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           tarjetaSaldo('Total a repartir', _saldo),
-          const SizedBox(height: 14),
-          Wrap(
-            runSpacing: 8,
-            children: [
-              AppTag(
-                etiqueta: 'Partes iguales',
-                activo: _modo == _Modo.iguales,
-                onTap: () => setState(() => _reiniciar(_Modo.iguales)),
-              ),
-              AppTag(
-                etiqueta: 'Cada uno su plato',
-                activo: _modo == _Modo.platos,
-                onTap: () => setState(() => _reiniciar(_Modo.platos)),
-              ),
-              AppTag(
-                etiqueta: 'Por categoría',
-                activo: _modo == _Modo.categoria,
-                onTap: () => setState(() => _reiniciar(_Modo.categoria)),
-              ),
-              AppTag(
-                etiqueta: 'Por grupo',
-                activo: _modo == _Modo.grupos,
-                onTap: () => setState(() => _reiniciar(_Modo.grupos)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _descripcionModo,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
+          _etiquetaSeccion('¿CÓMO SE REPARTE?'),
+          const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  esIguales
-                      ? 'Dividir entre'
-                      : (_modo == _Modo.grupos ? 'Grupos' : 'Pagadores'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              _boton(
-                Icons.remove,
-                _pagadores.length > 2
-                    ? () => _quitarPagador(_pagadores.length - 1)
-                    : null,
-              ),
-              SizedBox(
-                width: 84,
-                child: Text(
-                  '${_pagadores.length} ${esIguales ? 'personas' : (_modo == _Modo.grupos ? 'grupos' : 'pagadores')}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              _boton(
-                Icons.add,
-                _pagadores.length < _maxPagadores ? _agregarPagador : null,
-              ),
-            ],
-          ),
-          if (!esIguales) ...[const SizedBox(height: 14), _seccionAsignacion()],
-          const SizedBox(height: 14),
-          for (var i = 0; i < _pagadores.length; i++)
-            _tarjetaPagador(i, montos[i]),
-          Row(
-            children: [
-              AppSwitch(
-                value: _boletasIndividuales,
-                onChanged: (v) => setState(() => _boletasIndividuales = v),
+              _modoTile(
+                _Modo.iguales,
+                Icons.pie_chart_outline,
+                'Partes iguales',
+                'Se divide en partes iguales',
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Boleta individual por pagador',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
-                ),
+              _modoTile(
+                _Modo.platos,
+                Icons.restaurant_menu,
+                'Cada uno su plato',
+                'Eliges quién paga cada plato',
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _valido ? _confirmar : null,
-            icon: const Icon(LucideIcons.users, size: 18),
-            label: Text('Cobrar · S/ ${_saldo.toStringAsFixed(2)}'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _modoTile(
+                _Modo.categoria,
+                Icons.category_outlined,
+                'Por categoría',
+                'Un pagador por categoría',
+              ),
+              const SizedBox(width: 8),
+              _modoTile(
+                _Modo.grupos,
+                Icons.groups_outlined,
+                'Por grupo',
+                'Subcuentas (familia A, B…)',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        esIguales
+                            ? 'Dividir entre'
+                            : (_modo == _Modo.grupos ? 'Grupos' : 'Pagadores'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Entre 2 y $_maxPagadores',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _boton(
+                  Icons.remove,
+                  _pagadores.length > 2
+                      ? () => _quitarPagador(_pagadores.length - 1)
+                      : null,
+                ),
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    '${_pagadores.length} $unidad',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                _boton(
+                  Icons.add,
+                  _pagadores.length < _maxPagadores ? _agregarPagador : null,
+                ),
+              ],
+            ),
+          ),
+          if (!esIguales) ...[const SizedBox(height: 16), _seccionAsignacion()],
+          const SizedBox(height: 16),
+          _etiquetaSeccion('CÓMO PAGA CADA UNO'),
+          const SizedBox(height: 8),
+          for (var i = 0; i < _pagadores.length; i++)
+            _tarjetaPagador(i, montos[i]),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.receipt, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cuenta individual por pagador',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                      Text(
+                        'Al cobrar, se muestra una cuenta por cada uno.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AppSwitch(
+                  value: _boletasIndividuales,
+                  onChanged: (v) => setState(() => _boletasIndividuales = v),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              if (widget.permiteVolver) ...[
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        Navigator.of(context).pop(volverAElegirPago),
+                    icon: const Icon(LucideIcons.chevronLeft, size: 16),
+                    label: const Text('Regresar'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                flex: 3,
+                child: FilledButton.icon(
+                  onPressed: _valido ? _confirmar : null,
+                  icon: const Icon(LucideIcons.users, size: 18),
+                  label: Text('Cobrar · S/ ${_saldo.toStringAsFixed(2)}'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -28,10 +28,14 @@ void main() {
   const sobreventa = SedeConfigStock(sedeId: 's', permiteSobreventa: true);
 
   test('sin fila: libre o sin abrir según la sede', () {
-    expect(estadoDisponibilidadDe('a', config: libre, filas: []).tipo,
-        TipoDisponibilidad.libre);
-    expect(estadoDisponibilidadDe('a', config: estricta, filas: []).vendible,
-        false);
+    expect(
+      estadoDisponibilidadDe('a', config: libre, filas: []).tipo,
+      TipoDisponibilidad.libre,
+    );
+    expect(
+      estadoDisponibilidadDe('a', config: estricta, filas: []).vendible,
+      false,
+    );
   });
 
   test('con cantidad, agotado y sin límite', () {
@@ -45,15 +49,22 @@ void main() {
     expect(t.tipo, TipoDisponibilidad.conCantidad);
     expect(t.quedan, 2);
     expect(t.etiqueta, 'Quedan 2');
-    expect(estadoDisponibilidadDe('pollo', config: libre, filas: filas).tipo,
-        TipoDisponibilidad.agotado);
-    expect(estadoDisponibilidadDe('sopa', config: libre, filas: filas).vendible,
-        false);
     expect(
-        estadoDisponibilidadDe('sopa', config: sobreventa, filas: filas).vendible,
-        true);
-    expect(estadoDisponibilidadDe('chicha', config: estricta, filas: filas).tipo,
-        TipoDisponibilidad.sinLimite);
+      estadoDisponibilidadDe('pollo', config: libre, filas: filas).tipo,
+      TipoDisponibilidad.agotado,
+    );
+    expect(
+      estadoDisponibilidadDe('sopa', config: libre, filas: filas).vendible,
+      false,
+    );
+    expect(
+      estadoDisponibilidadDe('sopa', config: sobreventa, filas: filas).vendible,
+      true,
+    );
+    expect(
+      estadoDisponibilidadDe('chicha', config: estricta, filas: filas).tipo,
+      TipoDisponibilidad.sinLimite,
+    );
   });
 
   test('fila exacta de variante y respaldo en la general', () {
@@ -62,33 +73,47 @@ void main() {
       _fila('pescado', agotado: true),
     ];
     expect(
-        estadoDisponibilidadDe('pescado',
-                varianteId: 'grande', config: libre, filas: filas)
-            .tipo,
-        TipoDisponibilidad.conCantidad);
+      estadoDisponibilidadDe(
+        'pescado',
+        varianteId: 'grande',
+        config: libre,
+        filas: filas,
+      ).tipo,
+      TipoDisponibilidad.conCantidad,
+    );
     expect(
-        estadoDisponibilidadDe('pescado',
-                varianteId: 'mediano', config: libre, filas: filas)
-            .tipo,
-        TipoDisponibilidad.agotado);
+      estadoDisponibilidadDe(
+        'pescado',
+        varianteId: 'mediano',
+        config: libre,
+        filas: filas,
+      ).tipo,
+      TipoDisponibilidad.agotado,
+    );
   });
 
   test('lectura del error de stock', () {
     final a = ErrorDisponibilidad.tryParse(
-        "el plato 'Tacacho con Cecina' se encuentra agotado");
+      "el plato 'Tacacho con Cecina' se encuentra agotado",
+    );
     expect(a?.motivo, MotivoStock.agotado);
     expect(a?.plato, 'Tacacho con Cecina');
     final i = ErrorDisponibilidad.tryParse(
-        "Error: stock insuficiente de 'Tacacho': disponibles 1, requeridos 2");
+      "Error: stock insuficiente de 'Tacacho': disponibles 1, requeridos 2",
+    );
     expect(i?.motivo, MotivoStock.insuficiente);
     expect(i?.disponibles, 1);
     expect(i?.requeridos, 2);
     expect(
-        ErrorDisponibilidad.tryParse(
-                'el plato requiere apertura diaria y no ha sido abierto hoy')
-            ?.motivo,
-        MotivoStock.sinApertura);
-    expect(ErrorDisponibilidad.tryParse('la cantidad debe ser mayor a 0'), null);
+      ErrorDisponibilidad.tryParse(
+        'el plato requiere apertura diaria y no ha sido abierto hoy',
+      )?.motivo,
+      MotivoStock.sinApertura,
+    );
+    expect(
+      ErrorDisponibilidad.tryParse('la cantidad debe ser mayor a 0'),
+      null,
+    );
   });
 
   test('tope de unidades: lo que quedó en "Abrir el día"', () {

@@ -124,7 +124,10 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
                 children: [
                   const Text(
                     'Cobro adicional por usar este método',
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   Text(
                     'Un porcentaje que se suma al cobrar con él.',

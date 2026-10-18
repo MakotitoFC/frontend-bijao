@@ -38,7 +38,11 @@ class _DeferredWidgetState extends State<DeferredWidget> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.orange),
+                    const Icon(
+                      Icons.cloud_off_rounded,
+                      size: 48,
+                      color: Colors.orange,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       'No se pudo cargar la vista: ${snapshot.error}',
@@ -61,9 +65,7 @@ class _DeferredWidgetState extends State<DeferredWidget> {
           }
           return widget.builder();
         }
-        return const Center(
-          child: CircularProgressIndicator(),
-        );
+        return const Center(child: CircularProgressIndicator());
       },
     );
   }

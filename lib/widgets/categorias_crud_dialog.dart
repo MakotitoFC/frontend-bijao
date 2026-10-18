@@ -430,7 +430,9 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                       ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
             ),

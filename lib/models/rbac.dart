@@ -39,7 +39,8 @@ class RolModel {
     rol: json['rol'] as String? ?? '',
     estado: json['estado'] as bool? ?? true,
     sedeId: json['sede_id'] as String?,
-    permisos: (json['permisos'] as List<dynamic>?)
+    permisos:
+        (json['permisos'] as List<dynamic>?)
             ?.map((e) => PermisoModel.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
@@ -78,15 +79,18 @@ class UserRBACModel {
     estado: json['estado'] as bool? ?? true,
     rolId: json['rol_id'] as String? ?? '',
     rolNombre: json['rol_nombre'] as String? ?? '',
-    rolesSecundarios: (json['roles_secundarios'] as List<dynamic>?)
+    rolesSecundarios:
+        (json['roles_secundarios'] as List<dynamic>?)
             ?.map((e) => RolModel.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
-    permisosDirectos: (json['permisos_directos'] as List<dynamic>?)
+    permisosDirectos:
+        (json['permisos_directos'] as List<dynamic>?)
             ?.map((e) => PermisoModel.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
-    permisosEfectivos: (json['permisos_efectivos'] as List<dynamic>?)
+    permisosEfectivos:
+        (json['permisos_efectivos'] as List<dynamic>?)
             ?.map((e) => e.toString())
             .toList() ??
         const [],

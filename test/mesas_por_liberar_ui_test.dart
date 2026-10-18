@@ -31,6 +31,7 @@ void main() {
     await ApiClient.instance.initialize();
     await ApiClient.instance.setToken('t');
     peticiones.clear();
+    limpiarMesasPorLiberar();
     pedidos.clear();
     detallesPorPedido.clear();
     mesas
@@ -77,8 +78,7 @@ void main() {
   });
 
   tearDown(() async {
-    quitarMesaPorLiberar(_mesa3);
-    quitarMesaPorLiberar(_mesa5);
+    limpiarMesasPorLiberar();
     AuthService.instance.userNotifier.value = null;
     await servidor.close(force: true);
   });
@@ -97,16 +97,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('el mozo ve la franja con su mesa cobrada', (tester) async {
-    marcarMesaPorLiberar(_mesa3); // su pedido se cobró con la app abierta
+  testWidgets('el mozo ve la franja con la mesa que el backend informa', (
+    tester,
+  ) async {
+    // El backend informó solo su mesa cobrada (las llamadas HTTP de las
+    // pruebas de widgets no salen, por eso se siembra la lista).
+    fijarMesasPorLiberar('u1', [mesas.first]);
     await abrir(tester, AppRole.mesero);
 
     expect(find.text('Mesas por liberar'), findsOneWidget);
     expect(find.text('Mesa 3'), findsOneWidget);
-    // La mesa 5 (de otro mozo) no se le ofrece.
+    // La mesa 5 (de otro mozo) no se le ofrece: el backend no la informa.
     expect(find.text('Mesa 5'), findsNothing);
-
-    // Cada mesa trae su botón "Liberar".
     expect(find.text('Liberar'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
@@ -117,9 +119,24 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('el administrador ve también las ocupadas sin pedido abierto', (
+  testWidgets(
+    'un pedido pendiente ocupa la mesa pero no sale como por liberar',
+    (tester) async {
+      // Mesas ocupadas pero el backend no informa ninguna como cobrada.
+      await abrir(tester, AppRole.mesero);
+      expect(find.text('Mesas por liberar'), findsNothing);
+      expect(
+        find.text('Ya pagaron. Libera la mesa cuando se retiren.'),
+        findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('el administrador ve todas las que el backend informa', (
     tester,
   ) async {
+    fijarMesasPorLiberar('u1', [...mesas]);
     await abrir(tester, AppRole.administrador);
     expect(find.text('Mesas por liberar'), findsOneWidget);
     expect(find.text('Mesa 3'), findsOneWidget);

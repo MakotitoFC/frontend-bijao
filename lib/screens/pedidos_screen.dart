@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/borrador_pedido_store.dart';
 import '../data/mesas_por_liberar_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
@@ -48,9 +49,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
   @override
   void initState() {
     super.initState();
-    cargarMesasPorLiberar().then((_) {
-      if (mounted) setState(() {});
-    });
+    // Se salió de aquí con un pedido a medias: se vuelve a él.
+    final borrador = borradorDe(widget.usuario.id);
+    if (borrador != null) {
+      _armandoPedido = true;
+      _tipoNuevoPedido = borrador.tipo;
+    }
+    mesasPorLiberarNotifier.addListener(_alCambiarEnVivo);
     _cargar();
     EventosService.instance.revision.addListener(_alCambiarEnVivo);
     // Con la conexión en vivo activa, la consulta periódica es solo un respaldo
@@ -71,6 +76,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   @override
   void dispose() {
     EventosService.instance.revision.removeListener(_alCambiarEnVivo);
+    mesasPorLiberarNotifier.removeListener(_alCambiarEnVivo);
     _pollingTimer?.cancel();
     super.dispose();
   }
@@ -80,6 +86,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
     // Para saber qué mesas siguen ocupadas (franja "Mesas por liberar").
     if (PedidoMozoService.instance.activo) {
       await CatalogService.instance.cargarMesas();
+      // Cobrar no dispara un evento: se consulta también en cada lectura.
+      await recargarMesasPorLiberar();
     }
     if (mounted) setState(() {});
   }
@@ -107,16 +115,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
   }
 
   // Mesas que el mozo debe liberar: el pago no las libera, las libera él cuando
-  // los clientes se retiran. Dos grupos: las que se vio cobrar y las que están
-  // ocupadas sin ningún pedido abierto (por ejemplo, si se cobró con la app
-  // cerrada).
+  // los clientes se retiran. La lista la da el backend: al mozo solo le salen
+  // las mesas que atendió; al administrador, todas las de la sede.
   Widget _mesasPorLiberar() {
     if (!PedidoMozoService.instance.activo) return const SizedBox.shrink();
     final cobradas = mesasPorLiberar();
-    // Solo el administrador ve todos los pedidos de la sede: el mozo solo ve los
-    // suyos y creería libre una mesa que tiene un pedido de otro mozo.
-    final sinPedido = _esAdmin ? mesasOcupadasSinPedido() : const <Mesa>[];
-    if (cobradas.isEmpty && sinPedido.isEmpty) return const SizedBox.shrink();
+    if (cobradas.isEmpty) return const SizedBox.shrink();
 
     Widget chip(Mesa m) => Container(
       padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
@@ -191,12 +195,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          if (cobradas.isNotEmpty)
-            grupo('Ya pagaron. Libera la mesa cuando se retiren.', cobradas),
-          if (cobradas.isNotEmpty && sinPedido.isNotEmpty)
-            const SizedBox(height: 12),
-          if (sinPedido.isNotEmpty)
-            grupo('Ocupadas sin ningún pedido abierto.', sinPedido),
+          grupo('Ya pagaron. Libera la mesa cuando se retiren.', cobradas),
         ],
       ),
     );

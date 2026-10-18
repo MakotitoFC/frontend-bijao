@@ -120,11 +120,13 @@ class _AnulacionDialogState extends State<AnulacionDialog> {
                       ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
               const SeparadorDialogo(),
-Text(
+              Text(
                 widget.detalle,
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),

@@ -91,6 +91,8 @@ void main() {
   late Object Function() cuerpoPatch;
   // Respuesta de la lista de pedidos del mozo.
   var listaActual = <Map<String, dynamic>>[];
+  // Respuesta de /mozo/mesas/por-liberar (la arma el backend).
+  var porLiberarActual = <Map<String, dynamic>>[];
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -102,7 +104,14 @@ void main() {
     estadoPatch = () => 200;
     cuerpoPatch = () => _detalle(version: 2, cantidad: 3);
     listaActual = [];
-    quitarMesaPorLiberar(_mesa);
+    porLiberarActual = [];
+    limpiarMesasPorLiberar();
+    AuthService.instance.userNotifier.value = const Usuario(
+      id: 'u-1',
+      nombre: 'Ana',
+      email: 'a@a',
+      rol: AppRole.mesero,
+    );
     mesas
       ..clear()
       ..add(const Mesa(id: _mesa, numero: 4, estado: 'ocupada'));
@@ -125,6 +134,8 @@ void main() {
         cuerpo = cuerpoPatch();
       } else if (req.uri.path == '/api/v1/mozo/pedidos') {
         cuerpo = listaActual;
+      } else if (req.uri.path == '/api/v1/mozo/mesas/por-liberar') {
+        cuerpo = porLiberarActual;
       } else {
         cuerpo = _detalle(version: 7, cantidad: 2);
       }
@@ -224,47 +235,137 @@ void main() {
     expect(detallesPorPedido[_pedidoId]!.length, 3);
   });
 
-  test('un pedido de mesa que sale de la lista se cobró: su mesa queda por liberar', () async {
+  test('un pedido que deja de venir en la lista NO deja la mesa por liberar', () async {
+    // Caso del error: el pedido es de otro mozo (estaba en memoria) y la lista
+    // de este mozo ya no lo trae. No significa que se haya cobrado.
     await PedidoMozoService.instance.crear(lineas: [_linea()], mesaId: _mesa);
-    expect(mesasPorLiberar(), isEmpty); // el pedido sigue abierto
-
     await PedidoMozoService.instance.sincronizar(); // la lista ya no lo trae
     expect(pedidos, isEmpty);
-    expect(mesasPorLiberar().map((m) => m.id), [_mesa]);
-
-    // Alguien la liberó: deja de aparecer.
-    mesas[0] = mesas[0].copyWith(estado: 'disponible');
     expect(mesasPorLiberar(), isEmpty);
     expect(hayMesasPorLiberarPendientes, false);
   });
 
+  test('las mesas por liberar son las que informa el backend', () async {
+    porLiberarActual = [
+      {
+        'mesa_id': _mesa,
+        'mesa_numero': 4,
+        'zona_id': 'z',
+        'zona_nombre': 'Salón',
+        'pedido_id': _pedidoId,
+        'mozo_id': 'u-1',
+      },
+    ];
+    await PedidoMozoService.instance.sincronizar();
+    expect(peticiones, contains('GET /api/v1/mozo/mesas/por-liberar'));
+    expect(mesasPorLiberar().map((m) => m.id), [_mesa]);
+    expect(hayMesasPorLiberarPendientes, true);
+
+    // El backend ya no la informa (alguien la liberó): desaparece.
+    porLiberarActual = [];
+    await recargarMesasPorLiberar();
+    expect(mesasPorLiberar(), isEmpty);
+  });
+
   test(
-    'un pedido anulado no deja la mesa por liberar (el backend la libera)',
+    'si la mesa no está en el catálogo local se arma con los datos del backend',
+    () async {
+      mesas.clear();
+      porLiberarActual = [
+        {
+          'mesa_id': _mesa,
+          'mesa_numero': 4,
+          'zona_id': 'z',
+          'zona_nombre': 'Terraza',
+        },
+      ];
+      await recargarMesasPorLiberar();
+      final m = mesasPorLiberar().single;
+      expect(
+        [m.id, m.numero, m.zona, m.estaOcupada],
+        [_mesa, 4, 'Terraza', true],
+      );
+    },
+  );
+
+  test(
+    'a un mozo no le salen mesas de otro mozo aunque lleguen en la lista',
+    () async {
+      porLiberarActual = [
+        {'mesa_id': _mesa, 'mesa_numero': 4, 'mozo_id': 'otro-mozo'},
+        {
+          'mesa_id': '99999999-9999-4999-8999-999999999999',
+          'mesa_numero': 7,
+          'mozo_id': 'u-1',
+        },
+      ];
+      await recargarMesasPorLiberar();
+      expect(mesasPorLiberar().map((m) => m.numero), [7]); // solo la suya
+    },
+  );
+
+  test('el administrador sí ve las de todos', () async {
+    AuthService.instance.userNotifier.value = const Usuario(
+      id: 'admin',
+      nombre: 'Admin',
+      email: 'a@a',
+      rol: AppRole.administrador,
+    );
+    porLiberarActual = [
+      {'mesa_id': _mesa, 'mesa_numero': 4, 'mozo_id': 'otro-mozo'},
+    ];
+    await recargarMesasPorLiberar();
+    expect(mesasPorLiberar().map((m) => m.numero), [4]);
+  });
+
+  test(
+    'una mesa con un pedido abierto que la app conoce no se ofrece',
     () async {
       await PedidoMozoService.instance.crear(lineas: [_linea()], mesaId: _mesa);
-      actualizarEstadoPedido(_pedidoId, 'anulado');
-      await PedidoMozoService.instance.sincronizar();
+      porLiberarActual = [
+        {'mesa_id': _mesa, 'mesa_numero': 4, 'mozo_id': 'u-1'},
+      ];
+      await recargarMesasPorLiberar();
+      expect(mesasPorLiberar(), isEmpty); // hay un pedido abierto en la mesa 4
+    },
+  );
+
+  test('al cambiar de usuario no queda la lista del anterior ni si falla la lectura', () async {
+    fijarMesasPorLiberar('otro-usuario', [mesas.first]);
+    expect(hayMesasPorLiberarPendientes, true);
+
+    // Servidor caído: la lectura falla.
+    ApiClient.instance.setBaseUrl('http://127.0.0.1:1');
+    await recargarMesasPorLiberar();
+
+    expect(mesasPorLiberar(), isEmpty);
+  });
+
+  test(
+    'cerrar sesión borra los pedidos y las mesas por liberar en memoria',
+    () async {
+      await PedidoMozoService.instance.crear(lineas: [_linea()], mesaId: _mesa);
+      // Otra mesa ya cobrada (la 4 tiene el pedido abierto).
+      porLiberarActual = [
+        {'mesa_id': '99999999-9999-4999-8999-999999999999', 'mesa_numero': 7},
+      ];
+      await recargarMesasPorLiberar();
+      expect(pedidos, isNotEmpty);
+      expect(hayMesasPorLiberarPendientes, true);
+
+      await AuthService.instance.logout();
+
+      expect(pedidos, isEmpty);
+      expect(detallesPorPedido, isEmpty);
       expect(mesasPorLiberar(), isEmpty);
     },
   );
 
-  test('con otro pedido abierto en la mesa no se ofrece liberarla', () async {
+  test('un pedido anulado no deja la mesa por liberar', () async {
     await PedidoMozoService.instance.crear(lineas: [_linea()], mesaId: _mesa);
-    marcarMesaPorLiberar(_mesa);
-    expect(mesasPorLiberar(), isEmpty); // hay un pedido abierto en la mesa 4
-  });
-
-  test('una mesa ocupada sin pedido abierto se ofrece para liberar', () async {
-    // Mesa 4 ocupada y ningún pedido: p. ej., se cobró con la app cerrada.
-    expect(mesasOcupadasSinPedido().map((m) => m.id), [_mesa]);
-
-    await PedidoMozoService.instance.crear(lineas: [_linea()], mesaId: _mesa);
-    expect(mesasOcupadasSinPedido(), isEmpty); // ahora tiene un pedido abierto
-
-    // Ya marcada como "por liberar" no se repite en la otra lista.
+    actualizarEstadoPedido(_pedidoId, 'anulado');
     await PedidoMozoService.instance.sincronizar();
-    expect(mesasPorLiberar().map((m) => m.id), [_mesa]);
-    expect(mesasOcupadasSinPedido(), isEmpty);
+    expect(mesasPorLiberar(), isEmpty);
   });
 
   test(
@@ -277,7 +378,10 @@ void main() {
         rol: AppRole.mesero,
       );
       addTearDown(() => AuthService.instance.userNotifier.value = null);
-      marcarMesaPorLiberar(_mesa);
+      porLiberarActual = [
+        {'mesa_id': _mesa, 'mesa_numero': 4},
+      ];
+      await recargarMesasPorLiberar();
       expect(hayMesasPorLiberarPendientes, true);
 
       await PedidoService.instance.liberarMesa(_mesa, 4);

@@ -62,9 +62,25 @@ void main() {
   test('plato libre envía su precio; delivery va como libre; ajustes no', () {
     final body = armarPedidoMozo(
       lineas: [
-        _linea(cartaId: 'libre', nombre: 'Arroz a la cubana', libre: true, precio: 15, cantidad: 1),
-        _linea(cartaId: cartaIdCargoDelivery, nombre: 'Cargo por delivery', precio: 3, cantidad: 1),
-        _linea(cartaId: cartaIdAjuste, nombre: 'Propina: 10%', precio: 4, cantidad: 1),
+        _linea(
+          cartaId: 'libre',
+          nombre: 'Arroz a la cubana',
+          libre: true,
+          precio: 15,
+          cantidad: 1,
+        ),
+        _linea(
+          cartaId: cartaIdCargoDelivery,
+          nombre: 'Cargo por delivery',
+          precio: 3,
+          cantidad: 1,
+        ),
+        _linea(
+          cartaId: cartaIdAjuste,
+          nombre: 'Propina: 10%',
+          precio: 4,
+          cantidad: 1,
+        ),
       ],
     );
     final items = body['items'] as List;
@@ -79,10 +95,19 @@ void main() {
     final body = armarPedidoMozo(
       lineas: [
         _linea(),
-        _linea(cartaId: cartaIdCargoDelivery, nombre: 'Cargo por delivery', precio: 3, cantidad: 1),
+        _linea(
+          cartaId: cartaIdCargoDelivery,
+          nombre: 'Cargo por delivery',
+          precio: 3,
+          cantidad: 1,
+        ),
       ],
       tipo: 'delivery',
-      delivery: const DatosDelivery(direccion: 'Jr. Lima 123', telefono: '999', costoEnvio: 3),
+      delivery: const DatosDelivery(
+        direccion: 'Jr. Lima 123',
+        telefono: '999',
+        costoEnvio: 3,
+      ),
     );
     expect((body['items'] as List).length, 1);
     expect(body['delivery']['direccion'], 'Jr. Lima 123');
@@ -100,13 +125,63 @@ void main() {
       'total_descuento': 5.0,
       'total': 70.0,
       'descuentos': [
-        {'id': 'x-1', 'motivo': 'Empleado', 'tipo': 'porcentaje', 'valor': 10, 'monto_aplicado': 5.0},
+        {
+          'id': 'x-1',
+          'motivo': 'Empleado',
+          'tipo': 'porcentaje',
+          'valor': 10,
+          'monto_aplicado': 5.0,
+        },
       ],
       'items': [
-        {'id': 'd-1', 'version': 1, 'tipo_item': 'carta', 'carta_id': _carta, 'nombre': 'Tacacho con Cecina', 'estado': 'pendiente', 'cantidad': 2, 'precio_unitario': 28.0, 'descuento_fila': 0, 'total_fila': 56.0, 'tipo_entrega': 'mesa'},
-        {'id': 'd-2', 'version': 1, 'tipo_item': 'taper', 'taper_id': _taper, 'nombre': 'Táper grande', 'estado': 'pendiente', 'cantidad': 2, 'precio_unitario': 5.0, 'descuento_fila': 0, 'total_fila': 10.0, 'tipo_entrega': 'mesa'},
-        {'id': 'd-3', 'version': 3, 'tipo_item': 'carta', 'carta_id': _carta, 'nombre': 'Jugo', 'estado': 'servido', 'cantidad': 1, 'precio_unitario': 6.0, 'descuento_fila': 0, 'total_fila': 6.0},
-        {'id': 'd-4', 'version': 2, 'tipo_item': 'carta', 'nombre': 'Anulado', 'estado': 'anulado', 'cantidad': 1, 'precio_unitario': 1.0, 'total_fila': 1.0},
+        {
+          'id': 'd-1',
+          'version': 1,
+          'tipo_item': 'carta',
+          'carta_id': _carta,
+          'nombre': 'Tacacho con Cecina',
+          'estado': 'pendiente',
+          'cantidad': 2,
+          'precio_unitario': 28.0,
+          'descuento_fila': 0,
+          'total_fila': 56.0,
+          'tipo_entrega': 'mesa',
+        },
+        {
+          'id': 'd-2',
+          'version': 1,
+          'tipo_item': 'taper',
+          'taper_id': _taper,
+          'nombre': 'Táper grande',
+          'estado': 'pendiente',
+          'cantidad': 2,
+          'precio_unitario': 5.0,
+          'descuento_fila': 0,
+          'total_fila': 10.0,
+          'tipo_entrega': 'mesa',
+        },
+        {
+          'id': 'd-3',
+          'version': 3,
+          'tipo_item': 'carta',
+          'carta_id': _carta,
+          'nombre': 'Jugo',
+          'estado': 'servido',
+          'cantidad': 1,
+          'precio_unitario': 6.0,
+          'descuento_fila': 0,
+          'total_fila': 6.0,
+        },
+        {
+          'id': 'd-4',
+          'version': 2,
+          'tipo_item': 'carta',
+          'nombre': 'Anulado',
+          'estado': 'anulado',
+          'cantidad': 1,
+          'precio_unitario': 1.0,
+          'total_fila': 1.0,
+        },
       ],
     });
 
@@ -123,16 +198,35 @@ void main() {
   });
 
   test('pedido de empleado: viaja el tipo y se reconoce por el tipo o el descuento', () {
-    final body = armarPedidoMozo(lineas: [_linea()], mesaId: _mesa, tipo: 'empleado');
+    final body = armarPedidoMozo(
+      lineas: [_linea()],
+      mesaId: _mesa,
+      tipo: 'empleado',
+    );
     expect(body['tipo'], 'empleado');
-    expect(parsearDetalleMozo({'id': 'p', 'tipo': 'empleado', 'items': []}).tipo, 'empleado');
+    expect(
+      parsearDetalleMozo({'id': 'p', 'tipo': 'empleado', 'items': []}).tipo,
+      'empleado',
+    );
 
-    final normal = Pedido(id: 'p-emp', numeroPedido: '1', mesaNumero: 1, fechaPedido: DateTime(2026));
+    final normal = Pedido(
+      id: 'p-emp',
+      numeroPedido: '1',
+      mesaNumero: 1,
+      fechaPedido: DateTime(2026),
+    );
     detallesPorPedido['p-emp'] = [];
     expect(esPedidoDeEmpleado(normal), false);
     expect(esPedidoDeEmpleado(normal.copyWith(esEmpleado: true)), true);
     // Descuento de empleado aplicado después de crear el pedido.
-    detallesPorPedido['p-emp'] = [_linea(cartaId: cartaIdAjuste, nombre: 'Descuento: Empleado', precio: -5, cantidad: 1)];
+    detallesPorPedido['p-emp'] = [
+      _linea(
+        cartaId: cartaIdAjuste,
+        nombre: 'Descuento: Empleado',
+        precio: -5,
+        cantidad: 1,
+      ),
+    ];
     expect(esPedidoDeEmpleado(normal), true);
     detallesPorPedido.remove('p-emp');
   });
@@ -140,22 +234,36 @@ void main() {
   test('cronómetro: fin del pedido por hora de fin o por estado cerrado', () {
     final inicio = DateTime(2026, 10, 13, 12, 0, 0);
     expect(fechaDeFin('12:45:30', inicio), DateTime(2026, 10, 13, 12, 45, 30));
-    expect(fechaDeFin('00:10:00', DateTime(2026, 10, 13, 23, 50)), DateTime(2026, 10, 14, 0, 10));
+    expect(
+      fechaDeFin('00:10:00', DateTime(2026, 10, 13, 23, 50)),
+      DateTime(2026, 10, 14, 0, 10),
+    );
     expect(fechaDeFin(null, inicio), null);
     expect(fechaDeFin('', inicio), null);
 
-    final abierto = Pedido(id: 'a', numeroPedido: '1', mesaNumero: 1, fechaPedido: inicio);
+    final abierto = Pedido(
+      id: 'a',
+      numeroPedido: '1',
+      mesaNumero: 1,
+      fechaPedido: inicio,
+    );
     expect(abierto.terminado, false);
     for (final e in ['servido', 'pagado', 'anulado', 'devuelto']) {
       expect(abierto.copyWith(estado: e).terminado, true, reason: e);
     }
 
     final cerrado = parsearDetalleMozo({
-      'id': 'p', 'estado': 'pagado', 'instante_inicio': '2026-10-13T12:00:00-05:00',
-      'hora_fin': '12:30:00', 'items': [],
+      'id': 'p',
+      'estado': 'pagado',
+      'instante_inicio': '2026-10-13T12:00:00-05:00',
+      'hora_fin': '12:30:00',
+      'items': [],
     });
     expect(cerrado.fin, isNotNull);
-    expect(parsearDetalleMozo({'id': 'p', 'estado': 'pendiente', 'items': []}).fin, null);
+    expect(
+      parsearDetalleMozo({'id': 'p', 'estado': 'pendiente', 'items': []}).fin,
+      null,
+    );
   });
 
   test('tipo de entrega, cliente y envío: se envían y se leen del backend', () {
@@ -167,7 +275,10 @@ void main() {
     expect(body['tipo_entrega'], 'llevar');
     expect(body['nombre_cliente'], 'Carlos Diaz');
     expect((body['items'] as List).first['tipo_entrega'], 'llevar');
-    expect(armarPedidoMozo(lineas: [_linea()], mesaId: _mesa)['tipo_entrega'], 'mesa');
+    expect(
+      armarPedidoMozo(lineas: [_linea()], mesaId: _mesa)['tipo_entrega'],
+      'mesa',
+    );
 
     final d = parsearDetalleMozo({
       'id': 'p',
@@ -218,8 +329,24 @@ void main() {
           'precio_unitario': 20.0,
           'total_fila': 40.0,
           'componentes': [
-            {'id': 'c-1', 'componente_id': 'k-1', 'opcion_id': 'o-1', 'carta_id': 'x-1', 'nombre': 'Tacacho', 'cantidad': 1, 'total_componente': 14.0},
-            {'id': 'c-2', 'componente_id': 'k-2', 'opcion_id': 'o-2', 'carta_id': 'x-2', 'nombre': 'Jugo', 'cantidad': 1, 'total_componente': 6.0},
+            {
+              'id': 'c-1',
+              'componente_id': 'k-1',
+              'opcion_id': 'o-1',
+              'carta_id': 'x-1',
+              'nombre': 'Tacacho',
+              'cantidad': 1,
+              'total_componente': 14.0,
+            },
+            {
+              'id': 'c-2',
+              'componente_id': 'k-2',
+              'opcion_id': 'o-2',
+              'carta_id': 'x-2',
+              'nombre': 'Jugo',
+              'cantidad': 1,
+              'total_componente': 6.0,
+            },
           ],
         },
       ],

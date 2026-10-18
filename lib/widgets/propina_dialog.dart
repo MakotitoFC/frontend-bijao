@@ -79,11 +79,13 @@ class _PropinaDialogState extends State<PropinaDialog> {
                       ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
               const SeparadorDialogo(),
-Text(
+              Text(
                 'Consumo: S/ ${widget.base.toStringAsFixed(2)}',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),

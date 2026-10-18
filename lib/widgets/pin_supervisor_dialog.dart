@@ -89,14 +89,19 @@ class _PinSupervisorDialogState extends State<PinSupervisorDialog> {
                   const Expanded(
                     child: Text(
                       'Autorización de supervisor',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
               const SeparadorDialogo(),
-Text(
+              Text(
                 widget.motivo,
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),

@@ -29,7 +29,9 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
   @override
   void initState() {
     super.initState();
-    _nombreController = TextEditingController(text: widget.item?.tipoProducto ?? '');
+    _nombreController = TextEditingController(
+      text: widget.item?.tipoProducto ?? '',
+    );
     _estado = widget.item?.estado ?? true;
     _esGlobal = widget.item?.sedeId == null;
   }
@@ -54,7 +56,11 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
           sedeId: sedeId,
         );
         if (!mounted) return;
-        showAppToast(context, 'Tipo de producto creado', type: ToastType.success);
+        showAppToast(
+          context,
+          'Tipo de producto creado',
+          type: ToastType.success,
+        );
       } else {
         await CatalogService.instance.actualizarTipoProducto(
           widget.item!.id,
@@ -63,7 +69,11 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
           sedeId: sedeId,
         );
         if (!mounted) return;
-        showAppToast(context, 'Tipo de producto actualizado', type: ToastType.success);
+        showAppToast(
+          context,
+          'Tipo de producto actualizado',
+          type: ToastType.success,
+        );
       }
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -87,7 +97,9 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
         ),
         FilledButton(
           onPressed: _guardando ? null : _guardar,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
           child: _guardando
               ? const SizedBox(
                   width: 16,

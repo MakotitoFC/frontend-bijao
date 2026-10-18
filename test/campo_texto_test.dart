@@ -26,10 +26,15 @@ void main() {
 
     final etiqueta = tester.getRect(find.text('Nombre'));
     final campo = tester.getRect(find.byType(TextField));
-    expect(etiqueta.bottom, lessThanOrEqualTo(campo.top)); // encima, no flotando
+    expect(
+      etiqueta.bottom,
+      lessThanOrEqualTo(campo.top),
+    ); // encima, no flotando
     expect(find.text('Nombre'), findsOneWidget);
 
-    final decoracion = tester.widget<TextField>(find.byType(TextField)).decoration!;
+    final decoracion = tester
+        .widget<TextField>(find.byType(TextField))
+        .decoration!;
     expect(decoracion.hintStyle?.fontSize, CampoTexto.tamanoPlaceholder);
     expect(decoracion.labelText, isNull);
 

@@ -16,9 +16,11 @@ import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/disponibilidad_service.dart';
+import '../services/impresion_service.dart';
 import '../services/pedido_mozo_service.dart';
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/nota_pedido.dart';
 import '../utils/uuid_helper.dart';
 import 'anulacion_dialog.dart';
 import 'app_toast.dart';
@@ -32,8 +34,6 @@ import 'boletas_pagadores_dialog.dart';
 import 'menu_flotante.dart';
 import 'pago_compartido_dialog.dart';
 import 'pago_dialogs.dart';
-import 'plato_del_dia_picker.dart';
-import 'producto_opciones_dialog.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'reportar_problema_dialog.dart';
@@ -69,7 +69,7 @@ String nombreMeseroDe(Pedido p) {
     case 'pendiente':
     case 'pedido':
     default:
-      return (color: const Color(0xFFCA8A04), texto: 'Pendiente');
+      return (color: AppColors.pendiente, texto: 'Pendiente');
   }
 }
 
@@ -279,13 +279,14 @@ class DetallePedidoPanel extends StatelessWidget {
         metodoPago: _metodoPago(),
         onImprimir: () {
           if (_api && PedidoMozoService.instance.puedeOperar(pedido)) {
-            PedidoMozoService.instance
-                .reimprimir(pedido.id)
+            ImpresionService.instance
+                .reimprimirPedido(pedido.id)
                 .then((_) {
                   if (context.mounted) {
                     showAppToast(
                       context,
-                      'Pedido #${pedido.numeroPedido} enviado a imprimir.',
+                      'Comanda del pedido #${pedido.numeroPedido} reenviada a '
+                      'cocina (REIMPRESIÓN).',
                       type: ToastType.success,
                     );
                   }
@@ -376,32 +377,68 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  Future<void> _pagar(BuildContext context, {required bool compartido}) async {
-    if (compartido) {
-      final r = await showBlurDialog<ResultadoPagoCompartido>(
+  // "Pagar": pago único o compartido. El delivery solo admite pago único. Desde
+  // cada forma de pago se puede regresar a esta elección.
+  Future<void> _elegirPago(BuildContext context) async {
+    if (pedido.tipoPedido == 'delivery') {
+      await _pagar(context, compartido: false, permiteVolver: false);
+      return;
+    }
+    while (true) {
+      if (!context.mounted) return;
+      final compartido = await showBlurDialog<bool>(
         context: context,
-        builder: (_) =>
-            PagoCompartidoDialog(pedido: pedido, titulo: tituloPedido(pedido)),
+        builder: (_) => _ModoPagoDialog(titulo: tituloPedido(pedido)),
       );
-      if (r == null) return;
+      if (compartido == null || !context.mounted) return;
+      final volver = await _pagar(context, compartido: compartido);
+      if (!volver) return;
+    }
+  }
+
+  // Devuelve true si el usuario pidió regresar a la elección del tipo de pago.
+  Future<bool> _pagar(
+    BuildContext context, {
+    required bool compartido,
+    bool permiteVolver = true,
+  }) async {
+    if (compartido) {
+      final r = await showBlurDialog<Object>(
+        context: context,
+        builder: (_) => PagoCompartidoDialog(
+          pedido: pedido,
+          titulo: tituloPedido(pedido),
+          permiteVolver: permiteVolver,
+        ),
+      );
+      if (r == null) return false;
+      if (identical(r, volverAElegirPago)) return true;
+      final resultado = r as ResultadoPagoCompartido;
       // Las boletas se muestran antes de refrescar: si el pedido quedó
       // pagado, este panel deja de existir.
-      if (r.boletasIndividuales && context.mounted) {
+      if (resultado.boletasIndividuales && context.mounted) {
         await showBlurDialog<void>(
           context: context,
-          builder: (_) =>
-              BoletasPagadoresDialog(pedido: pedido, boletas: r.boletas),
+          builder: (_) => BoletasPagadoresDialog(
+            pedido: pedido,
+            boletas: resultado.boletas,
+          ),
         );
       }
       onCambio();
-      return;
+      return false;
     }
-    final pagado = await showBlurDialog<bool>(
+    final r = await showBlurDialog<Object>(
       context: context,
-      builder: (_) =>
-          PagarPedidoDialog(pedido: pedido, titulo: tituloPedido(pedido)),
+      builder: (_) => PagarPedidoDialog(
+        pedido: pedido,
+        titulo: tituloPedido(pedido),
+        permiteVolver: permiteVolver,
+      ),
     );
-    if (pagado == true) onCambio();
+    if (identical(r, volverAElegirPago)) return true;
+    if (r == true) onCambio();
+    return false;
   }
 
   Future<void> _anularPedidoApi(BuildContext context) async {
@@ -615,11 +652,118 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
+  // Nota general del pedido (aparte de las notas de cada producto): se ve en la
+  // comanda y en cocina.
+  Future<void> _editarNotaPedido(BuildContext context) async {
+    final nota = await showBlurDialog<String>(
+      context: context,
+      builder: (_) => _NotaDialog(
+        titulo: 'Nota del pedido',
+        subtitulo:
+            'Pedido #${pedido.numeroPedido}. Vale para todo el pedido, no solo '
+            'para un producto.',
+        inicial: notaGeneralDe(pedido.notas),
+        hint: 'Ej. cliente alérgico, llevar todo junto, cumpleaños',
+      ),
+    );
+    if (nota == null) return;
+    if (_api) {
+      if (!context.mounted || !_puedeModificar(context)) return;
+      await _ejecutar(
+        context,
+        // El nombre del cliente va en el mismo texto: se conserva.
+        () => PedidoMozoService.instance.comentarioPedido(
+          pedido.id,
+          comentariosConNota(pedido.notas, nota),
+        ),
+      );
+      return;
+    }
+    actualizarNotaPedido(pedido.id, comentariosConNota(pedido.notas, nota));
+    onCambio();
+  }
+
+  // Bloque de la nota del pedido, arriba de los productos.
+  Widget _notaDelPedido(BuildContext context) {
+    final nota = notaGeneralDe(pedido.notas) ?? '';
+    final editable = !pedido.terminado;
+    if (nota.isEmpty && !editable) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: nota.isEmpty ? Colors.white : const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: nota.isEmpty ? Colors.grey.shade300 : const Color(0xFFF5D98B),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: editable ? () => _editarNotaPedido(context) : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  LucideIcons.notebookPen,
+                  size: 16,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Nota del pedido',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      nota.isEmpty
+                          ? 'Sin nota. Toca para agregar una nota general.'
+                          : nota,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: nota.isEmpty
+                            ? Colors.grey.shade500
+                            : Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (editable)
+                Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    nota.isEmpty ? Icons.add : LucideIcons.pencil,
+                    size: 16,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _editarNota(BuildContext context, PedidoLine l) async {
     final nota = await showBlurDialog<String>(
       context: context,
-      builder: (_) =>
-          _NotaDialog(nombrePlato: l.nombrePlato, inicial: l.comentario),
+      builder: (_) => _NotaDialog(
+        titulo: 'Nota del producto',
+        subtitulo: l.nombrePlato,
+        inicial: l.comentario,
+      ),
     );
     if (nota == null) return;
     if (_api) {
@@ -855,59 +999,6 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  Future<void> _platoDelDia(BuildContext context) async {
-    if (!_puedeModificar(context)) return;
-    final item = await elegirPlatoDelDia(context);
-    if (item == null || !context.mounted) return;
-    final r = await showBlurDialog<ProductoConfigurado>(
-      context: context,
-      builder: (_) => ProductoOpcionesDialog(
-        item: item,
-        esAdmin: esAdmin,
-        acento: AppColors.platoDelDia,
-      ),
-    );
-    if (r == null) return;
-    final linea = PedidoLine(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      cartaId: item.id,
-      nombrePlato: item.nombrePlato,
-      cantidad: r.cantidad,
-      modificadores: r.modificadores,
-      presentacion: r.presentacion,
-      variante: r.variante,
-      promocion: null,
-      comentario: r.comentario,
-      precioUnitario: r.precioUnitario,
-      descuentoAplicado: 0,
-      precioTotalLinea: r.precioUnitario * r.cantidad,
-      tipoEntrega: r.tipoEntrega,
-      aplicaTaper: r.llevaTaper,
-      taperId: r.taperId,
-      precioTaper: r.precioTaper,
-    );
-    if (_api) {
-      if (!context.mounted) return;
-      final ok = await _ejecutar(
-        context,
-        () => PedidoMozoService.instance.agregarProducto(pedido.id, linea),
-      );
-      if (!ok) return;
-    } else {
-      agregarLineaAPedido(pedido.id, linea);
-      registrarConsumoAutomaticoDeLinea(linea);
-      onCambio();
-    }
-    if (context.mounted) {
-      showAppToast(
-        context,
-        '"${item.nombrePlato}" se agregó al pedido #${pedido.numeroPedido}.',
-        type: ToastType.success,
-        titulo: 'Plato del día',
-      );
-    }
-  }
-
   Future<void> _cambiarEntrega(BuildContext context) async {
     if (!_puedeModificar(context)) return;
     final c = await showBlurDialog<CambioEntrega>(
@@ -1039,26 +1130,11 @@ class DetallePedidoPanel extends StatelessWidget {
                   onTap: () => _agregarPromocion(context),
                 ),
                 AppTag(
-                  etiqueta: 'Plato del día',
-                  icono: LucideIcons.chefHat,
-                  activo: false,
-                  color: AppColors.platoDelDia,
-                  onTap: () => _platoDelDia(context),
-                ),
-                AppTag(
                   etiqueta: 'Propina',
                   icono: LucideIcons.handCoins,
                   activo: false,
                   color: AppColors.platoDelDia,
                   onTap: () => _editarPropina(context),
-                ),
-                AppTag(
-                  etiqueta: 'Tupper',
-                  icono: LucideIcons.package,
-                  activo: false,
-                  color: Colors.black87,
-                  colorBorde: Colors.grey.shade300,
-                  onTap: () => _editarTupper(context),
                 ),
               ],
             ),
@@ -1086,6 +1162,7 @@ class DetallePedidoPanel extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               children: [
+                _notaDelPedido(context),
                 if (detalles.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
@@ -1368,33 +1445,6 @@ class DetallePedidoPanel extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (esProducto) ...[
-                      Tooltip(
-                        message: 'Imprimir comanda de este producto',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () => showAppToast(
-                            context,
-                            'Comanda de "${l.nombrePlato}" enviada a imprimir.',
-                            type: ToastType.success,
-                          ),
-                          child: Container(
-                            width: 26,
-                            height: 26,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
-                            ),
-                            child: Icon(
-                              LucideIcons.printer,
-                              size: 13,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                    ],
                     if (!esCargo && !esAjusteDeDevolucion(l))
                       _botonCirculoRojo(
                         tooltip: esProducto
@@ -1764,60 +1814,44 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ],
         ),
-        if (pedido.estado == 'pendiente' || pedido.estado == 'pedido') ...[
-          const SizedBox(height: 10),
-          FilledButton.icon(
-            onPressed: () {
-              if (!_puedeModificar(context)) return;
-              _ejecutar(
-                context,
-                () => PedidoService.instance.cambiarEstadoPedido(
-                  pedido.id,
-                  'servido',
-                ),
-              );
-            },
-            icon: const Icon(LucideIcons.utensilsCrossed, size: 16),
-            label: const Text('Marcar como Servido', style: texto),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0284C7),
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
+        // Servido y Pagar en la misma fila. "Pagar" abre la elección entre pago
+        // único y compartido.
         Row(
           children: [
+            // Siempre visible: queda desactivado cuando el pedido ya no está
+            // pendiente (ya se sirvió o se cerró).
             Expanded(
               child: FilledButton.icon(
-                onPressed: puedePagar
-                    ? () => _pagar(context, compartido: false)
+                onPressed:
+                    (pedido.estado == 'pendiente' || pedido.estado == 'pedido')
+                    ? () {
+                        if (!_puedeModificar(context)) return;
+                        _ejecutar(
+                          context,
+                          () => PedidoService.instance.cambiarEstadoPedido(
+                            pedido.id,
+                            'servido',
+                          ),
+                        );
+                      }
                     : null,
+                icon: const Icon(LucideIcons.utensilsCrossed, size: 16),
+                label: const Text('Servido', style: texto),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: puedePagar ? () => _elegirPago(context) : null,
                 icon: const Icon(LucideIcons.banknote, size: 16),
                 label: const Text('Pagar', style: texto),
                 style: FilledButton.styleFrom(backgroundColor: _naranjaPago),
               ),
             ),
-            // El pago compartido no aplica a delivery: Pagar ocupa todo el ancho.
-            if (pedido.tipoPedido != 'delivery') ...[
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: puedePagar
-                      ? () => _pagar(context, compartido: true)
-                      : null,
-                  icon: const Icon(LucideIcons.users, size: 16),
-                  label: const Text(
-                    'Pago compartido',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: texto,
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primaryGreen,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ],
@@ -1825,12 +1859,108 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 }
 
-// Nota de un producto del pedido; devuelve el texto ('' = quitar la nota).
-class _NotaDialog extends StatefulWidget {
-  final String nombrePlato;
-  final String? inicial;
+// Cómo se va a pagar: devuelve false (pago único) o true (pago compartido).
+class _ModoPagoDialog extends StatelessWidget {
+  final String titulo;
 
-  const _NotaDialog({required this.nombrePlato, this.inicial});
+  const _ModoPagoDialog({required this.titulo});
+
+  Widget _opcion(
+    BuildContext context, {
+    required IconData icono,
+    required String titulo,
+    required String detalle,
+    required bool compartido,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.of(context).pop(compartido),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icono, size: 20, color: AppColors.primaryGreenDark),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titulo,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detalle,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 20, color: Colors.grey.shade500),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DialogoApp(
+      titulo: 'Pagar · $titulo',
+      ancho: 420,
+      children: [
+        _opcion(
+          context,
+          icono: LucideIcons.banknote,
+          titulo: 'Pago único',
+          detalle: 'Una sola persona paga todo el pedido.',
+          compartido: false,
+        ),
+        _opcion(
+          context,
+          icono: LucideIcons.users,
+          titulo: 'Pago compartido',
+          detalle: 'Se divide entre varios: por partes iguales, por platos…',
+          compartido: true,
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
+// Nota de un producto o del pedido completo; devuelve el texto ('' = quitar la
+// nota).
+class _NotaDialog extends StatefulWidget {
+  final String titulo;
+  final String? subtitulo;
+  final String? inicial;
+  final String hint;
+
+  const _NotaDialog({
+    required this.titulo,
+    this.subtitulo,
+    this.inicial,
+    this.hint = 'Ej. sin cebolla, poco picante',
+  });
 
   @override
   State<_NotaDialog> createState() => _NotaDialogState();
@@ -1847,85 +1977,42 @@ class _NotaDialogState extends State<_NotaDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final esMobile = AppBreakpoints.esMobile(context);
-    final ancho = MediaQuery.sizeOf(context).width;
-    return Material(
-      color: Colors.white,
-      borderRadius: esMobile
-          ? const BorderRadius.vertical(top: Radius.circular(AppRadii.sheet))
-          : BorderRadius.circular(AppRadii.sheet),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minWidth: esMobile ? ancho : 400,
-          maxWidth: esMobile ? ancho : 400,
-        ),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            esMobile ? 28 : 22,
-            24,
-            24 + MediaQuery.viewInsetsOf(context).bottom,
+    final tiene = (widget.inicial ?? '').isNotEmpty;
+    return DialogoApp(
+      titulo: widget.titulo,
+      ancho: 420,
+      acciones: [
+        if (tiene)
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(''),
+            child: const Text('Quitar nota'),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Nota del producto',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          widget.nombrePlato,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  BotonCerrarCircular(
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SeparadorDialogo(),
-              CampoTexto(
-                controller: _controller,
-                autofocus: true,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Ej. sin cebolla, poco picante',
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_controller.text.trim()),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                ),
-                child: const Text(
-                  'Guardar nota',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
           ),
+          child: const Text('Guardar nota'),
         ),
-      ),
+      ],
+      children: [
+        if (widget.subtitulo != null) ...[
+          Text(
+            widget.subtitulo!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 12),
+        ],
+        CampoTexto(
+          controller: _controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: InputDecoration(hintText: widget.hint),
+        ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 }

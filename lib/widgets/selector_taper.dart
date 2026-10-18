@@ -37,9 +37,8 @@ class SelectorTaper extends StatefulWidget {
 class _SelectorTaperState extends State<SelectorTaper> {
   String _busqueda = '';
 
-  String _stock(double v) => v == v.roundToDouble()
-      ? v.toStringAsFixed(0)
-      : v.toStringAsFixed(1);
+  String _stock(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) {

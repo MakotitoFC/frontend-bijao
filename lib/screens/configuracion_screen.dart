@@ -22,6 +22,8 @@ import '../widgets/dialogo_app.dart';
 import '../widgets/medio_pago_dialog.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/pestanas_vista.dart';
+import '../widgets/impresoras_config.dart';
+import '../widgets/logo_tickets_editor.dart';
 import '../widgets/promociones_config.dart';
 import '../widgets/usuario_permisos_dialog.dart';
 import '../widgets/stock_diario_config.dart';
@@ -192,6 +194,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         etiqueta: 'Stock diario',
         seccion: 'Carta y stock',
         contenido: () => const StockDiarioConfig(),
+      ),
+    if (widget.usuario.esAdmin)
+      (
+        clave: 'impresoras',
+        etiqueta: 'Impresoras',
+        seccion: 'Negocio',
+        contenido: () => const ImpresorasConfig(),
       ),
     (
       clave: 'negocio',
@@ -788,7 +797,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               child: LayoutBuilder(
                 builder: (context, c) {
                   final columnas = _rolesRBAC.length * 104.0;
-                  final ancho = (c.maxWidth - columnas - 16).clamp(220.0, c.maxWidth);
+                  final ancho = (c.maxWidth - columnas - 16).clamp(
+                    220.0,
+                    c.maxWidth,
+                  );
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: SizedBox(
@@ -1247,6 +1259,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         ],
       ),
       _seccionHorario(),
+      // El logo que sale en los tickets de caja (lo cambia el administrador).
+      if (widget.usuario.esAdmin)
+        const SeccionConfig(
+          titulo: 'Logo de los tickets',
+          descripcion:
+              'Sale arriba de las cuentas que se imprimen en caja. En blanco '
+              'y negro: el sistema lo convierte para la ticketera.',
+          filas: [LogoTicketsEditor()],
+        ),
     ];
   }
 

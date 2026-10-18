@@ -269,7 +269,9 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
       child: Icon(
         icono,
         size: 18,
-        color: onTap == null ? Colors.grey.shade400 : AppColors.primaryGreenDark,
+        color: onTap == null
+            ? Colors.grey.shade400
+            : AppColors.primaryGreenDark,
       ),
     ),
   );
@@ -301,9 +303,7 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
               CampoTexto(
                 controller: _comentario,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Nota (opcional)',
-                ),
+                decoration: const InputDecoration(labelText: 'Nota (opcional)'),
               ),
               const SizedBox(height: 12),
               Row(
@@ -453,7 +453,8 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
   Widget _filaOpcion(PromocionComponente c, PromocionOpcion o) {
     final activa = _elegidas[c.id] == o.id;
     final unitario =
-        elegirOpcion(widget.promocion, c, o).precio / (c.cantidad == 0 ? 1 : c.cantidad);
+        elegirOpcion(widget.promocion, c, o).precio /
+        (c.cantidad == 0 ? 1 : c.cantidad);
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () => setState(() {

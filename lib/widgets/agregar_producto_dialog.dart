@@ -61,8 +61,11 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   Future<void> _elegir(CartaItem item) async {
     final r = await showBlurDialog<ProductoConfigurado>(
       context: context,
-      builder: (_) =>
-          ProductoOpcionesDialog(item: item, esAdmin: widget.esAdmin),
+      builder: (_) => ProductoOpcionesDialog(
+        item: item,
+        esAdmin: widget.esAdmin,
+        tipoEntregaInicial: widget.pedido.tipoPedido,
+      ),
     );
     if (r == null || !mounted) return;
     final linea = PedidoLine(
@@ -151,11 +154,13 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                       ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop(false)),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
                 ],
               ),
               const SeparadorDialogo(),
-Align(
+              Align(
                 alignment: Alignment.centerLeft,
                 child: AppSearchField(
                   controller: _busqueda,

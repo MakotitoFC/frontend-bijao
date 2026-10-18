@@ -208,8 +208,7 @@ ComponenteElegido elegirOpcion(
 // Selección de salida: cada componente con su producto incluido.
 List<ComponenteElegido> seleccionInicial(Promocion p) => [
   for (final c in componentesDe(p.id))
-    if (opcionIncluida(c.id) != null)
-      elegirOpcion(p, c, opcionIncluida(c.id)!),
+    if (opcionIncluida(c.id) != null) elegirOpcion(p, c, opcionIncluida(c.id)!),
 ];
 
 double totalDeSeleccion(List<ComponenteElegido> seleccion) =>

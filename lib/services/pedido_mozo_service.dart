@@ -1,5 +1,4 @@
 import '../data/mesas_por_liberar_store.dart';
-import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/app_role.dart';
@@ -53,6 +52,9 @@ class PedidoMozoService {
   // Marca de cambio por pedido para no pedir el detalle en cada consulta.
   final Map<String, String> _marcas = {};
 
+  // Al cerrar sesión: las marcas eran de los pedidos del usuario anterior.
+  void limpiarMarcas() => _marcas.clear();
+
   // ¿Los pedidos de esta sesión se manejan con la API del mozo?
   bool get activo {
     final rol = AuthService.instance.currentUser?.rol;
@@ -102,15 +104,10 @@ class PedidoMozoService {
         // Se reintenta en la siguiente consulta.
       }
     }
+    // Las mesas cobradas que faltan liberar las informa el backend (ya filtradas
+    // por usuario); no se deduce nada por los pedidos que dejan de venir.
+    await recargarMesasPorLiberar();
     if (sobreLegacy) return;
-    // Un pedido de mesa que sale de la lista sin haberse anulado se cobró: la
-    // mesa sigue ocupada hasta que el mozo la libere.
-    for (final p in pedidos.where((p) => !vigentes.contains(p.id))) {
-      if (p.tipoPedido == 'mesa' && p.mesaNumero > 0 && p.estado != 'anulado') {
-        final mesa = mesas.where((m) => m.numero == p.mesaNumero).firstOrNull;
-        if (mesa != null) marcarMesaPorLiberar(mesa.id);
-      }
-    }
     pedidos.removeWhere((p) => !vigentes.contains(p.id));
     detallesPorPedido.removeWhere((id, _) => !vigentes.contains(id));
     _marcas.removeWhere((id, _) => !vigentes.contains(id));
@@ -403,10 +400,6 @@ class PedidoMozoService {
       throw Exception('El servidor no devolvió la dirección de la foto');
     }
     return url;
-  }
-
-  Future<void> reimprimir(String pedidoId) async {
-    await _api.post('/api/v1/impresion/pedidos/$pedidoId/reimprimir', body: {});
   }
 
   // Libera la mesa; con [forzar] (solo administrador) aunque tenga pedidos.

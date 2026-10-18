@@ -52,14 +52,14 @@ class PagoCuentaEmpleado {
       );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'empleado_id': empleadoId,
-        'monto': monto,
-        'medio_pago_id': medioPagoId,
-        'pedidos_id': pedidosId,
-        'utensilio_roto_id': utensilioRotoId,
-        'usuario_id': usuarioId,
-        'fecha_pago': fechaPago?.toIso8601String(),
-        'nota': nota,
-      };
+    'id': id,
+    'empleado_id': empleadoId,
+    'monto': monto,
+    'medio_pago_id': medioPagoId,
+    'pedidos_id': pedidosId,
+    'utensilio_roto_id': utensilioRotoId,
+    'usuario_id': usuarioId,
+    'fecha_pago': fechaPago?.toIso8601String(),
+    'nota': nota,
+  };
 }

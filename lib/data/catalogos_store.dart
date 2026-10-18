@@ -9,30 +9,52 @@ import '../models/unidad_producto.dart';
 final List<UnidadProducto> unidadesProducto = [];
 final List<TipoProducto> tiposProducto = [];
 
-// `tipo_movimiento`.
+// `tipo_movimiento`: UUID fijos del backend (migración de inventario).
+const movEntradaManualId = '55551111-1111-1111-1111-111111111107';
+const movSalidaManualId = '55551111-1111-1111-1111-111111111108';
+const movMermaId = '55551111-1111-1111-1111-111111111103';
+const movIngresoCompraId = '55551111-1111-1111-1111-111111111101';
+const movSalidaVentaId = '55551111-1111-1111-1111-111111111102';
+
 const movEntradaManual = TipoMovimiento(
-  id: 1,
+  id: movEntradaManualId,
+  codigo: 'entrada_manual',
   tipoMovimiento: 'Entrada manual',
-  esEntrada: true,
+  signo: 1,
 );
 const movSalidaManual = TipoMovimiento(
-  id: 2,
+  id: movSalidaManualId,
+  codigo: 'salida_manual',
   tipoMovimiento: 'Salida manual',
-  esEntrada: false,
+  signo: -1,
 );
 const movMerma = TipoMovimiento(
-  id: 3,
+  id: movMermaId,
+  codigo: 'merma',
   tipoMovimiento: 'Merma',
-  esEntrada: false,
+  signo: -1,
 );
 const movEntradaCompra = TipoMovimiento(
-  id: 4,
-  tipoMovimiento: 'Entrada por compra',
-  esEntrada: true,
+  id: movIngresoCompraId,
+  codigo: 'ingreso_compra',
+  tipoMovimiento: 'Ingreso por compra',
+  signo: 1,
 );
 const movSalidaVenta = TipoMovimiento(
-  id: 5,
+  id: movSalidaVentaId,
+  codigo: 'salida_venta',
   tipoMovimiento: 'Salida por venta',
-  esEntrada: false,
+  signo: -1,
 );
-const tiposMovimiento = [movEntradaManual, movSalidaManual, movMerma];
+
+// Los que se pueden registrar a mano al ajustar el stock.
+const codigosMovimientoManual = {'entrada_manual', 'salida_manual', 'merma'};
+
+// Catálogo sincronizado con el backend (arranca con los de uso manual).
+final List<TipoMovimiento> tiposMovimiento = [
+  movEntradaManual,
+  movSalidaManual,
+  movMerma,
+  movEntradaCompra,
+  movSalidaVenta,
+];

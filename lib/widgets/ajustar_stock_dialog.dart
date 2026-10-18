@@ -89,11 +89,13 @@ class _AjustarStockDialogState extends State<AjustarStockDialog> {
                         ),
                       ),
                     ),
-                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                    BotonCerrarCircular(
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ],
                 ),
-              const SeparadorDialogo(),
-Text(
+                const SeparadorDialogo(),
+                Text(
                   '${widget.producto.nombre} · stock actual '
                   '${widget.producto.stockActual}',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
@@ -103,7 +105,9 @@ Text(
                   label: 'Tipo de movimiento',
                   value: _tipoMovimiento,
                   items: [
-                    for (final t in tiposMovimiento)
+                    for (final t in tiposMovimiento.where(
+                      (t) => codigosMovimientoManual.contains(t.codigo),
+                    ))
                       AppSelectItem(value: t, label: t.tipoMovimiento),
                   ],
                   onChanged: (v) => setState(() {

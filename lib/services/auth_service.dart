@@ -3,8 +3,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/borrador_pedido_store.dart';
+import '../data/mesas_por_liberar_store.dart';
+import '../data/pedidos_store.dart';
 import '../models/usuario.dart';
 import 'api_client.dart';
+import 'pedido_mozo_service.dart';
 
 /// Servicio de Autenticación contra el backend de Go.
 /// Gestiona login, sesión activa, almacenamiento de credenciales y permisos RBAC.
@@ -38,6 +42,7 @@ class AuthService {
         // Validar token y verificar si el usuario sigue activo en la base de datos
         final me = await ApiClient.instance.get('/api/auth/me');
         if (me is Map<String, dynamic>) {
+          await cargarBorradorGuardado(user.id);
           userNotifier.value = user;
           return user;
         }
@@ -81,6 +86,8 @@ class AuthService {
 
     // 2. Parsear usuario y permisos
     final user = Usuario.fromJson(res);
+    // Antes de mostrar la pantalla principal: recupera el pedido que dejó a medias.
+    await cargarBorradorGuardado(user.id);
     userNotifier.value = user;
 
     // 3. Persistir sesión de usuario
@@ -108,10 +115,20 @@ class AuthService {
 
   /// Cierra la sesión activa
   Future<void> logout() async {
+    final usuarioId = userNotifier.value?.id;
     userNotifier.value = null;
     await ApiClient.instance.setToken(null);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefUserSession);
+    // Lo que había en memoria era del usuario anterior: si queda, el siguiente
+    // que inicie sesión en el mismo equipo lo vería (y sacaría conclusiones de
+    // pedidos que no son suyos).
+    pedidos.clear();
+    detallesPorPedido.clear();
+    limpiarMesasPorLiberar();
+    // Sin copias: el pedido a medias se borra también del dispositivo.
+    await borrarTodoBorradorDe(usuarioId);
+    PedidoMozoService.instance.limpiarMarcas();
   }
 
   /// Obtiene el correo/usuario recordado

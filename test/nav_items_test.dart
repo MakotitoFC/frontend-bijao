@@ -16,7 +16,10 @@ void main() {
   final mesas = navItems.firstWhere((i) => i.clave == 'mesas');
 
   test('Mesas no se ve para el mozo, ni teniendo el permiso LEER.MESA', () {
-    expect(mesas.tieneAcceso(_usuario(AppRole.mesero, permisos: {'LEER.MESA'})), false);
+    expect(
+      mesas.tieneAcceso(_usuario(AppRole.mesero, permisos: {'LEER.MESA'})),
+      false,
+    );
     expect(mesas.tieneAcceso(_usuario(AppRole.mesero)), false);
   });
 

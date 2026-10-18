@@ -31,6 +31,8 @@ class _PaginaResumenState extends State<PaginaResumen> {
       CatalogService.instance.cargarTiposProducto(),
       CatalogService.instance.cargarUnidadesProducto(),
       CatalogService.instance.cargarProductosInventario(),
+      CatalogService.instance.cargarTiposMovimiento(),
+      CatalogService.instance.cargarMovimientosInventario(),
     ]).then((_) {
       if (mounted) setState(() {});
     });

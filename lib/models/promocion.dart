@@ -38,8 +38,7 @@ class Promocion {
     return true;
   }
 
-  String get etiqueta =>
-      porcentajeDescuento != null && porcentajeDescuento! > 0
+  String get etiqueta => porcentajeDescuento != null && porcentajeDescuento! > 0
       ? '-${porcentajeDescuento!.toStringAsFixed(porcentajeDescuento! % 1 == 0 ? 0 : 1)}%'
       : 'Combo';
 
@@ -49,7 +48,8 @@ class Promocion {
     descripcion: json['descripcion']?.toString(),
     porcentajeDescuento: jsonDouble(json['porcentaje_descuento']),
     // El backend lo llama `se_mantiene_porcentaje`.
-    seMantiene: (json['se_mantiene_porcentaje'] ?? json['se_mantiene']) != false,
+    seMantiene:
+        (json['se_mantiene_porcentaje'] ?? json['se_mantiene']) != false,
     fechaInicio: DateTime.tryParse(json['fecha_inicio']?.toString() ?? ''),
     fechaFin: DateTime.tryParse(json['fecha_fin']?.toString() ?? ''),
     estado: json['estado'] != false,

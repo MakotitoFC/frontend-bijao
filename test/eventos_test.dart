@@ -51,20 +51,37 @@ void main() {
       expect([nuevo.pedidos, nuevo.mesas, nuevo.stock], [true, true, true]);
 
       final servido = traducirEvento('ITEM_SERVIDO');
-      expect([servido.pedidos, servido.mesas, servido.stock], [true, false, false]);
+      expect(
+        [servido.pedidos, servido.mesas, servido.stock],
+        [true, false, false],
+      );
 
       final liberada = traducirEvento('MESA_LIBERADA');
-      expect([liberada.pedidos, liberada.mesas, liberada.stock], [false, true, false]);
+      expect(
+        [liberada.pedidos, liberada.mesas, liberada.stock],
+        [false, true, false],
+      );
 
       final agotado = traducirEvento('PLATO_AGOTADO');
-      expect([agotado.pedidos, agotado.mesas, agotado.stock], [false, false, true]);
+      expect(
+        [agotado.pedidos, agotado.mesas, agotado.stock],
+        [false, false, true],
+      );
 
       expect(traducirEvento('conexion_establecida').ninguna, true);
       expect(traducirEvento('EVENTO_DESCONOCIDO').ninguna, true);
     });
 
+    test('cobrar o liberar una mesa vuelve a leer las mesas por liberar', () {
+      expect(traducirEvento('PEDIDO_ESTADO_CAMBIADO').porLiberar, true);
+      expect(traducirEvento('MESA_LIBERADA').porLiberar, true);
+      expect(traducirEvento('ITEM_SERVIDO').porLiberar, false);
+      expect(traducirEvento('PEDIDO_NUEVO').porLiberar, false);
+    });
+
     test('varios eventos se unen en una sola lectura', () {
-      final u = traducirEvento('ITEM_SERVIDO').unir(traducirEvento('PLATO_AGOTADO'));
+      final u = traducirEvento('ITEM_SERVIDO')
+          .unir(traducirEvento('PLATO_AGOTADO'));
       expect([u.pedidos, u.mesas, u.stock], [true, false, true]);
     });
   });
@@ -90,7 +107,10 @@ void main() {
           cabeceras.add(req.headers.value('authorization') ?? '');
           // Como el servidor real: los eventos salen al momento, sin esperar.
           req.response.bufferOutput = false;
-          req.response.headers.contentType = ContentType('text', 'event-stream');
+          req.response.headers.contentType = ContentType(
+            'text',
+            'event-stream',
+          );
           await alAbrirFlujo(req.response);
           return;
         }
@@ -115,8 +135,14 @@ void main() {
         await r.close();
       };
       final url = Uri.parse('${ApiClient.instance.baseUrl}/api/v1/eventos');
-      final eventos = await abrirFlujoDeEventos(url: url, token: 'abc').toList();
-      expect(eventos.map((e) => e.nombre), ['conexion_establecida', 'PEDIDO_NUEVO']);
+      final eventos = await abrirFlujoDeEventos(
+        url: url,
+        token: 'abc',
+      ).toList();
+      expect(eventos.map((e) => e.nombre), [
+        'conexion_establecida',
+        'PEDIDO_NUEVO',
+      ]);
       expect(cabeceras.single, 'Bearer abc');
     });
 
@@ -128,43 +154,53 @@ void main() {
       final url = Uri.parse('${ApiClient.instance.baseUrl}/api/v1/eventos');
       await expectLater(
         abrirFlujoDeEventos(url: url, token: 'vencido').toList(),
-        throwsA(isA<ErrorFlujoEventos>().having((e) => e.codigo, 'codigo', 401)),
+        throwsA(
+          isA<ErrorFlujoEventos>().having((e) => e.codigo, 'codigo', 401),
+        ),
       );
     });
 
-    test('el servicio se conecta y, ante un evento, vuelve a leer los datos', () async {
-      alAbrirFlujo = (r) async {
-        r.write('event: conexion_establecida\ndata: {}\n\n');
-        await r.flush();
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        r.write('event: PEDIDO_NUEVO\ndata: {"id":"p1"}\n\n');
-        await r.flush();
-        // La conexión queda abierta, como en el servidor real.
-        await Future<void>.delayed(const Duration(seconds: 5));
-        await r.close();
-      };
-      final servicio = EventosService.instance;
-      final revisiones = servicio.revision.value;
+    test(
+      'el servicio se conecta y, ante un evento, vuelve a leer los datos',
+      () async {
+        alAbrirFlujo = (r) async {
+          r.write('event: conexion_establecida\ndata: {}\n\n');
+          await r.flush();
+          // Más que la espera de agrupación (300 ms): si no, los dos eventos se
+          // juntan en una sola lectura y la prueba depende del reloj.
+          await Future<void>.delayed(const Duration(milliseconds: 900));
+          r.write('event: PEDIDO_NUEVO\ndata: {"id":"p1"}\n\n');
+          await r.flush();
+          // La conexión queda abierta, como en el servidor real.
+          await Future<void>.delayed(const Duration(seconds: 5));
+          await r.close();
+        };
+        final servicio = EventosService.instance;
+        final revisiones = servicio.revision.value;
 
-      servicio.iniciar();
-      final fin = DateTime.now().add(const Duration(seconds: 12));
-      // Espera la conexión, el evento y que las lecturas lleguen al servidor
-      // (con la máquina cargada tardan más).
-      while ((servicio.revision.value < revisiones + 2 ||
-              !rutas.contains('/api/pedidos') ||
-              !rutas.contains('/api/mesas')) &&
-          DateTime.now().isBefore(fin)) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
+        servicio.iniciar();
+        final fin = DateTime.now().add(const Duration(seconds: 10));
+        // Espera la conexión, el evento y que las lecturas lleguen al servidor
+        // (con la máquina cargada tardan más).
+        while ((servicio.revision.value < revisiones + 2 ||
+                rutas.where((r) => r == '/api/pedidos').length < 2 ||
+                !rutas.contains('/api/mesas')) &&
+            DateTime.now().isBefore(fin)) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
 
-      expect(servicio.conectado.value, true);
-      expect(servicio.revision.value, greaterThan(revisiones));
-      // Leyó pedidos y mesas por el evento.
-      expect(rutas, contains('/api/pedidos'));
-      expect(rutas, contains('/api/mesas'));
+        expect(servicio.conectado.value, true);
+        // Una lectura al conectar y otra por el evento.
+        expect(servicio.revision.value, greaterThanOrEqualTo(revisiones + 2));
+        expect(
+          rutas.where((r) => r == '/api/pedidos').length,
+          greaterThanOrEqualTo(2),
+        );
+        expect(rutas, contains('/api/mesas'));
 
-      servicio.detener();
-      expect(servicio.conectado.value, false);
-    });
+        servicio.detener();
+        expect(servicio.conectado.value, false);
+      },
+    );
   });
 }

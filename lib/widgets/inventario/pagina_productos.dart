@@ -18,8 +18,9 @@ import '../producto_inventario_form_dialog.dart';
 import '../tabs_desplazables.dart';
 import 'inventario_comun.dart';
 
-// Abre el ajuste de stock de un producto (entrada, salida o merma). Devuelve
-// true si se registró el movimiento.
+// Abre el ajuste de stock de un producto (entrada, salida o merma) y lo registra
+// en el libro de inventario del backend, que es quien actualiza el stock.
+// Devuelve true si se registró el movimiento.
 Future<bool> ajustarStockDeProducto(
   BuildContext context,
   ProductoInventario producto,
@@ -28,9 +29,33 @@ Future<bool> ajustarStockDeProducto(
     context: context,
     builder: (_) => AjustarStockDialog(producto: producto),
   );
-  if (movimiento == null) return false;
-  registrarMovimientoInventario(movimiento);
-  return true;
+  if (movimiento == null || !context.mounted) return false;
+  try {
+    await CatalogService.instance.registrarAjusteInventario(
+      productoInventarioId: movimiento.productoInventarioId,
+      tipoMovimientoId: movimiento.tipoMovimiento.id,
+      cantidad: movimiento.cantidad,
+      notas: movimiento.notas,
+    );
+    if (context.mounted) {
+      showAppToast(
+        context,
+        'Stock actualizado: ${movimiento.tipoMovimiento.tipoMovimiento.toLowerCase()} de '
+        '${cantidadTexto(movimiento.cantidad)} en "${producto.nombre}".',
+        type: ToastType.success,
+      );
+    }
+    return true;
+  } catch (e) {
+    if (context.mounted) {
+      showAppToast(
+        context,
+        'No se pudo ajustar el stock: ${e.toString().replaceFirst('Exception: ', '')}',
+        type: ToastType.error,
+      );
+    }
+    return false;
+  }
 }
 
 // Inventario > Productos: la lista de todo lo que se lleva en stock. Es el único
@@ -240,17 +265,35 @@ class _PaginaProductosState extends State<PaginaProductos> {
   }
 }
 
-// Movimientos (entradas, salidas y mermas) de un producto.
-class _MovimientosDialog extends StatelessWidget {
+// Movimientos (entradas, salidas y mermas) de un producto, leídos del libro de
+// inventario del backend.
+class _MovimientosDialog extends StatefulWidget {
   final ProductoInventario producto;
 
   const _MovimientosDialog({required this.producto});
 
   @override
+  State<_MovimientosDialog> createState() => _MovimientosDialogState();
+}
+
+class _MovimientosDialogState extends State<_MovimientosDialog> {
+  bool _cargando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    CatalogService.instance
+        .cargarMovimientosInventario(productoId: widget.producto.id)
+        .whenComplete(() {
+          if (mounted) setState(() => _cargando = false);
+        });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final historial = movimientosInventario[producto.id] ?? [];
+    final historial = movimientosInventario[widget.producto.id] ?? [];
     return DialogoApp(
-      titulo: 'Movimientos · ${producto.nombre}',
+      titulo: 'Movimientos · ${widget.producto.nombre}',
       ancho: 480,
       children: [
         if (historial.isEmpty)
@@ -258,7 +301,7 @@ class _MovimientosDialog extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Text(
-                'Sin movimientos registrados aún',
+                _cargando ? 'Cargando…' : 'Sin movimientos registrados aún',
                 style: TextStyle(color: Colors.grey.shade500),
               ),
             ),
@@ -275,6 +318,11 @@ class _MovimientosDialog extends StatelessWidget {
 
   Widget _filaMovimiento(InventarioMovimiento m) {
     final entrada = m.tipoMovimiento.esEntrada;
+    final detalle = [
+      if (m.usuarioNombre != null && m.usuarioNombre!.isNotEmpty)
+        m.usuarioNombre!,
+      if (m.notas != null && m.notas!.isNotEmpty) m.notas!,
+    ].join(' · ');
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -290,15 +338,15 @@ class _MovimientosDialog extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${m.tipoMovimiento.tipoMovimiento} · ${cantidadTexto(m.cantidad.toDouble())}',
+                  '${m.tipoMovimiento.tipoMovimiento} · ${entrada ? '+' : '-'}${cantidadTexto(m.cantidad)}',
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
-                if (m.notas != null)
+                if (detalle.isNotEmpty)
                   Text(
-                    m.notas!,
+                    detalle,
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
               ],

@@ -34,7 +34,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
   @override
   void initState() {
     super.initState();
-    final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
+    final tapers = CatalogService.instance.tapers
+        .where((t) => t.estado)
+        .toList();
     if (tapers.isNotEmpty) {
       _taperSeleccionado =
           SelectorTaper.primeroConStock(tapers, 1) ?? tapers.first;
@@ -49,8 +51,12 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
     super.dispose();
   }
 
-  double get _precioBase => double.tryParse(_precioController.text.trim().replaceAll(',', '.')) ?? 0.0;
-  double get _precioTaper => (_llevaTaper && _taperSeleccionado != null) ? _taperSeleccionado!.precio : 0.0;
+  double get _precioBase =>
+      double.tryParse(_precioController.text.trim().replaceAll(',', '.')) ??
+      0.0;
+  double get _precioTaper => (_llevaTaper && _taperSeleccionado != null)
+      ? _taperSeleccionado!.precio
+      : 0.0;
   double get _precioUnitario => _precioBase + _precioTaper;
   double get _total => _precioUnitario * _cantidad;
 
@@ -68,7 +74,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
     }
 
     final nombre = _nombreController.text.trim();
-    final notas = _descripcionController.text.trim().isEmpty ? null : _descripcionController.text.trim();
+    final notas = _descripcionController.text.trim().isEmpty
+        ? null
+        : _descripcionController.text.trim();
 
     final linea = PedidoLine(
       id: UuidHelper.v7(),
@@ -98,7 +106,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
-    final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
+    final tapers = CatalogService.instance.tapers
+        .where((t) => t.estado)
+        .toList();
 
     return Material(
       color: Colors.white,
@@ -120,18 +130,24 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
                 child: Row(
                   children: [
-                    const Icon(LucideIcons.sparkles, color: AppColors.primaryGreen, size: 20),
+                    const Icon(
+                      LucideIcons.sparkles,
+                      color: AppColors.primaryGreen,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
-                        'Plato libre / Pedido rápido',
+                        'Plato rápido',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                    BotonCerrarCircular(
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ],
                 ),
               ),
@@ -150,15 +166,24 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                       // Nombre del plato
                       const Text(
                         'Nombre del plato / pedido *',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       CampoTexto(
                         controller: _nombreController,
                         decoration: InputDecoration(
-                          hintText: 'Ej. Arroz a la cubana, Ensalada especial...',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          hintText:
+                              'Ej. Arroz a la cubana, Ensalada especial...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
@@ -172,27 +197,41 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                       // Precio base
                       const Text(
                         'Precio acordado (S/) *',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       CampoTexto(
                         controller: _precioController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d+\.?\d{0,2}'),
+                          ),
                         ],
                         decoration: InputDecoration(
                           hintText: '0.00',
                           prefixText: 'S/ ',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                         ),
                         onChanged: (_) => setState(() {}),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
                             return 'Ingresa el precio del plato';
                           }
-                          final p = double.tryParse(val.trim().replaceAll(',', '.'));
+                          final p = double.tryParse(
+                            val.trim().replaceAll(',', '.'),
+                          );
                           if (p == null || p <= 0) {
                             return 'Ingresa un precio mayor a 0';
                           }
@@ -204,14 +243,21 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                       // Tipo de entrega
                       const Text(
                         'Tipo de entrega',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           _chipTipo('mesa', 'En mesa', LucideIcons.utensils),
                           const SizedBox(width: 8),
-                          _chipTipo('llevar', 'Para llevar', LucideIcons.packageCheck),
+                          _chipTipo(
+                            'llevar',
+                            'Para llevar',
+                            LucideIcons.packageCheck,
+                          ),
                           const SizedBox(width: 8),
                           _chipTipo('delivery', 'Delivery', LucideIcons.bike),
                         ],
@@ -222,10 +268,14 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: _llevaTaper ? const Color(0xFFF0FDF4) : Colors.grey.shade50,
+                          color: _llevaTaper
+                              ? const Color(0xFFF0FDF4)
+                              : Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _llevaTaper ? AppColors.primaryGreen.withValues(alpha: 0.4) : Colors.grey.shade200,
+                            color: _llevaTaper
+                                ? AppColors.primaryGreen.withValues(alpha: 0.4)
+                                : Colors.grey.shade200,
                           ),
                         ),
                         child: Column(
@@ -233,7 +283,13 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                           children: [
                             Row(
                               children: [
-                                Icon(LucideIcons.package, size: 18, color: _llevaTaper ? AppColors.primaryGreenDark : Colors.grey.shade600),
+                                Icon(
+                                  LucideIcons.package,
+                                  size: 18,
+                                  color: _llevaTaper
+                                      ? AppColors.primaryGreenDark
+                                      : Colors.grey.shade600,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
@@ -241,7 +297,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
-                                      color: _llevaTaper ? AppColors.primaryGreenDark : Colors.black87,
+                                      color: _llevaTaper
+                                          ? AppColors.primaryGreenDark
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
@@ -260,7 +318,10 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                               if (tapers.isEmpty)
                                 Text(
                                   'No hay táperes registrados en inventario.',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
                                 )
                               else
                                 SelectorTaper(
@@ -279,7 +340,10 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                       // Notas para cocina
                       const Text(
                         'Indicaciones para cocina (opcional)',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       CampoTexto(
@@ -288,7 +352,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                         maxLength: 100,
                         decoration: InputDecoration(
                           hintText: 'Ej. Bien cocido, sin picante, etc.',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           contentPadding: const EdgeInsets.all(12),
                         ),
                       ),
@@ -314,7 +380,10 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                       child: Text(
                         '$_cantidad',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                     _botonCantidad(
@@ -328,11 +397,16 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.primaryGreen,
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: Text(
                           'Agregar · S/ ${_total.toStringAsFixed(2)}',
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ),
@@ -363,7 +437,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: activo ? AppColors.primaryGreen.withValues(alpha: 0.12) : Colors.grey.shade50,
+            color: activo
+                ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
@@ -373,7 +449,13 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icono, size: 14, color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700),
+              Icon(
+                icono,
+                size: 14,
+                color: activo
+                    ? AppColors.primaryGreenDark
+                    : Colors.grey.shade700,
+              ),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(
@@ -382,7 +464,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                    color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700,
+                    color: activo
+                        ? AppColors.primaryGreenDark
+                        : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -406,7 +490,11 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
           border: Border.all(color: Colors.grey.shade300),
           color: onTap == null ? Colors.grey.shade100 : Colors.white,
         ),
-        child: Icon(icono, size: 16, color: onTap == null ? Colors.grey.shade400 : Colors.black87),
+        child: Icon(
+          icono,
+          size: 16,
+          color: onTap == null ? Colors.grey.shade400 : Colors.black87,
+        ),
       ),
     );
   }

@@ -74,23 +74,24 @@ void main() {
     expect(opcion.right, lessThanOrEqualTo(modal.right));
   });
 
-  testWidgets('sin sitio debajo: las opciones salen encima, sin tapar el campo', (
-    tester,
-  ) async {
-    await _abrirModal(
-      tester,
-      antes: const [SizedBox(height: 330)],
-      despues: const [],
-    );
-    final modal = tester.getRect(find.byType(DialogoApp));
-    final campo = tester.getRect(find.text('Mozo / Mesero').first);
+  testWidgets(
+    'sin sitio debajo: las opciones salen encima, sin tapar el campo',
+    (tester) async {
+      await _abrirModal(
+        tester,
+        antes: const [SizedBox(height: 330)],
+        despues: const [],
+      );
+      final modal = tester.getRect(find.byType(DialogoApp));
+      final campo = tester.getRect(find.text('Mozo / Mesero').first);
 
-    await tester.tap(find.text('Mozo / Mesero').first);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Mozo / Mesero').first);
+      await tester.pumpAndSettle();
 
-    final primera = tester.getRect(find.text('Administrador'));
-    final ultima = tester.getRect(find.text('Cajero'));
-    expect(ultima.bottom, lessThanOrEqualTo(campo.top)); // encima del campo
-    expect(primera.top, greaterThanOrEqualTo(modal.top)); // dentro del modal
-  });
+      final primera = tester.getRect(find.text('Administrador'));
+      final ultima = tester.getRect(find.text('Cajero'));
+      expect(ultima.bottom, lessThanOrEqualTo(campo.top)); // encima del campo
+      expect(primera.top, greaterThanOrEqualTo(modal.top)); // dentro del modal
+    },
+  );
 }

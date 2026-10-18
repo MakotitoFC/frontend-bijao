@@ -121,7 +121,7 @@ class _InicioScreenState extends State<InicioScreen> {
       if (!_esCocina) seguro(() => CatalogService.instance.cargarMesas()),
       if (!_esCocina) seguro(() => DisponibilidadService.instance.cargarHoy()),
       if (_veMesas) seguro(() => CatalogService.instance.cargarTapers()),
-      if (_esMozo) seguro(cargarMesasPorLiberar),
+      if (_esMozo) seguro(recargarMesasPorLiberar),
     ]);
     if (mounted) setState(() => _cargando = false);
   }

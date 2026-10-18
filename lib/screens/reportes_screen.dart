@@ -12,9 +12,8 @@ import '../theme/app_theme.dart';
 class ReportesScreen extends StatelessWidget {
   const ReportesScreen({super.key});
 
-  List<Pedido> get _pedidosValidos => pedidos
-      .where((p) => p.estado != 'anulado')
-      .toList();
+  List<Pedido> get _pedidosValidos =>
+      pedidos.where((p) => p.estado != 'anulado').toList();
 
   double _ventasDe(Iterable<Pedido> lista) =>
       lista.fold(0.0, (s, p) => s + totalDePedido(p.id));

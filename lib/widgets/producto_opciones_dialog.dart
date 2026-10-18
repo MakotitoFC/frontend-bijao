@@ -44,6 +44,9 @@ class ProductoOpcionesDialog extends StatefulWidget {
   // Productos que ya están en el carrito (aún sin guardar): cuentan contra las
   // porciones que quedan hoy.
   final List<PedidoLine> enCarrito;
+  // Tipo del pedido en curso ('mesa', 'llevar' o 'delivery'): el producto
+  // arranca con esa entrega, que se puede cambiar producto por producto.
+  final String tipoEntregaInicial;
 
   const ProductoOpcionesDialog({
     super.key,
@@ -51,6 +54,7 @@ class ProductoOpcionesDialog extends StatefulWidget {
     required this.esAdmin,
     this.acento,
     this.enCarrito = const [],
+    this.tipoEntregaInicial = 'mesa',
   });
 
   @override
@@ -94,13 +98,23 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     } else if (_presentaciones.isNotEmpty) {
       _presentacion = _presentaciones.first;
     }
-    final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
+    final tapers = CatalogService.instance.tapers
+        .where((t) => t.estado)
+        .toList();
     if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
-      _taperSeleccionado = tapers.where((t) => t.id == widget.item.taperId).firstOrNull;
+      _taperSeleccionado = tapers
+          .where((t) => t.id == widget.item.taperId)
+          .firstOrNull;
     }
     if (_taperSeleccionado == null && tapers.isNotEmpty) {
       _taperSeleccionado =
           SelectorTaper.primeroConStock(tapers, 1) ?? tapers.first;
+    }
+    // Entrega según el pedido en curso (lo mismo que hace tocar el chip).
+    final inicial = widget.tipoEntregaInicial;
+    if (inicial == 'llevar' || inicial == 'delivery') {
+      _tipoEntrega = inicial;
+      _llevaTaper = true;
     }
   }
 
@@ -126,7 +140,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               .where((it) => elegidos.contains('${it['nombre']}'))
               .fold(0.0, (s2, it) => s2 + (precioDeAgregado(it) ?? 0));
     });
-    final taperMonto = (_llevaTaper && _taperSeleccionado != null) ? _taperSeleccionado!.precio : 0.0;
+    final taperMonto = (_llevaTaper && _taperSeleccionado != null)
+        ? _taperSeleccionado!.precio
+        : 0.0;
     return base + extrasSimples + extrasGrupos + taperMonto;
   }
 
@@ -234,7 +250,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       tipoEntrega: _tipoEntrega,
       llevaTaper: _llevaTaper,
       taperId: _llevaTaper ? _taperSeleccionado?.id : null,
-      precioTaper: (_llevaTaper && _taperSeleccionado != null) ? _taperSeleccionado!.precio : 0.0,
+      precioTaper: (_llevaTaper && _taperSeleccionado != null)
+          ? _taperSeleccionado!.precio
+          : 0.0,
     ));
   }
 
@@ -273,7 +291,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       ),
                     ),
                   ),
-                  BotonCerrarCircular(onPressed: () => Navigator.of(context).pop()),
+                  BotonCerrarCircular(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
             ),
@@ -481,7 +501,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: activo ? AppColors.primaryGreen.withValues(alpha: 0.12) : Colors.grey.shade50,
+            color: activo
+                ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
@@ -491,7 +513,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icono, size: 14, color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700),
+              Icon(
+                icono,
+                size: 14,
+                color: activo
+                    ? AppColors.primaryGreenDark
+                    : Colors.grey.shade700,
+              ),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(
@@ -500,7 +528,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                    color: activo ? AppColors.primaryGreenDark : Colors.grey.shade700,
+                    color: activo
+                        ? AppColors.primaryGreenDark
+                        : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -512,14 +542,18 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   }
 
   Widget _selectorTaper() {
-    final tapers = CatalogService.instance.tapers.where((t) => t.estado).toList();
+    final tapers = CatalogService.instance.tapers
+        .where((t) => t.estado)
+        .toList();
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _llevaTaper ? const Color(0xFFF0FDF4) : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _llevaTaper ? AppColors.primaryGreen.withValues(alpha: 0.4) : Colors.grey.shade200,
+          color: _llevaTaper
+              ? AppColors.primaryGreen.withValues(alpha: 0.4)
+              : Colors.grey.shade200,
         ),
       ),
       child: Column(
@@ -527,7 +561,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
         children: [
           Row(
             children: [
-              Icon(LucideIcons.package, size: 18, color: _llevaTaper ? AppColors.primaryGreenDark : Colors.grey.shade600),
+              Icon(
+                LucideIcons.package,
+                size: 18,
+                color: _llevaTaper
+                    ? AppColors.primaryGreenDark
+                    : Colors.grey.shade600,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -535,7 +575,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: _llevaTaper ? AppColors.primaryGreenDark : Colors.black87,
+                    color: _llevaTaper
+                        ? AppColors.primaryGreenDark
+                        : Colors.black87,
                   ),
                 ),
               ),

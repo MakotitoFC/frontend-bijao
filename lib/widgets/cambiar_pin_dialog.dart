@@ -10,8 +10,9 @@ import 'dialogo_app.dart';
 // El usuario cambia su propio PIN de supervisor (el que autoriza descuentos).
 // El PIN tiene de 4 a 10 dígitos. Devuelve true si se guardó.
 //
-// Con [obligatorio] (el backend pide cambiar el PIN predeterminado) la ventana
-// no se puede cerrar sin guardarlo.
+// Con [obligatorio] (el backend pide cambiar el PIN predeterminado) es un aviso
+// al entrar: se puede cerrar con la "x" y cambiarlo después desde
+// Configuración, pero volverá a aparecer en el próximo inicio de sesión.
 class CambiarPinDialog extends StatefulWidget {
   final bool obligatorio;
 
@@ -65,75 +66,70 @@ class _CambiarPinDialogState extends State<CambiarPinDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !widget.obligatorio,
-      child: DialogoApp(
-        titulo: widget.obligatorio ? 'Cambia tu PIN' : 'Cambiar mi PIN',
-        ancho: 400,
-        mostrarCerrar: !widget.obligatorio,
-        acciones: [
-          if (!widget.obligatorio)
-            OutlinedButton(
-              onPressed: _guardando
-                  ? null
-                  : () => Navigator.of(context).pop(false),
-              child: const Text('Cancelar'),
-            ),
-          FilledButton(
-            onPressed: _guardando ? null : _guardar,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-            ),
-            child: _guardando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Guardar PIN'),
+    return DialogoApp(
+      titulo: widget.obligatorio ? 'Cambia tu PIN' : 'Cambiar mi PIN',
+      ancho: 400,
+      acciones: [
+        OutlinedButton(
+          onPressed: _guardando ? null : () => Navigator.of(context).pop(false),
+          child: Text(widget.obligatorio ? 'Más tarde' : 'Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _guardando ? null : _guardar,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
           ),
-        ],
-        children: [
-          Text(
-            widget.obligatorio
-                ? 'Tu PIN todavía es el predeterminado. Elige uno nuevo para '
-                      'poder autorizar descuentos. Debe tener de 4 a 10 dígitos.'
-                : 'Es el código con el que autorizas descuentos de otros '
-                      'usuarios. De 4 a 10 dígitos.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          child: _guardando
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Guardar PIN'),
+        ),
+      ],
+      children: [
+        Text(
+          widget.obligatorio
+              ? 'Tu PIN todavía es el predeterminado. Elige uno nuevo para '
+                    'poder autorizar descuentos. Debe tener de 4 a 10 dígitos. '
+                    'Si cierras esta ventana, puedes cambiarlo después en '
+                    'Configuración.'
+              : 'Es el código con el que autorizas descuentos de otros '
+                    'usuarios. De 4 a 10 dígitos.',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 16),
+        CampoTexto(
+          controller: _nuevo,
+          autofocus: true,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          maxLength: 10,
+          decoration: const InputDecoration(
+            labelText: 'Nuevo PIN',
+            counterText: '',
           ),
-          const SizedBox(height: 16),
-          CampoTexto(
-            controller: _nuevo,
-            autofocus: true,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            maxLength: 10,
-            decoration: const InputDecoration(
-              labelText: 'Nuevo PIN',
-              counterText: '',
-            ),
+        ),
+        const SizedBox(height: 14),
+        CampoTexto(
+          controller: _repetir,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          maxLength: 10,
+          onSubmitted: (_) => _guardar(),
+          decoration: InputDecoration(
+            labelText: 'Repetir el PIN',
+            counterText: '',
+            errorText: _error,
           ),
-          const SizedBox(height: 14),
-          CampoTexto(
-            controller: _repetir,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            maxLength: 10,
-            onSubmitted: (_) => _guardar(),
-            decoration: InputDecoration(
-              labelText: 'Repetir el PIN',
-              counterText: '',
-              errorText: _error,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

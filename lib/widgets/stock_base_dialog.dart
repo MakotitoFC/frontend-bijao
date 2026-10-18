@@ -80,7 +80,9 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
 
   Future<void> _guardar() async {
     for (final f in _filas) {
-      if (f.cambio && f.cantidad.text.trim().isNotEmpty && (f.valor ?? 0) <= 0) {
+      if (f.cambio &&
+          f.cantidad.text.trim().isNotEmpty &&
+          (f.valor ?? 0) <= 0) {
         showAppToast(
           context,
           'La cantidad de "${f.plato.nombrePlato}" debe ser mayor que 0.',
@@ -127,7 +129,8 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
     final termino = _busqueda.trim().toLowerCase();
     final visibles = [
       for (final f in _filas)
-        if (termino.isEmpty || f.plato.nombrePlato.toLowerCase().contains(termino))
+        if (termino.isEmpty ||
+            f.plato.nombrePlato.toLowerCase().contains(termino))
           f,
     ];
     return ModalPago(
@@ -165,7 +168,9 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               OutlinedButton(
-                onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+                onPressed: _guardando
+                    ? null
+                    : () => Navigator.of(context).pop(),
                 child: const Text('Cancelar'),
               ),
               const SizedBox(width: 8),
