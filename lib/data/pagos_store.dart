@@ -34,6 +34,11 @@ double saldoPendienteDePedido(String pedidoId) {
   );
 }
 
+// Recargo total que ya se cobró en los pagos de un pedido (sin reembolsos).
+double recargoCobradoDePedido(String pedidoId) => pagos
+    .where((p) => p.pedidoId == pedidoId && !p.esReembolso)
+    .fold(0.0, (suma, p) => suma + p.montoComision);
+
 // Registra un pago (posiblemente parcial) por [montoAbonado] y lo reparte
 // entre las líneas del pedido con saldo pendiente, en orden, hasta agotarlo.
 Pago registrarPago({
@@ -43,9 +48,10 @@ Pago registrarPago({
   required double propina,
   String? pagador,
 }) {
-  final montoComision = medioPago.aplicaComision
-      ? montoAbonado * (medioPago.porcentajeComision / 100)
-      : 0.0;
+  // El recargo (p. ej. de la tarjeta) lo paga el cliente además de la cuenta:
+  // `montoAbonado` es lo que se descuenta del saldo y `montoCobrado` lo que
+  // realmente se le cobra (cuenta + recargo).
+  final montoComision = medioPago.recargoSobre(montoAbonado);
   final pago = Pago(
     id: DateTime.now().microsecondsSinceEpoch.toString(),
     pedidoId: pedido.id,
@@ -53,7 +59,7 @@ Pago registrarPago({
     medioPago: medioPago,
     montoAbonado: montoAbonado,
     montoComision: montoComision,
-    montoCobrado: montoAbonado - montoComision,
+    montoCobrado: montoAbonado + montoComision,
     propina: propina,
     fechaPago: DateTime.now(),
     pagador: pagador,

@@ -21,11 +21,21 @@ Future<void> crearPlato(BuildContext context, {String? categoriaId}) async {
     );
     if (r.foto != null) {
       try {
-        await CatalogService.instance.subirImagenPlato(
+        final subida = await CatalogService.instance.subirImagenPlato(
           creado,
           r.foto!,
           r.nombreFoto ?? 'plato.jpg',
         );
+        if (subida.advertencia != null && context.mounted) {
+          showAppToast(
+            context,
+            'La foto quedó solo en el servidor y no en la nube: '
+            '${subida.advertencia}',
+            type: ToastType.warning,
+            titulo: 'Foto sin copia en la nube',
+            duration: const Duration(seconds: 6),
+          );
+        }
       } catch (e) {
         if (context.mounted) {
           showAppToast(

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
@@ -205,6 +205,23 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   double _sumaPagos(_Pagador p) =>
       p.pagos.fold(0.0, (s, f) => s + leerMonto(f.monto.text));
 
+  // Recargo que se suma a lo que paga [p] (p. ej. por usar tarjeta): se calcula
+  // sobre cada monto según su método. No cambia lo que se abona a la cuenta.
+  double _recargoDe(_Pagador p) => p.pagos.fold(
+    0.0,
+    (s, f) => s + f.medio.recargoSobre(leerMonto(f.monto.text)),
+  );
+
+  // Recargo de todos los pagadores que tienen algo que pagar.
+  double get _recargoTotal {
+    final montos = _montos;
+    var total = 0.0;
+    for (var i = 0; i < _pagadores.length; i++) {
+      if (montos[i] > 0.005) total += _recargoDe(_pagadores[i]);
+    }
+    return total;
+  }
+
   bool get _valido {
     final montos = _montos;
     var hayAlguno = false;
@@ -315,6 +332,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   void _confirmar() {
     if (!_valido) return;
     final montos = _montos;
+    final recargoTotal = _recargoTotal;
     final boletas = <BoletaPagador>[];
     for (var i = 0; i < _pagadores.length; i++) {
       if (montos[i] <= 0.005) continue;
@@ -332,7 +350,9 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     }
     showAppToast(
       context,
-      'Pago compartido entre ${boletas.length} · S/ ${_saldo.toStringAsFixed(2)}',
+      'Pago compartido entre ${boletas.length} · '
+      'S/ ${(_saldo + recargoTotal).toStringAsFixed(2)}'
+      '${recargoTotal > 0 ? ' (incluye recargo S/ ${recargoTotal.toStringAsFixed(2)})' : ''}',
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
@@ -635,7 +655,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                             hint: 'Método',
                             items: [
                               for (final m in mediosPagoActivos)
-                                AppSelectItem(value: m.id, label: m.medioPago),
+                                AppSelectItem(
+                                  value: m.id,
+                                  label: m.aplicaComision
+                                      ? '${m.medioPago} (+${m.porcentajeComision.toStringAsFixed(1)}%)'
+                                      : m.medioPago,
+                                ),
                             ],
                             onChanged: (v) => setState(() {
                               if (v != null) {
@@ -688,6 +713,19 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                               : null,
                         ),
                       ],
+                    ),
+                  ),
+                if (conMonto && _recargoDe(p) > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'Recargo por método de pago: +S/ ${_recargoDe(p).toStringAsFixed(2)} '
+                      '· Total que paga: S/ ${(monto + _recargoDe(p)).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.platoDelDia,
+                      ),
                     ),
                   ),
                 Row(
@@ -994,7 +1032,9 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                 child: FilledButton.icon(
                   onPressed: _valido ? _confirmar : null,
                   icon: const Icon(LucideIcons.users, size: 18),
-                  label: Text('Cobrar · S/ ${_saldo.toStringAsFixed(2)}'),
+                  label: Text(
+                    'Cobrar · S/ ${(_saldo + _recargoTotal).toStringAsFixed(2)}',
+                  ),
                 ),
               ),
             ],

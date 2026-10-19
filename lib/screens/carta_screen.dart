@@ -107,20 +107,32 @@ class _CartaScreenState extends State<CartaScreen> {
           editado,
           variantes: r.variantes,
         );
+        String? advertencia;
+        String? errorFoto;
         if (r.foto != null) {
-          await CatalogService.instance.subirImagenPlato(
-            guardado,
-            r.foto!,
-            r.nombreFoto ?? 'plato.jpg',
-          );
+          // Si la foto falla, el plato ya quedó guardado: se avisa aparte.
+          try {
+            final subida = await CatalogService.instance.subirImagenPlato(
+              guardado,
+              r.foto!,
+              r.nombreFoto ?? 'plato.jpg',
+            );
+            advertencia = subida.advertencia;
+          } catch (e) {
+            errorFoto = e.toString().replaceFirst('Exception: ', '');
+          }
         }
         if (!mounted) return;
         showAppToast(
           context,
-          '${editado.nombrePlato} se actualizó correctamente.',
-          type: ToastType.info,
-          titulo: 'Plato actualizado',
+          errorFoto == null
+              ? '${editado.nombrePlato} se actualizó correctamente.'
+              : '${editado.nombrePlato} se actualizó, pero la foto no se '
+                    'guardó: $errorFoto',
+          type: errorFoto == null ? ToastType.info : ToastType.warning,
+          titulo: errorFoto == null ? 'Plato actualizado' : 'Foto pendiente',
         );
+        if (advertencia != null) _avisarFotoSoloLocal(advertencia);
       } catch (e) {
         if (!mounted) return;
         showAppToast(
@@ -177,6 +189,19 @@ class _CartaScreenState extends State<CartaScreen> {
     }
   }
 
+  // El servidor guardó la foto en su disco pero no en la nube: se avisa porque
+  // en la nube ese disco es temporal y la foto se podría perder.
+  void _avisarFotoSoloLocal(String detalle) {
+    if (!mounted) return;
+    showAppToast(
+      context,
+      'La foto quedó solo en el servidor y no en la nube: $detalle',
+      type: ToastType.warning,
+      titulo: 'Foto sin copia en la nube',
+      duration: const Duration(seconds: 6),
+    );
+  }
+
   // Elige una imagen del equipo, la sube al servidor y la deja como foto del
   // plato.
   Future<void> _subirFoto(CartaItem item) async {
@@ -185,7 +210,11 @@ class _CartaScreenState extends State<CartaScreen> {
       if (archivos.isEmpty) return;
       final f = archivos.first;
       final bytes = await f.readAsBytes();
-      await CatalogService.instance.subirImagenPlato(item, bytes, f.name);
+      final subida = await CatalogService.instance.subirImagenPlato(
+        item,
+        bytes,
+        f.name,
+      );
       if (!mounted) return;
       showAppToast(
         context,
@@ -193,6 +222,7 @@ class _CartaScreenState extends State<CartaScreen> {
         type: ToastType.success,
         titulo: 'Foto actualizada',
       );
+      if (subida.advertencia != null) _avisarFotoSoloLocal(subida.advertencia!);
     } catch (e) {
       if (!mounted) return;
       showAppToast(

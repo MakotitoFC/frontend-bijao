@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../models/medio_pago.dart';
 import '../services/api_client.dart';
@@ -123,14 +123,14 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Cobro adicional por usar este método',
+                    'Recargo al cliente por usar este método',
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   Text(
-                    'Un porcentaje que se suma al cobrar con él.',
+                    'Se suma al total que paga el cliente con este método (ej. tarjeta).',
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                 ],
@@ -148,7 +148,7 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
           CampoDialogo(
             etiqueta: 'Porcentaje (%)',
             controller: _porcentaje,
-            hint: 'Ej. 3.5',
+            hint: 'Ej. 4',
             teclado: const TextInputType.numberWithOptions(decimal: true),
           ),
         ],

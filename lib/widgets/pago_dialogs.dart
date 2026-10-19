@@ -175,12 +175,13 @@ class PagarPedidoDialog extends StatefulWidget {
 class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   late MedioPago _medio = mediosPagoActivos.first;
   double get _saldo => saldoPendienteDePedido(widget.pedido.id);
-  double get _comision =>
-      _medio.aplicaComision ? _saldo * _medio.porcentajeComision / 100 : 0;
+  // Recargo del método elegido (p. ej. tarjeta): se suma al total del cliente.
+  double get _recargo => _medio.recargoSobre(_saldo);
 
   void _pagar() {
     final saldo = _saldo;
     if (saldo <= 0.01) return;
+    final recargo = _medio.recargoSobre(saldo);
     registrarPago(
       pedido: widget.pedido,
       medioPago: _medio,
@@ -189,7 +190,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     );
     showAppToast(
       context,
-      'Cobro registrado · ${widget.titulo} · S/ ${saldo.toStringAsFixed(2)}',
+      'Cobro registrado · ${widget.titulo} · '
+      'S/ ${(saldo + recargo).toStringAsFixed(2)}'
+      '${recargo > 0 ? ' (incluye recargo S/ ${recargo.toStringAsFixed(2)})' : ''}',
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
@@ -197,6 +200,25 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   }
 
   void _volver() => Navigator.of(context).pop(volverAElegirPago);
+
+  // Una línea "texto ........ S/ monto" del resumen con recargo.
+  Widget _filaMonto(
+    String texto,
+    double monto, {
+    bool mas = false,
+    bool fuerte = false,
+  }) {
+    final estilo = TextStyle(
+      fontSize: fuerte ? 14 : 13,
+      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w500,
+    );
+    return Row(
+      children: [
+        Expanded(child: Text(texto, style: estilo)),
+        Text('${mas ? '+' : ''}S/ ${monto.toStringAsFixed(2)}', style: estilo),
+      ],
+    );
+  }
 
   // Un ícono que oriente según el nombre del método.
   IconData _icono(MedioPago m) {
@@ -256,7 +278,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                     ),
                     if (m.aplicaComision)
                       Text(
-                        '+${m.porcentajeComision.toStringAsFixed(1)}% comisión',
+                        '+${m.porcentajeComision.toStringAsFixed(1)}% recargo',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey.shade600,
@@ -307,13 +329,27 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               );
             },
           ),
-          if (_medio.aplicaComision)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Comisión (${_medio.porcentajeComision.toStringAsFixed(1)}%): '
-                '-S/ ${_comision.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 12, color: AppColors.error),
+          if (_recargo > 0)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.platoDelDia.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  _filaMonto('Cuenta', saldo),
+                  const SizedBox(height: 4),
+                  _filaMonto(
+                    'Recargo ${_medio.medioPago.toLowerCase()} '
+                    '(${_medio.porcentajeComision.toStringAsFixed(1)}%)',
+                    _recargo,
+                    mas: true,
+                  ),
+                  const Divider(height: 14),
+                  _filaMonto('Total a cobrar', saldo + _recargo, fuerte: true),
+                ],
               ),
             ),
           const SizedBox(height: 20),
@@ -336,7 +372,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                   onPressed: saldo > 0.01 ? _pagar : null,
                   icon: const Icon(LucideIcons.banknote, size: 18),
                   label: Text(
-                    'Pagar · S/ ${saldo.toStringAsFixed(2)}',
+                    'Pagar · S/ ${(saldo + _recargo).toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   style: FilledButton.styleFrom(backgroundColor: naranjaPago),

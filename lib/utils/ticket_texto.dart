@@ -258,7 +258,9 @@ String _datosQr(DatosSede sede, String numero, double total, DateTime fecha) =>
 
 // Boleta de venta electrónica del pedido: logo (lo pone la pantalla), ubicación
 // y teléfono de la sede, título con el número, datos de la venta, productos,
-// resumen del pago, "SON", QR y con qué se pagó. [pagado] es lo ya cobrado.
+// resumen del pago, "SON", QR y con qué se pagó. [pagado] es lo ya cobrado de
+// la cuenta y [recargo] lo que se cobró de más por el método de pago (p. ej. la
+// tarjeta): se suma al total que paga el cliente.
 List<LineaTicket> ticketBoleta({
   required Pedido pedido,
   required List<PedidoLine> lineas,
@@ -266,6 +268,7 @@ List<LineaTicket> ticketBoleta({
   required DatosSede sede,
   String metodoPago = '',
   double pagado = 0,
+  double recargo = 0,
 }) {
   final productos = [
     for (final l in lineas)
@@ -290,6 +293,9 @@ List<LineaTicket> ticketBoleta({
   final devoluciones = suma(lineas.where(esAjusteDeDevolucion));
   final total = suma(lineas);
   final saldo = total - pagado;
+  final conRecargo = recargo > 0.001;
+  // Lo que paga el cliente: la cuenta más el recargo.
+  final totalCobrado = total + (conRecargo ? recargo : 0);
   final numero = pedido.numeroPedido;
   final cliente = (pedido.clienteNombre ?? '').trim();
 
@@ -339,8 +345,23 @@ List<LineaTicket> ticketBoleta({
   if (propina > 0.001) salida.add(montoLinea('PROPINA', propina));
   if (tupper > 0.001) salida.add(montoLinea('TAPER', tupper));
   salida.add(LineaTicket.separador('-'));
+  if (conRecargo) {
+    salida.add(montoLinea('TOTAL CUENTA', total));
+    salida.add(
+      montoLinea(
+        metodoPago.isEmpty
+            ? 'RECARGO POR METODO DE PAGO'
+            : 'RECARGO POR PAGO CON ${metodoPago.toUpperCase()}',
+        recargo,
+      ),
+    );
+  }
   salida.add(
-    LineaTicket.derecha('TOTAL: ${soles(total)}', negrita: true, doble: true),
+    LineaTicket.derecha(
+      '${conRecargo ? 'TOTAL A PAGAR' : 'TOTAL'}: ${soles(totalCobrado)}',
+      negrita: true,
+      doble: true,
+    ),
   );
   if (pagado > 0.001 && saldo > 0.01) {
     salida.add(LineaTicket(padLinea('PAGADO', soles(pagado))));
@@ -350,12 +371,12 @@ List<LineaTicket> ticketBoleta({
   }
   salida.addAll(
     _pieBoleta(
-      total: total,
-      datosQr: _datosQr(sede, numero, total, pedido.fechaPedido),
+      total: totalCobrado,
+      datosQr: _datosQr(sede, numero, totalCobrado, pedido.fechaPedido),
       pagoCon: [
         if (pagado > 0.001)
           'PAGO CON: ${metodoPago.isEmpty ? 'EFECTIVO' : metodoPago.toUpperCase()}'
-              ' ${soles(pagado)}'
+              ' ${soles(pagado + (conRecargo ? recargo : 0))}'
         else
           'PAGO CON: --',
       ],
@@ -372,7 +393,11 @@ List<LineaTicket> ticketPagador({
   required double total,
   required List<({String medio, double monto})> pagos,
   required DatosSede sede,
+  // Recargo por el método de pago (p. ej. tarjeta), que se suma a su total.
+  double recargo = 0,
 }) {
+  final conRecargo = recargo > 0.001;
+  final totalCobrado = total + (conRecargo ? recargo : 0);
   final numero = pedido.numeroPedido;
   final salida = <LineaTicket>[
     ..._cabeceraBoleta(sede, numero),
@@ -394,15 +419,25 @@ List<LineaTicket> ticketPagador({
       salida.add(LineaTicket(r));
     }
   }
-  salida
-    ..add(LineaTicket.separador('='))
-    ..add(
-      LineaTicket.derecha('TOTAL: ${soles(total)}', negrita: true, doble: true),
-    );
+  salida.add(LineaTicket.separador('='));
+  if (conRecargo) {
+    salida
+      ..add(LineaTicket(padLinea('TOTAL CUENTA', soles(total))))
+      ..add(
+        LineaTicket(padLinea('RECARGO POR METODO DE PAGO', soles(recargo))),
+      );
+  }
+  salida.add(
+    LineaTicket.derecha(
+      '${conRecargo ? 'TOTAL A PAGAR' : 'TOTAL'}: ${soles(totalCobrado)}',
+      negrita: true,
+      doble: true,
+    ),
+  );
   salida.addAll(
     _pieBoleta(
-      total: total,
-      datosQr: _datosQr(sede, numero, total, pedido.fechaPedido),
+      total: totalCobrado,
+      datosQr: _datosQr(sede, numero, totalCobrado, pedido.fechaPedido),
       pagoCon: [
         for (final p in pagos)
           'PAGO CON: ${p.medio.toUpperCase()} ${soles(p.monto)}',

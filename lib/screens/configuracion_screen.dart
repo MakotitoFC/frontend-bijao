@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
@@ -656,7 +656,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     if (m.descripcion != null && m.descripcion!.isNotEmpty)
                       m.descripcion!,
                     if (m.aplicaComision)
-                      'Cobro adicional ${m.porcentajeComision.toStringAsFixed(m.porcentajeComision.truncateToDouble() == m.porcentajeComision ? 0 : 2)} %',
+                      'Recargo ${m.porcentajeComision.toStringAsFixed(m.porcentajeComision.truncateToDouble() == m.porcentajeComision ? 0 : 2)} %',
                     if (!m.activo) 'No se ofrece al cobrar',
                   ].join(' · '),
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),

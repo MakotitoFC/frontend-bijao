@@ -127,8 +127,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     super.initState();
     // Disponibilidad del día al día: otros mozos o el administrador la cambian.
     DisponibilidadService.instance.cargarHoy();
-    // La carta puede haber cambiado (productos inhabilitados, precios).
+    // La carta puede haber cambiado (productos inhabilitados, precios, platos
+    // nuevos): se lee al abrir y la galería se redibuja cuando llega.
     CatalogService.instance.cargarCarta();
+    cartasNotifier.addListener(_alCambiarCarta);
     _restaurarBorrador();
     // Se guarda en el dispositivo mientras se arma (no solo al salir de la
     // vista): si la app se cierra o el sistema la mata, el pedido sigue ahí.
@@ -220,8 +222,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     limpiarBorradorPedido();
   }
 
+  void _alCambiarCarta() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    cartasNotifier.removeListener(_alCambiarCarta);
     _autoguardado?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (!_descartado && !_enviandoBorrador) _guardarBorrador();

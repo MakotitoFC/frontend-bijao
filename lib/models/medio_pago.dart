@@ -1,8 +1,8 @@
 import '../utils/json_num.dart';
 
 // Método de pago (tabla `medio_pago`). `activo` controla si se ofrece al
-// cobrar; `aplicaComision`/`porcentajeComision` es el cobro adicional por usar
-// ese método.
+// cobrar; `aplicaComision`/`porcentajeComision` es el recargo que se suma al
+// total del cliente por usar ese método (por ejemplo, la tarjeta).
 class MedioPago {
   final String id;
   final String medioPago;
@@ -28,6 +28,14 @@ class MedioPago {
     porcentajeComision: jsonDouble(json['porcentaje_comision']) ?? 0,
     activo: json['estado'] as bool? ?? true,
   );
+
+  // Recargo que se suma cuando el cliente paga [monto] con este método (0 si no
+  // lleva), redondeado a centavos. No cambia lo que se abona a la cuenta: es un
+  // cobro adicional sobre ese monto.
+  double recargoSobre(double monto) {
+    if (!aplicaComision || monto <= 0) return 0;
+    return (monto * porcentajeComision).roundToDouble() / 100;
+  }
 
   MedioPago copyWith({
     String? medioPago,

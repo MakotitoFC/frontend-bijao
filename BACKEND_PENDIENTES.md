@@ -10,13 +10,25 @@ el tipo "Desechable" y la unidad "Unidad"), caché de `/assets/*` con revalidaci
 
 ## Imágenes: nube (R2) y subida
 
-1. **Fallo de subida a R2 sin aviso.** En `handleUpload`
-   (`upload_handler.go`, ~línea 183), si falla la subida a la nube se guarda la
-   copia en el disco local y la respuesta es 200 igual (solo queda un
-   `[UPLOAD-WARN]` en el log; la respuesta trae `storage: "local"`). Al
-   administrador le parece que todo salió bien, pero la foto queda en un lugar
-   que en la nube se puede perder. Pedimos devolver una advertencia visible o
-   responder error.
+1. **`POST /api/v1/carta/:id/foto` deja el `UPDATE` sin comprobar.** En
+   `handleUpload` (`upload_handler.go`, ~línea 215) el `UPDATE carta SET
+   url_imagen` no mira cuántas filas cambió: si el `id` no existe responde 200
+   con `plato_actualizado: true` igual (solo falla si la base devuelve error, y
+   en ese caso solo se registra en el log y la respuesta omite
+   `plato_actualizado`). Pedimos comprobar `RowsAffected` y responder 404 si el
+   plato no existe, y un error claro si el `UPDATE` falla. El frontend ya trata
+   la falta de `plato_actualizado: true` como error.
+
+   Además la ruta `/api/v1/carta/:id/foto` admite los roles `MOZO`, `COCINERO` y
+   `SUPERVISOR` (la anterior `/uploads/carta` solo `ADMINISTRADOR` y
+   `CAJERO`): cualquiera de ellos puede cambiar la foto de un plato. Confirmar
+   si es lo deseado; el frontend solo muestra el botón al administrador.
+
+   La guía `T0001-Flujo-Robusto-Subida-Imagenes-y-Refresco-Carta.md` dice que la
+   respuesta es "el estado del plato actualizado", pero devuelve los datos de la
+   subida (`url`, `storage`, `warning`, `plato_actualizado`). Conviene corregir
+   el texto. (La advertencia `warning` cuando la foto no llega a la nube ya está
+   resuelta: el frontend la muestra.)
 
 2. **CORS del bucket para la PWA.** Cuando la PWA muestre fotos desde R2 (otro
    dominio), el bucket necesita una política CORS que permita el dominio de la
@@ -44,12 +56,16 @@ el tipo "Desechable" y la unidad "Unidad"), caché de `/assets/*` con revalidaci
 
 ## Realtime
 
-6. **Plato inhabilitado → mozos.** El administrador inhabilita un plato con
-   `PUT /api/carta/:id` (`estado`). Los mozos dejan de verlo cuando recargan la
-   carta (al abrir Carta o un pedido nuevo), pero no hay un evento SSE que lo
-   avise al instante. Ideal: un evento `CARTA_ACTUALIZADA`; y que
-   `GET /api/carta` no devuelva los inhabilitados a quien no sea administrador.
-
+6. **Evento `CARTA_ACTUALIZADA` en vivo.** Hoy la carta solo se entera de los
+   cambios cuando el usuario la abre (Carta o Nuevo pedido) o pulsa el botón
+   "Actualizar carta"; no se recarga sola. Un plato nuevo o editado que llega de
+   la nube (el backend lo trae cada minuto) o de otro equipo, o un plato que el
+   administrador inhabilita (`PUT /api/carta/:id`, `estado`), no se ve hasta
+   entonces. Pedimos emitir por SSE un evento `CARTA_ACTUALIZADA` cuando se
+   cree o cambie un plato (local o recién sincronizado desde la nube): el
+   frontend lo escucharía y recargaría la carta al instante, sin consultar cada
+   cierto tiempo. Además, que `GET /api/carta` no devuelva los inhabilitados a
+   quien no sea administrador.
 ## Tickets (impresión)
 
 7. **Imprimir la boleta de caja.** La comanda de cocina sí se imprime
@@ -79,3 +95,68 @@ el tipo "Desechable" y la unidad "Unidad"), caché de `/assets/*` con revalidaci
     conviene que la respuesta sea igual a la del `GET`. Además la carta guarda
     **una sola** `subcategoria_id` por plato: si el formulario permite elegir
     varias subcategorías, solo se guarda la primera.
+
+11. **Sincronización nube → local de tamaños y fotos de platos.** Los tamaños
+    (carta_variante) no tienen sede_id propio: dependen del plato. Al filtrar
+    la bajada por sede, confirmar que los tamaños de un plato de esa sede bajan
+    con él (y no quedan platos sin sus tamaños o tamaños de otra sede). Además
+    quedaron fotos en el bucket que ningún plato usa (la subida anterior, en dos
+    pasos, fallaba a veces): conviene un proceso para detectar y borrar las que
+    no estén en carta.url_imagen. Con el endpoint nuevo
+    POST /api/v1/carta/:id/foto ya no deberían aparecer más.
+
+## Pagos
+
+12. **Recargo al cliente por pagar con tarjeta (4 %).** Regla del negocio: solo
+    cuando el cliente paga con tarjeta, se le suma un recargo del 4 % sobre la
+    cuenta. El cliente paga **cuenta + recargo**. El porcentaje no está fijo en
+    el código: se configura por método de pago en Configuración > Métodos de
+    pago (interruptor "Recargo al cliente por usar este método" y su
+    porcentaje), usando los campos que ya existen, `aplica_comision` y
+    `porcentaje_comision`.
+
+    **Lo que hace hoy el backend (no coincide).** `RegistrarPago`
+    (`caja_repository.go`, ~líneas 444 a 459) trata ese porcentaje como una
+    comisión que se **resta**: `monto_comision = monto_abonado × %` y
+    `monto_cobrado = monto_abonado − monto_comision`. Para un recargo es al
+    revés: `monto_cobrado = monto_abonado + recargo`.
+
+    **Flujo en el frontend (ya implementado en pantalla).**
+    1. El cajero elige el método. La app calcula
+       `recargo = redondear(monto × % / 100, 2)` y muestra: Cuenta, Recargo y
+       Total a cobrar (el botón dice "Pagar · S/ total").
+    2. El pago se registra con `monto_abonado` = lo que se descuenta de la
+       cuenta (sin recargo) y el recargo aparte. El recargo **no** reduce el
+       saldo del pedido.
+    3. Pago compartido: el recargo se calcula por cada método de cada pagador,
+       sobre el monto que paga con ese método.
+    4. Boleta y cuentas por pagador: líneas "TOTAL CUENTA", "RECARGO POR PAGO
+       CON TARJETA" y "TOTAL A PAGAR"; el "SON", el QR y "PAGO CON" usan el
+       total con recargo.
+    5. Caja: lo que entra por tarjeta es cuenta + recargo.
+    Hoy los pagos se guardan solo en memoria de la app: el frontend todavía no
+    llama a `POST /api/pagos`. Lo conectaremos cuando el contrato esté definido.
+
+    **Lo que necesita el backend.**
+    - **Modelo:** separar el recargo de una comisión bancaria futura. Sugerencia:
+      migración **nueva** (no editar las existentes) con `porcentaje_recargo` y
+      `monto_recargo` en `pago`, y `monto_cobrado = monto_abonado +
+      monto_recargo`. Si prefieren reutilizar `monto_comision`, cambiar su
+      significado y documentarlo.
+    - **`POST /api/pagos`:** calcular el recargo en el servidor a partir del
+      método de pago (no confiar solo en el cliente). Si el frontend envía
+      `monto_recargo`, validar que coincida (tolerancia de 0,01). Responder
+      `porcentaje_recargo`, `monto_recargo` y `monto_cobrado`.
+    - **Saldo:** `total_pagado` y `saldo_pendiente` siguen contando solo
+      `monto_abonado`. Agregar `total_recargo` y `total_cobrado` en
+      `GET /api/pedidos/:id/pagos` y en el resumen del pedido.
+    - **Caja, arqueos y reportes:** sumar `monto_cobrado` por método (el POS de
+      tarjeta cobra el total con recargo) y mostrar los recargos como una línea
+      aparte.
+    - **Reembolsos y anulaciones:** definir si se devuelve también el recargo
+      (proporcional al monto devuelto) y reflejarlo en `monto_cobrado`.
+    - **Boleta/cuenta impresa** (cuando exista el endpoint del punto 7):
+      incluir el recargo como línea propia.
+    - **Dudas a resolver:** cómo debe aparecer el recargo en la boleta
+      electrónica (tratamiento tributario) y si aplica a otros métodos además de
+      la tarjeta (el frontend lo permite por método).

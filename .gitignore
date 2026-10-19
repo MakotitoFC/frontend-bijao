@@ -53,3 +53,4 @@ replay_pid*.log
 # Widget Preview related
 .widget_preview/
 .env
+.BACKEND_PENDIENTES.md

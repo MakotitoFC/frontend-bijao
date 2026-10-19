@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+﻿import 'dart:developer' as developer;
 
 import '../data/cartas_store.dart';
 import '../data/catalogos_store.dart';
@@ -469,6 +469,26 @@ class CatalogService {
   // CARTA (PLATOS Y BEBIDAS)
   // ==========================================
 
+  bool _recargandoCarta = false;
+
+  // Vuelve a leer del servidor las categorías, subcategorías, platos y tamaños
+  // (botón "Actualizar carta"). Si ya hay una recarga en curso no empieza otra. Los errores de red se
+  // ignoran (se queda lo que ya estaba en pantalla).
+  Future<void> recargarCarta() async {
+    if (_recargandoCarta) return;
+    _recargandoCarta = true;
+    try {
+      await Future.wait([
+        cargarCategorias(),
+        cargarSubcategorias(),
+        cargarCarta(),
+        cargarVariantes(),
+      ]);
+    } finally {
+      _recargandoCarta = false;
+    }
+  }
+
   Future<List<CartaItem>> cargarCarta({
     String? categoriaId,
     String? estado,
@@ -638,24 +658,44 @@ class CatalogService {
     throw Exception('Error al actualizar plato');
   }
 
-  // Sube la foto de un plato y la guarda en `carta.url_imagen`. El servidor la
-  // reduce (máx. 800 px) y la sirve con caché; devuelve la ruta relativa
-  // (`/uploads/carta/...`) o, en la nube, la dirección del bucket.
-  Future<CartaItem> subirImagenPlato(
+  // Sube la foto de un plato y la guarda en `carta.url_imagen`, todo en una sola
+  // petición (`POST /api/v1/carta/:id/foto`): el servidor la reduce (máx.
+  // 800 px), la guarda y actualiza el plato. Antes eran dos pasos (subir y luego
+  // `PUT`) y, si el segundo fallaba, la foto quedaba subida pero sin asociar.
+  //
+  // [advertencia] viene del servidor cuando la foto no pudo guardarse en la nube
+  // y quedó solo en su disco.
+  Future<({CartaItem plato, String? advertencia})> subirImagenPlato(
     CartaItem item,
     List<int> bytes,
     String nombreArchivo,
   ) async {
     final res = await _api.subirArchivo(
-      '/api/v1/uploads/carta',
+      '/api/v1/carta/${item.id}/foto',
       bytes: bytes,
       nombreArchivo: nombreArchivo,
     );
-    final url = res is Map ? res['url']?.toString() : null;
+    final datos = res is Map ? res : const {};
+    final url = datos['url']?.toString();
     if (url == null || url.isEmpty) {
       throw Exception('El servidor no devolvió la dirección de la foto');
     }
-    return actualizarPlato(item.copyWith(urlImagen: url));
+    // Si el servidor no pudo asociar la foto al plato, no se da por guardada.
+    if (datos['plato_actualizado'] != true) {
+      throw Exception(
+        'La foto se subió, pero el servidor no la asoció al plato. '
+        'Inténtalo de nuevo.',
+      );
+    }
+    final actualizado = item.copyWith(urlImagen: url);
+    cartasNotifier.value = cartasNotifier.value
+        .map((c) => c.id == item.id ? actualizado : c)
+        .toList();
+    final aviso = datos['warning']?.toString();
+    return (
+      plato: actualizado,
+      advertencia: (aviso == null || aviso.isEmpty) ? null : aviso,
+    );
   }
 
   Future<void> alternarEstadoPlato(CartaItem item) async {

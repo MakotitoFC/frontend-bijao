@@ -50,10 +50,19 @@ class BoletasPagadoresDialog extends StatelessWidget {
                 pagador: b.nombre,
                 items: b.items,
                 total: b.total,
+                // Cada pago incluye su recargo (p. ej. tarjeta): es lo que
+                // pagó de verdad con ese método.
                 pagos: [
                   for (final p in b.pagos)
-                    (medio: p.medio.medioPago, monto: p.monto),
+                    (
+                      medio: p.medio.medioPago,
+                      monto: p.monto + p.medio.recargoSobre(p.monto),
+                    ),
                 ],
+                recargo: b.pagos.fold(
+                  0.0,
+                  (s, p) => s + p.medio.recargoSobre(p.monto),
+                ),
                 sede: datosDeLaSede(),
               ),
             ),

@@ -44,7 +44,8 @@ TotalesCaja totalesCajaActual() {
   final pedidosIds = <String>{};
   for (final pago in pagos.where((p) => !p.fechaPago.isBefore(desde))) {
     pedidosIds.add(pago.pedidoId);
-    final monto = pago.montoAbonado;
+    // Lo que de verdad entró por ese método: la cuenta más el recargo.
+    final monto = pago.montoCobrado;
     switch (pago.medioPago.medioPago.toLowerCase()) {
       case 'efectivo':
         efectivo += monto;

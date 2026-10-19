@@ -66,6 +66,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
                 ? ''
                 : widget.metodoPago,
             pagado: pagado > 0.001 ? pagado : 0,
+            recargo: recargoCobradoDePedido(pedido.id),
           );
     return DialogoApp(
       titulo: 'Ticket · Pedido #${pedido.numeroPedido}',
