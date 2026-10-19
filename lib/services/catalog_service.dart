@@ -907,6 +907,38 @@ class CatalogService {
     await _api.delete('/api/roles/$rolId/permisos/$permisoId');
   }
 
+  // Da de alta un usuario con su perfil (`POST /api/usuarios`). El rol se envía
+  // por su id: si el backend no encuentra un rol por nombre, asigna otro.
+  Future<UserRBACModel> crearUsuario({
+    required String usuario,
+    required String email,
+    required String password,
+    required String rolId,
+    String? nombre,
+    String? apellidos,
+    String? identificacion,
+    double? sueldo,
+    String? pin,
+  }) async {
+    final res = await _api.post(
+      '/api/usuarios',
+      body: {
+        'usuario': usuario,
+        'email': email,
+        'password': password,
+        'rol_id': rolId,
+        if (nombre != null && nombre.isNotEmpty) 'nombre': nombre,
+        if (apellidos != null && apellidos.isNotEmpty) 'apellidos': apellidos,
+        if (identificacion != null && identificacion.isNotEmpty)
+          'identificacion': identificacion,
+        'sueldo': ?sueldo,
+        if (pin != null && pin.isNotEmpty) 'pin': pin,
+      },
+    );
+    if (res is Map<String, dynamic>) return UserRBACModel.fromJson(res);
+    throw Exception('El servidor no devolvió el usuario creado');
+  }
+
   Future<List<UserRBACModel>> cargarUsuariosRBAC() async {
     try {
       final res = await _api.get('/api/usuarios');

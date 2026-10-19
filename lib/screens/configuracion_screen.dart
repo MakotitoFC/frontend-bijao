@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
-import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/horario.dart';
 import '../models/rbac.dart';
@@ -1097,95 +1096,238 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   }
 
   Future<void> _nuevoUsuario() async {
+    if (_rolesRBAC.isEmpty) {
+      showAppToast(
+        context,
+        'No se pudieron cargar los roles. Revisa la conexión e inténtalo otra '
+        'vez.',
+        type: ToastType.error,
+      );
+      _cargarRBAC();
+      return;
+    }
+    final usuario = TextEditingController();
     final nombre = TextEditingController();
+    final apellidos = TextEditingController();
     final email = TextEditingController();
     final password = TextEditingController();
-    var rol = AppRole.mesero;
+    final dni = TextEditingController();
+    final sueldo = TextEditingController();
+    final pin = TextEditingController();
+    // Rol por defecto: el de mozo si existe.
+    var rolId =
+        (_rolesRBAC.where((r) => r.rol.toUpperCase() == 'MOZO').firstOrNull ??
+                _rolesRBAC.first)
+            .id;
     String? error;
-    final creado = await showBlurDialog<bool>(
+    var guardando = false;
+
+    // Valida los datos y devuelve el primer problema, o null si está todo bien.
+    String? validar() {
+      final u = usuario.text.trim();
+      if (u.isEmpty) return 'Escribe el nombre de usuario.';
+      if (u.length > 30) return 'El usuario admite máximo 30 caracteres.';
+      if (!email.text.contains('@') || !email.text.contains('.')) {
+        return 'Escribe un correo válido.';
+      }
+      if (password.text.length < 4) {
+        return 'La contraseña debe tener al menos 4 caracteres.';
+      }
+      if (dni.text.trim().length > 9) {
+        return 'El documento admite máximo 9 caracteres.';
+      }
+      final s = sueldo.text.trim();
+      if (s.isNotEmpty && double.tryParse(s.replaceAll(',', '.')) == null) {
+        return 'El sueldo no es un número válido.';
+      }
+      final p = pin.text.trim();
+      if (p.isNotEmpty && !RegExp(r'^\d{4,10}$').hasMatch(p)) {
+        return 'El PIN debe tener de 4 a 10 dígitos.';
+      }
+      return null;
+    }
+
+    final creado = await showBlurDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setLocal) => DialogoApp(
-          titulo: 'Nuevo usuario',
-          acciones: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (nombre.text.trim().isEmpty ||
-                    !email.text.contains('@') ||
-                    password.text.isEmpty) {
-                  setLocal(
-                    () => error =
-                        'Completa el nombre, un correo válido y la contraseña.',
-                  );
-                  return;
-                }
-                Navigator.of(dialogContext).pop(true);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primaryGreen,
+        builder: (context, setLocal) {
+          Future<void> crear() async {
+            final problema = validar();
+            if (problema != null) {
+              setLocal(() => error = problema);
+              return;
+            }
+            setLocal(() {
+              guardando = true;
+              error = null;
+            });
+            try {
+              final nuevo = await CatalogService.instance.crearUsuario(
+                usuario: usuario.text.trim(),
+                email: email.text.trim(),
+                password: password.text,
+                rolId: rolId,
+                nombre: nombre.text.trim(),
+                apellidos: apellidos.text.trim(),
+                identificacion: dni.text.trim(),
+                sueldo: double.tryParse(
+                  sueldo.text.trim().replaceAll(',', '.'),
+                ),
+                pin: pin.text.trim(),
+              );
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop(nuevo.usuario);
+              }
+            } catch (e) {
+              setLocal(() {
+                guardando = false;
+                error = e is ApiException
+                    ? e.message
+                    : e.toString().replaceFirst('Exception: ', '');
+              });
+            }
+          }
+
+          return DialogoApp(
+            titulo: 'Nuevo usuario',
+            acciones: [
+              TextButton(
+                onPressed: guardando
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancelar'),
               ),
-              child: const Text('Crear'),
-            ),
-          ],
-          children: [
-            CampoDialogo(
-              etiqueta: 'Nombre',
-              controller: nombre,
-              hint: 'Nombre de usuario',
-              autofocus: true,
-            ),
-            const SizedBox(height: 14),
-            CampoDialogo(
-              etiqueta: 'Correo',
-              controller: email,
-              hint: 'correo@ejemplo.com',
-              teclado: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 14),
-            CampoDialogo(
-              etiqueta: 'Contraseña',
-              controller: password,
-              hint: 'Contraseña',
-              oculto: true,
-            ),
-            const SizedBox(height: 14),
-            AppSelect<AppRole>(
-              label: 'Rol',
-              value: rol,
-              items: [
-                for (final r in AppRole.values)
-                  AppSelectItem(value: r, label: r.label),
-              ],
-              onChanged: (r) => setLocal(() => rol = r ?? rol),
-            ),
-            if (error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                error!,
-                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              FilledButton(
+                onPressed: guardando ? null : crear,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                ),
+                child: guardando
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Crear'),
               ),
             ],
-          ],
-        ),
+            children: [
+              CampoDialogo(
+                etiqueta: 'Usuario',
+                controller: usuario,
+                hint: 'Con el que inicia sesión (ej. carlos1)',
+                autofocus: true,
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: CampoDialogo(
+                      etiqueta: 'Nombre (opcional)',
+                      controller: nombre,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: CampoDialogo(
+                      etiqueta: 'Apellidos (opcional)',
+                      controller: apellidos,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              CampoDialogo(
+                etiqueta: 'Correo',
+                controller: email,
+                hint: 'correo@ejemplo.com',
+                teclado: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 14),
+              CampoDialogo(
+                etiqueta: 'Contraseña',
+                controller: password,
+                hint: 'Mínimo 4 caracteres',
+                oculto: true,
+              ),
+              const SizedBox(height: 14),
+              AppSelect<String>(
+                label: 'Rol',
+                value: rolId,
+                items: [
+                  for (final r in _rolesRBAC)
+                    AppSelectItem(value: r.id, label: r.rol),
+                ],
+                onChanged: (v) => setLocal(() => rolId = v ?? rolId),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: CampoDialogo(
+                      etiqueta: 'DNI (opcional)',
+                      controller: dni,
+                      teclado: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: CampoDialogo(
+                      etiqueta: 'Sueldo S/ (opcional)',
+                      controller: sueldo,
+                      teclado: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              CampoDialogo(
+                etiqueta: 'PIN (opcional)',
+                controller: pin,
+                hint: 'Si lo dejas vacío, será 1234 y se pedirá cambiarlo',
+                teclado: TextInputType.number,
+                oculto: true,
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  error!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.error),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
-    if (creado == true) {
-      setState(
-        () => agregarUsuario(
-          Usuario(
-            id: DateTime.now().microsecondsSinceEpoch.toString(),
-            nombre: nombre.text.trim(),
-            email: email.text.trim(),
-            password: password.text,
-            rol: rol,
-          ),
-        ),
-      );
+    for (final c in [
+      usuario,
+      nombre,
+      apellidos,
+      email,
+      password,
+      dni,
+      sueldo,
+      pin,
+    ]) {
+      c.dispose();
     }
+    if (creado == null || !mounted) return;
+    await _cargarRBAC();
+    if (!mounted) return;
+    showAppToast(
+      context,
+      'Usuario "$creado" creado.',
+      type: ToastType.success,
+      titulo: 'Usuario creado',
+    );
   }
 
   // ---------------- Negocio ----------------

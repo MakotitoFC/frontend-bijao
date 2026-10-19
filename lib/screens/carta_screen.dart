@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+﻿import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
@@ -8,15 +8,12 @@ import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
-import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
 import '../services/disponibilidad_service.dart';
 import '../theme/app_theme.dart';
-import '../utils/agregados_utils.dart';
 import '../utils/blur_dialog.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
@@ -548,6 +545,7 @@ class _CartaScreenState extends State<CartaScreen> {
                     ),
                   ],
                   const SizedBox(height: 10),
+                  // Solo precio y stock (el resto se ve al editar el plato).
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -559,81 +557,9 @@ class _CartaScreenState extends State<CartaScreen> {
                             : 'S/ ${precio.toStringAsFixed(2)}',
                         destacado: true,
                       ),
-                      _dato(
-                        'Costo',
-                        item.costo == null
-                            ? '—'
-                            : 'S/ ${item.costo!.toStringAsFixed(2)}',
-                      ),
                       _dato('Stock', '${item.stock}'),
-                      _dato('SKU', item.sku ?? '—'),
                     ],
                   ),
-                  if (variantesDeCarta(item.id).isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Tamaños',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final v in variantesDeCarta(item.id))
-                          _chipVariante(v),
-                      ],
-                    ),
-                  ],
-                  if (item.agregados.isNotEmpty ||
-                      item.limiteAgregados != null) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Text(
-                          'Agregados',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                        if (item.limiteAgregados != null) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            '(máx. ${item.limiteAgregados})',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final a in agregadosSimples(item.agregados))
-                          _chipAgregado(a),
-                        for (final g in gruposDeAgregados(item.agregados))
-                          _chipGrupoAgregado(g),
-                        if (item.agregados.isEmpty)
-                          Text(
-                            'Sin agregados',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
                   const Spacer(),
                   if (item.creadoEn != null) ...[
                     const SizedBox(height: 10),
@@ -774,24 +700,6 @@ class _CartaScreenState extends State<CartaScreen> {
     );
   }
 
-  // Tamaño con precio propio; los desactivados se ven apagados.
-  Widget _chipVariante(CartaVariante v) {
-    return Opacity(
-      opacity: v.estado ? 1 : 0.45,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: AppColors.primaryGreen.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          '${v.nombre} · S/ ${v.precioCliente.toStringAsFixed(2)}',
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
-
   Widget _dato(String etiqueta, String valor, {bool destacado = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -819,25 +727,6 @@ class _CartaScreenState extends State<CartaScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _chipAgregado(Map<String, dynamic> agregado) {
-    final nombre = '${agregado['nombre'] ?? agregado.values.firstOrNull ?? ''}';
-    final precio = agregado['precio'];
-    final texto = precio is num
-        ? '$nombre · S/ ${precio.toStringAsFixed(2)}'
-        : nombre;
-    return AppTag(etiqueta: texto, activo: true);
-  }
-
-  Widget _chipGrupoAgregado(Map<String, dynamic> grupo) {
-    final items = itemsDeGrupo(grupo).map((it) => '${it['nombre']}').join(', ');
-    final maximo = cantidadMaximaGrupo(grupo) ?? 1;
-    return AppTag(
-      etiqueta:
-          '${nombreGrupo(grupo)} (máx. $maximo)${items.isEmpty ? '' : ': $items'}',
-      activo: true,
     );
   }
 }

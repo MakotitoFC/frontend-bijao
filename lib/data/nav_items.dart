@@ -76,13 +76,15 @@ const navItems = [
       ),
     ],
   ),
-  NavItem(
-    clave: 'finanzas',
-    label: 'Finanzas',
-    icono: LucideIcons.landmark,
-    rolesPermitidos: {AppRole.administrador},
-    permisoRequerido: 'LEER.MOVIMIENTO',
-  ),
+  // Vista "Finanzas" oculta por ahora: sin ítem en el menú no se puede abrir
+  // (la pantalla sigue en `home_screen.dart` para activarla de nuevo).
+  // NavItem(
+  //   clave: 'finanzas',
+  //   label: 'Finanzas',
+  //   icono: LucideIcons.landmark,
+  //   rolesPermitidos: {AppRole.administrador},
+  //   permisoRequerido: 'LEER.MOVIMIENTO',
+  // ),
   NavItem(
     clave: 'inventario',
     label: 'Inventario',

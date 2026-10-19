@@ -458,19 +458,13 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                         controller: _descripcionController,
                         maxLines: 3,
                         decoration: InputDecoration(
-                          labelText: 'Descripción *',
+                          labelText: 'Descripción (opcional)',
                           hintText: 'Ingredientes, detalles de preparación o porción...',
                           alignLabelWithHint: true,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'La descripción es obligatoria';
-                          }
-                          return null;
-                        },
                       ),
                       const SizedBox(height: 16),
 
