@@ -522,7 +522,11 @@ class CatalogService {
 
     final res = await _api.post('/api/carta', body: body);
     if (res is Map<String, dynamic>) {
+      // La respuesta del POST no trae la categoría (solo las columnas de
+      // `carta`): se conserva la que eligió el usuario en el formulario.
       final nuevo = CartaItem.fromJson(res).copyWith(
+        categoriaId: item.categoriaId,
+        categoriaNombre: item.categoriaNombre,
         subcategoriaIds: item.subcategoriaIds,
         platoDelDia: item.platoDelDia,
         costo: item.costo,
@@ -554,7 +558,10 @@ class CatalogService {
 
     final res = await _api.put('/api/carta/${item.id}', body: body);
     if (res is Map<String, dynamic>) {
+      // Igual que al crear: el PUT tampoco devuelve la categoría.
       final actualizado = CartaItem.fromJson(res).copyWith(
+        categoriaId: item.categoriaId,
+        categoriaNombre: item.categoriaNombre,
         subcategoriaIds: item.subcategoriaIds,
         platoDelDia: item.platoDelDia,
         costo: item.costo,
@@ -573,16 +580,16 @@ class CatalogService {
     throw Exception('Error al actualizar plato');
   }
 
-  // Sube la foto de un plato y la guarda en `carta.url_imagen`.
-  // TODO(backend): hoy la única subida que existe es la de evidencias
-  // (`/api/v1/uploads/evidencias`); ver BACKEND_PENDIENTES.md.
+  // Sube la foto de un plato y la guarda en `carta.url_imagen`. El servidor la
+  // reduce (máx. 800 px) y la sirve con caché; devuelve la ruta relativa
+  // (`/uploads/carta/...`) o, en la nube, la dirección del bucket.
   Future<CartaItem> subirImagenPlato(
     CartaItem item,
     List<int> bytes,
     String nombreArchivo,
   ) async {
     final res = await _api.subirArchivo(
-      '/api/v1/uploads/evidencias',
+      '/api/v1/uploads/carta',
       bytes: bytes,
       nombreArchivo: nombreArchivo,
     );

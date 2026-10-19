@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../utils/blur_dialog.dart';
 
@@ -9,6 +9,7 @@ import '../services/catalog_service.dart';
 import '../data/subcategorias_store.dart';
 import '../theme/app_theme.dart';
 import '../models/subcategoria.dart';
+import 'app_toast.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
 
@@ -84,6 +85,15 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       } else {
         await CatalogService.instance.crearSubcategoria(cat.id, nombre);
       }
+      if (mounted) {
+        showAppToast(
+          context,
+          editando != null
+              ? 'Subcategoría "$nombre" actualizada.'
+              : 'Subcategoría "$nombre" creada.',
+          type: ToastType.success,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -112,6 +122,11 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     try {
       await CatalogService.instance.eliminarSubcategoria(s.id);
       if (!mounted) return;
+      showAppToast(
+        context,
+        'Subcategoría "${s.subcategoria}" eliminada.',
+        type: ToastType.success,
+      );
       setState(() {
         _errorSub = null;
         _errorSubEn = null;
@@ -291,11 +306,17 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     }
     try {
       await CatalogService.instance.crearCategoria(nombre);
+      if (!mounted) return;
       setState(() {
         _nombreController.clear();
         _error = null;
       });
       widget.onCambio();
+      showAppToast(
+        context,
+        'Categoría "$nombre" creada.',
+        type: ToastType.success,
+      );
     } catch (e) {
       setState(() => _error = 'Error al crear: $e');
     }
@@ -326,11 +347,17 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     }
     try {
       await CatalogService.instance.actualizarCategoria(cat.id, nuevo);
+      if (!mounted) return;
       setState(() {
         _editandoId = null;
         _errorEdicion = null;
       });
       widget.onCambio();
+      showAppToast(
+        context,
+        'Categoría actualizada: "$nuevo".',
+        type: ToastType.success,
+      );
     } catch (e) {
       setState(() => _errorEdicion = 'Error: $e');
     }
@@ -380,12 +407,23 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     if (confirmar != true) return;
     try {
       await CatalogService.instance.eliminarCategoria(cat.id);
+      if (!mounted) return;
       setState(() {
         if (widget.seleccion.value?.id == cat.id) widget.seleccion.value = null;
       });
       widget.onCambio();
+      showAppToast(
+        context,
+        'Categoría "${cat.categoria}" eliminada.',
+        type: ToastType.success,
+      );
     } catch (e) {
-      // Ignorar o registrar error
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo eliminar la categoría: $e',
+        type: ToastType.error,
+      );
     }
   }
 

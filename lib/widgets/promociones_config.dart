@@ -37,12 +37,17 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     });
   }
 
-  // Envía el cambio al servidor y, si sale bien, refresca la pantalla; si no,
-  // muestra el motivo.
-  Future<void> _ejecutar(Future<void> Function() accion) async {
+  // Envía el cambio al servidor y, si sale bien, refresca la pantalla y avisa
+  // con [exito]; si no, muestra el motivo.
+  Future<void> _ejecutar(
+    Future<void> Function() accion, {
+    required String exito,
+  }) async {
     try {
       await accion();
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(context, exito, type: ToastType.success);
     } catch (e) {
       // Se vuelve a leer lo que quedó guardado, por si el cambio se aplicó a
       // medias.
@@ -90,7 +95,10 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => const PromocionFormDialog(),
     );
     if (p == null || !mounted) return;
-    await _ejecutar(() => PromocionService.instance.crearPromocion(p));
+    await _ejecutar(
+      () => PromocionService.instance.crearPromocion(p),
+      exito: 'Promoción "${p.nombre}" creada.',
+    );
   }
 
   Future<void> _editarPromocion(Promocion p) async {
@@ -101,6 +109,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     if (r == null || !mounted) return;
     await _ejecutar(
       () => PromocionService.instance.actualizarPromocionEnServidor(r),
+      exito: 'Promoción "${r.nombre}" actualizada.',
     );
   }
 
@@ -113,6 +122,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     }
     await _ejecutar(
       () => PromocionService.instance.eliminarPromocionEnServidor(p.id),
+      exito: 'Promoción "${p.nombre}" eliminada.',
     );
   }
 
@@ -122,7 +132,10 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => ComponenteFormDialog(promocionId: p.id),
     );
     if (c == null || !mounted) return;
-    await _ejecutar(() => PromocionService.instance.crearComponente(c));
+    await _ejecutar(
+      () => PromocionService.instance.crearComponente(c),
+      exito: 'Componente agregado a "${p.nombre}".',
+    );
   }
 
   Future<void> _editarComponente(Promocion p, PromocionComponente c) async {
@@ -133,6 +146,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     if (r == null || !mounted) return;
     await _ejecutar(
       () => PromocionService.instance.actualizarComponenteEnServidor(r),
+      exito: 'Componente actualizado.',
     );
   }
 
@@ -145,6 +159,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     }
     await _ejecutar(
       () => PromocionService.instance.eliminarComponenteEnServidor(c.id),
+      exito: 'Componente eliminado.',
     );
   }
 
@@ -154,7 +169,10 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       builder: (_) => OpcionFormDialog(promocion: p, componente: c),
     );
     if (o == null || !mounted) return;
-    await _ejecutar(() => PromocionService.instance.crearOpcion(o));
+    await _ejecutar(
+      () => PromocionService.instance.crearOpcion(o),
+      exito: 'Opción agregada.',
+    );
   }
 
   Future<void> _editarOpcion(
@@ -169,6 +187,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     if (r == null || !mounted) return;
     await _ejecutar(
       () => PromocionService.instance.actualizarOpcionEnServidor(r),
+      exito: 'Opción actualizada.',
     );
   }
 
@@ -537,16 +556,21 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
                 case 'incluida':
                   _ejecutar(
                     () => PromocionService.instance.hacerIncluidaEnServidor(o),
+                    exito: 'La opción ahora es la incluida.',
                   );
                 case 'estado':
                   _ejecutar(
                     () => PromocionService.instance.actualizarOpcionEnServidor(
                       o.copyWith(estado: !o.estado),
                     ),
+                    exito: o.estado
+                        ? 'Opción desactivada.'
+                        : 'Opción activada.',
                   );
                 case 'eliminar':
                   _ejecutar(
                     () => PromocionService.instance.eliminarOpcionEnServidor(o),
+                    exito: 'Opción eliminada.',
                   );
               }
             },

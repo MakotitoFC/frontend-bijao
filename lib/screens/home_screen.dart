@@ -13,6 +13,7 @@ import '../services/catalog_service.dart';
 import '../services/eventos_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/cambiar_pin_dialog.dart';
 import '../widgets/deferred_loader.dart';
 import '../widgets/menu_flotante.dart';
@@ -67,10 +68,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!u.debeCambiarPin) return;
     if (!(u.esAdmin || u.tienePermiso('OTORGAR.DESCUENTO'))) return;
     if (!mounted) return;
-    await showBlurDialog<bool>(
+    final cambiado = await showBlurDialog<bool>(
       context: context,
       builder: (_) => const CambiarPinDialog(obligatorio: true),
     );
+    if (cambiado == true && mounted) {
+      showAppToast(context, 'Tu PIN se actualizó.', type: ToastType.success);
+    }
   }
 
   @override

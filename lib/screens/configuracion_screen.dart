@@ -618,7 +618,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     }
     try {
       await CatalogService.instance.actualizarMedioPago(m.id, activo: activo);
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        '"${m.medioPago}" ${activo ? 'activado' : 'desactivado'}.',
+        type: activo ? ToastType.success : ToastType.info,
+      );
     } catch (e) {
       if (!mounted) return;
       showAppToast(

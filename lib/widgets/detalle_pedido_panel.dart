@@ -242,16 +242,26 @@ class DetallePedidoPanel extends StatelessWidget {
       : e.toString().replaceFirst('Exception: ', '');
 
   // Ejecuta una operación del servidor y refresca la pantalla; los errores se
-  // muestran como aviso. Devuelve true si salió bien.
+  // muestran como aviso. Devuelve true si salió bien; con [exito] además
+  // avisa que se guardó.
   Future<bool> _ejecutar(
     BuildContext context,
-    Future<void> Function() operacion,
-  ) async {
+    Future<void> Function() operacion, {
+    String? exito,
+  }) async {
     try {
       await operacion();
       // Lo pedido o anulado cambia las porciones que quedan hoy.
       DisponibilidadService.instance.cargarHoy();
       onCambio();
+      if (exito != null && context.mounted) {
+        showAppToast(
+          context,
+          exito,
+          type: ToastType.success,
+          duration: const Duration(milliseconds: 2200),
+        );
+      }
       return true;
     } on PedidoCambioException catch (e) {
       onCambio();
@@ -537,7 +547,11 @@ class DetallePedidoPanel extends StatelessWidget {
     final servicio = PedidoMozoService.instance;
     if (!esLineaDeProducto(l)) {
       // Descuento del servidor.
-      await _ejecutar(context, () => servicio.quitarDescuento(pedido.id, l.id));
+      await _ejecutar(
+        context,
+        () => servicio.quitarDescuento(pedido.id, l.id),
+        exito: 'Descuento quitado.',
+      );
       return;
     }
     final productos = (detallesPorPedido[pedido.id] ?? []).where(
@@ -645,6 +659,7 @@ class DetallePedidoPanel extends StatelessWidget {
       _ejecutar(
         context,
         () => PedidoMozoService.instance.cambiarCantidad(pedido.id, l, nueva),
+        exito: 'Cantidad de "${l.nombrePlato}": $nueva.',
       );
       return;
     }
@@ -676,6 +691,9 @@ class DetallePedidoPanel extends StatelessWidget {
           pedido.id,
           comentariosConNota(pedido.notas, nota),
         ),
+        exito: nota.isEmpty
+            ? 'Nota del pedido eliminada.'
+            : 'Nota del pedido guardada.',
       );
       return;
     }
@@ -775,6 +793,9 @@ class DetallePedidoPanel extends StatelessWidget {
           l,
           nota.isEmpty ? null : nota,
         ),
+        exito: nota.isEmpty
+            ? 'Nota del producto eliminada.'
+            : 'Nota del producto guardada.',
       );
       return;
     }
@@ -802,7 +823,11 @@ class DetallePedidoPanel extends StatelessWidget {
           )
           .firstOrNull;
       if (l == null) return;
-      await _ejecutar(context, () => servicio.quitarDescuento(pedido.id, l.id));
+      await _ejecutar(
+        context,
+        () => servicio.quitarDescuento(pedido.id, l.id),
+        exito: 'Descuento quitado.',
+      );
       return;
     }
     Future<void> aplicar(String? autorizoId) => servicio.aplicarDescuento(
@@ -812,17 +837,28 @@ class DetallePedidoPanel extends StatelessWidget {
       valor: r.monto,
       autorizoId: autorizoId,
     );
-    await _ejecutar(context, () async {
+    // Si el supervisor cancela, no se aplicó nada y no hay aviso de éxito.
+    var aplicado = false;
+    final ok = await _ejecutar(context, () async {
       try {
         await aplicar(null);
+        aplicado = true;
       } on ApiException catch (e) {
         if (e.statusCode != 403) rethrow;
         if (!context.mounted) return;
         final autorizo = await pedirAutorizacionSupervisor(context);
         if (autorizo == null) return;
         await aplicar(autorizo);
+        aplicado = true;
       }
     });
+    if (ok && aplicado && context.mounted) {
+      showAppToast(
+        context,
+        'Descuento "${r.nombre}" aplicado.',
+        type: ToastType.success,
+      );
+    }
   }
 
   Future<void> _agregarAjuste(BuildContext context) async {
@@ -1044,6 +1080,9 @@ class DetallePedidoPanel extends StatelessWidget {
         opcion == 'mesa' ? 'mesa' : 'llevar',
         aplicaTaper: opcion == 'llevar_taper',
       ),
+      exito: opcion == 'mesa'
+          ? '"${l.nombrePlato}" ahora es para comer en mesa.'
+          : '"${l.nombrePlato}" ahora es para llevar.',
     );
   }
 
@@ -1301,6 +1340,7 @@ class DetallePedidoPanel extends StatelessWidget {
                   pedido.id,
                   nuevo,
                 ),
+                exito: 'Estado del pedido actualizado.',
               );
             },
           ),
@@ -1410,6 +1450,9 @@ class DetallePedidoPanel extends StatelessWidget {
                           l,
                           !entregado,
                         ),
+                        exito: entregado
+                            ? '"${l.nombrePlato}" vuelve a pendiente.'
+                            : '"${l.nombrePlato}" servido.',
                       );
                       return;
                     }
@@ -1833,6 +1876,7 @@ class DetallePedidoPanel extends StatelessWidget {
                             pedido.id,
                             'servido',
                           ),
+                          exito: 'Pedido #${pedido.numeroPedido} servido.',
                         );
                       }
                     : null,
