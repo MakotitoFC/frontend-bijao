@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_bijao/data/catalogos_store.dart';
 import 'package:frontend_bijao/data/inventario_store.dart';
@@ -87,7 +87,6 @@ void main() {
       'Productos',
       'Tipos y unidades',
       'Tápers',
-      'Tamaños',
       'Compras',
       'Utensilios rotos',
       'Resumen',
@@ -154,7 +153,6 @@ void main() {
         'Productos',
         'Tipos y unidades',
         'Tápers',
-        'Tamaños',
         'Compras',
         'Utensilios rotos',
         'Resumen',

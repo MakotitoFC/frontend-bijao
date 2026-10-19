@@ -1,4 +1,4 @@
-﻿import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
@@ -8,6 +8,7 @@ import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
@@ -19,6 +20,7 @@ import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
 import '../widgets/estrella_plato_del_dia.dart';
 import '../widgets/imagen_plato.dart';
+import '../widgets/tamano_rapido_dialog.dart';
 import 'carta_form_screen.dart';
 
 // Filtro gris para tarjetas de productos inactivos.
@@ -101,7 +103,10 @@ class _CartaScreenState extends State<CartaScreen> {
     if (r != null) {
       final editado = r.item;
       try {
-        final guardado = await CatalogService.instance.actualizarPlato(editado);
+        final guardado = await CatalogService.instance.actualizarPlato(
+          editado,
+          variantes: r.variantes,
+        );
         if (r.foto != null) {
           await CatalogService.instance.subirImagenPlato(
             guardado,
@@ -126,6 +131,22 @@ class _CartaScreenState extends State<CartaScreen> {
         );
       }
     }
+  }
+
+  // Agrega un tamaño (nombre y precio) a un plato que ya existe.
+  Future<void> _agregarTamano(CartaItem item) async {
+    final creado = await showBlurDialog<CartaVariante>(
+      context: context,
+      builder: (_) => TamanoRapidoDialog(plato: item),
+    );
+    if (creado == null || !mounted) return;
+    setState(() {});
+    showAppToast(
+      context,
+      'Tamaño "${creado.nombre}" agregado a ${item.nombrePlato}.',
+      type: ToastType.success,
+      titulo: 'Tamaño creado',
+    );
   }
 
   // "Se acabó" hoy / reabrir: no cambia el estado del plato, solo su
@@ -560,6 +581,28 @@ class _CartaScreenState extends State<CartaScreen> {
                       _dato('Stock', '${item.stock}'),
                     ],
                   ),
+                  if (_puedeEditar) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => _agregarTamano(item),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        side: BorderSide(
+                          color: AppColors.primaryGreen.withValues(alpha: 0.5),
+                        ),
+                        foregroundColor: AppColors.primaryGreen,
+                      ),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text(
+                        'Tamaño',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                   const Spacer(),
                   if (item.creadoEn != null) ...[
                     const SizedBox(height: 10),

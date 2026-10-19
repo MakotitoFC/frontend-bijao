@@ -16,6 +16,7 @@ import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import '../widgets/app_select.dart';
+import '../widgets/app_switch.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/subcategorias_acordeon.dart';
 import '../widgets/campo_texto.dart';
@@ -27,7 +28,56 @@ typedef ResultadoPlato = ({
   CartaItem item,
   Uint8List? foto,
   String? nombreFoto,
+  // Tamaños del plato para guardar junto con él (null = no tocarlos).
+  List<CartaVariante>? variantes,
 });
+
+// Una fila de la lista "Tamaños" del formulario. Con [id] es un tamaño que ya
+// existe en el servidor; sin [id], uno nuevo.
+class _FilaTamano {
+  final String? id;
+  final TextEditingController nombre;
+  final TextEditingController precio;
+  final TextEditingController personal;
+  final TextEditingController pesoMin;
+  final TextEditingController pesoMax;
+  bool activo;
+
+  _FilaTamano({
+    this.id,
+    String nombre = '',
+    String precio = '',
+    String personal = '',
+    String pesoMin = '',
+    String pesoMax = '',
+    this.activo = true,
+  }) : nombre = TextEditingController(text: nombre),
+       precio = TextEditingController(text: precio),
+       personal = TextEditingController(text: personal),
+       pesoMin = TextEditingController(text: pesoMin),
+       pesoMax = TextEditingController(text: pesoMax);
+
+  factory _FilaTamano.de(CartaVariante v) => _FilaTamano(
+    id: v.id,
+    nombre: v.nombre,
+    precio: v.precioCliente.toStringAsFixed(2),
+    // Solo se muestra si es distinto del precio público.
+    personal: (v.precioPersonal - v.precioCliente).abs() < 0.005
+        ? ''
+        : v.precioPersonal.toStringAsFixed(2),
+    pesoMin: v.pesoMinKg?.toString() ?? '',
+    pesoMax: v.pesoMaxKg?.toString() ?? '',
+    activo: v.estado,
+  );
+
+  void liberar() {
+    nombre.dispose();
+    precio.dispose();
+    personal.dispose();
+    pesoMin.dispose();
+    pesoMax.dispose();
+  }
+}
 
 /// Formulario para Crear / Editar un plato en la `carta` (según BD.txt).
 /// Campos en tabla `carta`:
@@ -71,12 +121,22 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   Uint8List? _fotoBytes;
   String? _fotoNombre;
   String? _errorFoto;
+  // Tamaños: el interruptor "Tiene tamaños" y sus filas.
+  bool _tieneTamanos = false;
+  bool _tamanosAvanzado = false;
+  final List<_FilaTamano> _filas = [];
 
   @override
   void initState() {
     super.initState();
 
     final item = widget.item;
+    if (item != null) {
+      for (final v in variantesDeCarta(item.id)) {
+        _filas.add(_FilaTamano.de(v));
+      }
+      _tieneTamanos = _filas.any((f) => f.activo);
+    }
     _nombreController = TextEditingController(text: item?.nombrePlato ?? '');
     _descripcionController = TextEditingController(
       text: item?.descripcion ?? '',
@@ -152,6 +212,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     _precioPersonalController.dispose();
     _taperSearchController.dispose();
     _taperFocusNode.dispose();
+    for (final f in _filas) {
+      f.liberar();
+    }
     super.dispose();
   }
 
@@ -201,7 +264,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     }
 
     // El precio es opcional: un plato por tamaños lo deja vacío y sus precios
-    // se registran en Inventario > Tamaños.
+    // van en la lista de tamaños.
     final textoPrecio = _precioClienteController.text.trim();
     final pCliente = double.tryParse(textoPrecio);
     if (textoPrecio.isNotEmpty && (pCliente == null || pCliente < 0)) {
@@ -229,9 +292,16 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
 
     final sedeActual =
         widget.item?.sedeId ?? AuthService.instance.currentUser?.sedeId;
+    final idPlato = widget.item?.id ?? UuidHelper.v7();
+
+    final tamanos = _tamanosParaGuardar(idPlato);
+    if (tamanos.error != null) {
+      showAppToast(context, tamanos.error!, type: ToastType.error);
+      return;
+    }
 
     final resultado = CartaItem(
-      id: widget.item?.id ?? UuidHelper.v7(),
+      id: idPlato,
       nombrePlato: _nombreController.text.trim(),
       descripcion: _descripcionController.text.trim(),
       categoriaId: _categoria!.id,
@@ -251,8 +321,78 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       item: resultado,
       foto: _fotoBytes,
       nombreFoto: _fotoNombre,
+      variantes: tamanos.lista,
     );
     Navigator.of(context).pop(salida);
+  }
+
+  double? _numeroDe(TextEditingController c) =>
+      double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  // Tamaños que se guardan con el plato. Con el interruptor apagado, los que ya
+  // existían se desactivan (no se borran); los nuevos que no se llenaron se
+  // descartan. Devuelve un [error] si falta algo en las filas activas.
+  ({List<CartaVariante>? lista, String? error}) _tamanosParaGuardar(
+    String idPlato,
+  ) {
+    if (!_tieneTamanos) {
+      final existentes = _filas.where((f) => f.id != null && f.activo).toList();
+      if (existentes.isEmpty) return (lista: null, error: null);
+      return (
+        lista: [
+          for (final f in existentes) _variante(idPlato, f, activo: false),
+        ],
+        error: null,
+      );
+    }
+    final activas = _filas.where((f) => f.activo).toList();
+    if (activas.isEmpty) {
+      return (
+        lista: null,
+        error: 'Agrega al menos un tamaño o apaga "Tiene tamaños".',
+      );
+    }
+    for (final f in activas) {
+      final precio = _numeroDe(f.precio);
+      if (f.nombre.text.trim().isEmpty || precio == null || precio < 0) {
+        return (
+          lista: null,
+          error: 'Cada tamaño necesita su nombre y un precio válido.',
+        );
+      }
+      final personal = f.personal.text.trim();
+      if (personal.isNotEmpty &&
+          (_numeroDe(f.personal) == null || _numeroDe(f.personal)! < 0)) {
+        return (lista: null, error: 'Un precio personal no es válido.');
+      }
+    }
+    return (
+      lista: [
+        for (final f in _filas)
+          // Un tamaño nuevo que quedó quitado no se envía.
+          if (f.id != null || f.activo) _variante(idPlato, f, activo: f.activo),
+      ],
+      error: null,
+    );
+  }
+
+  CartaVariante _variante(
+    String idPlato,
+    _FilaTamano f, {
+    required bool activo,
+  }) {
+    final precio = _numeroDe(f.precio) ?? 0;
+    return CartaVariante(
+      id: f.id ?? '',
+      cartaId: idPlato,
+      nombre: f.nombre.text.trim(),
+      precioCliente: precio,
+      // Sin precio personal, vale lo mismo que el público.
+      precioPersonal: _numeroDe(f.personal) ?? precio,
+      pesoMinKg: _numeroDe(f.pesoMin),
+      pesoMaxKg: _numeroDe(f.pesoMax),
+      estado: activo,
+    );
   }
 
   static const _tamanoMaxFoto = 5 * 1024 * 1024;
@@ -485,7 +625,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                                   ),
                               decoration: InputDecoration(
                                 labelText: 'Precio público (S/)',
-                                helperText: 'Vacío si se vende por tamaños (Inventario > Tamaños)',
+                                helperText: 'Vacío si se vende por tamaños',
                                 hintText: '0.00',
                                 prefixText: 'S/ ',
                                 border: OutlineInputBorder(
@@ -534,8 +674,8 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 6. Tamaños (solo lectura: se registran en Inventario)
-                      _resumenTamanos(),
+                      // 6. Tamaños (interruptor y filas, se guardan con el plato)
+                      _seccionTamanos(),
                       const SizedBox(height: 16),
 
                       // 7. Selector de Estado (disponible / agotado)
@@ -831,12 +971,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     );
   }
 
-  // Tamaños del plato (`carta_variante`): aquí solo se muestran. Se registran y
-  // editan en Inventario > Tamaños.
-  Widget _resumenTamanos() {
-    final tamanos = widget.item == null
-        ? const <CartaVariante>[]
-        : variantesDeCarta(widget.item!.id);
+  // Tamaños del plato (`carta_variante`): interruptor "Tiene tamaños" y, al
+  // activarlo, una fila por tamaño con su nombre y precio. Se guardan junto con
+  // el plato en una sola operación.
+  Widget _seccionTamanos() {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -846,37 +984,217 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Tamaños',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            tamanos.isEmpty
-                ? 'Si este plato se vende por tamaños (por ejemplo, pescado), '
-                      'regístralos en Inventario > Tamaños.'
-                : 'Se administran en Inventario > Tamaños.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-          if (tamanos.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final t in tamanos)
-                  Chip(
-                    label: Text(
-                      '${t.nombre} · S/ ${t.precioCliente.toStringAsFixed(2)}'
-                      '${t.estado ? '' : ' (inactivo)'}',
-                      style: const TextStyle(fontSize: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tiene tamaños',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
                     ),
-                    visualDensity: VisualDensity.compact,
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ej. Pequeño S/ 18 y Grande S/ 28. Cada tamaño tiene su '
+                      'propio precio.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              AppSwitch(
+                value: _tieneTamanos,
+                onChanged: (v) => setState(() {
+                  _tieneTamanos = v;
+                  // Al activarlo por primera vez ya hay una fila lista.
+                  if (v && _filas.every((f) => !f.activo)) {
+                    _filas.add(_FilaTamano());
+                  }
+                }),
+              ),
+            ],
+          ),
+          if (!_tieneTamanos && _filas.any((f) => f.id != null && f.activo))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Al guardar, los tamaños que ya tenía este plato se '
+                'desactivarán (no se borran).',
+                style: TextStyle(fontSize: 12, color: AppColors.platoDelDia),
+              ),
+            ),
+          if (_tieneTamanos) ...[
+            const SizedBox(height: 12),
+            for (var i = 0; i < _filas.length; i++) _filaTamano(i),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: () => setState(() => _filas.add(_FilaTamano())),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Agregar tamaño'),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _tamanosAvanzado = !_tamanosAvanzado),
+                  child: Text(
+                    _tamanosAvanzado
+                        ? 'Ocultar avanzado'
+                        : 'Avanzado (precio personal y peso)',
                   ),
+                ),
               ],
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _filaTamano(int i) {
+    final f = _filas[i];
+    final nuevo = f.id == null;
+    return Opacity(
+      opacity: f.activo ? 1 : 0.5,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: CampoTexto(
+                    controller: f.nombre,
+                    enabled: f.activo,
+                    maxLength: 50,
+                    decoration: InputDecoration(
+                      labelText: 'Tamaño',
+                      hintText: 'Ej. Pequeño',
+                      counterText: '',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: CampoTexto(
+                    controller: f.precio,
+                    enabled: f.activo,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Precio',
+                      prefixText: 'S/ ',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: nuevo
+                      ? 'Quitar'
+                      : (f.activo ? 'Desactivar tamaño' : 'Activar de nuevo'),
+                  onPressed: () => setState(() {
+                    if (nuevo) {
+                      _filas.removeAt(i).liberar();
+                    } else {
+                      f.activo = !f.activo;
+                    }
+                  }),
+                  icon: Icon(
+                    nuevo
+                        ? Icons.close
+                        : (f.activo
+                              ? Icons.visibility_off_outlined
+                              : Icons.restart_alt),
+                    size: 20,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+            if (_tamanosAvanzado && f.activo) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: CampoTexto(
+                      controller: f.personal,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Precio personal',
+                        hintText: 'Igual al público',
+                        prefixText: 'S/ ',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: CampoTexto(
+                      controller: f.pesoMin,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Peso mín. (kg)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: CampoTexto(
+                      controller: f.pesoMax,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Peso máx. (kg)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (!f.activo)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Inactivo: no se ofrece al tomar pedidos.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

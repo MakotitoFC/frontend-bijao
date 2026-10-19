@@ -125,10 +125,11 @@ class _PaginaCatalogosState extends State<PaginaCatalogos> {
     return PaginaInventario(
       secciones: [
         SeccionInventario(
-          titulo: 'Tipos de producto',
+          titulo: 'Tipos de producto de almacén',
           descripcion:
-              'Clasifican los productos (insumo, bebida, menaje…). Se eligen '
-              'al crear un producto.',
+              'Clasifican lo que compras y guardas en el almacén (insumo, '
+              'bebida, desechable…). Se eligen al crear un producto de '
+              'inventario. No son las categorías de la carta.',
           accion: BotonNuevo(etiqueta: 'Tipo', onPressed: () => _editarTipo()),
           mensajeVacio:
               vacio ?? 'Aún no hay tipos. Crea el primero con "Tipo".',

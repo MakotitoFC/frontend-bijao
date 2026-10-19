@@ -15,7 +15,10 @@ Future<void> crearPlato(BuildContext context, {String? categoriaId}) async {
   final nuevo = r.item;
 
   try {
-    final creado = await CatalogService.instance.crearPlato(nuevo);
+    final creado = await CatalogService.instance.crearPlato(
+      nuevo,
+      variantes: r.variantes,
+    );
     if (r.foto != null) {
       try {
         await CatalogService.instance.subirImagenPlato(

@@ -12,7 +12,8 @@ import '../widgets/inventario/pagina_tapers.dart';
 import '../widgets/inventario/pagina_utensilios.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/tabs_desplazables.dart';
-import '../widgets/tamanos_tab.dart';
+
+// import '../widgets/tamanos_tab.dart'; // página Tamaños oculta (ver _paginas)
 
 // Inventario (solo administrador). Mismo diseño que Configuración: un submenú
 // con las páginas y, a la derecha, la página elegida. Cada cosa vive en un solo
@@ -69,12 +70,15 @@ class _InventarioScreenState extends State<InventarioScreen> {
       seccion: 'Almacén',
       contenido: () => const PaginaTapers(),
     ),
-    (
-      clave: 'tamanos',
-      etiqueta: 'Tamaños',
-      seccion: 'Carta',
-      contenido: () => const TamanosTab(),
-    ),
+    // Página "Tamaños" oculta por ahora: los tamaños se crean y editan desde la
+    // Carta (interruptor "Tiene tamaños" y botón "+ Tamaño"). Para volver a
+    // mostrarla, descomentar esto y el import de `tamanos_tab.dart`.
+    // (
+    //   clave: 'tamanos',
+    //   etiqueta: 'Tamaños',
+    //   seccion: 'Carta',
+    //   contenido: () => const TamanosTab(),
+    // ),
     (
       clave: 'compras',
       etiqueta: 'Compras',

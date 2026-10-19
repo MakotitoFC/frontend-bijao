@@ -88,7 +88,9 @@ class _TipoProductoFormDialogState extends State<TipoProductoFormDialog> {
   Widget build(BuildContext context) {
     final editando = widget.item != null;
     return DialogoApp(
-      titulo: editando ? 'Editar tipo de producto' : 'Nuevo tipo de producto',
+      titulo: editando
+          ? 'Editar tipo de producto de almacén'
+          : 'Nuevo tipo de producto de almacén',
       ancho: 420,
       acciones: [
         OutlinedButton(

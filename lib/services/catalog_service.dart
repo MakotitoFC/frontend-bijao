@@ -489,6 +489,17 @@ class CatalogService {
             .map((item) => CartaItem.fromJson(item as Map<String, dynamic>))
             .toList();
 
+        // El servidor devuelve los tamaños de cada plato dentro del plato.
+        for (final raw in res.whereType<Map<String, dynamic>>()) {
+          final id = raw['id']?.toString();
+          final tamanos = raw['variantes'];
+          if (id == null || tamanos is! List) continue;
+          reemplazarVariantesDeCarta(id, [
+            for (final v in tamanos.whereType<Map<String, dynamic>>())
+              CartaVariante.fromJson({'carta_id': id, ...v}),
+          ]);
+        }
+
         cartasNotifier.value = lista.where((c) => !c.eliminado).toList();
         cartasEliminadas
           ..clear()
@@ -501,12 +512,48 @@ class CatalogService {
     return cartasNotifier.value;
   }
 
-  Future<CartaItem> crearPlato(CartaItem item) async {
+  // Un tamaño como lo recibe `POST/PUT /api/carta`: con `id` actualiza el que
+  // ya existe y sin `id` crea uno nuevo.
+  Map<String, dynamic> _varianteParaEnvio(CartaVariante v) => {
+    if (v.id.isNotEmpty && UuidHelper.isValid(v.id)) 'id': v.id,
+    'nombre': v.nombre.trim(),
+    'precio_cliente': v.precioCliente,
+    'precio_personal': v.precioPersonal,
+    'peso_min_kg': ?v.pesoMinKg,
+    'peso_max_kg': ?v.pesoMaxKg,
+    'estado': v.estado,
+  };
+
+  // Deja en la lista de tamaños los que devuelve el servidor para el plato. Si
+  // la respuesta no los trae, se vuelven a leer.
+  Future<void> _actualizarVariantesTras(
+    String cartaId,
+    Map<String, dynamic> res,
+  ) async {
+    final lista = res['variantes'];
+    if (lista is List) {
+      reemplazarVariantesDeCarta(cartaId, [
+        for (final v in lista.whereType<Map<String, dynamic>>())
+          CartaVariante.fromJson({'carta_id': cartaId, ...v}),
+      ]);
+    } else {
+      await cargarVariantes();
+    }
+  }
+
+  // [variantes]: tamaños del plato, guardados en la misma operación que el
+  // plato. Con null no se envían (el servidor no toca los que ya tiene).
+  Future<CartaItem> crearPlato(
+    CartaItem item, {
+    List<CartaVariante>? variantes,
+  }) async {
     final clientUuid = (item.id.isNotEmpty && UuidHelper.isValid(item.id))
         ? item.id
         : UuidHelper.v7();
 
     final body = {
+      if (variantes != null && variantes.isNotEmpty)
+        'variantes': [for (final v in variantes) _varianteParaEnvio(v)],
       'id': clientUuid,
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
@@ -535,13 +582,21 @@ class CatalogService {
       );
 
       cartasNotifier.value = [...cartasNotifier.value, nuevo];
+      if (variantes != null && variantes.isNotEmpty) {
+        await _actualizarVariantesTras(nuevo.id, res);
+      }
       return nuevo;
     }
     throw Exception('Error al crear plato');
   }
 
-  Future<CartaItem> actualizarPlato(CartaItem item) async {
+  Future<CartaItem> actualizarPlato(
+    CartaItem item, {
+    List<CartaVariante>? variantes,
+  }) async {
     final body = {
+      if (variantes != null && variantes.isNotEmpty)
+        'variantes': [for (final v in variantes) _varianteParaEnvio(v)],
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
       if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
@@ -574,6 +629,9 @@ class CatalogService {
       cartasNotifier.value = cartasNotifier.value
           .map((c) => c.id == item.id ? actualizado : c)
           .toList();
+      if (variantes != null && variantes.isNotEmpty) {
+        await _actualizarVariantesTras(item.id, res);
+      }
 
       return actualizado;
     }
