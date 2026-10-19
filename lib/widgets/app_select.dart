@@ -23,6 +23,8 @@ class AppSelect<T> extends StatefulWidget {
   final bool flotante;
   // Campo más bajo, para barras de filtros.
   final bool compacto;
+  // Muestra un campo para escribir y filtrar las opciones (listas largas).
+  final bool buscable;
 
   const AppSelect({
     super.key,
@@ -33,6 +35,7 @@ class AppSelect<T> extends StatefulWidget {
     this.hint = 'Selecciona una opción',
     this.flotante = false,
     this.compacto = false,
+    this.buscable = false,
   });
 
   @override
@@ -44,11 +47,33 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
   final _campoKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   bool _abierto = false;
+  final _buscador = TextEditingController();
+  final _consulta = ValueNotifier<String>('');
 
   @override
   void dispose() {
     _overlayEntry?.remove();
+    _buscador.dispose();
+    _consulta.dispose();
     super.dispose();
+  }
+
+  // Minúsculas y sin tildes, para que "cafe" encuentre "Café".
+  static String _normalizar(String t) {
+    const de = 'áàäâéèëêíìïîóòöôúùüûñ';
+    const a = 'aaaaeeeeiiiioooouuuun';
+    final b = StringBuffer();
+    for (final c in t.toLowerCase().split('')) {
+      final i = de.indexOf(c);
+      b.write(i >= 0 ? a[i] : c);
+    }
+    return b.toString();
+  }
+
+  List<AppSelectItem<T>> _filtradas(String consulta) {
+    final q = _normalizar(consulta.trim());
+    if (q.isEmpty) return widget.items;
+    return widget.items.where((i) => _normalizar(i.label).contains(q)).toList();
   }
 
   String get _etiquetaActual {
@@ -77,14 +102,18 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     final espacioAbajo =
         limite.bottom - (origen.dy + alto) - separacion - margen;
     final espacioArriba = origen.dy - limite.top - separacion - margen;
-    final necesario = (widget.items.length * _altoOpcion + 2).clamp(
-      0.0,
-      _altoMaximo,
-    );
+    final necesario =
+        (widget.items.length * _altoOpcion + 2 + (widget.buscable ? 52 : 0))
+            .clamp(0.0, _altoMaximo);
     // Debajo si cabe (o si hay más sitio que arriba); si no, encima.
     final abajo = espacioAbajo >= necesario || espacioAbajo >= espacioArriba;
     final disponible = abajo ? espacioAbajo : espacioArriba;
-    final altoPanel = disponible.clamp(60.0, _altoMaximo);
+    final altoPanel = disponible.clamp(
+      widget.buscable ? 120.0 : 60.0,
+      _altoMaximo,
+    );
+    _buscador.clear();
+    _consulta.value = '';
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Stack(
@@ -119,6 +148,63 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     if (mounted) setState(() => _abierto = false);
   }
 
+  Widget _opcion(AppSelectItem<T> item) {
+    final seleccionado = item.value == widget.value;
+    return InkWell(
+      onTap: () {
+        widget.onChanged(item.value);
+        _cerrar();
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        color: seleccionado
+            ? AppColors.primaryGreen.withValues(alpha: 0.08)
+            : Colors.transparent,
+        child: Text(
+          item.label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: seleccionado ? FontWeight.w700 : FontWeight.w400,
+            color: seleccionado ? AppColors.primaryGreen : Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Campo de búsqueda del panel: filtra mientras se escribe y, con Enter,
+  // elige la primera coincidencia.
+  Widget _campoBusqueda() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: SizedBox(
+        height: 38,
+        child: TextField(
+          controller: _buscador,
+          autofocus: true,
+          style: const TextStyle(fontSize: 13.5),
+          onChanged: (v) => _consulta.value = v,
+          onSubmitted: (v) {
+            final lista = _filtradas(v);
+            if (lista.isEmpty) return;
+            widget.onChanged(lista.first.value);
+            _cerrar();
+          },
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'Escribe para buscar...',
+            prefixIcon: const Icon(Icons.search, size: 18),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadii.tag),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _panelOpciones(double altoMaximo) {
     return Container(
       constraints: BoxConstraints(maxHeight: altoMaximo),
@@ -135,34 +221,43 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        children: widget.items.map((item) {
-          final seleccionado = item.value == widget.value;
-          return InkWell(
-            onTap: () {
-              widget.onChanged(item.value);
-              _cerrar();
-            },
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              color: seleccionado
-                  ? AppColors.primaryGreen.withValues(alpha: 0.08)
-                  : Colors.transparent,
-              child: Text(
-                item.label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: seleccionado ? FontWeight.w700 : FontWeight.w400,
-                  color: seleccionado ? AppColors.primaryGreen : Colors.black87,
+      child: widget.buscable
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _campoBusqueda(),
+                Flexible(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: _consulta,
+                    builder: (context, consulta, _) {
+                      final lista = _filtradas(consulta);
+                      if (lista.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'Sin resultados',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        children: [for (final i in lista) _opcion(i)],
+                      );
+                    },
+                  ),
                 ),
-              ),
+              ],
+            )
+          : ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [for (final i in widget.items) _opcion(i)],
             ),
-          );
-        }).toList(),
-      ),
     );
   }
 

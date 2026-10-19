@@ -159,6 +159,7 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
                     opacity: _editando ? 0.6 : 1,
                     child: AppSelect<String>(
                       label: 'Plato *',
+                      buscable: true,
                       hint: 'Elige el plato',
                       value: _cartaId,
                       items: [
