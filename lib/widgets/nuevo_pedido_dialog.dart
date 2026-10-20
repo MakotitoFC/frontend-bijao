@@ -456,6 +456,16 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       showAppToast(context, 'Selecciona una mesa.', type: ToastType.error);
       return;
     }
+    if (widget.tipo == 'llevar') {
+      if (_nombreController.text.trim().isEmpty) {
+        showAppToast(
+          context,
+          'Ingresa el nombre del cliente.',
+          type: ToastType.error,
+        );
+        return;
+      }
+    }
     if (esDelivery &&
         (_telefonoController.text.trim().isEmpty ||
             _direccionController.text.trim().isEmpty)) {
@@ -1344,7 +1354,9 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         const SizedBox(height: 16),
         _campoTexto(
           controller: _nombreController,
-          hint: 'Nombre del cliente (opcional)',
+          hint: widget.tipo == 'llevar'
+              ? 'Nombre del cliente'
+              : 'Nombre del cliente (opcional)',
           icono: Icons.person_outline,
           contentPaddingVertical: 16,
         ),

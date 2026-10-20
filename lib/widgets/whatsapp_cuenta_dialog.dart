@@ -1,12 +1,8 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../utils/blur_dialog.dart';
-import '../utils/boleta_imagen.dart';
-import '../utils/datos_sede.dart';
-import '../utils/ticket_texto.dart';
 import '../utils/whatsapp_cuenta.dart';
 import 'app_toast.dart';
 import 'boton_imprimir_whatsapp.dart';
@@ -63,8 +59,8 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
       ],
       children: [
         Text(
-          'Se guarda la cuenta como imagen y se abre el chat del cliente en '
-          'WhatsApp. Allí adjunta la imagen con el clip y envíala.',
+          'Se abre el chat del cliente en WhatsApp con el detalle de la cuenta '
+          'ya escrito; solo falta dar "Enviar".',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 14),
@@ -89,16 +85,13 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
   }
 }
 
-// Flujo completo desde el botón: pide el celular, convierte la boleta en una
-// imagen y la guarda en el equipo, y abre el chat del cliente en WhatsApp. Un
-// enlace de WhatsApp no puede adjuntar archivos, así que la imagen se adjunta
-// desde el clip del chat. Si no se pudo generar la imagen, se manda la cuenta
-// como texto.
+// Flujo completo desde el botón: pide el celular y abre el chat del cliente en
+// WhatsApp con el detalle de la cuenta ya escrito en texto (productos, totales,
+// recargo y saldo). Solo falta dar "Enviar". No se manda ninguna imagen.
 Future<void> enviarCuentaPorWhatsapp(
   BuildContext context, {
   required Pedido pedido,
   required List<PedidoLine> lineas,
-  required String mozo,
   String metodoPago = '',
   double pagado = 0,
   double recargo = 0,
@@ -108,47 +101,16 @@ Future<void> enviarCuentaPorWhatsapp(
     builder: (_) => WhatsappCuentaDialog(celularInicial: pedido.clienteCelular),
   );
   if (numero == null || !context.mounted) return;
-
-  final ticket = ticketBoleta(
-    pedido: pedido,
-    lineas: lineas,
-    mozo: mozo,
-    sede: datosDeLaSede(),
-    metodoPago: metodoPago,
-    pagado: pagado,
-    recargo: recargo,
+  final abierto = await abrirWhatsapp(
+    numero,
+    textoCuentaWhatsapp(
+      pedido: pedido,
+      lineas: lineas,
+      metodoPago: metodoPago,
+      pagado: pagado,
+      recargo: recargo,
+    ),
   );
-  final png = await boletaComoPng(context, ticket);
-  if (!context.mounted) return;
-
-  var guardada = false;
-  if (png != null) {
-    try {
-      // En la web baja directo a Descargas; en el celular y en Windows pregunta
-      // dónde guardarla. Allí devuelve null aunque haya guardado, por eso no se
-      // toma como cancelación.
-      await FilePicker.saveFile(
-        fileName: 'cuenta-${pedido.numeroPedido}.png',
-        bytes: png,
-        mimeType: 'image/png',
-        dialogTitle: 'Guardar la cuenta',
-      );
-      guardada = true;
-    } catch (_) {
-      guardada = false;
-    }
-  }
-
-  final mensaje = guardada
-      ? mensajeCuentaWhatsapp(pedido: pedido, lineas: lineas, recargo: recargo)
-      : textoCuentaWhatsapp(
-          pedido: pedido,
-          lineas: lineas,
-          metodoPago: metodoPago,
-          pagado: pagado,
-          recargo: recargo,
-        );
-  final abierto = await abrirWhatsapp(numero, mensaje);
   if (!context.mounted) return;
   if (!abierto) {
     showAppToast(
@@ -156,19 +118,6 @@ Future<void> enviarCuentaPorWhatsapp(
       'No se pudo abrir WhatsApp. Revisa que esté instalado o que el '
       'navegador permita abrir enlaces.',
       type: ToastType.error,
-    );
-  } else if (guardada) {
-    showAppToast(
-      context,
-      'Cuenta guardada como imagen. En el chat, adjúntala con el clip.',
-      type: ToastType.success,
-      duration: const Duration(seconds: 6),
-    );
-  } else {
-    showAppToast(
-      context,
-      'No se pudo generar la imagen de la cuenta: se envía la cuenta como texto.',
-      type: ToastType.warning,
     );
   }
 }

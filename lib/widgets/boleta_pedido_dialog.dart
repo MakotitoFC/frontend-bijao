@@ -98,7 +98,6 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
               context,
               pedido: pedido,
               lineas: lineas,
-              mozo: widget.mesero,
               metodoPago: widget.metodoPago == 'Sin pago'
                   ? ''
                   : widget.metodoPago,

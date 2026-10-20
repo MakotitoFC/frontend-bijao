@@ -311,7 +311,6 @@ class DetallePedidoPanel extends StatelessWidget {
       context,
       pedido: pedido,
       lineas: detallesPorPedido[pedido.id] ?? const [],
-      mozo: nombreMeseroDe(pedido),
       metodoPago: metodo == 'Sin pago' ? '' : metodo,
       pagado: pagado > 0.001 ? pagado : 0,
       recargo: recargoCobradoDePedido(pedido.id),

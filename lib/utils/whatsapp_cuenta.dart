@@ -78,6 +78,9 @@ String textoCuentaWhatsapp({
     ..writeln('Atención: ${pedido.ubicacion}')
     ..writeln('Fecha: ${fechaHoraTicket(pedido.fechaPedido)}');
   if (cliente.isNotEmpty) s.writeln('Cliente: $cliente');
+  if ((pedido.direccionDelivery ?? '').isNotEmpty) {
+    s.writeln('Entrega: ${pedido.direccionDelivery}');
+  }
   s.writeln();
   for (final l in productos) {
     final nombre = l.esLibre ? (l.nombreLibre ?? l.nombrePlato) : l.nombrePlato;
@@ -119,17 +122,4 @@ String textoCuentaWhatsapp({
     ..writeln()
     ..write('¡Gracias por su visita!');
   return s.toString();
-}
-
-// Mensaje corto que acompaña a la imagen de la boleta, que se adjunta aparte.
-String mensajeCuentaWhatsapp({
-  required Pedido pedido,
-  required List<PedidoLine> lineas,
-  double recargo = 0,
-}) {
-  final total =
-      lineas.fold(0.0, (s, l) => s + l.precioTotalLinea) +
-      (recargo > 0.001 ? recargo : 0);
-  return 'Hola, te enviamos la cuenta del pedido #${pedido.numeroPedido} de '
-      '${negocio.nombre}. Total: ${soles(total)}. ¡Gracias por su visita!';
 }
