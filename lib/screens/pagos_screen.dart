@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../widgets/dialogo_app.dart';
 
@@ -6,6 +6,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cierres_store.dart';
 import '../data/pagos_store.dart';
+import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
@@ -105,6 +106,20 @@ class HistorialPedidosScreen extends StatefulWidget {
 class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   final _busqueda = TextEditingController();
   String _filtro = 'todos'; // todos | pagados | por_cobrar
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarPagosDelDia();
+  }
+
+  // Los pagos viven en el servidor: se traen los del día al abrir la pantalla.
+  Future<void> _cargarPagosDelDia() async {
+    try {
+      await PagoService.instance.cargarDelDia();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
@@ -367,6 +382,18 @@ class CajaScreen extends StatefulWidget {
 }
 
 class _CajaScreenState extends State<CajaScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Los pagos viven en el servidor: se traen los del día al abrir la caja.
+    PagoService.instance
+        .cargarDelDia()
+        .then((_) {
+          if (mounted) setState(() {});
+        })
+        .catchError((Object _) {});
+  }
+
   Future<void> _cerrarCaja() async {
     final t = totalesCajaActual();
     final inicial = TextEditingController(text: '0');

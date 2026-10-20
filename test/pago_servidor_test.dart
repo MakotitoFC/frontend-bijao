@@ -77,6 +77,7 @@ void main() {
   final cuerpos = <Map<String, dynamic>>[];
   var fallar = false;
   Object resumen = {};
+  Object listaDelDia = [];
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -109,7 +110,9 @@ void main() {
           ..statusCode = 201
           ..write(jsonEncode(_pagoJson()));
       } else {
-        req.response.write(jsonEncode(resumen));
+        req.response.write(
+          jsonEncode(req.uri.path == '/api/pagos' ? listaDelDia : resumen),
+        );
       }
       await req.response.close();
     });
@@ -220,4 +223,20 @@ void main() {
     expect(peticiones, isEmpty); // no hubo llamada
     expect(pagos, hasLength(1));
   });
+
+  test(
+    'cargarDelDia trae los pagos del día y no duplica los que ya hay',
+    () async {
+      listaDelDia = [_pagoJson(), _pagoJson(abonado: 50)..['id'] = 'otro-pago'];
+      await PagoService.instance.cargarDelDia();
+
+      expect(peticiones.single, startsWith('GET /api/pagos'));
+      expect(pagos, hasLength(2));
+      final cobrado = pagos.map((p) => p.montoCobrado).toList()..sort();
+      expect(cobrado, [52, 104]); // el recargo del 4 % ya viene del servidor
+      // Una segunda lectura no repite los que ya estaban.
+      await PagoService.instance.cargarDelDia();
+      expect(pagos, hasLength(2));
+    },
+  );
 }

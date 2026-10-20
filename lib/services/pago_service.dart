@@ -1,4 +1,4 @@
-import '../data/pagos_store.dart';
+﻿import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/medio_pago.dart';
 import '../models/pago.dart';
@@ -59,6 +59,17 @@ class PagoService {
       json: res,
       pagador: pagador,
     );
+  }
+
+  // Trae los pagos del día (`GET /api/pagos?desde=&hasta=`) para las pantallas
+  // Pagos y Caja: así no quedan vacías al recargar la página.
+  Future<void> cargarDelDia() async {
+    final h = DateTime.now();
+    String dos(int n) => n.toString().padLeft(2, '0');
+    final dia = '${h.year}-${dos(h.month)}-${dos(h.day)}';
+    final res = await _api.get('/api/pagos?desde=$dia&hasta=$dia');
+    if (res is! List) return;
+    agregarPagosDelServidor(res.whereType<Map<String, dynamic>>().toList());
   }
 
   // Vuelve a leer del servidor los pagos de un pedido y deja su estado al día.

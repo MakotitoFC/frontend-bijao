@@ -145,15 +145,16 @@ List<PagoDetalle> _detallesDeJson(String pagoId, Object? crudos) => [
 // método elegido; si no se conoce, se arma con lo que trae el pago.
 Pago pagoDeServidor(
   Map<String, dynamic> json,
-  Pedido pedido, {
+  Pedido? pedido, {
   MedioPago? medio,
   String? pagador,
 }) {
   final porcentaje = jsonDouble(json['porcentaje_comision']) ?? 0;
   return Pago(
     id: json['id']?.toString() ?? '',
-    pedidoId: json['pedido_id']?.toString() ?? pedido.id,
-    mesaNumero: (json['mesa_numero'] as num?)?.toInt() ?? pedido.mesaNumero,
+    pedidoId: json['pedido_id']?.toString() ?? pedido?.id ?? '',
+    mesaNumero:
+        (json['mesa_numero'] as num?)?.toInt() ?? pedido?.mesaNumero ?? 0,
     medioPago:
         medio ??
         MedioPago(
@@ -188,6 +189,28 @@ Pago aplicarPagoDelServidor({
   }
   cerrarSiSaldado(pedido, marcarEnServidor: false);
   return pago;
+}
+
+// Suma a la memoria los pagos que trae el servidor (por ejemplo, todos los del
+// día) y que la app aún no tenía. No toca los que ya estaban.
+void agregarPagosDelServidor(List<Map<String, dynamic>> deServidor) {
+  for (final j in deServidor) {
+    final id = j['id']?.toString() ?? '';
+    if (id.isEmpty || pagos.any((p) => p.id == id)) continue;
+    final pedidoId = j['pedido_id']?.toString();
+    final pedido = pedidos.where((p) => p.id == pedidoId).firstOrNull;
+    final medioId = j['medio_pago_id']?.toString();
+    final conocido = mediosPago.where((m) => m.id == medioId);
+    pagos.add(
+      pagoDeServidor(
+        j,
+        pedido,
+        medio: conocido.isEmpty ? null : conocido.first,
+      ),
+    );
+    pagoDetalles.addAll(_detallesDeJson(id, j['detalles']));
+  }
+  pagos.sort((a, b) => b.fechaPago.compareTo(a.fechaPago));
 }
 
 // Reemplaza lo que se tiene en memoria de los pagos de un pedido por lo que dice

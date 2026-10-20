@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -587,8 +587,14 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                             soloActivas: true,
                           ),
                           seleccion: _subcategoriaIds,
-                          onChanged: (v) =>
-                              setState(() => _subcategoriaIds = v),
+                          // Un plato pertenece a una sola subcategoría: al elegir
+                          // otra, reemplaza a la anterior.
+                          onChanged: (v) => setState(() {
+                            final nuevas = v.difference(_subcategoriaIds);
+                            _subcategoriaIds = nuevas.isNotEmpty
+                                ? {nuevas.first}
+                                : v;
+                          }),
                         ),
                       ],
                       const SizedBox(height: 16),

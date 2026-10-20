@@ -1,123 +1,82 @@
 ﻿# Pendientes del backend
 
 Solo lo que sigue sin resolver, revisado contra el código del backend (commit
-`a7e6c2e`). Lo que ya está corregido se quitó de esta lista.
+`21fea2f`). Lo que ya está corregido se quitó de esta lista.
 
-## Fotos y sincronización
+## Fotos
 
-1. **Ruta de foto del plato: roles y documentación.**
-   `POST /api/v1/carta/:id/foto` (y `/api/carta/:id/foto`) admite los roles
-   `ADMINISTRADOR`, `CAJERO`, `MOZO`, `COCINERO` y `SUPERVISOR` (`main.go`, ~líneas
-   445 y 446): cualquiera puede cambiar la foto de un plato. Confirmar si es lo
-   deseado; el frontend solo muestra el botón al administrador. Además la guía
-   `T0001-Flujo-Robusto-Subida-Imagenes-y-Refresco-Carta.md` dice que la
-   respuesta es "el estado del plato actualizado", pero devuelve los datos de la
-   subida (`url`, `storage`, `warning`, `plato_actualizado`).
-
-2. **CORS del bucket para la PWA.** Cuando la PWA muestre fotos desde R2 (otro
-   dominio), el bucket necesita una política CORS que permita el dominio de la
-   PWA: Flutter web descarga la imagen con una petición, no con una etiqueta
-   `<img>`. No se puede ver en el código: confirmarlo probando la PWA contra R2.
-
-3. **Sincronización nube → local: tamaños y fotos huérfanas.** Los tamaños
-   (`carta_variante`) no tienen `sede_id` propio: dependen del plato. Al filtrar
-   la bajada por sede, confirmar que los tamaños de un plato de esa sede bajan
-   con él. Además quedaron fotos en el bucket que ningún plato usa (la subida
-   anterior, en dos pasos, fallaba a veces): conviene un proceso para detectar y
-   borrar las que no estén en `carta.url_imagen`.
+1. **PWA: devolver siempre la ruta relativa de la foto.** Si en la nube se define
+   `R2_PUBLIC_URL`, `StorageService.Upload` devuelve la dirección completa del
+   bucket y el frontend la usa tal cual: la PWA pediría la foto directo a R2 y
+   el navegador la bloquearía por CORS (Flutter web descarga la imagen con una
+   petición, no con `<img>`). La guía `T0003` pide usar siempre
+   `/uploads/carta/...`, que el servidor sí sirve con CORS. Pedimos que
+   `url`/`url_imagen` sea siempre la ruta relativa `/uploads/...` (y que el
+   servidor la entregue desde R2 si hace falta), o que se configure CORS en el
+   bucket. Confirmarlo probando la PWA contra la nube.
 
 ## Eventos en vivo (SSE)
 
-4. **`CARTA_ACTUALIZADA`: emitirlo al editar en local y solo si hubo cambios.**
-   El frontend ya escucha el evento y recarga la carta al recibirlo. Hoy el
-   backend lo emite únicamente en `sync_service.go` (~línea 109), al traer
-   catálogos de la nube, y **cada minuto aunque no haya cambios**. No se emite
-   cuando se crea, edita o inhabilita un plato en el servidor local
-   (`POST`/`PUT /api/carta`, `estado`), así que ese cambio no llega a los otros
-   equipos hasta que abren la carta o pulsan "Actualizar carta". Pedimos: (a)
-   emitirlo en esos cambios locales y (b) emitirlo en la sincronización solo
-   cuando algo cambió. Además, que `GET /api/carta` no devuelva los
-   inhabilitados a quien no sea administrador.
+2. **`CARTA_ACTUALIZADA` en la sincronización solo si hubo cambios.** Ya se emite
+   al crear, editar o eliminar un plato o una variante en local. Pero en
+   `sync_service.go` (~línea 109) se sigue emitiendo **cada minuto** después de
+   cualquier descarga exitosa de catálogos, haya cambiado algo o no, y el
+   frontend recarga la carta cada vez. Pedimos emitirlo solo cuando la descarga
+   trajo diferencias.
 
-5. **Cobrar no emite ningún evento.** `POST /api/pagos` pasa el pedido a
-   `pagado`, pero no emite un evento SSE (por ejemplo `PEDIDO_ESTADO_CAMBIADO`):
-   las otras pantallas no se enteran hasta consultar.
+3. **El evento de cobro llega a todas las sedes.** `caja_service.go` (~línea 116)
+   usa `hub.Broadcast("PEDIDO_ESTADO_CAMBIADO", ...)`, mientras que el de pedidos
+   del mozo usa `BroadcastToSede`. Con varias sedes, el evento de un cobro
+   llegaría a las pantallas de las otras. Pedimos `BroadcastToSede`.
 
 ## Tickets (impresión)
 
-6. **Imprimir la boleta de caja.** La comanda de cocina sí se imprime
-   (`/api/v1/impresion/pedidos/:id/reimprimir`), pero no hay endpoint para
-   imprimir la cuenta o la boleta (existe `FormatPrecuenta` en el servidor, sin
-   ruta). El frontend ya muestra la boleta como ticket (48 columnas, blanco y
-   negro, con logo, sede, número, resumen del pago con recargo, "SON", QR y pie)
-   pero no puede imprimirla. Hace falta un endpoint que reciba o arme esos datos.
+4. **Imprimir la boleta o cuenta de caja.** `T0003` dice que existe
+   `POST /api/v1/impresion/pedidos/:id/reimprimir?tipo=cuenta` e
+   `imprimir-raw`, pero en el código no están: `ReimprimirPedido` no lee el
+   parámetro `tipo` y no hay ninguna ruta `imprimir-raw`. Hace falta un
+   endpoint que imprima la cuenta o la boleta (existe `FormatPrecuenta`, sin
+   ruta). El frontend ya muestra la boleta como ticket (48 columnas, con logo,
+   sede, número, resumen del pago con recargo, "SON", QR y pie) pero no puede
+   imprimirla.
 
-7. **Número de orden diario.** `ORDEN #0001` solo está en `print_jobs` y en
-   `/impresion/cola`: pedimos que el detalle del pedido
-   (`GET /api/v1/mozo/pedidos/:id`) incluya `orden` o `codigo_orden` para
-   mostrar en pantalla el mismo número que sale en la comanda.
+5. **Número de orden diario en el detalle del pedido.** `codigo_orden` existe en
+   los datos de impresión (`internal/dto/impresion.go`), pero no en el detalle
+   del pedido (`GET /api/v1/mozo/pedidos/:id`), que es lo que lee el frontend.
+   Pedimos incluirlo para mostrar en pantalla el mismo número de la comanda.
 
-8. **Logo de los tickets.** `GET /api/v1/impresion/config` devuelve solo la ruta
-   del logo y no entrega la imagen; el frontend guarda una copia local para
-   mostrarlo. Si se puede, servir el logo (por ejemplo
-   `GET /api/v1/impresion/config/logo`).
-
-## Carta
-
-9. **Una sola subcategoría por plato.** La carta guarda una única
-   `subcategoria_id`. Si el formulario permite elegir varias subcategorías, solo
-   se guarda la primera y las demás desaparecen al recargar. Confirmar si es lo
-   deseado.
+6. **Logo de los tickets.** `GET /api/v1/impresion/config` devuelve solo la ruta
+   (`logo_path`) y no entrega la imagen; el frontend guarda una copia local para
+   mostrarlo. `T0003` dice que la ruta es accesible (`/uploads/logos/logo.png`):
+   confirmar que el servidor la sirve, para que el frontend la muestre sin
+   copia local.
 
 ## Pagos
 
-10. **`GET /api/caja/totales-actual` suma sin el recargo.** En
-    `caja_repository.go` (~líneas 824 a 877) los totales por método (efectivo,
-    tarjeta, yape, plin, delivery) suman `monto_abonado`, no `monto_cobrado`. Con
-    tarjeta, el POS cobró 104 pero el total de tarjeta sale 100, y el arqueo
-    (`POST /api/caja/cierre`) marcaría una diferencia de 4 por cada cobro.
-    Pedimos sumar `monto_cobrado` por método (y decidir si el total de delivery
-    también) y mostrar los recargos como un dato aparte.
+7. **El nombre del pagador no se guarda.** `CreatePagoRequest` acepta `pagador`
+   (pago compartido), pero ni la tabla `pago` ni `PagoExtendidoResponse` lo
+   guardan o devuelven: tras recargar se pierde quién pagó cada parte. `T0003`
+   dice que se asocia al detalle o a las notas del pedido; no lo encuentro en
+   `RegistrarPagoTx`. Pedimos guardarlo (migración nueva) y devolverlo.
 
-11. **Lista de pagos para las pantallas Pagos y Caja.** Solo existe
-    `GET /api/pedidos/:id/pagos` (por pedido). Tras recargar la página, las
-    pantallas Pagos y Caja del frontend quedan vacías porque no hay cómo traer
-    los pagos de un día. Pedimos
-    `GET /api/pagos?desde=&hasta=&usuario_id=&medio_pago_id=` (filtrado por la
-    sede del usuario) con el mismo `PagoExtendidoResponse`, incluidos
-    `monto_comision` y `monto_cobrado`.
+8. **Validaciones de `POST /api/pagos`.** En el servicio solo se rechaza
+   `monto_abonado` igual a 0 y, en el repositorio, el pedido anulado. No se
+   comprueba que el monto no supere el saldo (se puede cobrar de más), que el
+   pedido no esté ya pagado, que un reembolso (monto negativo) no supere lo
+   pagado, ni que la suma de `detalles[].monto_aplicado` sea igual a
+   `monto_abonado`. El reparto automático usa `precio × cantidad`, sin
+   descuentos. En `GET /api/pedidos/:id/pagos` la propina se une por pedido y
+   medio de pago, así que con dos pagos del mismo método puede repetirse.
 
-12. **Reembolso de pagos.** Existe `POST /api/propinas/:id/reembolso`, pero no
-    hay forma de devolver dinero de un pago (devoluciones y anulaciones). El
-    frontend hoy registra el reembolso solo en memoria. Pedimos un endpoint
-    (por ejemplo `POST /api/pagos/:id/reembolso` con monto y motivo) que genere
-    el movimiento negativo y defina si se devuelve también el recargo
-    (proporcional al monto devuelto), reflejado en caja.
-
-13. **El nombre del pagador no se guarda.** `CreatePagoRequest` acepta `pagador`
-    (pago compartido), pero la tabla `pago` no tiene esa columna y
-    `PagoExtendidoResponse` no lo devuelve: tras recargar se pierde quién pagó
-    cada parte. Pedimos agregarlo (migración nueva) y devolverlo.
-
-14. **Validaciones de `POST /api/pagos`.** En `RegistrarPagoTx` solo se rechaza
-    el pedido anulado. No se comprueba que `monto_abonado` sea positivo ni que no
-    supere el saldo (se puede cobrar de más), que el pedido no esté ya pagado, ni
-    que la suma de `detalles[].monto_aplicado` sea igual a `monto_abonado` (se
-    confía en el cliente). El reparto automático usa `precio × cantidad`, sin
-    descuentos. En `GET /api/pedidos/:id/pagos` la propina se une por pedido y
-    medio de pago, así que con dos pagos del mismo método puede repetirse.
-
-## Documentación de las guías
-
-15. **Las guías usan nombres que no existen en el código.**
-    `GUIA_TAMANOS_Y_TAPER_FRONTEND.md`: los ejemplos traen `imagen_url`,
-    `tiempo_preparacion` y `categoria_comida_nombre` (los reales son
-    `url_imagen` y `categoria_nombre`; `tiempo_preparacion` no existe), y el
-    ejemplo de `POST /api/tapers` trae `costo` y `tamano_id`, que
-    `CreateTaperRequest` no acepta (los campos reales son `nombre`, `precio`,
-    `stock`, `stock_minimo`, `sede_id`, `estado`).
-    `T0002-Contrato-API-Pagos-Recargo-Tarjeta-y-Eventos-SSE.md`: nombra archivos
-    que no existen (`events_service.dart` / `sse_service.dart`; el real es
-    `eventos_service.dart`) y dice que `CARTA_ACTUALIZADA` se emite "al editar o
-    inhabilitar un plato en local", lo que no ocurre (ver punto 4). El frontend
-    sigue los nombres del código.
+9. **Flujo de devoluciones en el servidor.** Las devoluciones (reembolso, cambio
+   de plato, nota de crédito y vale) viven hoy solo en memoria del frontend:
+   ajustan la cuenta localmente y se pierden al recargar. `POST /api/pagos`
+   acepta montos negativos (el reembolso de dinero), pero eso por sí solo no baja
+   el total del pedido en el servidor, así que la cuenta quedaría inconsistente
+   (dinero devuelto y saldo pendiente). Falta un flujo completo en el servidor:
+   (a) ajuste de una línea del pedido por devolución (o usar la anulación parcial
+   de fila, que ya baja el total y repone stock, junto con el reembolso del
+   dinero en una sola operación); (b) notas de crédito, con su número y el saldo
+   a favor del cliente; (c) vales, con código y vigencia; (d) cambio de plato con
+   diferencia de precio. El frontend lo conectará cuando el contrato esté
+   definido.
