@@ -34,13 +34,7 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
   @override
   void initState() {
     super.initState();
-    final tapers = CatalogService.instance.tapers
-        .where((t) => t.estado)
-        .toList();
-    if (tapers.isNotEmpty) {
-      _taperSeleccionado =
-          SelectorTaper.primeroConStock(tapers, 1) ?? tapers.first;
-    }
+    // Táper no se preselecciona por defecto en plato libre; queda a decisión del mozo
   }
 
   @override
@@ -73,6 +67,14 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
       return;
     }
 
+    if (_llevaTaper && _taperSeleccionado == null) {
+      showAppToast(
+        context,
+        'Selecciona el táper a utilizar.',
+        type: ToastType.error,
+      );
+      return;
+    }
     final nombre = _nombreController.text.trim();
     final notas = _descripcionController.text.trim().isEmpty
         ? null
