@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../config/app_config.dart';
@@ -7,6 +7,7 @@ import '../data/incidencias_store.dart';
 import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
+import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/promociones_store.dart';
 import '../data/usuarios_store.dart';
@@ -390,6 +391,12 @@ class DetallePedidoPanel extends StatelessWidget {
   // "Pagar": pago único o compartido. El delivery solo admite pago único. Desde
   // cada forma de pago se puede regresar a esta elección.
   Future<void> _elegirPago(BuildContext context) async {
+    // Se lee lo ya cobrado en el servidor: así no se cobra dos veces algo que
+    // otro equipo ya cobró. Sin conexión se sigue con lo que hay en pantalla.
+    try {
+      await PagoService.instance.cargarDePedido(pedido);
+    } catch (_) {}
+    if (!context.mounted) return;
     if (pedido.tipoPedido == 'delivery') {
       await _pagar(context, compartido: false, permiteVolver: false);
       return;
@@ -421,7 +428,11 @@ class DetallePedidoPanel extends StatelessWidget {
           permiteVolver: permiteVolver,
         ),
       );
-      if (r == null) return false;
+      if (r == null) {
+        // Cancelado, o un pago que quedó a medias: se refresca desde el servidor.
+        onCambio();
+        return false;
+      }
       if (identical(r, volverAElegirPago)) return true;
       final resultado = r as ResultadoPagoCompartido;
       // Las boletas se muestran antes de refrescar: si el pedido quedó

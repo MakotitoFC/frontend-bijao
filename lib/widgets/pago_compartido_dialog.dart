@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
@@ -6,6 +6,8 @@ import '../data/categorias_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
+import '../services/api_client.dart';
+import '../services/pago_service.dart';
 import '../models/medio_pago.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -329,25 +331,61 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     );
   }
 
-  void _confirmar() {
-    if (!_valido) return;
+  bool _guardando = false;
+
+  String _mensajeError(Object e) => e is ApiException
+      ? e.message
+      : e.toString().replaceFirst('Exception: ', '');
+
+  Future<void> _confirmar() async {
+    if (!_valido || _guardando) return;
     final montos = _montos;
     final recargoTotal = _recargoTotal;
     final boletas = <BoletaPagador>[];
     for (var i = 0; i < _pagadores.length; i++) {
       if (montos[i] <= 0.005) continue;
-      final boleta = _boletaDe(i, montos[i]);
-      boletas.add(boleta);
-      for (final pago in boleta.pagos) {
-        registrarPago(
-          pedido: widget.pedido,
-          medioPago: pago.medio,
-          montoAbonado: pago.monto,
-          propina: 0,
-          pagador: boleta.nombre,
-        );
-      }
+      boletas.add(_boletaDe(i, montos[i]));
     }
+    setState(() => _guardando = true);
+    // Un pago por cada método de cada pagador. Si uno falla, los anteriores ya
+    // están en el servidor: se vuelve a leer y se avisa.
+    var registrados = 0;
+    final total = boletas.fold<int>(0, (s, b) => s + b.pagos.length);
+    try {
+      for (final boleta in boletas) {
+        for (final pago in boleta.pagos) {
+          await PagoService.instance.registrar(
+            pedido: widget.pedido,
+            medio: pago.medio,
+            montoAbonado: pago.monto,
+            pagador: boleta.nombre,
+          );
+          registrados++;
+        }
+      }
+    } catch (e) {
+      try {
+        await PagoService.instance.cargarDePedido(widget.pedido);
+      } catch (_) {}
+      if (!mounted) return;
+      showAppToast(
+        context,
+        registrados == 0
+            ? 'No se pudo registrar el pago: ${_mensajeError(e)}'
+            : 'Se registraron $registrados de $total pagos y falló uno: '
+                  '${_mensajeError(e)}. Revisa lo cobrado antes de seguir.',
+        type: ToastType.error,
+        titulo: 'Pago incompleto',
+        duration: const Duration(seconds: 6),
+      );
+      if (registrados > 0) {
+        Navigator.of(context).pop(); // el saldo cambió: se vuelve a abrir
+      } else {
+        setState(() => _guardando = false);
+      }
+      return;
+    }
+    if (!mounted) return;
     showAppToast(
       context,
       'Pago compartido entre ${boletas.length} · '
@@ -1030,7 +1068,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
               Expanded(
                 flex: 3,
                 child: FilledButton.icon(
-                  onPressed: _valido ? _confirmar : null,
+                  onPressed: _valido && !_guardando ? _confirmar : null,
                   icon: const Icon(LucideIcons.users, size: 18),
                   label: Text(
                     'Cobrar · S/ ${(_saldo + _recargoTotal).toStringAsFixed(2)}',

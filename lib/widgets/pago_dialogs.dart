@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
 import '../data/pagos_store.dart';
+import '../services/api_client.dart';
+import '../services/pago_service.dart';
 import '../models/medio_pago.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
@@ -178,16 +180,33 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // Recargo del método elegido (p. ej. tarjeta): se suma al total del cliente.
   double get _recargo => _medio.recargoSobre(_saldo);
 
-  void _pagar() {
+  bool _guardando = false;
+
+  Future<void> _pagar() async {
     final saldo = _saldo;
-    if (saldo <= 0.01) return;
+    if (saldo <= 0.01 || _guardando) return;
     final recargo = _medio.recargoSobre(saldo);
-    registrarPago(
-      pedido: widget.pedido,
-      medioPago: _medio,
-      montoAbonado: saldo,
-      propina: 0,
-    );
+    setState(() => _guardando = true);
+    try {
+      // Se registra en el servidor; si lo rechaza, no queda nada cobrado.
+      await PagoService.instance.registrar(
+        pedido: widget.pedido,
+        medio: _medio,
+        montoAbonado: saldo,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      showAppToast(
+        context,
+        'No se pudo registrar el cobro: '
+        '${e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '')}',
+        type: ToastType.error,
+        titulo: 'Pago no registrado',
+      );
+      return;
+    }
+    if (!mounted) return;
     showAppToast(
       context,
       'Cobro registrado · ${widget.titulo} · '
@@ -369,7 +388,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               Expanded(
                 flex: 3,
                 child: FilledButton.icon(
-                  onPressed: saldo > 0.01 ? _pagar : null,
+                  onPressed: saldo > 0.01 && !_guardando ? _pagar : null,
                   icon: const Icon(LucideIcons.banknote, size: 18),
                   label: Text(
                     'Pagar · S/ ${(saldo + _recargo).toStringAsFixed(2)}',

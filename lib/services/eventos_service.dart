@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
@@ -18,21 +18,25 @@ class AccionesDeEvento {
   final bool stock;
   // Lista de "mesas por liberar" (la da el backend).
   final bool porLiberar;
+  // Platos, categorías y tamaños de la carta.
+  final bool carta;
 
   const AccionesDeEvento({
     this.pedidos = false,
     this.mesas = false,
     this.stock = false,
     this.porLiberar = false,
+    this.carta = false,
   });
 
-  bool get ninguna => !pedidos && !mesas && !stock && !porLiberar;
+  bool get ninguna => !pedidos && !mesas && !stock && !porLiberar && !carta;
 
   AccionesDeEvento unir(AccionesDeEvento o) => AccionesDeEvento(
     pedidos: pedidos || o.pedidos,
     mesas: mesas || o.mesas,
     stock: stock || o.stock,
     porLiberar: porLiberar || o.porLiberar,
+    carta: carta || o.carta,
   );
 }
 
@@ -58,6 +62,10 @@ AccionesDeEvento traducirEvento(String nombre) {
       return const AccionesDeEvento(pedidos: true, mesas: true);
     case 'MESA_LIBERADA':
       return const AccionesDeEvento(mesas: true, porLiberar: true);
+    case 'CARTA_ACTUALIZADA':
+      // Un plato nuevo o editado (p. ej. llegó de la nube): se vuelve a leer la
+      // carta.
+      return const AccionesDeEvento(carta: true);
     case 'PLATO_AGOTADO':
     case 'STOCK_ACTUALIZADO':
     case 'APERTURA_DIARIA_COMPLETA':
@@ -164,6 +172,7 @@ class EventosService {
         if (acciones.pedidos) PedidoService.instance.cargarPedidos(),
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
+        if (acciones.carta) CatalogService.instance.recargarCarta(),
         if (acciones.porLiberar && PedidoMozoService.instance.activo)
           recargarMesasPorLiberar(),
       ]);

@@ -1,0 +1,79 @@
+import '../data/pagos_store.dart';
+import '../data/pedidos_store.dart';
+import '../models/medio_pago.dart';
+import '../models/pago.dart';
+import '../models/pedido.dart';
+import '../utils/uuid_helper.dart';
+import 'api_client.dart';
+
+// Pagos contra el servidor: `POST /api/pagos` para cobrar y
+// `GET /api/pedidos/:id/pagos` para leer lo ya cobrado. El servidor calcula el
+// recargo del método de pago y pasa el pedido a 'pagado' cuando se cubre el
+// total; la app guarda en memoria lo que él responde.
+class PagoService {
+  PagoService._();
+  static final PagoService instance = PagoService._();
+
+  final ApiClient _api = ApiClient.instance;
+
+  // Solo los pedidos y métodos que existen en el servidor (ids UUID) se cobran
+  // ahí. Los datos de demostración locales siguen funcionando en memoria.
+  bool _enServidor(Pedido pedido, MedioPago medio) =>
+      UuidHelper.isValid(pedido.id) && UuidHelper.isValid(medio.id);
+
+  // Cobra [montoAbonado] de la cuenta con [medio]. Si el servidor rechaza el
+  // pago, lanza el error y NO deja nada registrado en la app. [pagador] es el
+  // nombre en un pago compartido.
+  Future<Pago> registrar({
+    required Pedido pedido,
+    required MedioPago medio,
+    required double montoAbonado,
+    double propina = 0,
+    String? pagador,
+  }) async {
+    if (!_enServidor(pedido, medio)) {
+      return registrarPago(
+        pedido: pedido,
+        medioPago: medio,
+        montoAbonado: montoAbonado,
+        propina: propina,
+        pagador: pagador,
+      );
+    }
+    final res = await _api.post(
+      '/api/pagos',
+      body: {
+        'pedido_id': pedido.id,
+        'medio_pago_id': medio.id,
+        'monto_abonado': montoAbonado,
+        'propina': propina,
+        if (pagador != null && pagador.isNotEmpty) 'pagador': pagador,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió el pago registrado');
+    }
+    return aplicarPagoDelServidor(
+      pedido: pedido,
+      medio: medio,
+      json: res,
+      pagador: pagador,
+    );
+  }
+
+  // Vuelve a leer del servidor los pagos de un pedido y deja su estado al día.
+  // Sirve al abrir la pantalla de cobro (para no cobrar dos veces) y después de
+  // un pago que quedó a medias.
+  Future<void> cargarDePedido(Pedido pedido) async {
+    if (!UuidHelper.isValid(pedido.id)) return;
+    final res = await _api.get('/api/pedidos/${pedido.id}/pagos');
+    if (res is! Map<String, dynamic>) return;
+    final lista = res['pagos'];
+    reemplazarPagosDePedido(pedido, [
+      if (lista is List) ...lista.whereType<Map<String, dynamic>>(),
+    ]);
+    if (res['estado_pedido'] == 'pagado') {
+      actualizarEstadoPedido(pedido.id, 'pagado');
+    }
+  }
+}
