@@ -101,20 +101,21 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     final tapers = CatalogService.instance.tapers
         .where((t) => t.estado)
         .toList();
+    // Solo marcar por defecto si el plato en carta tiene asignado su taper_id
     if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
       _taperSeleccionado = tapers
           .where((t) => t.id == widget.item.taperId)
           .firstOrNull;
     }
-    if (_taperSeleccionado == null && tapers.isNotEmpty) {
-      _taperSeleccionado =
-          SelectorTaper.primeroConStock(tapers, 1) ?? tapers.first;
-    }
+    // Si taper_id es null en la tabla carta no se preselecciona ninguno, queda a decisión del mozo
+
     // Entrega según el pedido en curso (lo mismo que hace tocar el chip).
     final inicial = widget.tipoEntregaInicial;
     if (inicial == 'llevar' || inicial == 'delivery') {
       _tipoEntrega = inicial;
-      _llevaTaper = true;
+      if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
+        _llevaTaper = true;
+      }
     }
   }
 
@@ -201,6 +202,14 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
         tope == 0
             ? '"${widget.item.nombrePlato}" ya no tiene porciones disponibles.'
             : 'Solo quedan $tope de "${widget.item.nombrePlato}".',
+        type: ToastType.error,
+      );
+      return;
+    }
+    if (_llevaTaper && _taperSeleccionado == null) {
+      showAppToast(
+        context,
+        'Selecciona el táper a utilizar para "${widget.item.nombrePlato}".',
         type: ToastType.error,
       );
       return;
@@ -586,7 +595,17 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                 activeThumbColor: Colors.white,
                 activeTrackColor: AppColors.primaryGreen,
                 onChanged: (val) {
-                  setState(() => _llevaTaper = val);
+                  setState(() {
+                    _llevaTaper = val;
+                    if (_llevaTaper &&
+                        _taperSeleccionado == null &&
+                        widget.item.taperId != null &&
+                        widget.item.taperId!.isNotEmpty) {
+                      _taperSeleccionado = tapers
+                          .where((t) => t.id == widget.item.taperId)
+                          .firstOrNull;
+                    }
+                  });
                 },
               ),
             ],
