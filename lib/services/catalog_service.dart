@@ -704,9 +704,8 @@ class CatalogService {
 
   // Eliminación lógica: el plato pasa al estado `eliminado` y deja de mostrarse,
   // pero la fila se conserva (pedidos y promociones siguen apuntando a ella).
-  // TODO(backend): hoy es una convención del frontend (PUT del estado). Ver
-  // BACKEND_PENDIENTES.md: cuando `DELETE /api/carta/:id` haga el borrado
-  // lógico, volver a llamar a ese endpoint y pedir `?incluir_eliminados=true`
+  // TODO(backend): hoy es una convención del frontend (PUT del estado). Cuando
+  // `DELETE /api/carta/:id` haga el borrado lógico, volver a llamar a ese endpoint y pedir `?incluir_eliminados=true`
   // en `cargarCarta`.
   Future<void> eliminarPlato(String id) async {
     final item = cartasNotifier.value.where((c) => c.id == id).firstOrNull;

@@ -291,6 +291,11 @@ class DetallePedidoPanel extends StatelessWidget {
 
   // Emite la boleta, factura o ticket de venta del pedido.
   Future<void> _emitirComprobante(BuildContext context) async {
+    // Se leen los cobros del servidor: sin ellos no se puede facturar.
+    try {
+      await PagoService.instance.cargarDePedido(pedido);
+    } catch (_) {}
+    if (!context.mounted) return;
     await showBlurDialog<Comprobante>(
       context: context,
       builder: (_) => EmitirComprobanteDialog(pedido: pedido),

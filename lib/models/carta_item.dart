@@ -23,7 +23,7 @@ class CartaItem {
   final double? precioPersonal;
   // Estados: 'disponible' | 'agotado' | 'inhabilitado' | 'eliminado' (borrado
   // lógico). El backend aún no lo respalda: es una convención del frontend sobre
-  // el texto libre de `carta.estado` (ver BACKEND_PENDIENTES.md).
+  // el texto libre de `carta.estado`.
   final String estado;
   final String? sedeId;
   final double? costo;

@@ -66,11 +66,18 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     super.dispose();
   }
 
+  // El servidor no deja facturar (boleta o factura) un pedido sin cobros: el
+  // ticket de venta interno sí.
+  bool get _tieneCobro =>
+      pagos.any((p) => p.pedidoId == widget.pedido.id && !p.esReembolso);
+  bool get _bloqueadoPorCobro => _tipo != 'ticket_venta' && !_tieneCobro;
+
   bool get _boletaExigeDni => _total >= montoBoletaConDocumento;
   bool get _dniValido => RegExp(r'^\d{8}$').hasMatch(_dni.text.trim());
   bool get _rucValido => RegExp(r'^\d{11}$').hasMatch(_ruc.text.trim());
 
   bool get _completo {
+    if (_bloqueadoPorCobro) return false;
     switch (_tipo) {
       case 'factura':
         return _rucValido &&
@@ -445,6 +452,15 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           ],
         ),
         const SizedBox(height: 14),
+        if (_bloqueadoPorCobro)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Para emitir una boleta o factura el pedido debe tener un cobro '
+              'registrado. Cóbralo primero, o emite un ticket de venta.',
+              style: const TextStyle(fontSize: 12, color: AppColors.error),
+            ),
+          ),
         _formulario(),
         Row(
           children: [

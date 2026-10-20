@@ -43,6 +43,8 @@ class TotalesCajaServidor {
   final double salidasEfectivo;
   // Incluye el monto inicial de la apertura.
   final double efectivoEsperado;
+  // Lo que debería haber en tarjeta y en digital (Yape y Plin), ya con los
+  // ingresos y salidas de cada medio.
   final double tarjeta;
   final double digital;
   final double totalRecargos;
@@ -82,8 +84,12 @@ class TotalesCajaServidor {
       ingresosEfectivo: n('ingresos_efectivo'),
       salidasEfectivo: n('salidas_efectivo'),
       efectivoEsperado: n('efectivo_esperado_en_caja'),
-      tarjeta: n('tarjeta'),
-      digital: n('yape') + n('plin'),
+      tarjeta: json['tarjeta_esperada'] != null
+          ? n('tarjeta_esperada')
+          : n('tarjeta'),
+      digital: json['digital_esperado'] != null
+          ? n('digital_esperado')
+          : n('yape') + n('plin'),
       totalRecargos: n('total_recargos'),
       numPedidos: (json['num_pedidos'] as num?)?.toInt() ?? 0,
       aperturaId: json['apertura_id']?.toString(),

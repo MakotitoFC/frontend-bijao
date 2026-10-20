@@ -25,6 +25,8 @@ Map<String, dynamic> _totales() => {
   'ingresos_efectivo': '50.00',
   'salidas_efectivo': '70.00',
   'efectivo_esperado_en_caja': '950.00',
+  'tarjeta_esperada': '405.00',
+  'digital_esperado': '240.00',
   'total_recargos': '20.50',
   'num_pedidos': 28,
   'apertura_id': 'ap-1',
@@ -167,6 +169,9 @@ void main() {
     final t = estadoCajaServidor!.totales!;
     expect(t.ventas, 1470);
     expect(t.efectivoEsperado, 950); // ya incluye el monto inicial
+    // Tarjeta y digital esperados ya cuentan ingresos y salidas de cada medio.
+    expect(t.tarjeta, 405);
+    expect(t.digital, 240);
     expect(t.ingresos, 50);
     expect(t.salidas, 70);
     expect(t.numPedidos, 28);

@@ -19,9 +19,8 @@ String? numeroWhatsapp(String? crudo) {
   return digitos;
 }
 
-Uri urlWhatsapp(String numero, String mensaje) => Uri.https('wa.me', '/$numero', {
-  'text': mensaje,
-});
+Uri urlWhatsapp(String numero, String mensaje) =>
+    Uri.https('wa.me', '/$numero', {'text': mensaje});
 
 // Abre WhatsApp (app o web) con el mensaje. Devuelve false si no se pudo abrir.
 Future<bool> abrirWhatsapp(String numero, String mensaje) async {
@@ -108,7 +107,9 @@ String textoCuentaWhatsapp({
       recargo,
     );
   }
-  s.writeln('*${conRecargo ? 'TOTAL A PAGAR' : 'TOTAL'}: ${soles(totalCobrado)}*');
+  s.writeln(
+    '*${conRecargo ? 'TOTAL A PAGAR' : 'TOTAL'}: ${soles(totalCobrado)}*',
+  );
   if (pagado > 0.001 && saldo > 0.01) {
     s
       ..writeln('Pagado: ${soles(pagado)}')

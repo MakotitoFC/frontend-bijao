@@ -11,10 +11,9 @@ class MovimientoCajaService {
   MovimientoCajaService._();
   static final MovimientoCajaService instance = MovimientoCajaService._();
 
-  // Editar y anular necesitan rutas que el backend todavía no tiene
-  // (`PUT /api/movimientos/:id` y `POST /api/movimientos/:id/anular`, ver
-  // BACKEND_PENDIENTES.md). Mientras sea false, la pantalla muestra los botones
-  // desactivados. Se cambia a true cuando el backend las entregue.
+  // Editar y anular usan `PUT /api/movimientos/:id` y
+  // `POST /api/movimientos/:id/anular`, que el backend ya entrega. En false, la
+  // pantalla muestra los botones desactivados.
   static bool edicionDisponible = true;
 
   final ApiClient _api = ApiClient.instance;

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_bijao/data/pagos_store.dart';
 import 'package:frontend_bijao/data/pedidos_store.dart';
+import 'package:frontend_bijao/models/medio_pago.dart';
+import 'package:frontend_bijao/models/pago.dart';
 import 'package:frontend_bijao/models/pedido.dart';
 import 'package:frontend_bijao/models/pedido_line.dart';
 import 'package:frontend_bijao/widgets/app_switch.dart';
@@ -38,10 +41,37 @@ Finder _emitir() => find.ancestor(
 );
 
 void main() {
-  tearDown(() => detallesPorPedido.remove(_pedidoId));
+  tearDown(() {
+    detallesPorPedido.remove(_pedidoId);
+    pagos.clear();
+  });
 
-  Future<void> abrir(WidgetTester tester, double total) async {
+  Future<void> abrir(
+    WidgetTester tester,
+    double total, {
+    bool conCobro = true,
+  }) async {
     detallesPorPedido[_pedidoId] = [_linea(total)];
+    pagos.clear();
+    if (conCobro) {
+      pagos.add(
+        Pago(
+          id: 'pg1',
+          pedidoId: _pedidoId,
+          mesaNumero: 0,
+          medioPago: const MedioPago(
+            id: 'mp1',
+            medioPago: 'Efectivo',
+            aplicaComision: false,
+          ),
+          montoAbonado: total,
+          montoComision: 0,
+          montoCobrado: total,
+          propina: 0,
+          fechaPago: DateTime(2026, 10, 20, 14, 5),
+        ),
+      );
+    }
     tester.view.physicalSize = const Size(700, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -113,5 +143,22 @@ void main() {
     await tester.pump();
     expect(puede(tester), isTrue);
     expect(find.byTooltip('Buscar en SUNAT'), findsOneWidget);
+  });
+
+  testWidgets('boleta y factura exigen un cobro; el ticket interno no', (
+    tester,
+  ) async {
+    await abrir(tester, 52, conCobro: false);
+    expect(puede(tester), isTrue); // ticket de venta
+    await tester.tap(find.text('Boleta'));
+    await tester.pump();
+    expect(find.textContaining('debe tener un cobro'), findsOneWidget);
+    expect(puede(tester), isFalse);
+    await tester.tap(find.text('Factura'));
+    await tester.pump();
+    expect(puede(tester), isFalse);
+    await tester.tap(find.text('Ticket de venta'));
+    await tester.pump();
+    expect(puede(tester), isTrue);
   });
 }
