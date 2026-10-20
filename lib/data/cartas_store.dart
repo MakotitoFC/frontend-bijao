@@ -24,7 +24,3 @@ CartaItem? cartaPorId(String? id) {
   }
   return null;
 }
-
-// Productos marcados como plato del día (estrella naranja) y disponibles.
-List<CartaItem> platosDelDia() =>
-    cartasNotifier.value.where((c) => c.platoDelDia && c.disponible).toList();

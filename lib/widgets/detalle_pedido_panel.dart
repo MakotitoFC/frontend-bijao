@@ -28,6 +28,7 @@ import 'app_toast.dart';
 import 'cambiar_entrega_dialog.dart';
 import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
+import 'boton_imprimir_whatsapp.dart';
 import 'agregar_producto_dialog.dart';
 import 'app_tag.dart';
 import 'descuento_dialog.dart';
@@ -41,6 +42,7 @@ import 'reportar_problema_dialog.dart';
 import 'tupper_dialog.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
+import 'whatsapp_cuenta_dialog.dart';
 
 const _naranjaPago = Color(0xFFF07F13);
 const _prefijoDescuento = 'Descuento: ';
@@ -278,6 +280,22 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // ---------- acciones ----------
+
+  // Manda la cuenta del pedido al cliente por WhatsApp.
+  void _enviarWhatsapp(BuildContext context) {
+    final total = totalDePedido(pedido.id);
+    final pagado = total - saldoPendienteDePedido(pedido.id);
+    final metodo = _metodoPago();
+    enviarCuentaPorWhatsapp(
+      context,
+      pedido: pedido,
+      lineas: detallesPorPedido[pedido.id] ?? const [],
+      mozo: nombreMeseroDe(pedido),
+      metodoPago: metodo == 'Sin pago' ? '' : metodo,
+      pagado: pagado > 0.001 ? pagado : 0,
+      recargo: recargoCobradoDePedido(pedido.id),
+    );
+  }
 
   void _imprimir(BuildContext context) {
     marcarPedidoImpreso(pedido.id);
@@ -954,7 +972,7 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  // Tupper para llevar: grande o mediano, con precio editable.
+  // Táper para llevar: grande o mediano, con precio editable.
   Future<void> _editarTupper(BuildContext context) async {
     final lineas = detallesPorPedido[pedido.id] ?? [];
     if (lineas
@@ -962,7 +980,7 @@ class DetallePedidoPanel extends StatelessWidget {
         .any((l) => montoPagadoDeLinea(l.id).abs() > 0.001)) {
       showAppToast(
         context,
-        'El tupper ya tiene pagos registrados.',
+        'El táper ya tiene pagos registrados.',
         type: ToastType.error,
       );
       return;
@@ -984,7 +1002,6 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  // Tag naranja: agrega al pedido el plato del día registrado en Productos.
   // Agrega una promoción tal como la configuró el admin al pedido.
   Future<void> _agregarPromocion(BuildContext context) async {
     if (!_puedeModificar(context)) return;
@@ -1157,7 +1174,7 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           if (tupper > 0)
             _filaTotal(
-              'Tupper',
+              'Táper',
               tupper,
               onEditar: () => _editarTupper(context),
             ),
@@ -1176,15 +1193,24 @@ class DetallePedidoPanel extends StatelessWidget {
                   etiqueta: 'Promoción',
                   icono: LucideIcons.tag,
                   activo: false,
-                  color: AppColors.platoDelDia,
+                  color: AppColors.naranja,
                   onTap: () => _agregarPromocion(context),
                 ),
                 AppTag(
                   etiqueta: 'Propina',
                   icono: LucideIcons.handCoins,
                   activo: false,
-                  color: AppColors.platoDelDia,
+                  color: AppColors.naranja,
                   onTap: () => _editarPropina(context),
+                ),
+                // También aquí: un cliente puede pedir solo un táper.
+                AppTag(
+                  etiqueta: 'Táper',
+                  icono: LucideIcons.package,
+                  activo: false,
+                  color: Colors.black87,
+                  colorBorde: Colors.grey.shade300,
+                  onTap: () => _editarTupper(context),
                 ),
               ],
             ),
@@ -1506,7 +1532,7 @@ class DetallePedidoPanel extends StatelessWidget {
                             : (esLineaPropina(l)
                                   ? 'Quitar propina'
                                   : esLineaTupper(l)
-                                  ? 'Quitar tupper'
+                                  ? 'Quitar táper'
                                   : 'Quitar descuento'),
                         onTap: () => _quitarLinea(context, l),
                       ),
@@ -1534,7 +1560,7 @@ class DetallePedidoPanel extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           color: e.esCambio
-                              ? AppColors.platoDelDia
+                              ? AppColors.naranja
                               : Colors.grey.shade700,
                         ),
                       ),
@@ -1555,7 +1581,7 @@ class DetallePedidoPanel extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.platoDelDia,
+                              color: AppColors.naranja,
                             ),
                           ),
                         ),
@@ -1837,13 +1863,9 @@ class DetallePedidoPanel extends StatelessWidget {
           children: [
             Expanded(
               flex: 3,
-              child: FilledButton.icon(
-                onPressed: () => _imprimir(context),
-                icon: const Icon(LucideIcons.printer, size: 16),
-                label: const Text('Imprimir', style: texto),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.navbar,
-                ),
+              child: BotonImprimirWhatsapp(
+                onImprimir: () => _imprimir(context),
+                onWhatsapp: () => _enviarWhatsapp(context),
               ),
             ),
             const SizedBox(width: 12),

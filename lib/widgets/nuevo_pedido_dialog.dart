@@ -35,10 +35,8 @@ import '../utils/error_disponibilidad.dart';
 import '../utils/uuid_helper.dart';
 import 'app_search_field.dart';
 import 'app_tag.dart';
-import 'estrella_plato_del_dia.dart';
 import 'app_toast.dart';
 import 'dotted_divider.dart';
-import 'plato_del_dia_picker.dart';
 import 'pin_supervisor_dialog.dart';
 import 'imagen_plato.dart';
 import 'plato_libre_dialog.dart';
@@ -365,13 +363,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         r.precioUnitario,
       ),
     );
-  }
-
-  // Tag naranja del resumen: agrega el plato del día registrado en Productos.
-  Future<void> _abrirPlatoDelDia() async {
-    final item = await elegirPlatoDelDia(context);
-    if (item == null || !mounted) return;
-    await _abrirOpciones(item, acento: AppColors.platoDelDia);
   }
 
   // Modal para agregar un plato libre / pedido rápido que no está en la carta.
@@ -1147,12 +1138,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                 fit: StackFit.expand,
                 children: [
                   _imagen(item),
-                  if (item.platoDelDia)
-                    const Positioned(
-                      top: 4,
-                      right: 4,
-                      child: EstrellaPlatoDelDia(),
-                    ),
                 ],
               ),
             ),
@@ -1181,7 +1166,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                     ),
                     decoration: BoxDecoration(
                       color: estado.vendible
-                          ? AppColors.platoDelDia
+                          ? AppColors.naranja
                           : AppColors.error,
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -1271,7 +1256,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                         ),
                         decoration: BoxDecoration(
                           color: estado.vendible
-                              ? AppColors.platoDelDia
+                              ? AppColors.naranja
                               : AppColors.error,
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -1284,12 +1269,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                           ),
                         ),
                       ),
-                    ),
-                  if (item.platoDelDia)
-                    const Positioned(
-                      top: 6,
-                      right: 6,
-                      child: EstrellaPlatoDelDia(),
                     ),
                 ],
               ),
@@ -1494,7 +1473,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               etiqueta: 'Promoción',
               icono: LucideIcons.tag,
               activo: false,
-              color: AppColors.platoDelDia,
+              color: AppColors.naranja,
               onTap: _abrirPromocion,
             ),
             AppTag(
@@ -1505,21 +1484,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               onTap: _abrirPlatoLibre,
             ),
             AppTag(
-              etiqueta: 'Plato del día',
-              icono: LucideIcons.chefHat,
-              activo: false,
-              color: AppColors.platoDelDia,
-              onTap: _abrirPlatoDelDia,
-            ),
-            AppTag(
               etiqueta: 'Propina',
               icono: LucideIcons.handCoins,
               activo: false,
-              color: AppColors.platoDelDia,
+              color: AppColors.naranja,
               onTap: _abrirPropina,
             ),
             AppTag(
-              etiqueta: 'Tupper',
+              etiqueta: 'Táper',
               icono: LucideIcons.package,
               activo: false,
               color: Colors.black87,
@@ -1669,7 +1641,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
     return Row(
       children: [
-        Expanded(child: Text('Tupper', style: estilo)),
+        Expanded(child: Text('Táper', style: estilo)),
         InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: _abrirTupper,
@@ -1838,7 +1810,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                     style: TextStyle(
                       fontSize: 10,
                       color: e.esCambio
-                          ? AppColors.platoDelDia
+                          ? AppColors.naranja
                           : Colors.grey.shade500,
                     ),
                   ),
@@ -1857,7 +1829,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.platoDelDia,
+                          color: AppColors.naranja,
                         ),
                       ),
                     ),

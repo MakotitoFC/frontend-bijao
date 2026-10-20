@@ -128,7 +128,7 @@ class PromocionesDisponiblesDialog extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.platoDelDia.withValues(alpha: 0.12),
+                    color: AppColors.naranja.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -136,7 +136,7 @@ class PromocionesDisponiblesDialog extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.platoDelDia,
+                      color: AppColors.naranja,
                     ),
                   ),
                 ),
@@ -383,7 +383,7 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: elegido.esCambio
-              ? AppColors.platoDelDia
+              ? AppColors.naranja
               : Colors.grey.shade200,
         ),
       ),
@@ -425,7 +425,7 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.platoDelDia,
+                  color: AppColors.naranja,
                 ),
               ),
             ),

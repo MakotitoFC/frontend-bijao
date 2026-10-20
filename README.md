@@ -133,7 +133,7 @@ Los pedidos pagados, cancelados o anulados salen de la cola.
 - *Delivery:* se capturan cliente, celular, dirección y notas, y se arman los productos.
 - Productos: buscador, pestañas por categoría y tarjetas. Al tocar una abre las opciones
   (presentación, agregados, nota, cantidad). El carrito vive en el resumen de la derecha.
-- Botones bajo el total: **Plato del día** (naranja), **Propina** (naranja) y **Tupper**
+- Botones bajo el total: **Propina** (naranja) y **Táper**
   (gris). Se puede activar el descuento de empleado si está habilitado.
 - "Imprimir" solo muestra un aviso (no hay impresión real); "Confirmar pedido"
   registra el pedido (estado `pendiente`), ocupa la mesa y descuenta insumos según la
@@ -148,12 +148,10 @@ Los pedidos pagados, cancelados o anulados salen de la cola.
 - "Agregar producto" (desde la carta). Si el pedido estaba `listo` o `entregado`, vuelve
   a `pendiente` para que cocina lo prepare.
 - Totales: subtotal, cargo por delivery, descuento de productos, **Descuento extra**,
-  ajustes por devolución, propina, tupper, pagado, saldo pendiente y total.
+  ajustes por devolución, propina, táper, pagado, saldo pendiente y total.
 - **Descuento extra** (lápiz): abre tickets de descuento: Cliente frecuente (10 %),
   Cortesía de la casa (15 %), Empleado (si está habilitado), S/ 5, S/ 10 y uno
   personalizado. Un ticket aplicado se puede quitar. No puede superar el saldo.
-- **Plato del día:** elige entre los productos marcados con estrella naranja
-  (`CartaItem.platoDelDia`) y lo agrega al pedido.
 - **Promoción** (botón naranja, en Nuevo pedido y en el detalle): lista las promociones
   disponibles. La promoción llega armada con el producto incluido de cada hueco; el mozo
   no agrega nada. Si el cliente lo pide, usa **Cambiar** para reemplazar un producto por
@@ -162,7 +160,7 @@ Los pedidos pagados, cancelados o anulados salen de la cola.
   En una línea ya agregada, **Cambiar productos** reajusta el stock (devuelve lo del
   producto que sale y descuenta el nuevo).
 - **Propina:** porcentajes sugeridos (5, 10, 15 y el sugerido de configuración) o monto
-  libre. **Tupper:** grande o mediano, con cantidad y precio por unidad editable.
+  libre. **Táper:** grande o mediano, con cantidad y precio por unidad editable.
   Ninguno se puede editar si ya tiene pagos.
 - Botones: **Imprimir** (boleta), **Devolución**, **Pagar** y **Pago compartido**.
   En *delivery* no hay Devolución ni Pago compartido.
@@ -187,8 +185,8 @@ ocupadas.
 Carta en tarjetas con pestañas por categoría. El administrador puede crear, editar,
 activar/desactivar y eliminar productos y categorías (la edición de categoría es en
 línea). Formulario del producto: nombre, descripción, imagen, categoría, precio, costo,
-stock, SKU, límite de agregados, **extras sueltos y grupos de extras** y la marca
-**Plato del día** (estrella naranja en la tarjeta), **subcategoría** (se elige tras la
+stock, SKU, límite de agregados, **extras sueltos y grupos de extras**,
+**subcategoría** (se elige tras la
 categoría) y **tamaños con precio propio** (`carta_variante`: nombre, precio público y
 personal, peso mín./máx. opcional). Las subcategorías se administran desde el diálogo de
 categorías (botón de cada fila). El mesero solo consulta.
@@ -262,7 +260,7 @@ que no son productos usan un `cartaId` especial y no se muestran en Cocina:
 | `cargo-delivery` | "Cargo por delivery" | positivo |
 | `ajuste-manual` | `Descuento: <nombre>` | negativo |
 | `ajuste-manual` | `Propina: mesero` | positivo |
-| `ajuste-manual` | `Tupper: Grande` / `Tupper: Mediano` (cantidad × precio) | positivo |
+| `ajuste-manual` | `Táper: Grande` / `Táper: Mediano` (cantidad × precio) | positivo |
 | `ajuste-manual` | `Reembolso: …`, `Cambio de producto: …`, `Nota de crédito: …` | negativo |
 
 Los prefijos están en `pedidos_store.dart`. Si en BD se modelan distinto (por ejemplo
@@ -307,9 +305,9 @@ guardan las diferencias.
 
 - **Zonas de mesa:** hoy `zonasMesas` es solo una lista en memoria (la zona viaja en
   `Mesa.zona`). Falta definir si es tabla propia o campo de `mesa`.
-- **Producto:** falta el campo booleano `plato_del_dia` y las imágenes (`imagen_url`;
+- **Producto:** faltan las imágenes (`imagen_url`;
   hoy se guardan en memoria como bytes).
-- **Tuppers:** los precios (grande y mediano) están en `config`; definir dónde se
+- **Tápers:** los precios (grande y mediano) están en `config`; definir dónde se
   guardan.
 - **Incidencias, notas de crédito y vales:** no existen en la BD todavía.
 - **Pago:** el campo `pagador` (pago compartido) no existe todavía en `pago`.

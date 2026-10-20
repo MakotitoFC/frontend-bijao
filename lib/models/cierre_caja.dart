@@ -19,6 +19,9 @@ class CierreCaja {
   final double diferenciaTarjeta; // diferencia_tarjeta
   final double diferenciaDigital; // diferencia_digital
   final String? notas; // notas
+  // Ingresos y salidas extra (movimientos de caja) del periodo.
+  final double totalIngresos;
+  final double totalEgresos;
 
   const CierreCaja({
     required this.id,
@@ -40,6 +43,8 @@ class CierreCaja {
     required this.diferenciaTarjeta,
     required this.diferenciaDigital,
     this.notas,
+    this.totalIngresos = 0,
+    this.totalEgresos = 0,
   });
 
   // monto_declarado: lo que el cajero declara en total.

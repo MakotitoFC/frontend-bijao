@@ -147,7 +147,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
       height: 32,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.platoDelDia),
+        border: Border.all(color: AppColors.naranja),
       ),
       child: Row(
         children: [
@@ -177,7 +177,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
             customBorder: const CircleBorder(),
             child: const Padding(
               padding: EdgeInsets.all(5),
-              child: Icon(Icons.check, size: 16, color: AppColors.platoDelDia),
+              child: Icon(Icons.check, size: 16, color: AppColors.naranja),
             ),
           ),
           InkWell(
@@ -196,7 +196,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
   // Tag naranja de una subcategoría: al tocarlo se renombra; la x la elimina.
   Widget _tagSub(CategoriaComida cat, Subcategoria s) {
     return Material(
-      color: AppColors.platoDelDia,
+      color: AppColors.naranja,
       shape: const StadiumBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -263,8 +263,8 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
                     _errorSub = null;
                   }),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.platoDelDia,
-                    side: const BorderSide(color: AppColors.platoDelDia),
+                    foregroundColor: AppColors.naranja,
+                    side: const BorderSide(color: AppColors.naranja),
                     shape: const StadiumBorder(),
                     minimumSize: const Size(0, 32),
                     padding: const EdgeInsets.symmetric(horizontal: 12),

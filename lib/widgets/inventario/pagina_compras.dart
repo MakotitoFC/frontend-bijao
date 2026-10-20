@@ -128,7 +128,7 @@ class _PaginaComprasState extends State<PaginaCompras> {
                               const AppTag(
                                 etiqueta: 'Borrador',
                                 activo: false,
-                                color: AppColors.platoDelDia,
+                                color: AppColors.naranja,
                               ),
                           ],
                         ),

@@ -39,7 +39,7 @@ typedef ProductoConfigurado = ({
 class ProductoOpcionesDialog extends StatefulWidget {
   final CartaItem item;
   final bool esAdmin;
-  // Color del botón principal (ej. naranja para el plato del día).
+  // Color del botón principal (ej. naranja para promociones).
   final Color? acento;
   // Productos que ya están en el carrito (aún sin guardar): cuentan contra las
   // porciones que quedan hoy.

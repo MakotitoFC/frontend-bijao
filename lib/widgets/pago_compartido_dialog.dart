@@ -762,7 +762,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.platoDelDia,
+                        color: AppColors.naranja,
                       ),
                     ),
                   ),

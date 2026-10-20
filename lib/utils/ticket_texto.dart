@@ -123,7 +123,7 @@ String soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
 
 // Detalle de un producto debajo de su nombre: tamaño, presentación, componentes
 // del combo, extras y nota.
-List<String> _detalleDeLinea(PedidoLine l) => [
+List<String> detalleDeLinea(PedidoLine l) => [
   if (l.variante != null) 'Variante: ${l.variante!.nombre}',
   if (l.presentacion != null)
     'Presentacion: ${l.presentacion!.unidad.unidadPresentacion} '
@@ -195,7 +195,7 @@ List<LineaTicket> ticketComanda({
         const LineaTicket('      > [PARA LLEVAR / TAPER] <', negrita: true),
       );
     }
-    for (final d in _detalleDeLinea(l)) {
+    for (final d in detalleDeLinea(l)) {
       for (final r in envolver(d, anchoTicket - 6, sangria: '  ')) {
         salida.add(LineaTicket('      $r'));
       }
@@ -322,7 +322,7 @@ List<LineaTicket> ticketBoleta({
     for (final r in partes.skip(1)) {
       salida.add(LineaTicket(r));
     }
-    for (final d in _detalleDeLinea(l)) {
+    for (final d in detalleDeLinea(l)) {
       for (final r in envolver(d, anchoTicket - 4, sangria: '  ')) {
         salida.add(LineaTicket('    $r'));
       }

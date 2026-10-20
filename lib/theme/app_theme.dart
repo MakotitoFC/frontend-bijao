@@ -14,8 +14,8 @@ class AppColors {
   static const Color navbar = Color(0xFF1F1F1F);
   static const Color header = Color(0xFFFFFFFC);
 
-  // Naranja del "Plato del día" (estrella de la card y botones asociados).
-  static const Color platoDelDia = Color(0xFFF07F13);
+  // Naranja de acento (promociones, propina y avisos).
+  static const Color naranja = Color(0xFFF07F13);
 
   static const Color success = Color(0xFF2E7D4F);
   static const Color error = Color(0xFFC24444);

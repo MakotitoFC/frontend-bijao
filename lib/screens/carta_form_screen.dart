@@ -1034,7 +1034,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
               child: Text(
                 'Al guardar, los tamaños que ya tenía este plato se '
                 'desactivarán (no se borran).',
-                style: TextStyle(fontSize: 12, color: AppColors.platoDelDia),
+                style: TextStyle(fontSize: 12, color: AppColors.naranja),
               ),
             ),
           if (_tieneTamanos) ...[

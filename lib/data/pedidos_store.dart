@@ -212,8 +212,8 @@ double propinaDePedido(String pedidoId) => (detallesPorPedido[pedidoId] ?? [])
     .where(esLineaPropina)
     .fold(0.0, (s, l) => s + l.precioTotalLinea);
 
-// Tupper para llevar: una línea de ajuste por tamaño (grande/mediano).
-const ajusteTupper = 'Tupper: ';
+// Táper para llevar: una línea de ajuste por tamaño (grande/mediano).
+const ajusteTupper = 'Táper: ';
 const _tamanoTupperGrande = 'Grande';
 const _tamanoTupperMediano = 'Mediano';
 

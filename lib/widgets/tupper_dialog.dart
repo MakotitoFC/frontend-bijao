@@ -70,7 +70,7 @@ class _TupperDialogState extends State<TupperDialog> {
   @override
   Widget build(BuildContext context) {
     return ModalPago(
-      titulo: 'Tupper',
+      titulo: 'Táper',
       subtitulo: 'Elige el tamaño y ajusta su precio',
       child: Padding(
         padding: EdgeInsets.only(
@@ -80,14 +80,14 @@ class _TupperDialogState extends State<TupperDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _tamano(
-              'Tupper grande',
+              'Táper grande',
               _grande,
               _precioGrande,
               (v) => setState(() => _grande = v),
             ),
             const SizedBox(height: 12),
             _tamano(
-              'Tupper mediano',
+              'Táper mediano',
               _mediano,
               _precioMediano,
               (v) => setState(() => _mediano = v),
@@ -97,7 +97,7 @@ class _TupperDialogState extends State<TupperDialog> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Total tupper',
+                    'Total táper',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),

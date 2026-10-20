@@ -18,7 +18,6 @@ import '../utils/blur_dialog.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
-import '../widgets/estrella_plato_del_dia.dart';
 import '../widgets/imagen_plato.dart';
 import '../widgets/tamano_rapido_dialog.dart';
 import 'carta_form_screen.dart';
@@ -542,12 +541,6 @@ class _CartaScreenState extends State<CartaScreen> {
                           ],
                         ),
                       ),
-                      if (item.platoDelDia)
-                        const Positioned(
-                          bottom: 8,
-                          left: 8,
-                          child: EstrellaPlatoDelDia(),
-                        ),
                       if (_puedeEditar)
                         Positioned(
                           bottom: 8,
@@ -717,7 +710,7 @@ class _CartaScreenState extends State<CartaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: alerta ? AppColors.error : AppColors.platoDelDia,
+        color: alerta ? AppColors.error : AppColors.naranja,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(

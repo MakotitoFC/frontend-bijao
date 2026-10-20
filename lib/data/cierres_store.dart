@@ -1,4 +1,5 @@
 import '../models/cierre_caja.dart';
+import 'movimientos_caja_store.dart';
 import 'pagos_store.dart';
 import 'pedidos_store.dart';
 
@@ -7,14 +8,13 @@ import 'pedidos_store.dart';
 // TODO: reemplazar por `cierres_caja` real al conectar el backend.
 final List<CierreCaja> cierresCaja = [];
 
-final DateTime _apertura = DateTime.now();
-
-// La caja actual empieza en el último cierre; si aún no hubo ninguno, en el
-// primer cobro registrado (o en la apertura si todavía no hay cobros).
+// La caja actual empieza en el último cierre; si aún no hubo ninguno, a las
+// 00:00 de hoy (igual que el servidor), para que entren los ingresos y salidas
+// de la mañana aunque todavía no haya cobros.
 DateTime get inicioCajaActual {
   if (cierresCaja.isNotEmpty) return cierresCaja.first.fechaCierre;
-  if (pagos.isEmpty) return _apertura;
-  return pagos.map((p) => p.fechaPago).reduce((a, b) => a.isBefore(b) ? a : b);
+  final h = DateTime.now();
+  return DateTime(h.year, h.month, h.day);
 }
 
 class TotalesCaja {
@@ -81,6 +81,9 @@ CierreCaja registrarCierreCaja({
   String? notas,
 }) {
   final t = totalesCajaActual();
+  // Lo que debería haber: ventas más ingresos menos salidas, por grupo.
+  final esperado = netoPorGrupo(inicioCajaActual);
+  final extra = totalesMovimientos(inicioCajaActual);
   final cierre = CierreCaja(
     id: DateTime.now().microsecondsSinceEpoch.toString(),
     usuarioId: usuarioId,
@@ -98,9 +101,11 @@ CierreCaja registrarCierreCaja({
     declaradoTarjeta: declaradoTarjeta,
     declaradoDigital: declaradoDigital,
     // Lo que debería haber en la caja vs. lo que se declaró.
-    diferenciaEfectivo: declaradoEfectivo - (montoInicial + t.efectivo),
-    diferenciaTarjeta: declaradoTarjeta - t.tarjeta,
-    diferenciaDigital: declaradoDigital - (t.yape + t.plin),
+    totalIngresos: extra.ingresos,
+    totalEgresos: extra.egresos,
+    diferenciaEfectivo: declaradoEfectivo - (montoInicial + esperado.efectivo),
+    diferenciaTarjeta: declaradoTarjeta - esperado.tarjeta,
+    diferenciaDigital: declaradoDigital - esperado.digital,
     notas: notas,
   );
   cierresCaja.insert(0, cierre);

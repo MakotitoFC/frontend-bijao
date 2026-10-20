@@ -12,7 +12,7 @@ class AppTag extends StatelessWidget {
   final IconData? icono;
   final VoidCallback? onQuitar;
   final String tooltipQuitar;
-  // Color propio (ej. naranja del plato del día): seleccionado se rellena con él
+  // Color propio (ej. naranja de la promoción): seleccionado se rellena con él
   // y sin seleccionar usa su trazo y texto.
   final Color? color;
   // Trazo propio cuando no está seleccionado (por defecto el del color).

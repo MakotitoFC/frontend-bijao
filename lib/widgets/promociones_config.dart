@@ -311,7 +311,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
                           runSpacing: 4,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            _chip(p.etiqueta, AppColors.platoDelDia),
+                            _chip(p.etiqueta, AppColors.naranja),
                             _estadoChip(p),
                             if (vigencia.isNotEmpty)
                               Text(

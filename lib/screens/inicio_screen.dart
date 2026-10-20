@@ -309,7 +309,7 @@ class _InicioScreenState extends State<InicioScreen> {
     );
     final cobrarCard = _Kpi(
       icono: LucideIcons.banknote,
-      color: AppColors.platoDelDia,
+      color: AppColors.naranja,
       titulo: 'Por cobrar',
       valor: _soles(r.porCobrar),
       detalle:

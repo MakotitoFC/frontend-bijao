@@ -353,7 +353,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.platoDelDia.withValues(alpha: 0.1),
+                color: AppColors.naranja.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(

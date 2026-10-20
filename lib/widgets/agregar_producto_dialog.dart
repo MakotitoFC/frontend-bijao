@@ -21,7 +21,7 @@ import 'producto_opciones_dialog.dart';
 import 'dialogo_app.dart';
 
 // Agrega productos de la carta a un pedido ya registrado. Devuelve true si se
-// agregó algo. (El plato del día se agrega con su propio tag.)
+// agregó algo.
 class AgregarProductoDialog extends StatefulWidget {
   final Pedido pedido;
   final bool esAdmin;
@@ -256,7 +256,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: estado.vendible
-                              ? AppColors.platoDelDia
+                              ? AppColors.naranja
                               : AppColors.error,
                         ),
                       ),

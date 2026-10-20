@@ -1,16 +1,19 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../widgets/dialogo_app.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cierres_store.dart';
+import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
+import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
+import '../models/movimiento_caja.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
@@ -19,6 +22,7 @@ import '../widgets/app_search_field.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/detalle_pedido_panel.dart';
+import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/campo_texto.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
@@ -382,20 +386,101 @@ class CajaScreen extends StatefulWidget {
 }
 
 class _CajaScreenState extends State<CajaScreen> {
+  // Si no se pudieron traer los movimientos del servidor, aquí va el motivo.
+  String? _errorMovimientos;
+
   @override
   void initState() {
     super.initState();
-    // Los pagos viven en el servidor: se traen los del día al abrir la caja.
-    PagoService.instance
-        .cargarDelDia()
-        .then((_) {
-          if (mounted) setState(() {});
-        })
-        .catchError((Object _) {});
+    _cargar();
+  }
+
+  // Trae lo que vive en el servidor: los cobros del día y los ingresos y
+  // salidas de la caja actual.
+  Future<void> _cargar() async {
+    try {
+      await PagoService.instance.cargarDelDia();
+    } catch (_) {}
+    if (mounted) setState(() {});
+    try {
+      try {
+        await MovimientoCajaService.instance.cargarCategorias();
+      } catch (_) {
+        // Sin categorías del servidor se usan las de partida.
+      }
+      await MovimientoCajaService.instance.cargarDelTurno(inicioCajaActual);
+      if (mounted) setState(() => _errorMovimientos = null);
+    } catch (e) {
+      if (mounted) setState(() => _errorMovimientos = e.toString());
+    }
+  }
+
+  Future<void> _registrar(TipoMovimiento tipo) async {
+    final r = await showBlurDialog<MovimientoNuevo>(
+      context: context,
+      builder: (_) => MovimientoCajaDialog(tipo: tipo),
+    );
+    if (r == null || !mounted) return;
+    try {
+      await MovimientoCajaService.instance.registrar(
+        categoria: r.categoria,
+        monto: r.monto,
+        medio: r.medio,
+        nota: r.nota,
+      );
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        '${tipo.etiqueta} de ${_soles(r.monto)} registrado en ${r.medio.medioPago}.',
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
+  Future<void> _editar(MovimientoCaja m) async {
+    final r = await showBlurDialog<MovimientoNuevo>(
+      context: context,
+      builder: (_) => MovimientoCajaDialog(tipo: m.tipo, existente: m),
+    );
+    if (r == null || !mounted) return;
+    try {
+      await MovimientoCajaService.instance.editar(
+        m,
+        categoria: r.categoria,
+        monto: r.monto,
+        medio: r.medio,
+        nota: r.nota,
+      );
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(context, 'Movimiento corregido.', type: ToastType.success);
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
+  Future<void> _anular(MovimientoCaja m) async {
+    final motivo = await showBlurDialog<String>(
+      context: context,
+      builder: (_) => AnularMovimientoDialog(movimiento: m),
+    );
+    if (motivo == null || !mounted) return;
+    try {
+      await MovimientoCajaService.instance.anular(m, motivo: motivo);
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(context, 'Movimiento anulado.', type: ToastType.success);
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
   }
 
   Future<void> _cerrarCaja() async {
-    final t = totalesCajaActual();
+    final esperado = netoPorGrupo(inicioCajaActual);
+    final extra = totalesMovimientos(inicioCajaActual);
     final inicial = TextEditingController(text: '0');
     final efectivo = TextEditingController();
     final tarjeta = TextEditingController();
@@ -414,11 +499,20 @@ class _CajaScreenState extends State<CajaScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Según los cobros: efectivo ${_soles(t.efectivo)}, '
-                  'tarjeta ${_soles(t.tarjeta)}, '
-                  'digital (Yape/Plin) ${_soles(t.yape + t.plin)}.',
+                  'Debería haber, contando cobros, ingresos y salidas: '
+                  'efectivo ${_soles(esperado.efectivo)} (más el monto inicial), '
+                  'tarjeta ${_soles(esperado.tarjeta)}, '
+                  'digital (Yape/Plin) ${_soles(esperado.digital)}.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                 ),
+                if (extra.ingresos > 0 || extra.egresos > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Incluye ${_soles(extra.ingresos)} de ingresos y '
+                    '${_soles(extra.egresos)} de salidas.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 _campoDialogo(inicial, 'Monto inicial (S/)'),
                 _campoDialogo(efectivo, 'Efectivo declarado (S/)'),
@@ -460,6 +554,8 @@ class _CajaScreenState extends State<CajaScreen> {
       type: ToastType.success,
       titulo: 'Caja cerrada',
     );
+    // La caja nueva empieza vacía: se vuelve a leer lo que haya del servidor.
+    _cargar();
   }
 
   Widget _campoDialogo(TextEditingController c, String etiqueta) => Padding(
@@ -474,6 +570,14 @@ class _CajaScreenState extends State<CajaScreen> {
   @override
   Widget build(BuildContext context) {
     final t = totalesCajaActual();
+    final desde = inicioCajaActual;
+    final resumen = resumenPorMedio(desde);
+    final extra = totalesMovimientos(desde);
+    final ventas = resumen.fold(0.0, (s, f) => s + f.ventas);
+    final efectivoEsperado = resumen
+        .where((f) => grupoDeMedio(f.medio) == 'efectivo')
+        .fold(0.0, (s, f) => s + f.neto);
+    final movimientos = movimientosDesde(desde);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SingleChildScrollView(
@@ -501,7 +605,7 @@ class _CajaScreenState extends State<CajaScreen> {
                               ),
                             ),
                             Text(
-                              'Desde ${_fecha(inicioCajaActual)} · ${t.pedidos} pedido(s) cobrado(s)',
+                              'Desde ${_fecha(desde)} · ${t.pedidos} pedido(s) cobrado(s)',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,
@@ -525,17 +629,54 @@ class _CajaScreenState extends State<CajaScreen> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      _dato('Efectivo', t.efectivo),
-                      _dato('Tarjeta', t.tarjeta),
-                      _dato('Yape', t.yape),
-                      _dato('Plin', t.plin),
-                      _dato('Delivery', t.delivery),
-                      _dato('Total', t.general, destacado: true),
+                      _dato('Ventas', ventas),
+                      _dato('Ingresos', extra.ingresos),
+                      _dato('Salidas', extra.egresos),
+                      _dato(
+                        'Efectivo esperado',
+                        efectivoEsperado,
+                        destacado: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'El efectivo esperado es ventas + ingresos − salidas en '
+                    'efectivo; falta sumar el monto inicial, que se escribe al cerrar.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Por medio de pago',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  _tablaCentrada(
+                    [
+                      _col('Medio'),
+                      _col('Ventas'),
+                      _col('Ingresos'),
+                      _col('Salidas'),
+                      _col('Neto'),
+                    ],
+                    [
+                      for (final f in resumen)
+                        DataRow(
+                          cells: [
+                            _texto(f.medio, fuerte: true),
+                            _texto(_soles(f.ventas)),
+                            _texto(_soles(f.ingresos)),
+                            _texto(_soles(f.egresos)),
+                            _texto(_soles(f.neto), fuerte: true),
+                          ],
+                        ),
                     ],
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            _panelMovimientos(movimientos),
             const SizedBox(height: 16),
             Container(
               decoration: _panel,
@@ -571,6 +712,8 @@ class _CajaScreenState extends State<CajaScreen> {
                         _col('Plin'),
                         _col('Delivery'),
                         _col('Total'),
+                        _col('Ingresos'),
+                        _col('Salidas'),
                         _col('Declarado'),
                         _col('Dif. efectivo'),
                         _col('Notas'),
@@ -582,6 +725,209 @@ class _CajaScreenState extends State<CajaScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Ingresos y salidas de la caja actual, con los botones para registrarlos.
+  Widget _panelMovimientos(List<MovimientoCaja> movimientos) {
+    return Container(
+      decoration: _panel,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text(
+                'Ingresos y salidas',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              FilledButton.icon(
+                onPressed: () => _registrar(TipoMovimiento.ingreso),
+                icon: const Icon(LucideIcons.plus, size: 16),
+                label: const Text('Ingreso'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: () => _registrar(TipoMovimiento.egreso),
+                icon: const Icon(LucideIcons.minus, size: 16),
+                label: const Text('Salida'),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              ),
+            ],
+          ),
+          if (_errorMovimientos != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'No se pudieron leer los movimientos del servidor: '
+                    '$_errorMovimientos',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.error,
+                    ),
+                  ),
+                ),
+                TextButton(onPressed: _cargar, child: const Text('Reintentar')),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          if (movimientos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'Aún no hay ingresos ni salidas en esta caja',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          else
+            for (final m in movimientos) _filaMovimiento(m),
+        ],
+      ),
+    );
+  }
+
+  String _hora(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  Widget _filaMovimiento(MovimientoCaja m) {
+    final esIngreso = m.tipo == TipoMovimiento.ingreso;
+    final color = m.anulado
+        ? Colors.grey.shade500
+        : (esIngreso ? AppColors.primaryGreen : AppColors.error);
+    final detalle = [
+      _hora(m.fecha),
+      if ((m.nota ?? '').isNotEmpty) m.nota!,
+      if ((m.registradoPor ?? '').isNotEmpty) 'por ${m.registradoPor}',
+    ].join(' · ');
+    final puedeCambiar = MovimientoCajaService.edicionDisponible && !m.anulado;
+    final tooltipBloqueado = m.anulado
+        ? 'Ya está anulado'
+        : 'Disponible cuando el servidor lo habilite';
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  esIngreso
+                      ? LucideIcons.arrowDownLeft
+                      : LucideIcons.arrowUpRight,
+                  size: 18,
+                  color: color,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${m.categoriaNombre} · ${m.medioPagoNombre}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: m.anulado
+                            ? Colors.grey.shade500
+                            : Colors.black87,
+                        decoration: m.anulado
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
+                    Text(
+                      detalle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${esIngreso ? '+' : '-'}${_soles(m.monto)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                  decoration: m.anulado ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ],
+          ),
+          if (m.anulado)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 46),
+              child: Text(
+                'Anulado${(m.motivoAnulacion ?? '').isNotEmpty ? ': ${m.motivoAnulacion}' : ''}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
+              ),
+            )
+          else if (m.editado)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 46),
+              child: Text(
+                'Editado',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 4,
+              children: [
+                Tooltip(
+                  message: puedeCambiar ? '' : tooltipBloqueado,
+                  child: TextButton.icon(
+                    onPressed: puedeCambiar ? () => _editar(m) : null,
+                    icon: const Icon(LucideIcons.pencil, size: 14),
+                    label: const Text('Editar'),
+                  ),
+                ),
+                Tooltip(
+                  message: puedeCambiar ? '' : tooltipBloqueado,
+                  child: TextButton.icon(
+                    onPressed: puedeCambiar ? () => _anular(m) : null,
+                    icon: const Icon(LucideIcons.ban, size: 14),
+                    label: const Text('Anular'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -600,6 +946,8 @@ class _CajaScreenState extends State<CajaScreen> {
         _texto(_soles(c.totalPlin)),
         _texto(_soles(c.totalDelivery)),
         _texto(_soles(c.totalGeneral), fuerte: true),
+        _texto(_soles(c.totalIngresos)),
+        _texto(_soles(c.totalEgresos)),
         _texto(_soles(c.montoDeclarado)),
         _celda(
           Text(

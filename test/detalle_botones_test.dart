@@ -53,17 +53,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('hay un solo botón Pagar y ya no están Tupper ni Plato del día', (
-    tester,
-  ) async {
+  testWidgets(
+    'hay un solo botón Pagar y el detalle trae Promoción, Propina y Táper',
+    (tester) async {
+      await abrir(tester, _pedido());
+      expect(find.text('Pagar'), findsOneWidget);
+      expect(find.text('Pago compartido'), findsNothing);
+      // Un cliente puede pedir solo un táper: también se agrega desde el detalle.
+      expect(find.text('Táper'), findsOneWidget);
+      expect(find.text('Promoción'), findsOneWidget);
+      expect(find.text('Propina'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('Táper en el detalle abre el diálogo de tápers', (tester) async {
     await abrir(tester, _pedido());
-    expect(find.text('Pagar'), findsOneWidget);
-    expect(find.text('Pago compartido'), findsNothing);
-    expect(find.text('Tupper'), findsNothing);
-    expect(find.text('Plato del día'), findsNothing);
-    // Siguen Promoción y Propina.
-    expect(find.text('Promoción'), findsOneWidget);
-    expect(find.text('Propina'), findsOneWidget);
+    await tester.tap(find.text('Táper'));
+    await tester.pumpAndSettle();
+    expect(find.text('Táper grande'), findsOneWidget);
+    expect(find.text('Táper mediano'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

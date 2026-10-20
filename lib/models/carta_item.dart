@@ -35,7 +35,6 @@ class CartaItem {
   final Uint8List? imagenBytes;
   // Foto del plato: dirección guardada en el backend (`carta.url_imagen`).
   final String? urlImagen;
-  final bool platoDelDia;
 
   const CartaItem({
     required this.id,
@@ -58,7 +57,6 @@ class CartaItem {
     this.creadoEn,
     this.imagenBytes,
     this.urlImagen,
-    this.platoDelDia = false,
   });
 
   String? get subcategoriaId =>
@@ -90,7 +88,6 @@ class CartaItem {
     DateTime? creadoEn,
     Uint8List? imagenBytes,
     String? urlImagen,
-    bool? platoDelDia,
   }) => CartaItem(
     id: id ?? this.id,
     nombrePlato: nombrePlato ?? this.nombrePlato,
@@ -112,7 +109,6 @@ class CartaItem {
     creadoEn: creadoEn ?? this.creadoEn,
     imagenBytes: imagenBytes ?? this.imagenBytes,
     urlImagen: urlImagen ?? this.urlImagen,
-    platoDelDia: platoDelDia ?? this.platoDelDia,
   );
 
   factory CartaItem.fromJson(Map<String, dynamic> json) {
@@ -165,7 +161,6 @@ class CartaItem {
               (json['url_imagen'] as String).isNotEmpty)
           ? json['url_imagen'] as String
           : null,
-      platoDelDia: json['plato_del_dia'] as bool? ?? false,
     );
   }
 
