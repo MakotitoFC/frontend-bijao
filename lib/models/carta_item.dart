@@ -155,7 +155,11 @@ class CartaItem {
       agregados: rawMods.isNotEmpty ? rawMods : const [],
       costo: jsonDouble(json['costo']),
       sku: json['sku'] as String?,
-      stock: (json['stock'] is int) ? json['stock'] as int : 0,
+      stock: (json['stock'] is int)
+          ? json['stock'] as int
+          : (json['disponibilidad']?['cantidad_disponible'] is int
+              ? json['disponibilidad']['cantidad_disponible'] as int
+              : 0),
       urlImagen:
           (json['url_imagen'] is String &&
               (json['url_imagen'] as String).isNotEmpty)

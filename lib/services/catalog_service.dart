@@ -483,6 +483,7 @@ class CatalogService {
         cargarSubcategorias(),
         cargarCarta(),
         cargarVariantes(),
+        DisponibilidadService.instance.cargarHoy(),
       ]);
     } finally {
       _recargandoCarta = false;
@@ -494,7 +495,7 @@ class CatalogService {
     String? estado,
   }) async {
     try {
-      final params = <String, String>{};
+      final params = <String, String>{'con_disponibilidad': 'true'};
       if (estado != null && estado.isNotEmpty) {
         params['estado'] = estado;
       }

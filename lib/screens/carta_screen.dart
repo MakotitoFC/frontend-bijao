@@ -601,7 +601,14 @@ class _CartaScreenState extends State<CartaScreen> {
                             : 'S/ ${precio.toStringAsFixed(2)}',
                         destacado: true,
                       ),
-                      _dato('Stock', '${item.stock}'),
+                      _dato(
+                        'Stock',
+                        estadoDisp.tipo == TipoDisponibilidad.conCantidad
+                            ? '${estadoDisp.quedan ?? 0}'
+                            : (estadoDisp.tipo == TipoDisponibilidad.agotado
+                                ? '0 (Agotado)'
+                                : (item.stock > 0 ? '${item.stock}' : 'Libre')),
+                      ),
                     ],
                   ),
                   if (_puedeEditar) ...[
