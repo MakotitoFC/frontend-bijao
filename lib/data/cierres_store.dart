@@ -1,3 +1,4 @@
+import '../models/caja_servidor.dart';
 import '../models/cierre_caja.dart';
 import 'movimientos_caja_store.dart';
 import 'pagos_store.dart';
@@ -11,7 +12,13 @@ final List<CierreCaja> cierresCaja = [];
 // La caja actual empieza en el último cierre; si aún no hubo ninguno, a las
 // 00:00 de hoy (igual que el servidor), para que entren los ingresos y salidas
 // de la mañana aunque todavía no haya cobros.
+// Lo que dice el servidor de la caja actual (estado y totales). Mientras es
+// null (sin servidor o sin leer todavía) la app calcula todo por su cuenta.
+EstadoCaja? estadoCajaServidor;
+
 DateTime get inicioCajaActual {
+  final delServidor = estadoCajaServidor?.totales?.fechaInicio;
+  if (delServidor != null) return delServidor;
   if (cierresCaja.isNotEmpty) return cierresCaja.first.fechaCierre;
   final h = DateTime.now();
   return DateTime(h.year, h.month, h.day);

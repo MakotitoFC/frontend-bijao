@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/api_client.dart';
+
 // Copia en este dispositivo del último logo que se subió para los tickets, para
 // mostrarlo en la vista previa de la cuenta. El servidor guarda su propio logo
 // (el que se imprime) pero no lo entrega de vuelta, por eso esta copia es solo
@@ -14,7 +16,18 @@ final ValueNotifier<Uint8List?> logoTicketLocal = ValueNotifier<Uint8List?>(
   null,
 );
 
+// El logo de los tickets lo sirve el servidor (`GET /impresion/config/logo`, con
+// la sesión). Si está, es el que manda; la copia de este equipo queda de respaldo
+// para cuando no hay conexión o el servidor no tiene logo.
 Future<void> cargarLogoTicketLocal() async {
+  await _cargarCopiaLocal();
+  final delServidor = await ApiClient.instance.descargarBytes(
+    '/api/v1/impresion/config/logo',
+  );
+  if (delServidor != null) await guardarLogoTicketLocal(delServidor);
+}
+
+Future<void> _cargarCopiaLocal() async {
   try {
     final p = await SharedPreferences.getInstance();
     final b64 = p.getString(_clave);

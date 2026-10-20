@@ -7,6 +7,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../data/cierres_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
+import '../services/caja_service.dart';
 import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
@@ -21,6 +22,7 @@ import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/comprobantes_caja_panel.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/campo_texto.dart';
@@ -388,6 +390,8 @@ class CajaScreen extends StatefulWidget {
 class _CajaScreenState extends State<CajaScreen> {
   // Si no se pudieron traer los movimientos del servidor, aquí va el motivo.
   String? _errorMovimientos;
+  // Si no se pudo leer la caja del servidor, aquí va el motivo.
+  String? _errorCaja;
 
   @override
   void initState() {
@@ -402,6 +406,15 @@ class _CajaScreenState extends State<CajaScreen> {
       await PagoService.instance.cargarDelDia();
     } catch (_) {}
     if (mounted) setState(() {});
+    if (CajaService.instance.enServidor) {
+      try {
+        await CajaService.instance.cargarEstado();
+        await CajaService.instance.cargarCierres();
+        if (mounted) setState(() => _errorCaja = null);
+      } catch (e) {
+        if (mounted) setState(() => _errorCaja = e.toString());
+      }
+    }
     try {
       try {
         await MovimientoCajaService.instance.cargarCategorias();
@@ -412,6 +425,152 @@ class _CajaScreenState extends State<CajaScreen> {
       if (mounted) setState(() => _errorMovimientos = null);
     } catch (e) {
       if (mounted) setState(() => _errorMovimientos = e.toString());
+    }
+  }
+
+  // Vuelve a pedir al servidor los totales de la caja (tras un movimiento).
+  Future<void> _refrescarCaja() async {
+    if (!CajaService.instance.enServidor) return;
+    try {
+      await CajaService.instance.cargarEstado();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  bool get _cajaCerrada =>
+      estadoCajaServidor != null && !estadoCajaServidor!.abierta;
+
+  Future<void> _abrirCaja() async {
+    final monto = TextEditingController(text: '0');
+    final notas = TextEditingController();
+    final confirmar = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: const Text('Abrir caja'),
+        content: SizedBox(
+          width: double.infinity,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Escribe el efectivo con el que empieza el turno (el sencillo).',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 14),
+              _campoDialogo(monto, 'Monto inicial (S/)'),
+              CampoTexto(
+                controller: notas,
+                decoration: const InputDecoration(labelText: 'Notas'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Abrir caja'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !mounted) return;
+    try {
+      await CajaService.instance.abrir(
+        montoInicial:
+            double.tryParse(monto.text.trim().replaceAll(',', '.')) ?? 0,
+        notas: notas.text,
+      );
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        'La caja está abierta.',
+        type: ToastType.success,
+        titulo: 'Caja abierta',
+      );
+      _cargar();
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
+  // Cierre con el servidor: el monto inicial sale de la apertura y el servidor
+  // calcula lo que debería haber (ventas, ingresos y salidas).
+  Future<void> _cerrarCajaServidor() async {
+    final t = estadoCajaServidor?.totales;
+    final efectivo = TextEditingController();
+    final tarjeta = TextEditingController();
+    final digital = TextEditingController();
+    final notas = TextEditingController();
+    double n(TextEditingController c) =>
+        double.tryParse(c.text.trim().replaceAll(',', '.')) ?? 0;
+    final confirmar = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: const Text('Cerrar caja'),
+        content: SizedBox(
+          width: double.infinity,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (t != null)
+                  Text(
+                    'Debería haber: efectivo ${_soles(t.efectivoEsperado)} '
+                    '(incluye el monto inicial de ${_soles(t.montoInicial)}), '
+                    'tarjeta ${_soles(t.tarjeta)}, '
+                    'digital (Yape/Plin) ${_soles(t.digital)}.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  ),
+                const SizedBox(height: 14),
+                _campoDialogo(efectivo, 'Efectivo declarado (S/)'),
+                _campoDialogo(tarjeta, 'Tarjeta declarada (S/)'),
+                _campoDialogo(digital, 'Digital declarado (S/)'),
+                CampoTexto(
+                  controller: notas,
+                  decoration: const InputDecoration(labelText: 'Notas'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cerrar caja'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !mounted) return;
+    try {
+      await CajaService.instance.cerrar(
+        declaradoEfectivo: n(efectivo),
+        declaradoTarjeta: n(tarjeta),
+        declaradoDigital: n(digital),
+        notas: notas.text,
+      );
+      if (!mounted) return;
+      setState(() {});
+      showAppToast(
+        context,
+        'La caja se cerró. Para el siguiente turno, ábrela de nuevo.',
+        type: ToastType.success,
+        titulo: 'Caja cerrada',
+      );
+      _cargar();
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
   }
 
@@ -435,6 +594,7 @@ class _CajaScreenState extends State<CajaScreen> {
         '${tipo.etiqueta} de ${_soles(r.monto)} registrado en ${r.medio.medioPago}.',
         type: ToastType.success,
       );
+      _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
@@ -457,6 +617,7 @@ class _CajaScreenState extends State<CajaScreen> {
       if (!mounted) return;
       setState(() {});
       showAppToast(context, 'Movimiento corregido.', type: ToastType.success);
+      _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
@@ -473,12 +634,17 @@ class _CajaScreenState extends State<CajaScreen> {
       if (!mounted) return;
       setState(() {});
       showAppToast(context, 'Movimiento anulado.', type: ToastType.success);
+      _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
   }
 
   Future<void> _cerrarCaja() async {
+    if (CajaService.instance.enServidor && estadoCajaServidor != null) {
+      await _cerrarCajaServidor();
+      return;
+    }
     final esperado = netoPorGrupo(inicioCajaActual);
     final extra = totalesMovimientos(inicioCajaActual);
     final inicial = TextEditingController(text: '0');
@@ -573,10 +739,18 @@ class _CajaScreenState extends State<CajaScreen> {
     final desde = inicioCajaActual;
     final resumen = resumenPorMedio(desde);
     final extra = totalesMovimientos(desde);
-    final ventas = resumen.fold(0.0, (s, f) => s + f.ventas);
-    final efectivoEsperado = resumen
-        .where((f) => grupoDeMedio(f.medio) == 'efectivo')
-        .fold(0.0, (s, f) => s + f.neto);
+    final srv = estadoCajaServidor?.totales;
+    final filas = srv?.porMedio ?? resumen;
+    final ventas =
+        srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas);
+    final ingresos = srv?.ingresos ?? extra.ingresos;
+    final salidas = srv?.salidas ?? extra.egresos;
+    final numPedidos = srv?.numPedidos ?? t.pedidos;
+    final efectivoEsperado =
+        srv?.efectivoEsperado ??
+        resumen
+            .where((f) => grupoDeMedio(f.medio) == 'efectivo')
+            .fold<double>(0.0, (s, f) => s + f.neto);
     final movimientos = movimientosDesde(desde);
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -585,6 +759,43 @@ class _CajaScreenState extends State<CajaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_cajaCerrada) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.naranja.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.lockOpen, size: 20),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'La caja está cerrada. Ábrela con el monto inicial para '
+                        'empezar el turno.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    FilledButton(
+                      onPressed: _abrirCaja,
+                      child: const Text('Abrir caja'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (_errorCaja != null) ...[
+              Text(
+                'No se pudo leer la caja del servidor: $_errorCaja',
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+              const SizedBox(height: 12),
+            ],
             Container(
               decoration: _panel,
               padding: const EdgeInsets.all(16),
@@ -605,7 +816,7 @@ class _CajaScreenState extends State<CajaScreen> {
                               ),
                             ),
                             Text(
-                              'Desde ${_fecha(desde)} · ${t.pedidos} pedido(s) cobrado(s)',
+                              'Desde ${_fecha(desde)} · $numPedidos pedido(s) cobrado(s)',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,
@@ -615,7 +826,7 @@ class _CajaScreenState extends State<CajaScreen> {
                         ),
                       ),
                       FilledButton.icon(
-                        onPressed: _cerrarCaja,
+                        onPressed: _cajaCerrada ? null : _cerrarCaja,
                         icon: const Icon(LucideIcons.lock, size: 16),
                         label: const Text('Cerrar caja'),
                         style: FilledButton.styleFrom(
@@ -630,8 +841,8 @@ class _CajaScreenState extends State<CajaScreen> {
                     runSpacing: 12,
                     children: [
                       _dato('Ventas', ventas),
-                      _dato('Ingresos', extra.ingresos),
-                      _dato('Salidas', extra.egresos),
+                      _dato('Ingresos', ingresos),
+                      _dato('Salidas', salidas),
                       _dato(
                         'Efectivo esperado',
                         efectivoEsperado,
@@ -641,8 +852,11 @@ class _CajaScreenState extends State<CajaScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'El efectivo esperado es ventas + ingresos − salidas en '
-                    'efectivo; falta sumar el monto inicial, que se escribe al cerrar.',
+                    srv != null
+                        ? 'El efectivo esperado es el monto inicial + ventas + '
+                              'ingresos − salidas en efectivo.'
+                        : 'El efectivo esperado es ventas + ingresos − salidas en '
+                              'efectivo; falta sumar el monto inicial, que se escribe al cerrar.',
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   ),
                   const SizedBox(height: 14),
@@ -660,7 +874,7 @@ class _CajaScreenState extends State<CajaScreen> {
                       _col('Neto'),
                     ],
                     [
-                      for (final f in resumen)
+                      for (final f in filas)
                         DataRow(
                           cells: [
                             _texto(f.medio, fuerte: true),
@@ -678,6 +892,10 @@ class _CajaScreenState extends State<CajaScreen> {
             const SizedBox(height: 16),
             _panelMovimientos(movimientos),
             const SizedBox(height: 16),
+            if (CajaService.instance.enServidor) ...[
+              const ComprobantesCajaPanel(),
+              const SizedBox(height: 16),
+            ],
             Container(
               decoration: _panel,
               padding: const EdgeInsets.all(16),
@@ -937,7 +1155,7 @@ class _CajaScreenState extends State<CajaScreen> {
     return DataRow(
       cells: [
         _texto(_fecha(c.fechaCierre)),
-        _texto(_nombreUsuario(c.usuarioId), fuerte: true),
+        _texto(c.usuarioNombre ?? _nombreUsuario(c.usuarioId), fuerte: true),
         _texto('${c.numPedidos}'),
         _texto(_soles(c.montoInicial)),
         _texto(_soles(c.totalEfectivo)),

@@ -50,8 +50,13 @@ class ImpresionService {
 
   // Imprime de nuevo la comanda completa del pedido, con el rótulo
   // "REIMPRESION" y el mismo número de orden.
-  Future<void> reimprimirPedido(String pedidoId) async {
-    await _api.post('$_base/pedidos/$pedidoId/reimprimir', body: {});
+  // [tipo]: 'cocina' (la comanda) o 'cuenta' (la precuenta en la impresora de
+  // caja, con el recargo si ya hay pagos con tarjeta).
+  Future<void> reimprimirPedido(
+    String pedidoId, {
+    String tipo = 'cocina',
+  }) async {
+    await _api.post('$_base/pedidos/$pedidoId/reimprimir?tipo=$tipo', body: {});
   }
 
   Future<void> pausarCola(bool pausar) async {

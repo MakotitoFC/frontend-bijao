@@ -202,6 +202,24 @@ class ApiClient {
     );
   }
 
+  // Descarga un archivo (por ejemplo una imagen) con la sesión iniciada.
+  // Devuelve null si no hay archivo o la sesión no sirve.
+  Future<Uint8List?> descargarBytes(
+    String path, {
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    if (!hasToken) return null;
+    try {
+      final resp = await http
+          .get(_buildUri(path, null), headers: _headers())
+          .timeout(timeout);
+      if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) return null;
+      return resp.bodyBytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<dynamic> get(
     String path, {
     Map<String, dynamic>? queryParams,

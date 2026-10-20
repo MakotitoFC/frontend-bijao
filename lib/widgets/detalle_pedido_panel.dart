@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../config/app_config.dart';
@@ -13,12 +13,18 @@ import '../data/promociones_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/incidencia.dart';
 import '../models/pedido.dart';
+import '../models/comprobante.dart';
+import '../models/taper.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/disponibilidad_service.dart';
 import '../services/impresion_service.dart';
+import '../services/catalog_service.dart';
+import '../services/devolucion_service.dart';
 import '../services/pedido_mozo_service.dart';
+import '../services/auth_service.dart';
+
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/nota_pedido.dart';
@@ -29,6 +35,7 @@ import 'cambiar_entrega_dialog.dart';
 import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
 import 'boton_imprimir_whatsapp.dart';
+import 'emitir_comprobante_dialog.dart';
 import 'agregar_producto_dialog.dart';
 import 'app_tag.dart';
 import 'descuento_dialog.dart';
@@ -39,6 +46,7 @@ import 'pago_dialogs.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'reportar_problema_dialog.dart';
+import 'taper_catalogo_dialog.dart';
 import 'tupper_dialog.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
@@ -281,6 +289,14 @@ class DetallePedidoPanel extends StatelessWidget {
 
   // ---------- acciones ----------
 
+  // Emite la boleta, factura o ticket de venta del pedido.
+  Future<void> _emitirComprobante(BuildContext context) async {
+    await showBlurDialog<Comprobante>(
+      context: context,
+      builder: (_) => EmitirComprobanteDialog(pedido: pedido),
+    );
+  }
+
   // Manda la cuenta del pedido al cliente por WhatsApp.
   void _enviarWhatsapp(BuildContext context) {
     final total = totalDePedido(pedido.id);
@@ -338,6 +354,32 @@ class DetallePedidoPanel extends StatelessWidget {
           }
           Navigator.of(dialogContext).pop();
         },
+        onImprimirCuenta: _api && PedidoMozoService.instance.puedeOperar(pedido)
+            ? () {
+                ImpresionService.instance
+                    .reimprimirPedido(pedido.id, tipo: 'cuenta')
+                    .then((_) {
+                      if (context.mounted) {
+                        showAppToast(
+                          context,
+                          'Cuenta del pedido #${pedido.numeroPedido} enviada a '
+                          'la impresora de caja.',
+                          type: ToastType.success,
+                        );
+                      }
+                    })
+                    .catchError((Object e) {
+                      if (context.mounted) {
+                        showAppToast(
+                          context,
+                          'No se pudo imprimir la cuenta: ${_textoError(e)}',
+                          type: ToastType.error,
+                        );
+                      }
+                    });
+                Navigator.of(dialogContext).pop();
+              }
+            : null,
         onCerrar: () => Navigator.of(dialogContext).pop(),
       ),
     );
@@ -390,14 +432,42 @@ class DetallePedidoPanel extends StatelessWidget {
       }
     }
     if (!context.mounted) return;
+    // Con el servidor, la devolución se hace allá (da de baja la línea, devuelve
+    // el dinero o emite el vale); la app solo guarda el registro. Sin servidor
+    // se aplica en memoria, como antes.
+    var enServidor = false;
+    String? resumenServidor;
+    if (reporte.resolucion != 'rechazado' &&
+        DevolucionService.instance.puedeEnServidor(pedido, linea)) {
+      try {
+        resumenServidor = await DevolucionService.instance.devolver(
+          pedido: pedido,
+          linea: linea,
+          reporte: reporte,
+        );
+        enServidor = true;
+      } catch (e) {
+        if (context.mounted) {
+          showAppToast(
+            context,
+            'No se pudo registrar la devolución: ${_textoError(e)}',
+            type: ToastType.error,
+            titulo: 'Devolución no registrada',
+          );
+        }
+        return;
+      }
+    }
+    if (!context.mounted) return;
     final efecto = registrarIncidencia(
       pedido: pedido,
       linea: linea,
       reporte: reporte,
+      aplicarEfecto: !enServidor,
     );
     showAppToast(
       context,
-      '${linea.nombrePlato}: ${etiquetaDeResolucion(resultado.resolucion)}. ${efecto.resumen}',
+      '${linea.nombrePlato}: ${etiquetaDeResolucion(resultado.resolucion)}. ${resumenServidor ?? efecto.resumen}',
       type: resultado.resolucion == 'rechazado'
           ? ToastType.info
           : ToastType.success,
@@ -973,7 +1043,51 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // Táper para llevar: grande o mediano, con precio editable.
+  // Con el servidor, el táper sale del catálogo y se agrega como una fila más del
+  // pedido (así el servidor la cobra y la cuenta en caja). Sin catálogo de tápers
+  // se usa el táper local de la app (grande o mediano).
   Future<void> _editarTupper(BuildContext context) async {
+    final catalogo = CatalogService.instance.tapers
+        .where((t) => t.estado)
+        .toList();
+    if (_api && catalogo.isNotEmpty) {
+      await _agregarTapersDelCatalogo(context, catalogo);
+      return;
+    }
+    await _editarTupperLocal(context);
+  }
+
+  Future<void> _agregarTapersDelCatalogo(
+    BuildContext context,
+    List<Taper> catalogo,
+  ) async {
+    if (!_puedeModificar(context)) return;
+    final elegidos = await showBlurDialog<List<TaperElegido>>(
+      context: context,
+      builder: (_) => TaperCatalogoDialog(tapers: catalogo),
+    );
+    if (elegidos == null || elegidos.isEmpty || !context.mounted) return;
+    for (final e in elegidos) {
+      final ok = await _ejecutar(
+        context,
+        () => PedidoMozoService.instance.agregarProducto(
+          pedido.id,
+          lineaDeTaper(e.taper, e.cantidad),
+        ),
+      );
+      if (!ok) return;
+    }
+    if (context.mounted) {
+      showAppToast(
+        context,
+        'Táper agregado al pedido #${pedido.numeroPedido}.',
+        type: ToastType.success,
+        titulo: 'Táper',
+      );
+    }
+  }
+
+  Future<void> _editarTupperLocal(BuildContext context) async {
     final lineas = detallesPorPedido[pedido.id] ?? [];
     if (lineas
         .where(esLineaTupper)
@@ -1146,7 +1260,7 @@ class DetallePedidoPanel extends StatelessWidget {
     final total = totalDePedido(pedido.id);
     final saldo = saldoPendienteDePedido(pedido.id);
     final pagado = total - saldo;
-    final puedePagar = saldo > 0.01;
+    final puedePagar = saldoCuentaDePedido(pedido.id) > 0.01;
 
     // En pantallas bajas (mobile) los totales y botones van dentro del scroll,
     // para que los productos no queden aplastados.
@@ -1173,11 +1287,7 @@ class DetallePedidoPanel extends StatelessWidget {
               onEditar: () => _editarPropina(context),
             ),
           if (tupper > 0)
-            _filaTotal(
-              'Táper',
-              tupper,
-              onEditar: () => _editarTupper(context),
-            ),
+            _filaTotal('Táper', tupper, onEditar: () => _editarTupper(context)),
           if (pagado > 0.01) _filaTotal('Pagado', pagado),
           if (pagado > 0.01 && saldo > 0.01)
             _filaTotal('Saldo pendiente', saldo, color: AppColors.mesaOcupada),
@@ -1931,8 +2041,28 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ],
         ),
+        // Boleta, factura o ticket de venta (solo caja y administración).
+        if (_puedeEmitirComprobante) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => _emitirComprobante(context),
+            icon: const Icon(LucideIcons.fileCheck, size: 16),
+            label: const Text('Emitir comprobante', style: texto),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black87,
+              side: BorderSide(color: Colors.grey.shade300),
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  bool get _puedeEmitirComprobante {
+    final u = AuthService.instance.currentUser;
+    return UuidHelper.isValid(pedido.id) &&
+        u != null &&
+        (u.esAdmin || u.esCajero);
   }
 }
 

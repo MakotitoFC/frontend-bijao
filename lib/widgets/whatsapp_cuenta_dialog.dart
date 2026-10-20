@@ -26,7 +26,9 @@ class WhatsappCuentaDialog extends StatefulWidget {
 }
 
 class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
-  late final _celular = TextEditingController(text: widget.celularInicial ?? '');
+  late final _celular = TextEditingController(
+    text: widget.celularInicial ?? '',
+  );
 
   @override
   void dispose() {
@@ -61,7 +63,7 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
       ],
       children: [
         Text(
-          'Se guarda la boleta como imagen y se abre el chat del cliente en '
+          'Se guarda la cuenta como imagen y se abre el chat del cliente en '
           'WhatsApp. Allí adjunta la imagen con el clip y envíala.',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
@@ -126,10 +128,10 @@ Future<void> enviarCuentaPorWhatsapp(
       // dónde guardarla. Allí devuelve null aunque haya guardado, por eso no se
       // toma como cancelación.
       await FilePicker.saveFile(
-        fileName: 'boleta-${pedido.numeroPedido}.png',
+        fileName: 'cuenta-${pedido.numeroPedido}.png',
         bytes: png,
         mimeType: 'image/png',
-        dialogTitle: 'Guardar la boleta',
+        dialogTitle: 'Guardar la cuenta',
       );
       guardada = true;
     } catch (_) {
@@ -138,11 +140,7 @@ Future<void> enviarCuentaPorWhatsapp(
   }
 
   final mensaje = guardada
-      ? mensajeBoletaWhatsapp(
-          pedido: pedido,
-          lineas: lineas,
-          recargo: recargo,
-        )
+      ? mensajeCuentaWhatsapp(pedido: pedido, lineas: lineas, recargo: recargo)
       : textoCuentaWhatsapp(
           pedido: pedido,
           lineas: lineas,
@@ -162,14 +160,14 @@ Future<void> enviarCuentaPorWhatsapp(
   } else if (guardada) {
     showAppToast(
       context,
-      'Boleta guardada como imagen. En el chat, adjúntala con el clip.',
+      'Cuenta guardada como imagen. En el chat, adjúntala con el clip.',
       type: ToastType.success,
       duration: const Duration(seconds: 6),
     );
   } else {
     showAppToast(
       context,
-      'No se pudo generar la imagen de la boleta: se envía la cuenta como texto.',
+      'No se pudo generar la imagen de la cuenta: se envía la cuenta como texto.',
       type: ToastType.warning,
     );
   }

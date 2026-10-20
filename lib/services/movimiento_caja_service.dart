@@ -15,7 +15,7 @@ class MovimientoCajaService {
   // (`PUT /api/movimientos/:id` y `POST /api/movimientos/:id/anular`, ver
   // BACKEND_PENDIENTES.md). Mientras sea false, la pantalla muestra los botones
   // desactivados. Se cambia a true cuando el backend las entregue.
-  static bool edicionDisponible = false;
+  static bool edicionDisponible = true;
 
   final ApiClient _api = ApiClient.instance;
 
@@ -37,7 +37,11 @@ class MovimientoCajaService {
   Future<void> cargarDelTurno(DateTime desde) async {
     final res = await _api.get(
       '/api/movimientos',
-      queryParams: {'fecha_desde': desde.toUtc().toIso8601String()},
+      queryParams: {
+        'fecha_desde': desde.toUtc().toIso8601String(),
+        // Los anulados se ven tachados y con su motivo.
+        'incluir_anulados': 'true',
+      },
     );
     if (res is! List) return;
     final delServidor = [

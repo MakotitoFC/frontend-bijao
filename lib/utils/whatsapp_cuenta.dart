@@ -121,7 +121,7 @@ String textoCuentaWhatsapp({
 }
 
 // Mensaje corto que acompaña a la imagen de la boleta, que se adjunta aparte.
-String mensajeBoletaWhatsapp({
+String mensajeCuentaWhatsapp({
   required Pedido pedido,
   required List<PedidoLine> lineas,
   double recargo = 0,
@@ -129,6 +129,6 @@ String mensajeBoletaWhatsapp({
   final total =
       lineas.fold(0.0, (s, l) => s + l.precioTotalLinea) +
       (recargo > 0.001 ? recargo : 0);
-  return 'Hola, te enviamos la boleta del pedido #${pedido.numeroPedido} de '
+  return 'Hola, te enviamos la cuenta del pedido #${pedido.numeroPedido} de '
       '${negocio.nombre}. Total: ${soles(total)}. ¡Gracias por su visita!';
 }

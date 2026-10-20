@@ -23,6 +23,7 @@ import '../models/categoria_comida.dart';
 import '../models/mesa.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
+import '../models/taper.dart';
 import '../models/pedido_line.dart';
 import '../screens/mesas_screen.dart';
 import '../theme/app_theme.dart';
@@ -43,6 +44,7 @@ import 'plato_libre_dialog.dart';
 import 'producto_opciones_dialog.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
+import 'taper_catalogo_dialog.dart';
 import 'tupper_dialog.dart';
 import 'app_switch.dart';
 import 'campo_texto.dart';
@@ -1134,12 +1136,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             height: 92,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _imagen(item),
-                ],
-              ),
+              child: Stack(fit: StackFit.expand, children: [_imagen(item)]),
             ),
           ),
           const SizedBox(width: 10),
@@ -1668,7 +1665,40 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
+  // Con el servidor, el táper sale del catálogo y entra al pedido como una fila
+  // más (el servidor la cobra y la cuenta en caja). Sin catálogo de tápers se
+  // usa el táper local de la app (grande o mediano).
   Future<void> _abrirTupper() async {
+    final catalogo = CatalogService.instance.tapers
+        .where((t) => t.estado)
+        .toList();
+    if (catalogo.isNotEmpty) {
+      await _abrirTapersDelCatalogo(catalogo);
+      return;
+    }
+    await _abrirTupperLocal();
+  }
+
+  Future<void> _abrirTapersDelCatalogo(List<Taper> catalogo) async {
+    final actuales = {
+      for (final l in _carrito.where(esLineaTaper))
+        if (l.taperId != null) l.taperId!: l.cantidad,
+    };
+    final elegidos = await showBlurDialog<List<TaperElegido>>(
+      context: context,
+      builder: (_) =>
+          TaperCatalogoDialog(tapers: catalogo, iniciales: actuales),
+    );
+    if (elegidos == null || !mounted) return;
+    setState(() {
+      _carrito.removeWhere(esLineaTaper);
+      for (final e in elegidos) {
+        _carrito.add(lineaDeTaper(e.taper, e.cantidad));
+      }
+    });
+  }
+
+  Future<void> _abrirTupperLocal() async {
     final r = await showBlurDialog<TupperConfigurado>(
       context: context,
       builder: (_) =>

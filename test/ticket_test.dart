@@ -141,7 +141,7 @@ void main() {
       ruc: '20123456789',
     );
 
-    test('la boleta sigue el orden pedido: sede, título, datos, productos, SON, QR', () {
+    test('la cuenta sigue el orden: sede, título, datos, productos, SON, aclaración', () {
       final t = ticketBoleta(
         pedido: _pedido().copyWith(clienteNombre: 'Ana Perez'),
         lineas: [
@@ -160,7 +160,7 @@ void main() {
       final orden = [
         i('Av. Principal 123'),
         i('Tel. 987654321'),
-        i('BOLETA DE VENTA ELECTRONICA'),
+        i('CUENTA DE CONSUMO'),
         i('0007'),
         i('Fecha de emision: 17/10/2026'),
         i('Forma de pago: Efectivo'),
@@ -171,18 +171,16 @@ void main() {
         i('SUBTOTAL'),
         i('TOTAL: S/ 61.00'),
         i('SON: SESENTA Y UNO CON 00/100 SOLES'),
-        t.indexWhere((l) => l.qr != null),
         i('PAGO CON: EFECTIVO S/ 61.00'),
-        i('REPRESENTACION IMPRESA DE LA'),
+        i('DOCUMENTO SIN VALIDEZ TRIBUTARIA'),
       ];
       expect(orden.every((x) => x >= 0), true, reason: '$orden');
       expect([...orden]..sort(), orden, reason: 'fuera de orden: $orden');
-      // El pie dice la frase completa.
-      expect(textos.join(' '), contains('BOLETA DE VENTA ELECTRONICA'));
-      final qr = t.firstWhere((l) => l.qr != null).qr!;
-      // Solo visual por ahora: no imita un código de la SUNAT.
-      expect(qr, 'BOLETA-0007');
-      expect(qr.contains('|'), false);
+      // No es un comprobante: lo dice arriba y abajo, y no lleva QR de relleno
+      // que pueda confundirse con el de una boleta electrónica.
+      expect(textos.join(' '), contains('No es comprobante de pago'));
+      expect(textos.join(' '), isNot(contains('BOLETA DE VENTA')));
+      expect(t.any((l) => l.qr != null), false);
       for (final l in t) {
         expect(l.texto.length, lessThanOrEqualTo(l.doble ? 24 : anchoTicket));
       }
@@ -220,7 +218,7 @@ void main() {
       }
     });
 
-    test('la boleta de un pagador lleva el mismo formato', () {
+    test('la cuenta de un pagador lleva el mismo formato', () {
       final t = ticketPagador(
         pedido: _pedido(),
         pagador: 'Pagador 1',
@@ -230,11 +228,11 @@ void main() {
         sede: sede,
       );
       final texto = _texto(t);
-      expect(texto, contains('BOLETA DE VENTA ELECTRONICA'));
+      expect(texto, contains('CUENTA DE CONSUMO'));
       expect(texto, contains('Cliente: Pagador 1'));
       expect(texto, contains('SON: TREINTA CON 50/100 SOLES'));
       expect(texto, contains('PAGO CON: YAPE S/ 30.50'));
-      expect(t.any((l) => l.qr != null), true);
+      expect(t.any((l) => l.qr != null), false);
     });
   });
 
@@ -299,10 +297,10 @@ void main() {
         expect(find.text('Reimprimir comanda'), findsOneWidget);
 
         // Cuenta: otro ticket, y ya no se ofrece reimprimir.
-        await tester.tap(find.text('Boleta'));
+        await tester.tap(find.text('Cuenta'));
         await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('BOLETA DE VENTA ELECTRONICA'), findsWidgets);
-        expect(find.byType(QrImageView), findsOneWidget);
+        expect(find.text('CUENTA DE CONSUMO'), findsWidgets);
+        expect(find.byType(QrImageView), findsNothing);
         // La cuenta de caja lleva el logo (en blanco y negro); la comanda no.
         expect(
           find.descendant(

@@ -87,14 +87,18 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   final Map<String, int> _asignCategoria = {};
   bool _boletasIndividuales = false;
 
-  late final double _saldo = saldoPendienteDePedido(widget.pedido.id);
+  // La cuenta que cobra el servidor: la propina y el táper de la app no se
+  // reparten, se cobran aparte.
+  late final double _saldo = saldoCuentaDePedido(widget.pedido.id);
+  late final double _propinaApp = propinaPendienteDePedido(widget.pedido.id);
+  late final double _taperApp = taperPendienteDePedido(widget.pedido.id);
   late final List<PedidoLine> _lineas =
       (detallesPorPedido[widget.pedido.id] ?? [])
           .where(esLineaDeProducto)
           .where((l) => _saldoLinea(l) > 0.001)
           .toList();
   late final double _extras = (detallesPorPedido[widget.pedido.id] ?? [])
-      .where((l) => !esLineaDeProducto(l))
+      .where((l) => !esLineaDeProducto(l) && lineaDeCuenta(widget.pedido.id, l))
       .fold(0.0, (s, l) => s + _saldoLinea(l));
 
   MedioPago get _medioInicial => mediosPagoActivos.first;
@@ -389,7 +393,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     showAppToast(
       context,
       'Pago compartido entre ${boletas.length} · '
-      'S/ ${(_saldo + recargoTotal).toStringAsFixed(2)}'
+      'S/ ${(_saldo + recargoTotal + _propinaApp + _taperApp).toStringAsFixed(2)}'
       '${recargoTotal > 0 ? ' (incluye recargo S/ ${recargoTotal.toStringAsFixed(2)})' : ''}',
       type: ToastType.success,
       titulo: 'Pago registrado',
@@ -911,6 +915,14 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           tarjetaSaldo('Total a repartir', _saldo),
+          if (_propinaApp > 0 || _taperApp > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Además se cobra ${[if (_propinaApp > 0) 'propina S/ ${_propinaApp.toStringAsFixed(2)}', if (_taperApp > 0) 'táper S/ ${_taperApp.toStringAsFixed(2)}'].join(' y ')}, sin recargo. No se reparte: se suma al primer cobro.',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            ),
           const SizedBox(height: 16),
           _etiquetaSeccion('¿CÓMO SE REPARTE?'),
           const SizedBox(height: 8),
@@ -1071,7 +1083,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                   onPressed: _valido && !_guardando ? _confirmar : null,
                   icon: const Icon(LucideIcons.users, size: 18),
                   label: Text(
-                    'Cobrar · S/ ${(_saldo + _recargoTotal).toStringAsFixed(2)}',
+                    'Cobrar · S/ ${(_saldo + _recargoTotal + _propinaApp + _taperApp).toStringAsFixed(2)}',
                   ),
                 ),
               ),

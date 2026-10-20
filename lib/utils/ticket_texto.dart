@@ -226,37 +226,30 @@ List<LineaTicket> _cabeceraBoleta(DatosSede sede, String numero) => [
   for (final r in envolver(sede.direccion, anchoTicket)) LineaTicket.centro(r),
   if (sede.telefono.isNotEmpty) LineaTicket.centro('Tel. ${sede.telefono}'),
   LineaTicket.separador('-'),
-  const LineaTicket.centro('BOLETA DE VENTA ELECTRONICA', negrita: true),
+  const LineaTicket.centro('CUENTA DE CONSUMO', negrita: true),
+  const LineaTicket.centro('No es comprobante de pago'),
   LineaTicket.centro(numero, negrita: true, doble: true),
   LineaTicket.separador('-'),
 ];
 
-// Parte baja: "SON", QR, con qué se pagó y el pie de la representación impresa.
+// Parte baja: "SON", con qué se pagó y la aclaración de que no es un
+// comprobante. La boleta o factura electrónica válida la emite el sistema de
+// facturación; esta cuenta es solo el detalle de lo consumido.
 List<LineaTicket> _pieBoleta({
   required double total,
-  required String datosQr,
   required List<String> pagoCon,
 }) => [
   LineaTicket.separador('-'),
   for (final r in envolver('SON: ${montoEnLetras(total)}', anchoTicket))
     LineaTicket(r, negrita: true),
   LineaTicket.vacia,
-  LineaTicket.codigoQr(datosQr),
-  LineaTicket.vacia,
   for (final l in pagoCon) LineaTicket(l),
   LineaTicket.separador('-'),
-  const LineaTicket.centro('REPRESENTACION IMPRESA DE LA'),
-  const LineaTicket.centro('BOLETA DE VENTA ELECTRONICA'),
+  const LineaTicket.centro('DOCUMENTO SIN VALIDEZ TRIBUTARIA'),
+  const LineaTicket.centro('Pida su boleta o factura en caja'),
 ];
 
-// Texto del QR. Por ahora es solo visual: más adelante el QR se enlazará con la
-// SUNAT (facturación electrónica) y aquí irán sus datos. Mientras tanto lleva un
-// texto neutro, que no imita el formato de la SUNAT para que no se confunda con
-// uno válido.
-String _datosQr(DatosSede sede, String numero, double total, DateTime fecha) =>
-    'BOLETA-$numero';
-
-// Boleta de venta electrónica del pedido: logo (lo pone la pantalla), ubicación
+// Cuenta de consumo del pedido: logo (lo pone la pantalla), ubicación
 // y teléfono de la sede, título con el número, datos de la venta, productos,
 // resumen del pago, "SON", QR y con qué se pagó. [pagado] es lo ya cobrado de
 // la cuenta y [recargo] lo que se cobró de más por el método de pago (p. ej. la
@@ -372,7 +365,6 @@ List<LineaTicket> ticketBoleta({
   salida.addAll(
     _pieBoleta(
       total: totalCobrado,
-      datosQr: _datosQr(sede, numero, totalCobrado, pedido.fechaPedido),
       pagoCon: [
         if (pagado > 0.001)
           'PAGO CON: ${metodoPago.isEmpty ? 'EFECTIVO' : metodoPago.toUpperCase()}'
@@ -437,7 +429,6 @@ List<LineaTicket> ticketPagador({
   salida.addAll(
     _pieBoleta(
       total: totalCobrado,
-      datosQr: _datosQr(sede, numero, totalCobrado, pedido.fechaPedido),
       pagoCon: [
         for (final p in pagos)
           'PAGO CON: ${p.medio.toUpperCase()} ${soles(p.monto)}',

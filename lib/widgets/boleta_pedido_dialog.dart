@@ -25,6 +25,8 @@ class BoletaPedidoDialog extends StatefulWidget {
   final String metodoPago;
   // Reimprime la comanda en la impresora de cocina.
   final VoidCallback onImprimir;
+  // Imprime la cuenta en la impresora de caja (solo con el servidor).
+  final VoidCallback? onImprimirCuenta;
   final VoidCallback onCerrar;
 
   const BoletaPedidoDialog({
@@ -34,6 +36,7 @@ class BoletaPedidoDialog extends StatefulWidget {
     required this.titulo,
     required this.metodoPago,
     required this.onImprimir,
+    this.onImprimirCuenta,
     required this.onCerrar,
   });
 
@@ -82,6 +85,13 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             label: const Text('Reimprimir comanda'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
           ),
+        if (_tab == 'cuenta' && widget.onImprimirCuenta != null)
+          FilledButton.icon(
+            onPressed: widget.onImprimirCuenta,
+            icon: const Icon(LucideIcons.printer, size: 16),
+            label: const Text('Imprimir cuenta'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
+          ),
         if (_tab == 'cuenta')
           FilledButton.icon(
             onPressed: () => enviarCuentaPorWhatsapp(
@@ -111,7 +121,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
               onTap: () => setState(() => _tab = 'comanda'),
             ),
             AppTag(
-              etiqueta: 'Boleta',
+              etiqueta: 'Cuenta',
               activo: _tab == 'cuenta',
               onTap: () => setState(() => _tab = 'cuenta'),
             ),
@@ -122,8 +132,8 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
           _tab == 'comanda'
               ? 'Así sale en la impresora de cocina (sin precios). Al '
                     'reimprimirla, el papel lleva el rótulo REIMPRESION.'
-              : 'Boleta de venta electrónica. Todavía no se imprime desde el '
-                    'sistema, pero se puede enviar la cuenta al cliente por WhatsApp.',
+              : 'Detalle de lo consumido, sin validez tributaria. Todavía no se imprime '
+                    'desde el sistema, pero se puede enviar al cliente por WhatsApp.',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 12),

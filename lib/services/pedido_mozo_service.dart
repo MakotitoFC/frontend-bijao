@@ -458,7 +458,9 @@ class PedidoMozoService {
     final entrega = d.tipoEntrega;
     final nuevo = Pedido(
       id: d.id,
+      // El número de orden del día que da el servidor (igual al de la comanda).
       numeroPedido:
+          d.codigoOrden?.replaceFirst('#', '') ??
           previo?.numeroPedido ??
           d.id.substring(0, d.id.length < 4 ? d.id.length : 4),
       mesaNumero: d.mesaNumero ?? 0,

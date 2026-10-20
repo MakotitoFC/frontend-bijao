@@ -37,6 +37,101 @@ double saldoPendienteDePedido(String pedidoId) {
   );
 }
 
+// Líneas que solo existen en la app: el servidor no las conoce y no las cuenta
+// en el saldo del pedido. La propina se manda aparte al cobrar (campo `propina`
+// de POST /api/pagos); el táper todavía no se registra en el servidor.
+bool esLineaSoloApp(PedidoLine l) => esLineaPropina(l) || esLineaTupper(l);
+
+// ¿Esta línea entra en la cuenta que cobra el servidor? En los pedidos de
+// demostración (sin servidor) todas entran.
+bool lineaDeCuenta(String pedidoId, PedidoLine l) =>
+    !UuidHelper.isValid(pedidoId) || !esLineaSoloApp(l);
+
+// Lo que falta cobrar de la cuenta, sin la propina ni el táper de la app. Es lo
+// único que el servidor acepta abonar: si se manda más, rechaza el cobro.
+double saldoCuentaDePedido(String pedidoId) {
+  final lineas = detallesPorPedido[pedidoId] ?? [];
+  return lineas
+      .where((l) => lineaDeCuenta(pedidoId, l))
+      .fold(
+        0.0,
+        (sum, l) => sum + (l.precioTotalLinea - montoPagadoDeLinea(l.id)),
+      );
+}
+
+// Propina que falta cobrar: la del pedido menos la que ya viajó con algún pago.
+double propinaPendienteDePedido(String pedidoId) {
+  final cobrada = pagos
+      .where((p) => p.pedidoId == pedidoId && !p.esReembolso)
+      .fold(0.0, (s, p) => s + p.propina);
+  final falta = propinaDePedido(pedidoId) - cobrada;
+  return falta > 0.001 ? falta : 0;
+}
+
+// Táper que falta cobrar (se da por cobrado cuando se salda la cuenta).
+double taperPendienteDePedido(String pedidoId) =>
+    (detallesPorPedido[pedidoId] ?? [])
+        .where(esLineaTupper)
+        .fold(
+          0.0,
+          (s, l) => s + (l.precioTotalLinea - montoPagadoDeLinea(l.id)),
+        );
+
+// Propina y táper que el cliente paga además de la cuenta (sin recargo).
+double extrasDeAppPendientes(String pedidoId) =>
+    propinaPendienteDePedido(pedidoId) + taperPendienteDePedido(pedidoId);
+
+// Deja la propina y el táper de la app como cobrados según los pagos del
+// pedido: la propina, con lo que viajó en cada pago; el táper, cuando la cuenta
+// quedó saldada. Se puede llamar las veces que haga falta.
+void liquidarExtrasDeApp(String pedidoId) {
+  if (!UuidHelper.isValid(pedidoId)) return;
+  final lineas = detallesPorPedido[pedidoId] ?? [];
+  final propinas = lineas.where(esLineaPropina).toList();
+  final tapers = lineas.where(esLineaTupper).toList();
+  final ids = {
+    for (final l in [...propinas, ...tapers]) l.id,
+  };
+  pagoDetalles.removeWhere((d) => ids.contains(d.pedidoDetalleId));
+
+  // Del pago más antiguo al más nuevo (la lista va del más nuevo al más antiguo).
+  final delPedido = pagos
+      .where((p) => p.pedidoId == pedidoId && !p.esReembolso)
+      .toList()
+      .reversed
+      .toList();
+  for (final pago in delPedido) {
+    var restante = pago.propina;
+    for (final l in propinas) {
+      if (restante <= 0.001) break;
+      final falta = l.precioTotalLinea - montoPagadoDeLinea(l.id);
+      if (falta <= 0.001) continue;
+      final aplicado = restante < falta ? restante : falta;
+      pagoDetalles.add(
+        PagoDetalle(
+          pagoId: pago.id,
+          pedidoDetalleId: l.id,
+          montoAplicado: aplicado,
+        ),
+      );
+      restante -= aplicado;
+    }
+  }
+  if (delPedido.isNotEmpty && saldoCuentaDePedido(pedidoId) <= 0.01) {
+    for (final l in tapers) {
+      final falta = l.precioTotalLinea - montoPagadoDeLinea(l.id);
+      if (falta <= 0.001) continue;
+      pagoDetalles.add(
+        PagoDetalle(
+          pagoId: delPedido.last.id,
+          pedidoDetalleId: l.id,
+          montoAplicado: falta,
+        ),
+      );
+    }
+  }
+}
+
 // Recargo total que ya se cobró en los pagos de un pedido (sin reembolsos).
 double recargoCobradoDePedido(String pedidoId) => pagos
     .where((p) => p.pedidoId == pedidoId && !p.esReembolso)
@@ -98,7 +193,7 @@ Pago registrarPago({
 // pasa el pedido a 'pagado' solo (al cubrirse el total), así que no hace falta
 // pedirlo otra vez; solo se vuelve a leer la lista de mesas por liberar.
 void cerrarSiSaldado(Pedido pedido, {bool marcarEnServidor = true}) {
-  if (saldoPendienteDePedido(pedido.id) > 0.01) return;
+  if (saldoCuentaDePedido(pedido.id) > 0.01) return;
   actualizarEstadoPedido(pedido.id, 'pagado');
   for (final numero in pedido.todasLasMesas) {
     if (numero == 0) continue;
@@ -170,7 +265,8 @@ Pago pagoDeServidor(
     fechaPago:
         DateTime.tryParse(json['fecha_pago']?.toString() ?? '')?.toLocal() ??
         DateTime.now(),
-    pagador: pagador,
+    // Quién pagó: lo que dice el servidor (`pagador`) o, si no, lo recibido.
+    pagador: json['pagador']?.toString() ?? pagador,
   );
 }
 
@@ -187,6 +283,7 @@ Pago aplicarPagoDelServidor({
     pagos.insert(0, pago);
     pagoDetalles.addAll(_detallesDeJson(pago.id, json['detalles']));
   }
+  liquidarExtrasDeApp(pedido.id);
   cerrarSiSaldado(pedido, marcarEnServidor: false);
   return pago;
 }
@@ -211,6 +308,11 @@ void agregarPagosDelServidor(List<Map<String, dynamic>> deServidor) {
     pagoDetalles.addAll(_detallesDeJson(id, j['detalles']));
   }
   pagos.sort((a, b) => b.fechaPago.compareTo(a.fechaPago));
+  for (final id in {
+    for (final j in deServidor) j['pedido_id']?.toString() ?? '',
+  }) {
+    if (id.isNotEmpty) liquidarExtrasDeApp(id);
+  }
 }
 
 // Reemplaza lo que se tiene en memoria de los pagos de un pedido por lo que dice
@@ -238,6 +340,7 @@ void reemplazarPagosDePedido(
   }
   // Más reciente primero, como en `registrarPago`.
   pagos.sort((a, b) => b.fechaPago.compareTo(a.fechaPago));
+  liquidarExtrasDeApp(pedido.id);
 }
 
 // Devuelve dinero al cliente: un pago de monto negativo (afecta caja o

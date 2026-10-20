@@ -207,6 +207,8 @@ class PedidoMozoDetalle {
   final int version;
   final String estado;
   final String tipo;
+  // Número de orden del día ("#0004"), el mismo que sale en la comanda.
+  final String? codigoOrden;
   // 'mesa', 'llevar' o 'delivery' (lo decide el backend).
   final String tipoEntrega;
   final String? nombreCliente;
@@ -236,6 +238,7 @@ class PedidoMozoDetalle {
     required this.version,
     required this.estado,
     required this.tipo,
+    this.codigoOrden,
     required this.tipoEntrega,
     required this.nombreCliente,
     required this.delivery,
@@ -447,6 +450,7 @@ PedidoMozoDetalle parsearDetalleMozo(Map<String, dynamic> json) {
     version: (json['version'] as num?)?.toInt() ?? 1,
     estado: estado == 'pedido' ? 'pendiente' : estado,
     tipo: json['tipo']?.toString() ?? 'normal',
+    codigoOrden: _texto(json['codigo_orden']),
     tipoEntrega: _texto(json['tipo_entrega']) ?? 'mesa',
     nombreCliente: _texto(json['nombre_cliente']),
     delivery: _delivery(json['delivery']),

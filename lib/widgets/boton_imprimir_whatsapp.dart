@@ -9,11 +9,7 @@ class IconoWhatsapp extends StatelessWidget {
   final double tamano;
   final Color color;
 
-  const IconoWhatsapp({
-    super.key,
-    this.tamano = 20,
-    this.color = Colors.white,
-  });
+  const IconoWhatsapp({super.key, this.tamano = 20, this.color = Colors.white});
 
   @override
   Widget build(BuildContext context) {

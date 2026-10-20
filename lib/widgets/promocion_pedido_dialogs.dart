@@ -382,9 +382,7 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
         color: const Color(0xFFF7F8FA),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: elegido.esCambio
-              ? AppColors.naranja
-              : Colors.grey.shade200,
+          color: elegido.esCambio ? AppColors.naranja : Colors.grey.shade200,
         ),
       ),
       child: Column(

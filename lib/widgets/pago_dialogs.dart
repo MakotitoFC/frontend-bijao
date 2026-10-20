@@ -176,7 +176,11 @@ class PagarPedidoDialog extends StatefulWidget {
 
 class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   late MedioPago _medio = mediosPagoActivos.first;
-  double get _saldo => saldoPendienteDePedido(widget.pedido.id);
+  // La cuenta que cobra el servidor (sin la propina ni el táper de la app).
+  double get _saldo => saldoCuentaDePedido(widget.pedido.id);
+  // Propina y táper: el cliente los paga además de la cuenta, sin recargo.
+  double get _propina => propinaPendienteDePedido(widget.pedido.id);
+  double get _taper => taperPendienteDePedido(widget.pedido.id);
   // Recargo del método elegido (p. ej. tarjeta): se suma al total del cliente.
   double get _recargo => _medio.recargoSobre(_saldo);
 
@@ -186,6 +190,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final saldo = _saldo;
     if (saldo <= 0.01 || _guardando) return;
     final recargo = _medio.recargoSobre(saldo);
+    final extras = _propina + _taper;
     setState(() => _guardando = true);
     try {
       // Se registra en el servidor; si lo rechaza, no queda nada cobrado.
@@ -210,7 +215,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     showAppToast(
       context,
       'Cobro registrado · ${widget.titulo} · '
-      'S/ ${(saldo + recargo).toStringAsFixed(2)}'
+      'S/ ${(saldo + recargo + extras).toStringAsFixed(2)}'
       '${recargo > 0 ? ' (incluye recargo S/ ${recargo.toStringAsFixed(2)})' : ''}',
       type: ToastType.success,
       titulo: 'Pago registrado',
@@ -322,6 +327,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   @override
   Widget build(BuildContext context) {
     final saldo = _saldo;
+    final propina = _propina;
+    final taper = _taper;
+    final total = saldo + _recargo + propina + taper;
     return ModalPago(
       titulo: 'Pago único',
       subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
@@ -329,7 +337,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tarjetaSaldo('Total a pagar', saldo),
+          tarjetaSaldo('Total a pagar', saldo + propina + taper),
           const SizedBox(height: 18),
           const Text(
             'Método de pago',
@@ -348,7 +356,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               );
             },
           ),
-          if (_recargo > 0)
+          if (_recargo > 0 || propina > 0 || taper > 0)
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(12),
@@ -359,15 +367,25 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               child: Column(
                 children: [
                   _filaMonto('Cuenta', saldo),
-                  const SizedBox(height: 4),
-                  _filaMonto(
-                    'Recargo ${_medio.medioPago.toLowerCase()} '
-                    '(${_medio.porcentajeComision.toStringAsFixed(1)}%)',
-                    _recargo,
-                    mas: true,
-                  ),
+                  if (_recargo > 0) ...[
+                    const SizedBox(height: 4),
+                    _filaMonto(
+                      'Recargo ${_medio.medioPago.toLowerCase()} '
+                      '(${_medio.porcentajeComision.toStringAsFixed(1)}%)',
+                      _recargo,
+                      mas: true,
+                    ),
+                  ],
+                  if (propina > 0) ...[
+                    const SizedBox(height: 4),
+                    _filaMonto('Propina (sin recargo)', propina, mas: true),
+                  ],
+                  if (taper > 0) ...[
+                    const SizedBox(height: 4),
+                    _filaMonto('Táper (sin recargo)', taper, mas: true),
+                  ],
                   const Divider(height: 14),
-                  _filaMonto('Total a cobrar', saldo + _recargo, fuerte: true),
+                  _filaMonto('Total a cobrar', total, fuerte: true),
                 ],
               ),
             ),
@@ -391,7 +409,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                   onPressed: saldo > 0.01 && !_guardando ? _pagar : null,
                   icon: const Icon(LucideIcons.banknote, size: 18),
                   label: Text(
-                    'Pagar · S/ ${(saldo + _recargo).toStringAsFixed(2)}',
+                    'Pagar · S/ ${total.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   style: FilledButton.styleFrom(backgroundColor: naranjaPago),

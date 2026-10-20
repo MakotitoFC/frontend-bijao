@@ -40,13 +40,23 @@ class PagoService {
         pagador: pagador,
       );
     }
+    // El servidor solo acepta abonar lo que falta de la cuenta: la propina y el
+    // táper de la app no cuentan. Se manda lo que el cajero cobra de cuenta y,
+    // aparte, la propina pendiente (solo en el primer pago que la lleva).
+    final saldoCuenta = saldoCuentaDePedido(pedido.id);
+    final abono = montoAbonado > saldoCuenta + 0.01
+        ? saldoCuenta
+        : montoAbonado;
+    final propinaAEnviar = propina > 0
+        ? propina
+        : propinaPendienteDePedido(pedido.id);
     final res = await _api.post(
       '/api/pagos',
       body: {
         'pedido_id': pedido.id,
         'medio_pago_id': medio.id,
-        'monto_abonado': montoAbonado,
-        'propina': propina,
+        'monto_abonado': abono,
+        'propina': propinaAEnviar,
         if (pagador != null && pagador.isNotEmpty) 'pagador': pagador,
       },
     );

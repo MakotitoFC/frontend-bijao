@@ -33,6 +33,8 @@ String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
   required Pedido pedido,
   required PedidoLine linea,
   required ReporteProblema reporte,
+  // false cuando el servidor ya aplicó la devolución: solo se guarda el registro.
+  bool aplicarEfecto = true,
 }) {
   final incidencia = Incidencia(
     id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -45,6 +47,7 @@ String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
     fecha: DateTime.now(),
   );
   incidencias.insert(0, incidencia);
+  if (!aplicarEfecto) return (incidencia: incidencia, resumen: '');
   marcarLineaComoIncidencia(pedido.id, linea.id);
 
   final monto = linea.precioTotalLinea;

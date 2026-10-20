@@ -48,7 +48,7 @@ const _linea = PedidoLine(
   tipoEntrega: 'llevar',
 );
 
-Map<String, dynamic> _pagoJson({double abonado = 100}) => {
+Map<String, dynamic> _pagoJson({double abonado = 100, double propina = 0}) => {
   'id': _pagoId,
   'pedido_id': _pedidoId,
   'mesa_numero': 0,
@@ -58,7 +58,7 @@ Map<String, dynamic> _pagoJson({double abonado = 100}) => {
   'porcentaje_comision': 4,
   'monto_comision': abonado * 0.04,
   'monto_cobrado': abonado * 1.04,
-  'propina': 0,
+  'propina': propina,
   'fecha_pago': '2026-10-19T19:00:00Z',
   'es_reembolso': false,
   'detalles': [
@@ -79,9 +79,14 @@ void main() {
   Object resumen = {};
   Object listaDelDia = [];
 
-  setUp(() async {
+  // Iniciar el cliente busca el servidor en la red (tarda): se hace una vez.
+  setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await ApiClient.instance.initialize();
+  });
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     pagos.clear();
     pagoDetalles.clear();
     pedidos
@@ -106,9 +111,17 @@ void main() {
             jsonEncode({'error': 'no se puede cobrar un pedido anulado'}),
           );
       } else if (req.method == 'POST') {
+        final cuerpo = cuerpos.isEmpty ? <String, dynamic>{} : cuerpos.last;
         req.response
           ..statusCode = 201
-          ..write(jsonEncode(_pagoJson()));
+          ..write(
+            jsonEncode(
+              _pagoJson(
+                abonado: (cuerpo['monto_abonado'] as num?)?.toDouble() ?? 100,
+                propina: (cuerpo['propina'] as num?)?.toDouble() ?? 0,
+              ),
+            ),
+          );
       } else {
         req.response.write(
           jsonEncode(req.uri.path == '/api/pagos' ? listaDelDia : resumen),
@@ -222,6 +235,92 @@ void main() {
     );
     expect(peticiones, isEmpty); // no hubo llamada
     expect(pagos, hasLength(1));
+  });
+
+  test('la propina y el táper de la app no se abonan a la cuenta', () async {
+    // Cuenta de 100 más propina (10) y táper (2) que solo viven en la app.
+    detallesPorPedido[_pedidoId] = [
+      _linea,
+      PedidoLine(
+        id: 'propina-1',
+        cartaId: cartaIdAjuste,
+        nombrePlato: '${ajustePropina}mesero',
+        cantidad: 1,
+        modificadores: const [],
+        presentacion: null,
+        promocion: null,
+        comentario: null,
+        precioUnitario: 10,
+        descuentoAplicado: 0,
+        precioTotalLinea: 10,
+      ),
+      PedidoLine(
+        id: 'taper-1',
+        cartaId: cartaIdAjuste,
+        nombrePlato: '${ajusteTupper}Grande',
+        cantidad: 1,
+        modificadores: const [],
+        presentacion: null,
+        promocion: null,
+        comentario: null,
+        precioUnitario: 2,
+        descuentoAplicado: 0,
+        precioTotalLinea: 2,
+      ),
+    ];
+    expect(saldoCuentaDePedido(_pedidoId), 100);
+    expect(propinaPendienteDePedido(_pedidoId), 10);
+    expect(taperPendienteDePedido(_pedidoId), 2);
+    expect(saldoPendienteDePedido(_pedidoId), 112);
+
+    // El cajero cobra todo lo que muestra el diálogo, pero al servidor solo va
+    // la cuenta; la propina viaja en su propio campo.
+    await PagoService.instance.registrar(
+      pedido: _pedido(),
+      medio: _tarjeta,
+      montoAbonado: 112,
+    );
+    expect(cuerpos.single['monto_abonado'], 100);
+    expect(cuerpos.single['propina'], 10);
+
+    // Con la cuenta saldada, la propina y el táper quedan cobrados y el pedido
+    // se cierra.
+    expect(propinaPendienteDePedido(_pedidoId), 0);
+    expect(taperPendienteDePedido(_pedidoId), 0);
+    expect(saldoPendienteDePedido(_pedidoId), closeTo(0, 0.001));
+    expect(pedidos.single.estado, 'pagado');
+  });
+
+  test('la propina solo viaja en el primer pago', () async {
+    detallesPorPedido[_pedidoId] = [
+      _linea,
+      PedidoLine(
+        id: 'propina-1',
+        cartaId: cartaIdAjuste,
+        nombrePlato: '${ajustePropina}mesero',
+        cantidad: 1,
+        modificadores: const [],
+        presentacion: null,
+        promocion: null,
+        comentario: null,
+        precioUnitario: 10,
+        descuentoAplicado: 0,
+        precioTotalLinea: 10,
+      ),
+    ];
+    await PagoService.instance.registrar(
+      pedido: _pedido(),
+      medio: _tarjeta,
+      montoAbonado: 40,
+    );
+    await PagoService.instance.registrar(
+      pedido: _pedido(),
+      medio: _tarjeta,
+      montoAbonado: 60,
+    );
+    expect(cuerpos[0]['propina'], 10);
+    expect(cuerpos[1]['propina'], 0);
+    expect(propinaPendienteDePedido(_pedidoId), 0);
   });
 
   test(
