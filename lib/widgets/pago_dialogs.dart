@@ -185,17 +185,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   ComprobanteEnCobro? _comprobante;
 
   @override
-  void initState() {
-    super.initState();
-    if (puedeElegirComprobante(widget.pedido)) {
-      _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
-        ..addListener(() {
-          if (mounted) setState(() {});
-        });
-    }
-  }
-
-  @override
   void dispose() {
     _comprobante?.dispose();
     super.dispose();
@@ -216,6 +205,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   @override
   void initState() {
     super.initState();
+    if (puedeElegirComprobante(widget.pedido)) {
+      _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
+        ..addListener(() {
+          if (mounted) setState(() {});
+        });
+    }
     _categoriaSeleccionada = _categoriasIngreso
             .where((c) => c.nombre.toLowerCase().contains('venta'))
             .firstOrNull ??

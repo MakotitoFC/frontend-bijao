@@ -130,14 +130,12 @@ const medioEfectivo = MedioPago(
   aplicaComision: false,
 );
 
-// Métodos de pago disponibles mientras no se configuren otros: efectivo, yape,
-// tarjeta, transferencia y canje de puntos.
+// Métodos de pago disponibles mientras no se configuren otros: efectivo, yape
+// y tarjeta.
 const mediosPagoBase = [
   medioEfectivo,
   MedioPago(id: 'mp2', medioPago: 'Yape', aplicaComision: false),
   MedioPago(id: 'mp3', medioPago: 'Tarjeta', aplicaComision: false),
-  MedioPago(id: 'mp4', medioPago: 'Transferencia', aplicaComision: false),
-  MedioPago(id: 'mp5', medioPago: 'Puntos', aplicaComision: false),
 ];
 
 // Métodos de pago editables (`medio_pago`). Se cargan desde el backend.
