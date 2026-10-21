@@ -477,7 +477,8 @@ class CatalogService {
   bool _recargandoCarta = false;
   bool _recargaCartaPendiente = false;
 
-  // Vuelve a leer del servidor las categorías, subcategorías, platos, tamaños y presentaciones.
+  // Vuelve a leer del servidor las categorías, subcategorías, platos, tamaños,
+  // presentaciones y tapers.
   // Si llega un evento SSE mientras hay una recarga en curso, se encola una pasada adicional
   // al terminar para que ningún cambio en tiempo real se pierda.
   Future<void> recargarCarta() async {
@@ -496,6 +497,7 @@ class CatalogService {
           cargarCarta(),
           cargarVariantes(),
           cargarPresentaciones(),
+          cargarTapers(),
           DisponibilidadService.instance.cargarHoy(),
         ]);
       } while (_recargaCartaPendiente);
