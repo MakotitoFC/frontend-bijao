@@ -223,7 +223,7 @@ class ApiClient {
   Future<dynamic> get(
     String path, {
     Map<String, dynamic>? queryParams,
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 20),
   }) async {
     try {
       final uri = _buildUri(path, queryParams);
@@ -245,7 +245,7 @@ class ApiClient {
   Future<dynamic> post(
     String path, {
     dynamic body,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     try {
       final uri = _buildUri(path);
@@ -273,7 +273,7 @@ class ApiClient {
   Future<dynamic> put(
     String path, {
     dynamic body,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     try {
       final uri = _buildUri(path);
@@ -301,7 +301,7 @@ class ApiClient {
   Future<dynamic> patch(
     String path, {
     dynamic body,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     try {
       final uri = _buildUri(path);
@@ -355,7 +355,7 @@ class ApiClient {
 
   Future<dynamic> delete(
     String path, {
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     try {
       final uri = _buildUri(path);
