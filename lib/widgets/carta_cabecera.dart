@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'app_toast.dart';
 import 'dialogo_app.dart';
@@ -11,6 +11,7 @@ import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
+import '../services/eventos_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'carta_acciones.dart';
@@ -215,10 +216,21 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
     );
     final tabs = ListenableBuilder(
-      listenable: Listenable.merge([widget.seleccion, cartasNotifier]),
+      listenable: Listenable.merge([
+        widget.seleccion,
+        cartasNotifier,
+        EventosService.instance.revision,
+      ]),
       builder: (context, _) {
         final cartas = cartasNotifier.value;
         final actual = widget.seleccion.value;
+        if (actual != null && !categorias.any((c) => c.id == actual.id)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && widget.seleccion.value?.id == actual.id) {
+              widget.seleccion.value = null;
+            }
+          });
+        }
         return TabsDesplazables(
           child: Row(
             mainAxisSize: MainAxisSize.min,
