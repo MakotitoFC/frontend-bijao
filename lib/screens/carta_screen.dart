@@ -13,6 +13,7 @@ import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
 import '../services/disponibilidad_service.dart';
+import '../services/eventos_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_toast.dart';
@@ -68,6 +69,25 @@ class _CartaScreenState extends State<CartaScreen> {
   void initState() {
     super.initState();
     CatalogService.instance.cargarCarta();
+    // Los cambios de otros equipos llegan por el flujo de eventos del servidor
+    // (`CARTA_ACTUALIZADA`), sin consultar cada cierto tiempo.
+    EventosService.instance.revision.addListener(_alCambiarEnVivo);
+  }
+
+  @override
+  void dispose() {
+    EventosService.instance.revision.removeListener(_alCambiarEnVivo);
+    super.dispose();
+  }
+
+  // Una categoría borrada desde otro equipo no puede seguir seleccionada.
+  void _alCambiarEnVivo() {
+    if (!mounted) return;
+    final actual = widget.seleccion.value;
+    if (actual != null && !categorias.any((c) => c.id == actual.id)) {
+      widget.seleccion.value = null;
+    }
+    setState(() {});
   }
 
   List<CartaItem> get _cartaFiltrada {
