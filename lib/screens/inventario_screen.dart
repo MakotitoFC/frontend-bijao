@@ -181,34 +181,28 @@ class _InventarioScreenState extends State<InventarioScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Row(
+      // Las subvistas van en una barra horizontal bajo el header, como en
+      // Ventas.
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SubmenuLateral(
+          SubmenuSuperior(
             entradas: entradas,
             seleccionada: actual.clave,
             onSeleccionar: _irA,
           ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 24, 32, 4),
+            child: Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: EncabezadoRuta(
-                          ruta: ['Inventario', actual.etiqueta],
-                        ),
-                      ),
-                      _botonActualizar(),
-                    ],
-                  ),
+                Expanded(
+                  child: EncabezadoRuta(ruta: ['Inventario', actual.etiqueta]),
                 ),
-                Expanded(child: contenido),
+                _botonActualizar(),
               ],
             ),
           ),
+          Expanded(child: contenido),
         ],
       ),
     );

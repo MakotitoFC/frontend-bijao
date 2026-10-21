@@ -47,6 +47,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   bool _cargandoRBAC = false;
   // Texto con el que se filtran los permisos de la tabla de roles.
   String _busquedaPermisos = '';
+  // Grupos de permisos desplegados (por defecto todos van cerrados).
+  final Set<String> _gruposPermisosAbiertos = {};
   // Página elegida en el submenú (escritorio).
   String _paginaClave = 'general';
 
@@ -229,7 +231,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       );
     }
 
-    // Submenú vertical con las secciones, como en el resto de módulos.
+    // Subvistas agrupadas por sección, en una barra horizontal bajo el header.
     final entradas = <SubmenuEntrada>[];
     String? ultimaSeccion;
     for (final p in paginas) {
@@ -242,30 +244,22 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Row(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SubmenuLateral(
+          SubmenuSuperior(
             entradas: entradas,
             seleccionada: actual.clave,
             onSeleccionar: (c) => setState(() => _paginaClave = c),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 24, 32, 4),
+            child: EncabezadoRuta(ruta: ['Configuración', actual.etiqueta]),
+          ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 4),
-                  child: EncabezadoRuta(
-                    ruta: ['Configuración', actual.etiqueta],
-                  ),
-                ),
-                Expanded(
-                  child: KeyedSubtree(
-                    key: ValueKey(actual.clave),
-                    child: actual.contenido(),
-                  ),
-                ),
-              ],
+            child: KeyedSubtree(
+              key: ValueKey(actual.clave),
+              child: actual.contenido(),
             ),
           ),
         ],
@@ -879,21 +873,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       fontWeight: FontWeight.w600,
       color: Colors.grey.shade700,
     );
-    TableRow separador(String texto) => TableRow(
-      decoration: BoxDecoration(color: Colors.grey.shade50),
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(0, 10, 8, 10),
-          child: Text(
-            texto,
-            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
-          ),
-        ),
-        for (final _ in _rolesRBAC) const SizedBox.shrink(),
-      ],
-    );
-
-    final tabla = Table(
+    Table tablaDe(List<TableRow> filas) => Table(
       columnWidths: {
         0: const FlexColumnWidth(),
         for (var i = 0; i < _rolesRBAC.length; i++)
@@ -903,42 +883,125 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       border: TableBorder(
         horizontalInside: BorderSide(color: Colors.grey.shade200),
       ),
-      children: [
-        TableRow(
+      children: filas,
+    );
+
+    // Cabecera de un grupo: al tocarla se despliegan sus permisos. Cerrada,
+    // muestra cuántos permisos del grupo tiene cada rol.
+    Widget cabeceraGrupo(
+      String titulo,
+      List<PermisoModel> lista,
+      bool abierto,
+      bool forzado,
+    ) => InkWell(
+      onTap: forzado
+          ? null
+          : () => setState(() {
+              if (!_gruposPermisosAbiertos.remove(titulo)) {
+                _gruposPermisosAbiertos.add(titulo);
+              }
+            }),
+      child: Container(
+        color: Colors.grey.shade50,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text('Permiso', style: estiloCabecera),
-            ),
-            for (final r in _rolesRBAC)
-              Center(child: Text(r.rol, style: estiloCabecera)),
-          ],
-        ),
-        for (final entry in categorias.entries)
-          if (entry.value.isNotEmpty) ...[
-            separador(entry.key),
-            for (final p in entry.value)
-              TableRow(
+            Expanded(
+              child: Row(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                  Icon(
+                    abierto ? Icons.expand_more : Icons.chevron_right,
+                    size: 20,
+                    color: Colors.grey.shade700,
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
                     child: Text(
-                      p.permiso,
+                      titulo,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                  for (final r in _rolesRBAC)
-                    Center(
-                      child: AppCheck(
-                        value: r.tienePermiso(p.permiso),
-                        onChanged: (v) => _togglePermisoRol(r, p, v),
-                      ),
-                    ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${lista.length} permisos',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
                 ],
               ),
+            ),
+            for (final r in _rolesRBAC)
+              SizedBox(
+                width: anchoRol,
+                child: Center(
+                  child: Text(
+                    '${lista.where((p) => r.tienePermiso(p.permiso)).length}/'
+                    '${lista.length}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    final buscando = termino.isNotEmpty;
+    final tabla = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        tablaDe([
+          TableRow(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text('Permiso', style: estiloCabecera),
+              ),
+              for (final r in _rolesRBAC)
+                Center(child: Text(r.rol, style: estiloCabecera)),
+            ],
+          ),
+        ]),
+        for (final entry in categorias.entries)
+          if (entry.value.isNotEmpty) ...[
+            cabeceraGrupo(
+              entry.key,
+              entry.value,
+              buscando || _gruposPermisosAbiertos.contains(entry.key),
+              buscando,
+            ),
+            if (buscando || _gruposPermisosAbiertos.contains(entry.key))
+              tablaDe([
+                for (final p in entry.value)
+                  TableRow(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 4, 0, 4),
+                        child: Text(
+                          p.permiso,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      for (final r in _rolesRBAC)
+                        Center(
+                          child: AppCheck(
+                            value: r.tienePermiso(p.permiso),
+                            onChanged: (v) => _togglePermisoRol(r, p, v),
+                          ),
+                        ),
+                    ],
+                  ),
+              ]),
           ],
       ],
     );

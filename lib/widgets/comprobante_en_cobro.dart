@@ -38,11 +38,12 @@ bool puedeElegirComprobante(Pedido pedido) {
 // SUNAT), boleta (con o sin DNI) o factura (con RUC). El comprobante se emite
 // después de registrar el cobro, porque el servidor no factura sin un pago.
 class ComprobanteEnCobro extends ChangeNotifier {
-  ComprobanteEnCobro(this.total);
+  ComprobanteEnCobro(this.total, {String tipoInicial = 'ninguno'})
+      : tipo = tipoInicial;
 
   final double total;
 
-  String tipo = 'ninguno';
+  String tipo;
   bool conDni = false;
   bool imprimir = true;
   final ruc = TextEditingController();
@@ -160,8 +161,14 @@ class ComprobanteEnCobro extends ChangeNotifier {
 // Sección "Comprobante" del diálogo de cobro.
 class SelectorComprobante extends StatelessWidget {
   final ComprobanteEnCobro control;
+  // En el cobro se puede no emitir nada ("Ninguno"); al emitir después, no.
+  final bool permiteNinguno;
 
-  const SelectorComprobante({super.key, required this.control});
+  const SelectorComprobante({
+    super.key,
+    required this.control,
+    this.permiteNinguno = true,
+  });
 
   Widget _campo(
     TextEditingController c,
@@ -297,8 +304,8 @@ class SelectorComprobante extends StatelessWidget {
             spacing: 6,
             runSpacing: 8,
             children: [
-              for (final t in const [
-                ('ninguno', 'Ninguno'),
+              for (final t in [
+                if (permiteNinguno) ('ninguno', 'Ninguno'),
                 ('ticket_venta', 'Ticket de venta'),
                 ('boleta', 'Boleta'),
                 ('factura', 'Factura'),

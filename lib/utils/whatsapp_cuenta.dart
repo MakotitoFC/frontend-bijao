@@ -19,8 +19,14 @@ String? numeroWhatsapp(String? crudo) {
   return digitos;
 }
 
-Uri urlWhatsapp(String numero, String mensaje) =>
-    Uri.https('wa.me', '/$numero', {'text': mensaje});
+// Enlace de chat de WhatsApp (gratuito; no es la API de pago de WhatsApp
+// Business): abre el chat con el mensaje escrito y la persona da "Enviar". Va
+// directo a api.whatsapp.com, adonde redirige wa.me, y el texto se codifica en
+// UTF-8 con %20 para los espacios, de modo que los íconos lleguen completos.
+Uri urlWhatsapp(String numero, String mensaje) => Uri.parse(
+  'https://api.whatsapp.com/send?phone=$numero'
+  '&text=${Uri.encodeComponent(mensaje)}',
+);
 
 // Abre WhatsApp (app o web) con el mensaje. Devuelve false si no se pudo abrir.
 Future<bool> abrirWhatsapp(String numero, String mensaje) async {

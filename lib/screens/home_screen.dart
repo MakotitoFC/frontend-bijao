@@ -286,17 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
             onToggle: () => setState(() => _colapsadoManual = !colapsado),
             onSeleccionar: (clave) => setState(() => _seleccionado = clave),
           ),
-          if (grupoActivo != null)
-            SubmenuLateral(
-              titulo: grupoActivo.label,
-              entradas: [
-                for (final h in grupoActivo.hijos)
-                  if (h.tieneAcceso(widget.usuario))
-                    SubmenuEntrada.item(h.clave, h.label),
-              ],
-              seleccionada: _seleccionado,
-              onSeleccionar: (clave) => setState(() => _seleccionado = clave),
-            ),
           Expanded(
             child: Column(
               children: [
@@ -309,6 +298,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   descripcion: _titulos[_seleccionado]?.descripcion,
                   onLogout: () => _logout(context),
                 ),
+                // Subvistas del módulo (Ventas: historial, caja, reportes).
+                if (grupoActivo != null)
+                  SubmenuSuperior(
+                    entradas: [
+                      for (final h in grupoActivo.hijos)
+                        if (h.tieneAcceso(widget.usuario))
+                          SubmenuEntrada.item(h.clave, h.label),
+                    ],
+                    seleccionada: _seleccionado,
+                    onSeleccionar: (clave) =>
+                        setState(() => _seleccionado = clave),
+                  ),
                 Expanded(
                   child: KeyedSubtree(
                     key: ValueKey(_seleccionado),

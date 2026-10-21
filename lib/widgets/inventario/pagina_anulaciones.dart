@@ -7,6 +7,7 @@ import '../../utils/blur_dialog.dart';
 import '../app_search_field.dart';
 import '../app_tag.dart';
 import '../dialogo_app.dart';
+import '../tabla_app.dart';
 import '../tabs_desplazables.dart';
 
 class PaginaAnulaciones extends StatefulWidget {
@@ -196,154 +197,159 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
             ),
           )
         else
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 42,
-                dataRowMinHeight: 52,
-                dataRowMaxHeight: 58,
-                columnSpacing: 24,
-                horizontalMargin: 16,
-                columns: const [
-                  DataColumn(label: Text('Fecha y hora', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('Plato / Ítem', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('Cant.', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('Pedido / Origen', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('Anulado por', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('¿Fue servido?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('Motivo / Comentario', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataColumn(label: Text('Evidencia', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
-                ],
-                rows: [
-                  for (final a in filtradas)
-                    DataRow(
-                      cells: [
-                        DataCell(
-                          Text(
-                            _fecha(a['fecha']),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                a['pedido_detalle_id'] == null
-                                    ? LucideIcons.receiptText
-                                    : LucideIcons.utensils,
-                                size: 16,
-                                color: AppColors.naranja,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                (a['plato_nombre'] ?? 'Pedido Completo').toString(),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        DataCell(
-                          Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${a['cantidad'] ?? 1}',
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                (a['mesa_numero'] != null && a['mesa_numero'] > 0)
-                                    ? 'Mesa ${a['mesa_numero']}'
-                                    : (a['tipo_pedido'] ?? 'Pedido').toString().toUpperCase(),
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                              ),
-                              Text(
-                                '${a['tipo_pedido'] ?? 'normal'}',
-                                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                              ),
-                            ],
-                          ),
-                        ),
-                        DataCell(
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(LucideIcons.user, size: 14, color: Colors.grey),
-                              const SizedBox(width: 6),
-                              Text(
-                                (a['usuario_nombre'] ?? '—').toString(),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        DataCell(
-                          a['fue_servido'] == true
-                              ? const AppTag(
-                                  etiqueta: 'Servido (Consumido)',
-                                  activo: false,
-                                  color: AppColors.naranja,
-                                )
-                              : const AppTag(
-                                  etiqueta: 'No servido (Retornado)',
-                                  activo: false,
-                                  color: AppColors.primaryGreen,
-                                ),
-                        ),
-                        DataCell(
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 240),
-                            child: Tooltip(
-                              message: (a['comentario'] ?? '').toString(),
-                              child: Text(
-                                _limpiarComentario((a['comentario'] ?? '').toString()),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          (a['url_evidencia'] != null &&
-                                  (a['url_evidencia'] as String).isNotEmpty)
-                              ? IconButton(
-                                  tooltip: 'Ver foto de evidencia',
-                                  icon: const Icon(LucideIcons.image, size: 18, color: AppColors.primaryGreen),
-                                  onPressed: () => _verEvidencia(a['url_evidencia'] as String),
-                                )
-                              : Text(
-                                  'Sin foto',
-                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                                ),
-                        ),
-                      ],
-                    ),
-                ],
+          TablaApp<Map<String, dynamic>>(
+            filas: filtradas,
+            altoFila: 62,
+            columnas: [
+              ColumnaTabla(
+                titulo: 'Fecha y hora',
+                ancho: 150,
+                ordenarPor: (a) => _fecha(a['fecha']),
+                celda: (a) => TablaApp.texto(_fecha(a['fecha'])),
               ),
-            ),
+              ColumnaTabla(
+                titulo: 'Plato / Ítem',
+                flex: 1.4,
+                anchoMin: 170,
+                ordenarPor: (a) =>
+                    (a['plato_nombre'] ?? 'Pedido Completo').toString(),
+                celda: (a) => Row(
+                  children: [
+                    Icon(
+                      a['pedido_detalle_id'] == null
+                          ? LucideIcons.receiptText
+                          : LucideIcons.utensils,
+                      size: 16,
+                      color: AppColors.naranja,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: TablaApp.texto(
+                        (a['plato_nombre'] ?? 'Pedido Completo').toString(),
+                        fuerte: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ColumnaTabla(
+                titulo: 'Cant.',
+                ancho: 80,
+                ordenarPor: (a) => (a['cantidad'] ?? 1) as num,
+                celda: (a) => Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${a['cantidad'] ?? 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+              ColumnaTabla(
+                titulo: 'Pedido / Origen',
+                anchoMin: 130,
+                celda: (a) => Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TablaApp.texto(
+                      (a['mesa_numero'] != null && a['mesa_numero'] > 0)
+                          ? 'Mesa ${a['mesa_numero']}'
+                          : (a['tipo_pedido'] ?? 'Pedido')
+                                .toString()
+                                .toUpperCase(),
+                      fuerte: true,
+                    ),
+                    Text(
+                      '${a['tipo_pedido'] ?? 'normal'}',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ColumnaTabla(
+                titulo: 'Anulado por',
+                anchoMin: 130,
+                ordenarPor: (a) => (a['usuario_nombre'] ?? '—').toString(),
+                celda: (a) => Row(
+                  children: [
+                    const Icon(LucideIcons.user, size: 14, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: TablaApp.texto(
+                        (a['usuario_nombre'] ?? '—').toString(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ColumnaTabla(
+                titulo: '¿Fue servido?',
+                ancho: 190,
+                ordenarPor: (a) => a['fue_servido'] == true ? 1 : 0,
+                celda: (a) => a['fue_servido'] == true
+                    ? const AppTag(
+                        etiqueta: 'Servido (Consumido)',
+                        activo: false,
+                        color: AppColors.naranja,
+                      )
+                    : const AppTag(
+                        etiqueta: 'No servido (Retornado)',
+                        activo: false,
+                        color: AppColors.primaryGreen,
+                      ),
+              ),
+              ColumnaTabla(
+                titulo: 'Motivo / Comentario',
+                flex: 1.6,
+                anchoMin: 200,
+                celda: (a) => Tooltip(
+                  message: (a['comentario'] ?? '').toString(),
+                  child: Text(
+                    _limpiarComentario((a['comentario'] ?? '').toString()),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TablaApp.estiloTexto.copyWith(fontSize: 12.5),
+                  ),
+                ),
+              ),
+              ColumnaTabla(
+                titulo: 'Evidencia',
+                ancho: 100,
+                celda: (a) =>
+                    (a['url_evidencia'] != null &&
+                        (a['url_evidencia'] as String).isNotEmpty)
+                    ? IconButton(
+                        tooltip: 'Ver foto de evidencia',
+                        icon: const Icon(
+                          LucideIcons.image,
+                          size: 18,
+                          color: AppColors.primaryGreen,
+                        ),
+                        onPressed: () =>
+                            _verEvidencia(a['url_evidencia'] as String),
+                      )
+                    : Text(
+                        'Sin foto',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
+              ),
+            ],
           ),
       ],
     );

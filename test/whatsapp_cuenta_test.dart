@@ -55,9 +55,18 @@ void main() {
 
   test('el enlace lleva el número y el mensaje codificado', () {
     final url = urlWhatsapp('51987654321', 'Hola & chau\n*TOTAL*');
-    expect(url.host, 'wa.me');
-    expect(url.path, '/51987654321');
+    expect(url.host, 'api.whatsapp.com');
+    expect(url.path, '/send');
+    expect(url.queryParameters['phone'], '51987654321');
     expect(url.queryParameters['text'], 'Hola & chau\n*TOTAL*');
+  });
+
+  test('los íconos viajan en UTF-8 y los espacios como %20', () {
+    const mensaje = '🚀 *PEDIDO: #0007* 🚀\n💵 S/ 1';
+    final url = urlWhatsapp('51987654321', mensaje);
+    expect(url.toString(), contains('%F0%9F%9A%80%20'));
+    expect(url.toString(), isNot(contains('+')));
+    expect(url.queryParameters['text'], mensaje);
   });
 
   group('textoCuentaWhatsapp', () {

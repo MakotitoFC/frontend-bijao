@@ -14,6 +14,7 @@ import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
+import '../models/comprobante.dart';
 import '../models/movimiento_caja.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
@@ -22,9 +23,13 @@ import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/comprobante_en_cobro.dart';
 import '../widgets/comprobantes_caja_panel.dart';
 import '../widgets/detalle_pedido_panel.dart';
+import '../widgets/emitir_comprobante_dialog.dart';
 import '../widgets/movimiento_caja_dialog.dart';
+import '../widgets/selector_rango_fechas.dart';
+import '../widgets/tabla_app.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
 import '../widgets/campo_texto.dart';
 
@@ -42,54 +47,6 @@ String _fecha(DateTime d) =>
     '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
 String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
-
-const _estiloCabecera = TextStyle(
-  fontSize: 11,
-  fontWeight: FontWeight.w700,
-  color: Color(0xFF6B7280),
-);
-const _estiloCelda = TextStyle(fontSize: 12, color: Colors.black87);
-
-DataColumn _col(String t) => DataColumn(
-  label: Center(child: Text(t, style: _estiloCabecera)),
-);
-
-DataCell _celda(Widget w) => DataCell(Center(child: w));
-
-DataCell _texto(String t, {bool fuerte = false}) => _celda(
-  Text(
-    t,
-    style: fuerte
-        ? _estiloCelda.copyWith(fontWeight: FontWeight.w600)
-        : _estiloCelda,
-  ),
-);
-
-// Tabla centrada que ocupa al menos el ancho disponible y, si es más ancha,
-// se desplaza en horizontal.
-Widget _tablaCentrada(List<DataColumn> columnas, List<DataRow> filas) {
-  return LayoutBuilder(
-    builder: (context, c) => SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minWidth: c.maxWidth),
-        child: Center(
-          child: DataTable(
-            showCheckboxColumn: false,
-            headingRowHeight: 38,
-            dataRowMinHeight: 46,
-            dataRowMaxHeight: 46,
-            columnSpacing: 26,
-            horizontalMargin: 12,
-            dividerThickness: 0.6,
-            columns: columnas,
-            rows: filas,
-          ),
-        ),
-      ),
-    ),
-  );
-}
 
 BoxDecoration get _panel => BoxDecoration(
   color: Colors.white,
@@ -113,19 +70,42 @@ class HistorialPedidosScreen extends StatefulWidget {
 class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   final _busqueda = TextEditingController();
   String _filtro = 'todos'; // todos | pagados | por_cobrar
+  // Rango de fechas de los pedidos mostrados (por defecto, hoy).
+  DateTimeRange? _rango = DateTimeRange(
+    start: DateUtils.dateOnly(DateTime.now()),
+    end: DateUtils.dateOnly(DateTime.now()),
+  );
 
   @override
   void initState() {
     super.initState();
-    _cargarPagosDelDia();
+    _cargarPagos();
   }
 
-  // Los pagos viven en el servidor: se traen los del día al abrir la pantalla.
-  Future<void> _cargarPagosDelDia() async {
+  // Los pagos viven en el servidor: se traen los del rango elegido.
+  Future<void> _cargarPagos() async {
+    final r = _rango;
     try {
-      await PagoService.instance.cargarDelDia();
+      if (r == null) {
+        await PagoService.instance.cargarDelDia();
+      } else {
+        await PagoService.instance.cargarDelRango(r.start, r.end);
+      }
     } catch (_) {}
     if (mounted) setState(() {});
+  }
+
+  void _cambiarRango(DateTimeRange? r) {
+    setState(() => _rango = r);
+    _cargarPagos();
+  }
+
+  bool _enRango(Pedido p) {
+    final r = _rango;
+    if (r == null) return true;
+    final d = DateUtils.dateOnly(p.fechaPedido);
+    return !d.isBefore(DateUtils.dateOnly(r.start)) &&
+        !d.isAfter(DateUtils.dateOnly(r.end));
   }
 
   @override
@@ -153,6 +133,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   List<Pedido> get _filas {
     final t = _busqueda.text.trim().toLowerCase();
     return pedidos.where((p) {
+      if (!_enRango(p)) return false;
       final ep = _estadoPago(p);
       if (_filtro == 'pagados' && ep != 'Pagado') return false;
       if (_filtro == 'por_cobrar' && ep != 'Por cobrar' && ep != 'Parcial') {
@@ -235,18 +216,25 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                     _pastilla('Todos', 'todos'),
                     _pastilla('Pagados', 'pagados'),
                     _pastilla('Por cobrar', 'por_cobrar'),
+                    SelectorRangoFechas(
+                      valor: _rango,
+                      permiteTodas: true,
+                      onChanged: _cambiarRango,
+                    ),
                     AppSearchField(
                       controller: _busqueda,
                       hint: 'Buscar pedido o cliente...',
                       onChanged: (_) => setState(() {}),
                     ),
                   ];
-                  if (c.maxWidth >= 860) {
+                  if (c.maxWidth >= 1040) {
                     return Row(
                       children: [
                         titulo,
                         const Spacer(),
                         ...controles.take(3),
+                        const SizedBox(width: 8),
+                        controles[3],
                         const SizedBox(width: 8),
                         controles.last,
                       ],
@@ -257,7 +245,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                     children: [
                       titulo,
                       const SizedBox(height: 10),
-                      Wrap(runSpacing: 8, children: controles),
+                      Wrap(spacing: 8, runSpacing: 8, children: controles),
                     ],
                   );
                 },
@@ -315,61 +303,142 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     );
   }
 
-  Widget _tabla(List<Pedido> filas) {
-    return _tablaCentrada(
-      [
-        _col('Pedido'),
-        _col('Fecha'),
-        _col('Cliente'),
-        _col('Tipo'),
-        _col('Mesero'),
-        _col('Total'),
-        _col('Cobrado'),
-        _col('Método'),
-        _col('Pago'),
-        _col('Acciones'),
+  // Boleta, factura o ticket de venta de un pedido: también después de cobrarlo,
+  // por si el cliente lo pide más tarde.
+  Future<void> _emitirComprobante(Pedido p) async {
+    // Se leen los cobros del servidor: sin ellos no se puede facturar.
+    try {
+      await PagoService.instance.cargarDePedido(p);
+    } catch (_) {}
+    if (!mounted) return;
+    final c = await showBlurDialog<Comprobante>(
+      context: context,
+      builder: (_) => EmitirComprobanteDialog(pedido: p),
+    );
+    if (c == null || !mounted) return;
+    await showBlurDialog<void>(
+      context: context,
+      builder: (_) => ComprobanteEmitidoDialog(comprobante: c, pedido: p),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Widget _botonAccion(
+    String tooltip,
+    IconData icono,
+    Color color,
+    VoidCallback onTap,
+  ) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color),
+        ),
+        child: Icon(icono, size: 15, color: color),
+      ),
+    ),
+  );
+
+  Widget _acciones(Pedido p) {
+    final estado = _estadoPago(p);
+    final botones = [
+      if (estado != 'Pagado' && estado != 'Anulado')
+        _botonAccion(
+          'Cobrar',
+          LucideIcons.wallet,
+          AppColors.primaryGreen,
+          () => _cobrar(p),
+        ),
+      if (estado != 'Anulado' && puedeElegirComprobante(p))
+        _botonAccion(
+          'Emitir comprobante',
+          LucideIcons.fileCheck,
+          Colors.black87,
+          () => _emitirComprobante(p),
+        ),
+    ];
+    if (botones.isEmpty) return const SizedBox.shrink();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < botones.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          botones[i],
+        ],
       ],
-      [
-        for (final p in filas)
-          DataRow(
-            cells: [
-              _texto('#${p.numeroPedido}'),
-              _texto(_fecha(p.fechaPedido)),
-              _texto(p.clienteNombre ?? '—', fuerte: true),
-              _texto(p.ubicacion),
-              _texto(_nombreUsuario(p.usuarioId)),
-              _texto(_soles(totalDePedido(p.id))),
-              _texto(
-                _soles(totalDePedido(p.id) - saldoPendienteDePedido(p.id)),
-              ),
-              _texto(_metodos(p)),
-              _celda(_chipPago(_estadoPago(p))),
-              _celda(
-                _estadoPago(p) == 'Pagado' || _estadoPago(p) == 'Anulado'
-                    ? const SizedBox.shrink()
-                    : Tooltip(
-                        message: 'Cobrar',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () => _cobrar(p),
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.primaryGreen),
-                            ),
-                            child: const Icon(
-                              LucideIcons.wallet,
-                              size: 15,
-                              color: AppColors.primaryGreen,
-                            ),
-                          ),
-                        ),
-                      ),
-              ),
-            ],
+    );
+  }
+
+  Widget _tabla(List<Pedido> filas) {
+    return TablaApp<Pedido>(
+      filas: filas,
+      columnas: [
+        ColumnaTabla(
+          titulo: 'Pedido',
+          ancho: 100,
+          ordenarPor: (p) => p.numeroPedido,
+          celda: (p) => TablaApp.texto('#${p.numeroPedido}'),
+        ),
+        ColumnaTabla(
+          titulo: 'Fecha',
+          ancho: 150,
+          ordenarPor: (p) => p.fechaPedido,
+          celda: (p) => TablaApp.texto(_fecha(p.fechaPedido)),
+        ),
+        ColumnaTabla(
+          titulo: 'Cliente',
+          flex: 1.2,
+          ordenarPor: (p) => (p.clienteNombre ?? '').toLowerCase(),
+          celda: (p) => TablaApp.texto(p.clienteNombre ?? '—', fuerte: true),
+        ),
+        ColumnaTabla(
+          titulo: 'Tipo',
+          ancho: 110,
+          ordenarPor: (p) => p.ubicacion,
+          celda: (p) => TablaApp.texto(p.ubicacion),
+        ),
+        ColumnaTabla(
+          titulo: 'Mesero',
+          flex: 1,
+          ordenarPor: (p) => _nombreUsuario(p.usuarioId).toLowerCase(),
+          celda: (p) => TablaApp.texto(_nombreUsuario(p.usuarioId)),
+        ),
+        ColumnaTabla(
+          titulo: 'Total',
+          ancho: 100,
+          ordenarPor: (p) => totalDePedido(p.id),
+          celda: (p) => TablaApp.texto(_soles(totalDePedido(p.id))),
+        ),
+        ColumnaTabla(
+          titulo: 'Cobrado',
+          ancho: 100,
+          ordenarPor: (p) => totalDePedido(p.id) - saldoPendienteDePedido(p.id),
+          celda: (p) => TablaApp.texto(
+            _soles(totalDePedido(p.id) - saldoPendienteDePedido(p.id)),
           ),
+        ),
+        ColumnaTabla(
+          titulo: 'Método',
+          ancho: 110,
+          celda: (p) => TablaApp.texto(_metodos(p)),
+        ),
+        ColumnaTabla(
+          titulo: 'Pago',
+          ancho: 110,
+          ordenarPor: (p) => _estadoPago(p),
+          celda: (p) => _chipPago(_estadoPago(p)),
+        ),
+        ColumnaTabla(
+          titulo: 'Acciones',
+          ancho: 110,
+          celda: (p) => _acciones(p),
+        ),
       ],
     );
   }
@@ -389,6 +458,9 @@ class CajaScreen extends StatefulWidget {
 }
 
 class _CajaScreenState extends State<CajaScreen> {
+  // Rango de fechas de los cierres mostrados (null = todos).
+  DateTimeRange? _rangoCierres;
+
   // Si no se pudieron traer los movimientos del servidor, aquí va el motivo.
   String? _errorMovimientos;
   // Si no se pudo leer la caja del servidor, aquí va el motivo.
@@ -761,6 +833,19 @@ class _CajaScreenState extends State<CajaScreen> {
             .where((f) => grupoDeMedio(f.medio) == 'efectivo')
             .fold<double>(0.0, (s, f) => s + f.neto);
     final movimientos = movimientosDesde(desde);
+    final rangoCierres = _rangoCierres;
+    final cierres = rangoCierres == null
+        ? cierresCaja
+        : [
+            for (final c in cierresCaja)
+              if (!DateUtils.dateOnly(c.fechaCierre).isBefore(
+                    DateUtils.dateOnly(rangoCierres.start),
+                  ) &&
+                  !DateUtils.dateOnly(c.fechaCierre).isAfter(
+                    DateUtils.dateOnly(rangoCierres.end),
+                  ))
+                c,
+          ];
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SingleChildScrollView(
@@ -874,25 +959,35 @@ class _CajaScreenState extends State<CajaScreen> {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
-                  _tablaCentrada(
-                    [
-                      _col('Medio'),
-                      _col('Ventas'),
-                      _col('Ingresos'),
-                      _col('Salidas'),
-                      _col('Neto'),
-                    ],
-                    [
-                      for (final f in filas)
-                        DataRow(
-                          cells: [
-                            _texto(f.medio, fuerte: true),
-                            _texto(_soles(f.ventas)),
-                            _texto(_soles(f.ingresos)),
-                            _texto(_soles(f.egresos)),
-                            _texto(_soles(f.neto), fuerte: true),
-                          ],
-                        ),
+                  TablaApp<FilaResumenMedio>(
+                    filas: filas,
+                    columnas: [
+                      ColumnaTabla(
+                        titulo: 'Medio',
+                        flex: 1.4,
+                        ordenarPor: (f) => f.medio.toLowerCase(),
+                        celda: (f) => TablaApp.texto(f.medio, fuerte: true),
+                      ),
+                      ColumnaTabla(
+                        titulo: 'Ventas',
+                        ordenarPor: (f) => f.ventas,
+                        celda: (f) => TablaApp.texto(_soles(f.ventas)),
+                      ),
+                      ColumnaTabla(
+                        titulo: 'Ingresos',
+                        ordenarPor: (f) => f.ingresos,
+                        celda: (f) => TablaApp.texto(_soles(f.ingresos)),
+                      ),
+                      ColumnaTabla(
+                        titulo: 'Salidas',
+                        ordenarPor: (f) => f.egresos,
+                        celda: (f) => TablaApp.texto(_soles(f.egresos)),
+                      ),
+                      ColumnaTabla(
+                        titulo: 'Neto',
+                        ordenarPor: (f) => f.neto,
+                        celda: (f) => TablaApp.texto(_soles(f.neto), fuerte: true),
+                      ),
                     ],
                   ),
                 ],
@@ -911,41 +1006,41 @@ class _CajaScreenState extends State<CajaScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Cierres de caja',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Cierres de caja',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      SelectorRangoFechas(
+                        valor: _rangoCierres,
+                        permiteTodas: true,
+                        onChanged: (r) => setState(() => _rangoCierres = r),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
-                  if (cierresCaja.isEmpty)
+                  if (cierres.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Center(
                         child: Text(
-                          'Aún no hay cierres de caja',
+                          cierresCaja.isEmpty
+                              ? 'Aún no hay cierres de caja'
+                              : 'No hay cierres de caja en ese rango de fechas',
                           style: TextStyle(color: Colors.grey.shade500),
                         ),
                       ),
                     )
                   else
-                    _tablaCentrada(
-                      [
-                        _col('Cierre'),
-                        _col('Cajero'),
-                        _col('Pedidos'),
-                        _col('Inicial'),
-                        _col('Efectivo'),
-                        _col('Tarjeta'),
-                        _col('Yape'),
-                        _col('Plin'),
-                        _col('Delivery'),
-                        _col('Total'),
-                        _col('Ingresos'),
-                        _col('Salidas'),
-                        _col('Declarado'),
-                        _col('Dif. efectivo'),
-                        _col('Notas'),
-                      ],
-                      [for (final c in cierresCaja) _fila(c)],
+                    TablaApp<CierreCaja>(
+                      filas: cierres,
+                      columnas: _columnasCierres(),
                     ),
                 ],
               ),
@@ -964,33 +1059,46 @@ class _CajaScreenState extends State<CajaScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          // El título a la izquierda y los botones en el otro extremo.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text(
-                'Ingresos y salidas',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              FilledButton.icon(
-                onPressed: () => _registrar(TipoMovimiento.ingreso),
-                icon: const Icon(LucideIcons.plus, size: 16),
-                label: const Text('Ingreso'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
+              const Expanded(
+                child: Text(
+                  'Ingresos y salidas',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
               ),
-              FilledButton.icon(
-                onPressed: () => _registrar(TipoMovimiento.egreso),
-                icon: const Icon(LucideIcons.minus, size: 16),
-                label: const Text('Salida'),
-                style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-              ),
-              OutlinedButton.icon(
-                onPressed: _administrarCategorias,
-                icon: const Icon(LucideIcons.tag, size: 16),
-                label: const Text('Categorías'),
+              Flexible(
+                flex: 3,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () => _registrar(TipoMovimiento.ingreso),
+                      icon: const Icon(LucideIcons.plus, size: 16),
+                      label: const Text('Ingreso'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () => _registrar(TipoMovimiento.egreso),
+                      icon: const Icon(LucideIcons.minus, size: 16),
+                      label: const Text('Salida'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _administrarCategorias,
+                      icon: const Icon(LucideIcons.tag, size: 16),
+                      label: const Text('Categorías'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1164,38 +1272,71 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
-  DataRow _fila(CierreCaja c) {
-    final dif = c.diferenciaEfectivo;
-    return DataRow(
-      cells: [
-        _texto(_fecha(c.fechaCierre)),
-        _texto(c.usuarioNombre ?? _nombreUsuario(c.usuarioId), fuerte: true),
-        _texto('${c.numPedidos}'),
-        _texto(_soles(c.montoInicial)),
-        _texto(_soles(c.totalEfectivo)),
-        _texto(_soles(c.totalTarjeta)),
-        _texto(_soles(c.totalYape)),
-        _texto(_soles(c.totalPlin)),
-        _texto(_soles(c.totalDelivery)),
-        _texto(_soles(c.totalGeneral), fuerte: true),
-        _texto(_soles(c.totalIngresos)),
-        _texto(_soles(c.totalEgresos)),
-        _texto(_soles(c.montoDeclarado)),
-        _celda(
-          Text(
-            '${dif >= 0 ? '+' : '-'}${_soles(dif.abs())}',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: dif.abs() < 0.01
-                  ? AppColors.primaryGreen
-                  : (dif < 0 ? AppColors.error : const Color(0xFFEF6C00)),
-            ),
-          ),
-        ),
-        _texto(c.notas ?? '—'),
-      ],
+  List<ColumnaTabla<CierreCaja>> _columnasCierres() {
+    ColumnaTabla<CierreCaja> monto(
+      String titulo,
+      double Function(CierreCaja) valor, {
+      bool fuerte = false,
+    }) => ColumnaTabla(
+      titulo: titulo,
+      anchoMin: 96,
+      ordenarPor: valor,
+      celda: (c) => TablaApp.texto(_soles(valor(c)), fuerte: fuerte),
     );
+    return [
+      ColumnaTabla(
+        titulo: 'Cierre',
+        ancho: 150,
+        ordenarPor: (c) => c.fechaCierre,
+        celda: (c) => TablaApp.texto(_fecha(c.fechaCierre)),
+      ),
+      ColumnaTabla(
+        titulo: 'Cajero',
+        anchoMin: 120,
+        ordenarPor: (c) =>
+            (c.usuarioNombre ?? _nombreUsuario(c.usuarioId)).toLowerCase(),
+        celda: (c) => TablaApp.texto(
+          c.usuarioNombre ?? _nombreUsuario(c.usuarioId),
+          fuerte: true,
+        ),
+      ),
+      ColumnaTabla(
+        titulo: 'Pedidos',
+        ancho: 84,
+        ordenarPor: (c) => c.numPedidos,
+        celda: (c) => TablaApp.texto('${c.numPedidos}'),
+      ),
+      monto('Inicial', (c) => c.montoInicial),
+      monto('Efectivo', (c) => c.totalEfectivo),
+      monto('Tarjeta', (c) => c.totalTarjeta),
+      monto('Yape', (c) => c.totalYape),
+      monto('Plin', (c) => c.totalPlin),
+      monto('Delivery', (c) => c.totalDelivery),
+      monto('Total', (c) => c.totalGeneral, fuerte: true),
+      monto('Ingresos', (c) => c.totalIngresos),
+      monto('Salidas', (c) => c.totalEgresos),
+      monto('Declarado', (c) => c.montoDeclarado),
+      ColumnaTabla(
+        titulo: 'Dif. efectivo',
+        anchoMin: 110,
+        ordenarPor: (c) => c.diferenciaEfectivo,
+        celda: (c) {
+          final dif = c.diferenciaEfectivo;
+          return TablaApp.texto(
+            '${dif >= 0 ? '+' : '-'}${_soles(dif.abs())}',
+            fuerte: true,
+            color: dif.abs() < 0.01
+                ? AppColors.primaryGreen
+                : (dif < 0 ? AppColors.error : const Color(0xFFEF6C00)),
+          );
+        },
+      ),
+      ColumnaTabla(
+        titulo: 'Notas',
+        anchoMin: 140,
+        celda: (c) => TablaApp.texto(c.notas ?? '—'),
+      ),
+    ];
   }
 
   Widget _dato(String etiqueta, double valor, {bool destacado = false}) {

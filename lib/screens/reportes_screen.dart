@@ -7,6 +7,7 @@ import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
+import '../widgets/tabla_app.dart';
 
 // Reportes calculados en vivo desde `pedidos`/`pagos`.
 class ReportesScreen extends StatelessWidget {
@@ -345,60 +346,14 @@ class ReportesScreen extends StatelessWidget {
   }
 
   Widget _tablaServicios(int total) {
-    const estiloCabecera = TextStyle(
-      fontSize: 11,
-      fontWeight: FontWeight.w700,
-      color: Color(0xFF6B7280),
-    );
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(2),
-        1: FlexColumnWidth(1.3),
-        2: FlexColumnWidth(1.5),
-        3: FlexColumnWidth(1.6),
-      },
-      children: [
-        const TableRow(
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('TIPO DE SERVICIO', style: estiloCabecera),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('PEDIDOS', style: estiloCabecera),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('VENTAS', style: estiloCabecera),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('TICKET PROM.', style: estiloCabecera),
-            ),
-          ],
-        ),
-        for (final s in _servicios) _filaServicio(s),
-      ],
-    );
-  }
+    final servicios = [for (final s in _servicios) s];
+    List<Pedido> listaDe(dynamic s) => _pedidosValidos.where(s.filtro).toList();
+    double ventasDe(dynamic s) => _ventasDe(listaDe(s));
+    double ticketDe(dynamic s) {
+      final l = listaDe(s);
+      return l.isEmpty ? 0.0 : _ventasDe(l) / l.length;
+    }
 
-  TableRow _filaServicio(
-    ({String label, Color color, bool Function(Pedido) filtro}) s,
-  ) {
-    final lista = _pedidosValidos.where(s.filtro).toList();
-    final ventas = _ventasDe(lista);
-    final ticket = lista.isEmpty ? 0.0 : ventas / lista.length;
-    final periodoCantidad = _periodos(
-      (l) => l.where(s.filtro).length.toDouble(),
-    );
-    final periodoVentas = _periodos((l) => _ventasDe(l.where(s.filtro)));
-    final periodoTicket = _periodos((l) {
-      final f = l.where(s.filtro).toList();
-      return f.isEmpty ? 0 : _ventasDe(f) / f.length;
-    });
-    Widget celda(Widget w) =>
-        Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: w);
     Widget valorConCambio(String texto, double? cambio) => Wrap(
       spacing: 4,
       runSpacing: 2,
@@ -406,52 +361,75 @@ class ReportesScreen extends StatelessWidget {
       children: [
         Text(
           texto,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
         ),
         _chipCambio(cambio),
       ],
     );
-    return TableRow(
-      children: [
-        celda(
-          Row(
+    return TablaApp<dynamic>(
+      filas: servicios,
+      columnas: [
+        ColumnaTabla<dynamic>(
+          titulo: 'Tipo de servicio',
+          flex: 2,
+          ordenarPor: (s) => (s.label as String).toLowerCase(),
+          celda: (s) => Row(
             children: [
               Container(
                 width: 9,
                 height: 9,
                 decoration: BoxDecoration(
-                  color: s.color,
+                  color: s.color as Color,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  s.label,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
+              Flexible(child: TablaApp.texto(s.label as String)),
             ],
           ),
         ),
-        celda(
-          valorConCambio(
-            '${lista.length}',
-            _cambioPct(periodoCantidad.actual, periodoCantidad.anterior),
-          ),
+        ColumnaTabla<dynamic>(
+          titulo: 'Pedidos',
+          flex: 1.3,
+          ordenarPor: (s) => listaDe(s).length,
+          celda: (s) {
+            final p = _periodos(
+              (l) => l.where(s.filtro as bool Function(Pedido)).length.toDouble(),
+            );
+            return valorConCambio(
+              '${listaDe(s).length}',
+              _cambioPct(p.actual, p.anterior),
+            );
+          },
         ),
-        celda(
-          valorConCambio(
-            '\$ ${ventas.toStringAsFixed(2)}',
-            _cambioPct(periodoVentas.actual, periodoVentas.anterior),
-          ),
+        ColumnaTabla<dynamic>(
+          titulo: 'Ventas',
+          flex: 1.5,
+          ordenarPor: ventasDe,
+          celda: (s) {
+            final p = _periodos(
+              (l) => _ventasDe(l.where(s.filtro as bool Function(Pedido))),
+            );
+            return valorConCambio(
+              '\$ ${ventasDe(s).toStringAsFixed(2)}',
+              _cambioPct(p.actual, p.anterior),
+            );
+          },
         ),
-        celda(
-          valorConCambio(
-            '\$ ${ticket.toStringAsFixed(2)}',
-            _cambioPct(periodoTicket.actual, periodoTicket.anterior),
-          ),
+        ColumnaTabla<dynamic>(
+          titulo: 'Ticket prom.',
+          flex: 1.6,
+          ordenarPor: ticketDe,
+          celda: (s) {
+            final p = _periodos((l) {
+              final f = l.where(s.filtro as bool Function(Pedido)).toList();
+              return f.isEmpty ? 0 : _ventasDe(f) / f.length;
+            });
+            return valorConCambio(
+              '\$ ${ticketDe(s).toStringAsFixed(2)}',
+              _cambioPct(p.actual, p.anterior),
+            );
+          },
         ),
       ],
     );

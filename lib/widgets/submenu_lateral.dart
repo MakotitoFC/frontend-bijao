@@ -14,99 +14,86 @@ class SubmenuEntrada {
   bool get esSeccion => clave == null;
 }
 
-// Segunda columna del menú: lista vertical con las subvistas de un módulo
-// (por ejemplo, Ventas o Configuración), junto al menú principal. Lleva el mismo
-// fondo oscuro que el menú principal.
-class SubmenuLateral extends StatelessWidget {
-  final String? titulo;
+// Barra horizontal de subvistas de un módulo (por ejemplo, Ventas), que va
+// debajo del header. Lleva el mismo fondo oscuro que el menú principal.
+class SubmenuSuperior extends StatelessWidget {
   final List<SubmenuEntrada> entradas;
   final String? seleccionada;
   final ValueChanged<String> onSeleccionar;
-  final double ancho;
 
-  const SubmenuLateral({
+  const SubmenuSuperior({
     super.key,
-    this.titulo,
     required this.entradas,
     required this.seleccionada,
     required this.onSeleccionar,
-    this.ancho = 220,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: ancho,
-      decoration: BoxDecoration(
-        color: AppColors.navbar,
-        border: const Border(left: BorderSide(color: Colors.white12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (titulo != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 16, 14),
-              child: Text(
-                titulo!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(10, titulo == null ? 20 : 0, 10, 16),
-              children: [for (final e in entradas) _entrada(e)],
+  Widget _item(SubmenuEntrada e) {
+    final activa = e.clave == seleccionada;
+    return InkWell(
+      onTap: () => onSeleccionar(e.clave!),
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: activa ? AppColors.primaryGreen : Colors.transparent,
+              width: 2.5,
             ),
           ),
-        ],
+        ),
+        child: Text(
+          e.etiqueta,
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: activa ? FontWeight.w700 : FontWeight.w500,
+            color: activa ? AppColors.primaryGreen : Colors.white70,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _entrada(SubmenuEntrada e) {
-    if (e.esSeccion) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 18, 12, 6),
-        child: Text(
+  // Etiqueta de una sección: separa los grupos de opciones.
+  Widget _seccion(SubmenuEntrada e, {required bool primera}) => Padding(
+    padding: EdgeInsets.only(left: primera ? 6 : 14, right: 6),
+    child: Row(
+      children: [
+        if (!primera) ...[
+          Container(width: 1, height: 18, color: Colors.white24),
+          const SizedBox(width: 14),
+        ],
+        Text(
           e.etiqueta,
-          style: TextStyle(
-            fontSize: 12,
+          maxLines: 1,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
             color: Colors.white38,
-            fontWeight: FontWeight.w500,
           ),
         ),
-      );
-    }
-    final activa = e.clave == seleccionada;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
-      child: Material(
-        color: activa
-            ? AppColors.primaryGreen.withValues(alpha: 0.16)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(AppRadii.button),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadii.button),
-          onTap: () => onSeleccionar(e.clave!),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Text(
-              e.etiqueta,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: activa ? FontWeight.w700 : FontWeight.w500,
-                color: activa ? AppColors.primaryGreen : Colors.white70,
-              ),
-            ),
-          ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.navbar,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < entradas.length; i++)
+              entradas[i].esSeccion
+                  ? _seccion(entradas[i], primera: i == 0)
+                  : _item(entradas[i]),
+          ],
         ),
       ),
     );

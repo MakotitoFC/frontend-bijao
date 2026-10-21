@@ -86,11 +86,17 @@ class PagoService {
 
   // Trae los pagos del día (`GET /api/pagos?desde=&hasta=`) para las pantallas
   // Pagos y Caja: así no quedan vacías al recargar la página.
-  Future<void> cargarDelDia() async {
-    final h = DateTime.now();
+  Future<void> cargarDelDia() {
+    final hoy = DateTime.now();
+    return cargarDelRango(hoy, hoy);
+  }
+
+  // Trae los pagos de un rango de fechas (inclusive) y los suma a los que ya
+  // están en pantalla.
+  Future<void> cargarDelRango(DateTime desde, DateTime hasta) async {
     String dos(int n) => n.toString().padLeft(2, '0');
-    final dia = '${h.year}-${dos(h.month)}-${dos(h.day)}';
-    final res = await _api.get('/api/pagos?desde=$dia&hasta=$dia');
+    String f(DateTime d) => '${d.year}-${dos(d.month)}-${dos(d.day)}';
+    final res = await _api.get('/api/pagos?desde=${f(desde)}&hasta=${f(hasta)}');
     if (res is! List) return;
     agregarPagosDelServidor(res.whereType<Map<String, dynamic>>().toList());
   }
