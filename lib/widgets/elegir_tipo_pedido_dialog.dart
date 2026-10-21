@@ -15,9 +15,12 @@ class ElegirTipoPedidoDialog extends StatefulWidget {
 class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
   String? _tipoSeleccion;
 
+  bool _esMobile = false;
+
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
+    _esMobile = esMobile;
     final anchoPantalla = MediaQuery.sizeOf(context).width;
     return Material(
       color: Colors.white,
@@ -137,12 +140,11 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
     required bool seleccionado,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    final tarjeta = InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: 180,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: seleccionado
@@ -185,5 +187,8 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
         ),
       ),
     );
+    // En escritorio las tres tarjetas se reparten el ancho por igual: el
+    // espacio a los costados es el mismo en todas.
+    return _esMobile ? tarjeta : Expanded(child: tarjeta);
   }
 }

@@ -4,7 +4,7 @@ import 'package:frontend_bijao/models/pedido_line.dart';
 import 'package:frontend_bijao/utils/whatsapp_cuenta.dart';
 
 void main() {
-  test('el texto de WhatsApp lleva el detalle y la dirección de entrega', () {
+  test('el texto de WhatsApp lleva los datos del delivery y el detalle', () {
     final pedido = Pedido(
       id: 'p1',
       numeroPedido: '0007',
@@ -14,7 +14,9 @@ void main() {
       fechaPedido: DateTime(2026, 10, 20, 14, 0),
       usuarioId: 'u1',
       clienteNombre: 'Ana',
+      clienteCelular: '987654321',
       direccionDelivery: 'Av. Lima 123',
+      referenciaDelivery: 'Frente al parque',
     );
     const linea = PedidoLine(
       id: 'l1',
@@ -30,9 +32,13 @@ void main() {
       precioTotalLinea: 40,
     );
     final texto = textoCuentaWhatsapp(pedido: pedido, lineas: const [linea]);
-    expect(texto, contains('Cliente: Ana'));
-    expect(texto, contains('Entrega: Av. Lima 123'));
-    expect(texto, contains('2 x Ceviche'));
-    expect(texto, contains('*TOTAL: S/ 40.00*'));
+    expect(texto, contains('👤 *CLIENTE*'));
+    expect(texto, contains('*Nombre:* Ana'));
+    expect(texto, contains('📞 *Celular:* 987654321'));
+    expect(texto, contains('📍 *Dirección:* Av. Lima 123'));
+    expect(texto, contains('🧭 *Referencia:* Frente al parque'));
+    expect(texto, isNot(contains('Atención')));
+    expect(texto, contains('🔸 *2x Ceviche*'));
+    expect(texto, contains('🔥 *TOTAL: S/ 40.00* 🔥'));
   });
 }

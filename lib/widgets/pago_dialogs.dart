@@ -9,6 +9,7 @@ import '../models/medio_pago.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
+import 'comprobante_en_cobro.dart';
 import 'dialogo_app.dart';
 
 const naranjaPago = Color(0xFFF07F13);
@@ -176,6 +177,26 @@ class PagarPedidoDialog extends StatefulWidget {
 
 class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   late MedioPago _medio = mediosPagoActivos.first;
+  // Comprobante a emitir al cobrar (solo administración y caja lo eligen).
+  ComprobanteEnCobro? _comprobante;
+
+  @override
+  void initState() {
+    super.initState();
+    if (puedeElegirComprobante(widget.pedido)) {
+      _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
+        ..addListener(() {
+          if (mounted) setState(() {});
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    _comprobante?.dispose();
+    super.dispose();
+  }
+
   // La cuenta que cobra el servidor (sin la propina ni el táper de la app).
   double get _saldo => saldoCuentaDePedido(widget.pedido.id);
   // Propina y táper: el cliente los paga además de la cuenta, sin recargo.
@@ -220,6 +241,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
+    // El cobro ya está guardado: ahora se emite el comprobante elegido.
+    final eleccion = _comprobante;
+    if (eleccion != null) {
+      await emitirComprobanteTrasCobro(context, widget.pedido, eleccion);
+      if (!mounted) return;
+    }
     Navigator.of(context).pop(true);
   }
 
@@ -356,6 +383,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               );
             },
           ),
+          if (_comprobante != null) ...[
+            const SizedBox(height: 18),
+            SelectorComprobante(control: _comprobante!),
+          ],
           if (_recargo > 0 || propina > 0 || taper > 0)
             Container(
               margin: const EdgeInsets.only(top: 12),
@@ -406,7 +437,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               Expanded(
                 flex: 3,
                 child: FilledButton.icon(
-                  onPressed: saldo > 0.01 && !_guardando ? _pagar : null,
+                  onPressed:
+                      saldo > 0.01 &&
+                          !_guardando &&
+                          (_comprobante?.completo ?? true)
+                      ? _pagar
+                      : null,
                   icon: const Icon(LucideIcons.banknote, size: 18),
                   label: Text(
                     'Pagar · S/ ${total.toStringAsFixed(2)}',

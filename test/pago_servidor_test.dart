@@ -222,19 +222,48 @@ void main() {
     expect(pedidos.single.estado, 'pagado');
   });
 
+  const local = MedioPago(
+    id: 'mp1',
+    medioPago: 'Efectivo',
+    aplicaComision: false,
+  );
+
   test('sin ids del servidor (datos locales) se cobra en memoria', () async {
-    const local = MedioPago(
-      id: 'mp1',
-      medioPago: 'Efectivo',
-      aplicaComision: false,
+    final pedidoLocal = Pedido(
+      id: 'p1',
+      numeroPedido: '0007',
+      mesaNumero: 0,
+      tipoPedido: 'llevar',
+      estado: 'servido',
+      fechaPedido: DateTime(2026, 10, 19, 14, 0),
+      usuarioId: 'u1',
     );
+    detallesPorPedido['p1'] = [_linea];
+    addTearDown(() => detallesPorPedido.remove('p1'));
     await PagoService.instance.registrar(
-      pedido: _pedido(),
+      pedido: pedidoLocal,
       medio: local,
       montoAbonado: 100,
     );
     expect(peticiones, isEmpty); // no hubo llamada
     expect(pagos, hasLength(1));
+  });
+
+  test('un pedido del servidor no se cobra con un método que no lo es', () async {
+    await expectLater(
+      PagoService.instance.registrar(
+        pedido: _pedido(),
+        medio: local,
+        montoAbonado: 100,
+      ),
+      throwsA(
+        predicate(
+          (e) => e.toString().contains('no existe en el servidor'),
+        ),
+      ),
+    );
+    expect(peticiones, isEmpty);
+    expect(pagos, isEmpty); // no queda nada cobrado
   });
 
   test('la propina y el táper de la app no se abonan a la cuenta', () async {

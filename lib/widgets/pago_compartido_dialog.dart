@@ -14,6 +14,7 @@ import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
+import 'comprobante_en_cobro.dart';
 import 'pago_dialogs.dart';
 import 'app_switch.dart';
 import 'campo_texto.dart';
@@ -103,14 +104,24 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   MedioPago get _medioInicial => mediosPagoActivos.first;
 
+  // Comprobante a emitir al saldar la cuenta (solo administración y caja).
+  ComprobanteEnCobro? _comprobante;
+
   @override
   void initState() {
     super.initState();
     _reiniciar(_Modo.iguales);
+    if (puedeElegirComprobante(widget.pedido)) {
+      _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
+        ..addListener(() {
+          if (mounted) setState(() {});
+        });
+    }
   }
 
   @override
   void dispose() {
+    _comprobante?.dispose();
     for (final p in _pagadores) {
       p.liberar();
     }
@@ -398,6 +409,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
+    // La cuenta quedó saldada: se emite el comprobante elegido.
+    final eleccion = _comprobante;
+    if (eleccion != null) {
+      await emitirComprobanteTrasCobro(context, widget.pedido, eleccion);
+      if (!mounted) return;
+    }
     Navigator.of(context)
         .pop((boletasIndividuales: _boletasIndividuales, boletas: boletas));
   }
@@ -1023,6 +1040,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           const SizedBox(height: 8),
           for (var i = 0; i < _pagadores.length; i++)
             _tarjetaPagador(i, montos[i]),
+          if (_comprobante != null) ...[
+            const SizedBox(height: 4),
+            SelectorComprobante(control: _comprobante!),
+            const SizedBox(height: 16),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -1080,7 +1102,10 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
               Expanded(
                 flex: 3,
                 child: FilledButton.icon(
-                  onPressed: _valido && !_guardando ? _confirmar : null,
+                  onPressed:
+                      _valido && !_guardando && (_comprobante?.completo ?? true)
+                      ? _confirmar
+                      : null,
                   icon: const Icon(LucideIcons.users, size: 18),
                   label: Text(
                     'Cobrar · S/ ${(_saldo + _recargoTotal + _propinaApp + _taperApp).toStringAsFixed(2)}',

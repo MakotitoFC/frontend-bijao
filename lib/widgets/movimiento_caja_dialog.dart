@@ -100,7 +100,6 @@ class _MovimientoCajaDialogState extends State<MovimientoCajaDialog> {
       children: [
         AppSelect<CategoriaMovimiento>(
           label: 'Categoría',
-          flotante: true,
           value: _categoria,
           hint: 'Elige para qué fue',
           items: [
@@ -124,7 +123,6 @@ class _MovimientoCajaDialogState extends State<MovimientoCajaDialog> {
         const SizedBox(height: 14),
         AppSelect<MedioPago>(
           label: 'Medio de pago',
-          flotante: true,
           value: _medio,
           items: [
             for (final m in _medios)

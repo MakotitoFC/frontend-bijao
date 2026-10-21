@@ -15,7 +15,8 @@ class SubmenuEntrada {
 }
 
 // Segunda columna del menú: lista vertical con las subvistas de un módulo
-// (por ejemplo, Ventas o Configuración), junto al menú principal.
+// (por ejemplo, Ventas o Configuración), junto al menú principal. Lleva el mismo
+// fondo oscuro que el menú principal.
 class SubmenuLateral extends StatelessWidget {
   final String? titulo;
   final List<SubmenuEntrada> entradas;
@@ -37,8 +38,8 @@ class SubmenuLateral extends StatelessWidget {
     return Container(
       width: ancho,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(right: BorderSide(color: Colors.grey.shade200)),
+        color: AppColors.navbar,
+        border: const Border(left: BorderSide(color: Colors.white12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -53,6 +54,7 @@ class SubmenuLateral extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -75,7 +77,7 @@ class SubmenuLateral extends StatelessWidget {
           e.etiqueta,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey.shade500,
+            color: Colors.white38,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -86,7 +88,7 @@ class SubmenuLateral extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: Material(
         color: activa
-            ? AppColors.primaryGreen.withValues(alpha: 0.10)
+            ? AppColors.primaryGreen.withValues(alpha: 0.16)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(AppRadii.button),
         child: InkWell(
@@ -101,9 +103,7 @@ class SubmenuLateral extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: activa ? FontWeight.w700 : FontWeight.w500,
-                color: activa
-                    ? AppColors.primaryGreenDark
-                    : Colors.grey.shade700,
+                color: activa ? AppColors.primaryGreen : Colors.white70,
               ),
             ),
           ),

@@ -9,13 +9,25 @@ import 'boton_imprimir_whatsapp.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
 
-// Pide el celular del cliente (ya viene escrito si el pedido lo tiene) y abre
-// WhatsApp con la cuenta lista para enviar. Devuelve el número listo para
-// `wa.me` o null si se cancela.
+// Pide el celular al que se manda el mensaje (puede venir escrito) y devuelve
+// el número listo para `wa.me`, o null si se cancela. Por defecto es el chat
+// del cliente (p. ej. al mandarle su comprobante); el pedido para el delivery
+// usa otros textos y no trae número.
 class WhatsappCuentaDialog extends StatefulWidget {
   final String? celularInicial;
+  final String titulo;
+  final String descripcion;
+  final String etiquetaCelular;
 
-  const WhatsappCuentaDialog({super.key, this.celularInicial});
+  const WhatsappCuentaDialog({
+    super.key,
+    this.celularInicial,
+    this.titulo = 'Enviar cuenta por WhatsApp',
+    this.descripcion =
+        'Se abre el chat del cliente en WhatsApp con el detalle de la cuenta '
+        'ya escrito; solo falta dar "Enviar".',
+    this.etiquetaCelular = 'Celular del cliente',
+  });
 
   @override
   State<WhatsappCuentaDialog> createState() => _WhatsappCuentaDialogState();
@@ -43,7 +55,7 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
   Widget build(BuildContext context) {
     final vacio = _celular.text.trim().isEmpty;
     return DialogoApp(
-      titulo: 'Enviar cuenta por WhatsApp',
+      titulo: widget.titulo,
       ancho: 400,
       acciones: [
         OutlinedButton(
@@ -59,8 +71,7 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
       ],
       children: [
         Text(
-          'Se abre el chat del cliente en WhatsApp con el detalle de la cuenta '
-          'ya escrito; solo falta dar "Enviar".',
+          widget.descripcion,
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 14),
@@ -71,7 +82,7 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
           onChanged: (_) => setState(() {}),
           onSubmitted: (_) => _enviar(),
           decoration: InputDecoration(
-            labelText: 'Celular del cliente',
+            labelText: widget.etiquetaCelular,
             hintText: '987654321',
             prefixText: '+51 ',
             errorText: vacio || _numero != null
@@ -85,9 +96,10 @@ class _WhatsappCuentaDialogState extends State<WhatsappCuentaDialog> {
   }
 }
 
-// Flujo completo desde el botón: pide el celular y abre el chat del cliente en
-// WhatsApp con el detalle de la cuenta ya escrito en texto (productos, totales,
-// recargo y saldo). Solo falta dar "Enviar". No se manda ninguna imagen.
+// Flujo completo desde el botón: pide el celular del delivery y abre su chat en
+// WhatsApp con el pedido ya escrito en texto (cliente, productos, totales,
+// recargo y saldo). Solo falta dar "Enviar". No se manda ninguna imagen. El
+// número no se rellena con el del cliente: el mensaje no es para él.
 Future<void> enviarCuentaPorWhatsapp(
   BuildContext context, {
   required Pedido pedido,
@@ -98,7 +110,13 @@ Future<void> enviarCuentaPorWhatsapp(
 }) async {
   final numero = await showBlurDialog<String>(
     context: context,
-    builder: (_) => WhatsappCuentaDialog(celularInicial: pedido.clienteCelular),
+    builder: (_) => const WhatsappCuentaDialog(
+      titulo: 'Enviar pedido por WhatsApp',
+      descripcion:
+          'Se abre el chat del delivery en WhatsApp con el pedido ya escrito; '
+          'solo falta dar "Enviar".',
+      etiquetaCelular: 'Celular del delivery',
+    ),
   );
   if (numero == null || !context.mounted) return;
   final abierto = await abrirWhatsapp(

@@ -10,9 +10,7 @@ import '../utils/datos_sede.dart';
 import '../utils/ticket_texto.dart';
 import 'app_tag.dart';
 import 'dialogo_app.dart';
-import 'boton_imprimir_whatsapp.dart';
 import 'ticket_papel.dart';
-import 'whatsapp_cuenta_dialog.dart';
 
 // Tickets del pedido, tal como salen en la ticketera (80 mm, blanco y negro):
 //  - Comanda de cocina: lo que se prepara, sin precios. Es la que el servidor
@@ -92,22 +90,6 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             label: const Text('Imprimir cuenta'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
           ),
-        if (_tab == 'cuenta')
-          FilledButton.icon(
-            onPressed: () => enviarCuentaPorWhatsapp(
-              context,
-              pedido: pedido,
-              lineas: lineas,
-              metodoPago: widget.metodoPago == 'Sin pago'
-                  ? ''
-                  : widget.metodoPago,
-              pagado: pagado > 0.001 ? pagado : 0,
-              recargo: recargoCobradoDePedido(pedido.id),
-            ),
-            icon: const IconoWhatsapp(tamano: 18),
-            label: const Text('Enviar por WhatsApp'),
-            style: estiloBotonWhatsapp,
-          ),
       ],
       children: [
         Wrap(
@@ -131,8 +113,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
           _tab == 'comanda'
               ? 'Así sale en la impresora de cocina (sin precios). Al '
                     'reimprimirla, el papel lleva el rótulo REIMPRESION.'
-              : 'Detalle de lo consumido, sin validez tributaria. Todavía no se imprime '
-                    'desde el sistema, pero se puede enviar al cliente por WhatsApp.',
+              : 'Detalle de lo consumido, sin validez tributaria.',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 12),

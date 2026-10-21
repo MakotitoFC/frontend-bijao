@@ -31,6 +31,16 @@ class PagoService {
     double propina = 0,
     String? pagador,
   }) async {
+    // Un pedido del servidor no puede cobrarse con un método que no lo es (p. ej.
+    // los de respaldo que se muestran cuando el servidor no tiene ninguno): el
+    // cobro quedaría solo en esta pantalla y el servidor no lo sabría.
+    if (UuidHelper.isValid(pedido.id) && !UuidHelper.isValid(medio.id)) {
+      throw Exception(
+        'El método de pago "${medio.medioPago}" no existe en el servidor. '
+        'Configura los métodos de pago (Configuración) o cierra sesión y vuelve '
+        'a entrar para cargarlos.',
+      );
+    }
     if (!_enServidor(pedido, medio)) {
       return registrarPago(
         pedido: pedido,

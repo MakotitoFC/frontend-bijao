@@ -66,10 +66,16 @@ void main() {
         pedido: _pedido(),
         lineas: const [_ceviche],
       );
-      expect(texto, contains('pedido #0007'));
-      expect(texto, contains('Cliente: Ana'));
-      expect(texto, contains('2 x Ceviche'));
-      expect(texto, contains('*TOTAL: S/ 40.00*'));
+      expect(texto, contains('🚀 *PEDIDO: #0007* 🚀'));
+      expect(texto, contains('📅 19/10/2026, 02:00 p. m.'));
+      expect(texto, contains('🪑 *Atención:* Mesa 5'));
+      expect(texto, contains('*Nombre:* Ana'));
+      expect(texto, contains('🔸 *2x Ceviche*'));
+      expect(texto, contains('   💵 S/ 40.00'));
+      expect(texto, contains('Subtotal: S/ 40.00'));
+      expect(texto, contains('🔥 *TOTAL: S/ 40.00* 🔥'));
+      expect(texto, contains('💳 Pago: PENDIENTE DE PAGO'));
+      expect(texto, contains('🙌 ¡Gracias por tu compra!'));
       expect(texto, isNot(contains('Recargo')));
     });
 
@@ -85,6 +91,18 @@ void main() {
       expect(texto, contains('*TOTAL A PAGAR: S/ 41.60*'));
     });
 
+    test('un pedido pagado muestra el método en mayúsculas', () {
+      final texto = textoCuentaWhatsapp(
+        pedido: _pedido(),
+        lineas: const [_ceviche],
+        metodoPago: 'Efectivo',
+        pagado: 40,
+      );
+      expect(texto, contains('💳 Pago: EFECTIVO'));
+      expect(texto, isNot(contains('PENDIENTE')));
+      expect(texto, isNot(contains('Saldo pendiente')));
+    });
+
     test('un pago parcial muestra lo pagado y el saldo', () {
       final texto = textoCuentaWhatsapp(
         pedido: _pedido(),
@@ -92,7 +110,7 @@ void main() {
         pagado: 15,
       );
       expect(texto, contains('Pagado: S/ 15.00'));
-      expect(texto, contains('*Saldo pendiente: S/ 25.00*'));
+      expect(texto, contains('⚠️ *Saldo pendiente: S/ 25.00*'));
     });
   });
 

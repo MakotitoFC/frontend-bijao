@@ -13,7 +13,6 @@ import '../data/promociones_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/incidencia.dart';
 import '../models/pedido.dart';
-import '../models/comprobante.dart';
 import '../models/taper.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
@@ -23,7 +22,6 @@ import '../services/impresion_service.dart';
 import '../services/catalog_service.dart';
 import '../services/devolucion_service.dart';
 import '../services/pedido_mozo_service.dart';
-import '../services/auth_service.dart';
 
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
@@ -35,7 +33,6 @@ import 'cambiar_entrega_dialog.dart';
 import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
 import 'boton_imprimir_whatsapp.dart';
-import 'emitir_comprobante_dialog.dart';
 import 'agregar_producto_dialog.dart';
 import 'app_tag.dart';
 import 'descuento_dialog.dart';
@@ -288,19 +285,6 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // ---------- acciones ----------
-
-  // Emite la boleta, factura o ticket de venta del pedido.
-  Future<void> _emitirComprobante(BuildContext context) async {
-    // Se leen los cobros del servidor: sin ellos no se puede facturar.
-    try {
-      await PagoService.instance.cargarDePedido(pedido);
-    } catch (_) {}
-    if (!context.mounted) return;
-    await showBlurDialog<Comprobante>(
-      context: context,
-      builder: (_) => EmitirComprobanteDialog(pedido: pedido),
-    );
-  }
 
   // Manda la cuenta del pedido al cliente por WhatsApp.
   void _enviarWhatsapp(BuildContext context) {
@@ -2060,28 +2044,8 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ],
         ),
-        // Boleta, factura o ticket de venta (solo caja y administración).
-        if (_puedeEmitirComprobante) ...[
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => _emitirComprobante(context),
-            icon: const Icon(LucideIcons.fileCheck, size: 16),
-            label: const Text('Emitir comprobante', style: texto),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.black87,
-              side: BorderSide(color: Colors.grey.shade300),
-            ),
-          ),
-        ],
       ],
     );
-  }
-
-  bool get _puedeEmitirComprobante {
-    final u = AuthService.instance.currentUser;
-    return UuidHelper.isValid(pedido.id) &&
-        u != null &&
-        (u.esAdmin || u.esCajero);
   }
 }
 
