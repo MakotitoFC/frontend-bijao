@@ -8,6 +8,7 @@ import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
@@ -20,6 +21,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
 import '../widgets/imagen_plato.dart';
+import '../widgets/presentacion_rapida_dialog.dart';
 import '../widgets/tamano_rapido_dialog.dart';
 import 'carta_form_screen.dart';
 
@@ -68,6 +70,7 @@ class _CartaScreenState extends State<CartaScreen> {
   @override
   void initState() {
     super.initState();
+    CatalogService.instance.cargarUnidadesBebida();
     CatalogService.instance.cargarCarta();
     // Los cambios de otros equipos llegan por el flujo de eventos del servidor
     // (`CARTA_ACTUALIZADA`), sin consultar cada cierto tiempo.
@@ -125,6 +128,8 @@ class _CartaScreenState extends State<CartaScreen> {
         final guardado = await CatalogService.instance.actualizarPlato(
           editado,
           variantes: r.variantes,
+          presentacionesPlato: r.presentaciones,
+          limpiarImagen: r.limpiarImagen,
         );
         String? advertencia;
         String? errorFoto;
@@ -178,6 +183,46 @@ class _CartaScreenState extends State<CartaScreen> {
       type: ToastType.success,
       titulo: 'Tamaño creado',
     );
+  }
+
+  // Agrega una presentación (ej. Vaso, Jarra y precio) a un plato/bebida que ya existe.
+  Future<void> _agregarPresentacion(CartaItem item) async {
+    final creada = await showBlurDialog<CartaPresentacion>(
+      context: context,
+      builder: (_) => PresentacionRapidaDialog(plato: item),
+    );
+    if (creada == null || !mounted) return;
+    setState(() {});
+    showAppToast(
+      context,
+      'Presentación "${creada.unidad.unidadPresentacion}" agregada a ${item.nombrePlato}.',
+      type: ToastType.success,
+      titulo: 'Presentación creada',
+    );
+  }
+
+  Future<void> _quitarFoto(CartaItem item) async {
+    try {
+      await CatalogService.instance.actualizarPlato(
+        item.copyWith(limpiarImagen: true),
+        limpiarImagen: true,
+      );
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'Se quitó la foto de ${item.nombrePlato}.',
+        type: ToastType.info,
+        titulo: 'Foto eliminada',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo quitar la foto: $e',
+        type: ToastType.error,
+        titulo: 'Error',
+      );
+    }
   }
 
   // "Se acabó" hoy / reabrir: no cambia el estado del plato, solo su
@@ -381,9 +426,10 @@ class _CartaScreenState extends State<CartaScreen> {
 
   double _precioMinimo(String cartaId) {
     final precios = [
-      ...presentaciones
-          .where((p) => p.cartaId == cartaId)
-          .map((p) => p.precioCliente),
+      ...presentacionesDeCarta(
+        cartaId,
+        soloActivas: true,
+      ).map((p) => p.precioCliente),
       ...variantesDeCarta(
         cartaId,
         soloActivas: true,
@@ -412,6 +458,7 @@ class _CartaScreenState extends State<CartaScreen> {
           cartasNotifier,
           disponibilidadHoyNotifier,
           configStockNotifier,
+          EventosService.instance.revision,
         ]),
         builder: (context, _) {
           final items = _cartaFiltrada;
@@ -508,7 +555,10 @@ class _CartaScreenState extends State<CartaScreen> {
 
   Widget _contenidoTarjeta(CartaItem item) {
     final estadoDisp = estadoDisponibilidadDe(item.id);
-    final desdePrecio = item.precioCliente == null;
+    final varsActivas = variantesDeCarta(item.id, soloActivas: true);
+    final presActivas = presentacionesDeCarta(item.id, soloActivas: true);
+    final tieneOpciones = varsActivas.isNotEmpty || presActivas.isNotEmpty;
+    final desdePrecio = tieneOpciones || item.precioCliente == null;
     final precio = desdePrecio ? _precioMinimo(item.id) : item.precioCliente!;
     final categoria = _nombreCategoria(item.categoriaId);
     final tarjeta = Container(
@@ -565,12 +615,25 @@ class _CartaScreenState extends State<CartaScreen> {
                         Positioned(
                           bottom: 8,
                           right: 8,
-                          child: _botonAccion(
-                            LucideIcons.camera,
-                            item.urlImagen == null
-                                ? 'Subir foto'
-                                : 'Cambiar foto',
-                            () => _subirFoto(item),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (item.urlImagen != null) ...[
+                                _botonAccion(
+                                  Icons.no_photography_outlined,
+                                  'Quitar foto',
+                                  () => _quitarFoto(item),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              _botonAccion(
+                                LucideIcons.camera,
+                                item.urlImagen == null
+                                    ? 'Subir foto'
+                                    : 'Cambiar foto',
+                                () => _subirFoto(item),
+                              ),
+                            ],
                           ),
                         ),
                     ],
@@ -621,29 +684,82 @@ class _CartaScreenState extends State<CartaScreen> {
                             : 'S/ ${precio.toStringAsFixed(2)}',
                         destacado: true,
                       ),
-                      _dato('Stock', '${item.stock}'),
+                      _dato(
+                        'Stock',
+                        estadoDisp.tipo == TipoDisponibilidad.conCantidad
+                            ? '${estadoDisp.quedan ?? 0}'
+                            : (estadoDisp.tipo == TipoDisponibilidad.agotado
+                                ? '0 (Agotado)'
+                                : (item.stock > 0 ? '${item.stock}' : 'Libre')),
+                      ),
                     ],
                   ),
+                  if (varsActivas.isNotEmpty || presActivas.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final v in varsActivas)
+                          _chipOpcionPrecio(
+                            '${v.nombre} · S/ ${v.precioCliente.toStringAsFixed(2)}',
+                            AppColors.primaryGreen,
+                          ),
+                        for (final p in presActivas)
+                          _chipOpcionPrecio(
+                            '${p.unidad.unidadPresentacion}${p.volumenMl > 0 ? ' (${p.volumenMl} ml)' : ''} · S/ ${p.precioCliente.toStringAsFixed(2)}',
+                            AppColors.naranja,
+                          ),
+                      ],
+                    ),
+                  ],
                   if (_puedeEditar) ...[
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => _agregarTamano(item),
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        side: BorderSide(
-                          color: AppColors.primaryGreen.withValues(alpha: 0.5),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _agregarTamano(item),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            side: BorderSide(
+                              color: AppColors.primaryGreen.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                            foregroundColor: AppColors.primaryGreen,
+                          ),
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text(
+                            'Tamaño',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
-                        foregroundColor: AppColors.primaryGreen,
-                      ),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text(
-                        'Tamaño',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                        OutlinedButton.icon(
+                          onPressed: () => _agregarPresentacion(item),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            side: BorderSide(
+                              color: AppColors.naranja.withValues(alpha: 0.5),
+                            ),
+                            foregroundColor: AppColors.naranja,
+                          ),
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text(
+                            'Presentación',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                   const Spacer(),
@@ -781,6 +897,25 @@ class _CartaScreenState extends State<CartaScreen> {
             padding: const EdgeInsets.all(6),
             child: Icon(icono, size: 16, color: Colors.grey.shade800),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chipOpcionPrecio(String texto, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
     );

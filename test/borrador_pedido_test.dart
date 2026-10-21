@@ -276,7 +276,7 @@ void main() {
       presentacion: CartaPresentacion(
         id: 'pr1',
         cartaId: 'c1',
-        unidad: UnidadBebida(id: 2, unidadPresentacion: 'Jarra'),
+        unidad: UnidadBebida(id: '2', unidadPresentacion: 'Jarra'),
         volumenMl: 1000,
         precioCliente: 9,
       ),

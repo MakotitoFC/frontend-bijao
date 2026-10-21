@@ -16,9 +16,7 @@ class CartaItemDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final delProducto = presentaciones
-        .where((p) => p.cartaId == item.id)
-        .toList();
+    final delProducto = presentacionesDeCarta(item.id, soloActivas: true);
     final tamanos = variantesDeCarta(item.id, soloActivas: true);
     final promocion = promocionDeCarta(item.id);
 
@@ -61,7 +59,11 @@ class CartaItemDetailSheet extends StatelessWidget {
             (p) => ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.local_bar_outlined),
-              title: Text('${p.unidad.unidadPresentacion} · ${p.volumenMl} ml'),
+              title: Text(
+                p.volumenMl > 0
+                    ? '${p.unidad.unidadPresentacion} · ${p.volumenMl} ml'
+                    : p.unidad.unidadPresentacion,
+              ),
               trailing: Text('S/ ${p.precioCliente.toStringAsFixed(2)}'),
             ),
           ),

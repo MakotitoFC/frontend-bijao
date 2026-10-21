@@ -88,6 +88,8 @@ class CartaItem {
     DateTime? creadoEn,
     Uint8List? imagenBytes,
     String? urlImagen,
+    bool limpiarPrecio = false,
+    bool limpiarImagen = false,
   }) => CartaItem(
     id: id ?? this.id,
     nombrePlato: nombrePlato ?? this.nombrePlato,
@@ -97,8 +99,8 @@ class CartaItem {
     subcategoriaIds: subcategoriaIds ?? this.subcategoriaIds,
     taperId: taperId ?? this.taperId,
     taperNombre: taperNombre ?? this.taperNombre,
-    precioCliente: precioCliente ?? this.precioCliente,
-    precioPersonal: precioPersonal ?? this.precioPersonal,
+    precioCliente: limpiarPrecio ? null : (precioCliente ?? this.precioCliente),
+    precioPersonal: limpiarPrecio ? null : (precioPersonal ?? this.precioPersonal),
     estado: estado ?? this.estado,
     sedeId: sedeId ?? this.sedeId,
     costo: costo ?? this.costo,
@@ -107,8 +109,8 @@ class CartaItem {
     agregados: agregados ?? this.agregados,
     limiteAgregados: limiteAgregados ?? this.limiteAgregados,
     creadoEn: creadoEn ?? this.creadoEn,
-    imagenBytes: imagenBytes ?? this.imagenBytes,
-    urlImagen: urlImagen ?? this.urlImagen,
+    imagenBytes: limpiarImagen ? null : (imagenBytes ?? this.imagenBytes),
+    urlImagen: limpiarImagen ? null : (urlImagen ?? this.urlImagen),
   );
 
   factory CartaItem.fromJson(Map<String, dynamic> json) {
@@ -155,7 +157,11 @@ class CartaItem {
       agregados: rawMods.isNotEmpty ? rawMods : const [],
       costo: jsonDouble(json['costo']),
       sku: json['sku'] as String?,
-      stock: (json['stock'] is int) ? json['stock'] as int : 0,
+      stock: (json['stock'] is int)
+          ? json['stock'] as int
+          : (json['disponibilidad']?['cantidad_disponible'] is int
+              ? json['disponibilidad']['cantidad_disponible'] as int
+              : 0),
       urlImagen:
           (json['url_imagen'] is String &&
               (json['url_imagen'] as String).isNotEmpty)

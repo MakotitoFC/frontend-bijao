@@ -1592,8 +1592,12 @@ class DetallePedidoPanel extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   onChanged: (_) {
+                    if (!_puedeModificar(context)) return;
+                    // Actualización optimista instantánea
+                    alternarLineaEntregada(l.id);
+                    onCambio();
+
                     if (_api) {
-                      if (!_puedeModificar(context)) return;
                       _ejecutar(
                         context,
                         () => PedidoMozoService.instance.marcarServido(
@@ -1604,11 +1608,14 @@ class DetallePedidoPanel extends StatelessWidget {
                         exito: entregado
                             ? '"${l.nombrePlato}" vuelve a pendiente.'
                             : '"${l.nombrePlato}" servido.',
-                      );
-                      return;
+                      ).then((ok) {
+                        if (!ok) {
+                          // Si falló, revertir estado local
+                          alternarLineaEntregada(l.id);
+                          onCambio();
+                        }
+                      });
                     }
-                    alternarLineaEntregada(l.id);
-                    onCambio();
                   },
                   activeColor: AppColors.primaryGreen,
                 ),
@@ -2017,6 +2024,9 @@ class DetallePedidoPanel extends StatelessWidget {
                     (pedido.estado == 'pendiente' || pedido.estado == 'pedido')
                     ? () {
                         if (!_puedeModificar(context)) return;
+                        final prevEstado = pedido.estado;
+                        actualizarEstadoPedido(pedido.id, 'servido');
+                        onCambio();
                         _ejecutar(
                           context,
                           () => PedidoService.instance.cambiarEstadoPedido(
@@ -2024,7 +2034,12 @@ class DetallePedidoPanel extends StatelessWidget {
                             'servido',
                           ),
                           exito: 'Pedido #${pedido.numeroPedido} servido.',
-                        );
+                        ).then((ok) {
+                          if (!ok) {
+                            actualizarEstadoPedido(pedido.id, prevEstado);
+                            onCambio();
+                          }
+                        });
                       }
                     : null,
                 icon: const Icon(LucideIcons.utensilsCrossed, size: 16),

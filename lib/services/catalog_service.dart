@@ -1,4 +1,4 @@
-﻿import 'dart:developer' as developer;
+import 'dart:developer' as developer;
 
 import '../data/cartas_store.dart';
 import '../data/catalogos_store.dart';
@@ -7,11 +7,14 @@ import '../data/compras_store.dart';
 import '../data/categorias_store.dart';
 import '../data/inventario_store.dart';
 import '../data/mesas_store.dart';
+import '../data/presentaciones_store.dart';
 import '../data/subcategorias_store.dart';
 import '../data/variantes_store.dart';
 import '../data/utensilios_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
+import '../models/unidad_bebida.dart';
 import '../models/compra.dart';
 import '../models/compra_detalle.dart';
 import '../models/inventario_movimiento.dart';
@@ -57,9 +60,11 @@ class CatalogService {
         cargarMesas(),
         cargarCategorias(),
         cargarSubcategorias(),
+        cargarUnidadesBebida(),
         cargarCarta(),
         DisponibilidadService.instance.cargarHoy(),
         cargarVariantes(),
+        cargarPresentaciones(),
         cargarCompras(),
         cargarTapers(),
         cargarTiposProducto(),
@@ -470,20 +475,30 @@ class CatalogService {
   // ==========================================
 
   bool _recargandoCarta = false;
+  bool _recargaCartaPendiente = false;
 
-  // Vuelve a leer del servidor las categorías, subcategorías, platos y tamaños
-  // (botón "Actualizar carta"). Si ya hay una recarga en curso no empieza otra. Los errores de red se
-  // ignoran (se queda lo que ya estaba en pantalla).
+  // Vuelve a leer del servidor las categorías, subcategorías, platos, tamaños y presentaciones.
+  // Si llega un evento SSE mientras hay una recarga en curso, se encola una pasada adicional
+  // al terminar para que ningún cambio en tiempo real se pierda.
   Future<void> recargarCarta() async {
-    if (_recargandoCarta) return;
+    if (_recargandoCarta) {
+      _recargaCartaPendiente = true;
+      return;
+    }
     _recargandoCarta = true;
     try {
-      await Future.wait([
-        cargarCategorias(),
-        cargarSubcategorias(),
-        cargarCarta(),
-        cargarVariantes(),
-      ]);
+      do {
+        _recargaCartaPendiente = false;
+        await Future.wait([
+          cargarCategorias(),
+          cargarSubcategorias(),
+          cargarUnidadesBebida(),
+          cargarCarta(),
+          cargarVariantes(),
+          cargarPresentaciones(),
+          DisponibilidadService.instance.cargarHoy(),
+        ]);
+      } while (_recargaCartaPendiente);
     } finally {
       _recargandoCarta = false;
     }
@@ -494,7 +509,7 @@ class CatalogService {
     String? estado,
   }) async {
     try {
-      final params = <String, String>{};
+      final params = <String, String>{'con_disponibilidad': 'true'};
       if (estado != null && estado.isNotEmpty) {
         params['estado'] = estado;
       }
@@ -509,15 +524,27 @@ class CatalogService {
             .map((item) => CartaItem.fromJson(item as Map<String, dynamic>))
             .toList();
 
-        // El servidor devuelve los tamaños de cada plato dentro del plato.
+        // El servidor devuelve los tamaños y presentaciones de cada plato dentro del plato.
         for (final raw in res.whereType<Map<String, dynamic>>()) {
           final id = raw['id']?.toString();
+          if (id == null) continue;
           final tamanos = raw['variantes'];
-          if (id == null || tamanos is! List) continue;
-          reemplazarVariantesDeCarta(id, [
-            for (final v in tamanos.whereType<Map<String, dynamic>>())
-              CartaVariante.fromJson({'carta_id': id, ...v}),
-          ]);
+          if (tamanos is List) {
+            reemplazarVariantesDeCarta(id, [
+              for (final v in tamanos.whereType<Map<String, dynamic>>())
+                CartaVariante.fromJson({'carta_id': id, ...v}),
+            ]);
+          }
+          final presList = raw['presentaciones'];
+          if (presList is List) {
+            reemplazarPresentacionesDeCarta(id, [
+              for (final p in presList.whereType<Map<String, dynamic>>())
+                CartaPresentacion.fromJson(
+                  {'carta_id': id, ...p},
+                  catalogoUnidades: unidadesBebida,
+                ),
+            ]);
+          }
         }
 
         cartasNotifier.value = lista.where((c) => !c.eliminado).toList();
@@ -544,6 +571,15 @@ class CatalogService {
     'estado': v.estado,
   };
 
+  Map<String, dynamic> _presentacionParaEnvio(CartaPresentacion p) => {
+    if (p.id.isNotEmpty && UuidHelper.isValid(p.id)) 'id': p.id,
+    'unidad_bebida_id': p.unidad.id,
+    if (p.volumenMl > 0) 'volumen_ml': p.volumenMl,
+    'precio_cliente': p.precioCliente,
+    if (p.precioPersonal != null) 'precio_personal': p.precioPersonal,
+    'estado': p.estado,
+  };
+
   // Deja en la lista de tamaños los que devuelve el servidor para el plato. Si
   // la respuesta no los trae, se vuelven a leer.
   Future<void> _actualizarVariantesTras(
@@ -561,19 +597,47 @@ class CatalogService {
     }
   }
 
-  // [variantes]: tamaños del plato, guardados en la misma operación que el
-  // plato. Con null no se envían (el servidor no toca los que ya tiene).
+  Future<void> _actualizarPresentacionesTras(
+    String cartaId,
+    Map<String, dynamic> res,
+  ) async {
+    final lista = res['presentaciones'];
+    if (lista is List) {
+      reemplazarPresentacionesDeCarta(cartaId, [
+        for (final p in lista.whereType<Map<String, dynamic>>())
+          CartaPresentacion.fromJson(
+            {'carta_id': cartaId, ...p},
+            catalogoUnidades: unidadesBebida,
+          ),
+      ]);
+    } else {
+      await cargarPresentaciones();
+    }
+  }
+
+  // [variantes] / [presentaciones]: tamaños o presentaciones del plato, guardados
+  // en la misma operación que el plato. Cuando existen opciones activas, el precio
+  // en la tabla `carta` se envía como null.
   Future<CartaItem> crearPlato(
     CartaItem item, {
     List<CartaVariante>? variantes,
+    List<CartaPresentacion>? presentacionesPlato,
   }) async {
     final clientUuid = (item.id.isNotEmpty && UuidHelper.isValid(item.id))
         ? item.id
         : UuidHelper.v7();
 
+    final tieneOpciones =
+        (variantes != null && variantes.any((v) => v.estado)) ||
+        (presentacionesPlato != null && presentacionesPlato.any((p) => p.estado));
+
     final body = {
       if (variantes != null && variantes.isNotEmpty)
         'variantes': [for (final v in variantes) _varianteParaEnvio(v)],
+      if (presentacionesPlato != null && presentacionesPlato.isNotEmpty)
+        'presentaciones': [
+          for (final p in presentacionesPlato) _presentacionParaEnvio(p),
+        ],
       'id': clientUuid,
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
@@ -581,8 +645,10 @@ class CatalogService {
       if (item.taperId != null && item.taperId!.isNotEmpty)
         'taper_id': item.taperId,
       'estado': item.estado,
-      if (item.precioCliente != null) 'precio_cliente': item.precioCliente,
-      if (item.precioPersonal != null) 'precio_personal': item.precioPersonal,
+      if (!tieneOpciones && item.precioCliente != null)
+        'precio_cliente': item.precioCliente,
+      if (!tieneOpciones && item.precioPersonal != null)
+        'precio_personal': item.precioPersonal,
       if (item.sedeId != null) 'sede_id': item.sedeId,
       if (item.urlImagen != null) 'url_imagen': item.urlImagen,
     };
@@ -604,6 +670,9 @@ class CatalogService {
       if (variantes != null && variantes.isNotEmpty) {
         await _actualizarVariantesTras(nuevo.id, res);
       }
+      if (presentacionesPlato != null && presentacionesPlato.isNotEmpty) {
+        await _actualizarPresentacionesTras(nuevo.id, res);
+      }
       return nuevo;
     }
     throw Exception('Error al crear plato');
@@ -612,10 +681,20 @@ class CatalogService {
   Future<CartaItem> actualizarPlato(
     CartaItem item, {
     List<CartaVariante>? variantes,
+    List<CartaPresentacion>? presentacionesPlato,
+    bool limpiarImagen = false,
   }) async {
+    final tieneOpciones =
+        (variantes != null && variantes.any((v) => v.estado)) ||
+        (presentacionesPlato != null && presentacionesPlato.any((p) => p.estado));
+
     final body = {
       if (variantes != null && variantes.isNotEmpty)
         'variantes': [for (final v in variantes) _varianteParaEnvio(v)],
+      if (presentacionesPlato != null && presentacionesPlato.isNotEmpty)
+        'presentaciones': [
+          for (final p in presentacionesPlato) _presentacionParaEnvio(p),
+        ],
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
       if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
@@ -623,11 +702,17 @@ class CatalogService {
           ? item.taperId
           : '00000000-0000-0000-0000-000000000000',
       'estado': item.estado,
-      if (item.precioCliente != null) 'precio_cliente': item.precioCliente,
-      if (item.precioPersonal != null) 'precio_personal': item.precioPersonal,
+      if (tieneOpciones || item.precioCliente == null)
+        'limpiar_precio_cliente': true,
+      if (!tieneOpciones && item.precioCliente != null)
+        'precio_cliente': item.precioCliente,
+      if (!tieneOpciones && item.precioPersonal != null)
+        'precio_personal': item.precioPersonal,
       if (item.sedeId != null) 'sede_id': item.sedeId,
-      // Se envía siempre que exista: si no, el PUT podría borrar la foto.
-      if (item.urlImagen != null) 'url_imagen': item.urlImagen,
+      if (limpiarImagen)
+        'url_imagen': ''
+      else if (item.urlImagen != null)
+        'url_imagen': item.urlImagen,
     };
 
     final res = await _api.put('/api/carta/${item.id}', body: body);
@@ -641,7 +726,7 @@ class CatalogService {
         sku: item.sku,
         stock: item.stock,
         agregados: item.agregados,
-        urlImagen: item.urlImagen,
+        urlImagen: limpiarImagen ? null : (res['url_imagen']?.toString() ?? item.urlImagen),
       );
 
       cartasNotifier.value = cartasNotifier.value
@@ -649,6 +734,9 @@ class CatalogService {
           .toList();
       if (variantes != null && variantes.isNotEmpty) {
         await _actualizarVariantesTras(item.id, res);
+      }
+      if (presentacionesPlato != null && presentacionesPlato.isNotEmpty) {
+        await _actualizarPresentacionesTras(item.id, res);
       }
 
       return actualizado;
@@ -747,7 +835,15 @@ class CatalogService {
     final creada = res is Map<String, dynamic>
         ? CartaVariante.fromJson(res)
         : v;
+    variantes.removeWhere((x) => x.id == creada.id);
     variantes.add(creada);
+    if (creada.estado) {
+      cartasNotifier.value = cartasNotifier.value
+          .map(
+            (c) => c.id == creada.cartaId ? c.copyWith(limpiarPrecio: true) : c,
+          )
+          .toList();
+    }
     return creada;
   }
 
@@ -774,6 +870,120 @@ class CatalogService {
   Future<void> eliminarVariante(String id) async {
     await _api.delete('/api/carta-variantes/$id');
     variantes.removeWhere((v) => v.id == id);
+  }
+
+  // ==========================================
+  // UNIDADES DE BEBIDA Y PRESENTACIONES (carta_presentacion)
+  // ==========================================
+
+  Future<List<UnidadBebida>> cargarUnidadesBebida() async {
+    try {
+      final res = await _api.get('/api/unidades-bebida');
+      if (res is List) {
+        final lista = res
+            .whereType<Map<String, dynamic>>()
+            .map(UnidadBebida.fromJson)
+            .toList();
+        unidadesBebida
+          ..clear()
+          ..addAll(lista);
+        return lista;
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error al obtener unidades de bebida: $e');
+    }
+    return unidadesBebida;
+  }
+
+  Future<UnidadBebida> crearUnidadBebida(String nombre) async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final res = await _api.post(
+      '/api/unidades-bebida',
+      body: {
+        'id': UuidHelper.v7(),
+        'unidad_presentacion': nombre.trim(),
+        'estado': true,
+        if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
+      },
+    );
+    final creada = UnidadBebida.fromJson(res as Map<String, dynamic>);
+    unidadesBebida.removeWhere((u) => u.id == creada.id);
+    unidadesBebida.add(creada);
+    return creada;
+  }
+
+  Future<List<CartaPresentacion>> cargarPresentaciones() async {
+    try {
+      final res = await _api.get('/api/carta-presentaciones');
+      if (res is List) {
+        final lista = res
+            .whereType<Map<String, dynamic>>()
+            .map(
+              (j) => CartaPresentacion.fromJson(
+                j,
+                catalogoUnidades: unidadesBebida,
+              ),
+            )
+            .toList();
+        presentaciones
+          ..clear()
+          ..addAll(lista);
+        return lista;
+      }
+    } catch (e) {
+      developer.log('[CatalogService] Error al obtener presentaciones: $e');
+    }
+    return presentaciones;
+  }
+
+  Future<CartaPresentacion> crearPresentacion(CartaPresentacion p) async {
+    final body = {
+      if (p.id.isNotEmpty && UuidHelper.isValid(p.id)) 'id': p.id else 'id': UuidHelper.v7(),
+      'carta_id': p.cartaId,
+      'unidad_bebida_id': p.unidad.id,
+      if (p.volumenMl > 0) 'volumen_ml': p.volumenMl,
+      'precio_cliente': p.precioCliente,
+      if (p.precioPersonal != null) 'precio_personal': p.precioPersonal,
+      'estado': p.estado,
+    };
+    final res = await _api.post('/api/carta-presentaciones', body: body);
+    final creada = res is Map<String, dynamic>
+        ? CartaPresentacion.fromJson(res, catalogoUnidades: unidadesBebida)
+        : p;
+    presentaciones.removeWhere((x) => x.id == creada.id);
+    presentaciones.add(creada);
+    if (creada.estado) {
+      cartasNotifier.value = cartasNotifier.value
+          .map(
+            (c) => c.id == creada.cartaId ? c.copyWith(limpiarPrecio: true) : c,
+          )
+          .toList();
+    }
+    return creada;
+  }
+
+  Future<CartaPresentacion> actualizarPresentacion(CartaPresentacion p) async {
+    final res = await _api.put(
+      '/api/carta-presentaciones/${p.id}',
+      body: {
+        'unidad_bebida_id': p.unidad.id,
+        if (p.volumenMl > 0) 'volumen_ml': p.volumenMl,
+        'precio_cliente': p.precioCliente,
+        if (p.precioPersonal != null) 'precio_personal': p.precioPersonal,
+        'estado': p.estado,
+      },
+    );
+    final actualizada = res is Map<String, dynamic>
+        ? CartaPresentacion.fromJson(res, catalogoUnidades: unidadesBebida)
+        : p;
+    final i = presentaciones.indexWhere((x) => x.id == p.id);
+    if (i != -1) presentaciones[i] = actualizada;
+    return actualizada;
+  }
+
+  Future<void> eliminarPresentacion(String id) async {
+    await _api.delete('/api/carta-presentaciones/$id');
+    presentaciones.removeWhere((p) => p.id == id);
   }
 
   // ==========================================

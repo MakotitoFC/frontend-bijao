@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../utils/blur_dialog.dart';
 
@@ -6,6 +6,7 @@ import '../data/cartas_store.dart';
 import '../data/categorias_store.dart';
 import '../models/categoria_comida.dart';
 import '../services/catalog_service.dart';
+import '../services/eventos_service.dart';
 import '../data/subcategorias_store.dart';
 import '../theme/app_theme.dart';
 import '../models/subcategoria.dart';
@@ -86,6 +87,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
         await CatalogService.instance.crearSubcategoria(cat.id, nombre);
       }
       if (mounted) {
+        widget.onCambio();
         showAppToast(
           context,
           editando != null
@@ -122,6 +124,7 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
     try {
       await CatalogService.instance.eliminarSubcategoria(s.id);
       if (!mounted) return;
+      widget.onCambio();
       showAppToast(
         context,
         'Subcategoría "${s.subcategoria}" eliminada.',
@@ -429,6 +432,13 @@ class _CategoriasCrudDialogState extends State<CategoriasCrudDialog> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: EventosService.instance.revision,
+      builder: (context, _) => _buildDialogContent(context),
+    );
+  }
+
+  Widget _buildDialogContent(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
     final anchoPantalla = MediaQuery.sizeOf(context).width;
     final ordenadas = List.of(categorias)

@@ -76,7 +76,7 @@ PedidoLine lineaDeJsonLocal(Map<String, dynamic> j) {
             id: pres['id']?.toString() ?? '',
             cartaId: pres['carta_id']?.toString() ?? '',
             unidad: UnidadBebida(
-              id: (pres['unidad_id'] as num?)?.toInt() ?? 0,
+              id: pres['unidad_id']?.toString() ?? '',
               unidadPresentacion: pres['unidad']?.toString() ?? '',
             ),
             volumenMl: (pres['volumen_ml'] as num?)?.toInt() ?? 0,

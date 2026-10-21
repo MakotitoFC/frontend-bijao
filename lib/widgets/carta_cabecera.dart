@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'app_toast.dart';
 import 'dialogo_app.dart';
@@ -224,6 +224,13 @@ class _CartaCabeceraState extends State<CartaCabecera> {
       builder: (context, _) {
         final cartas = cartasNotifier.value;
         final actual = widget.seleccion.value;
+        if (actual != null && !categorias.any((c) => c.id == actual.id)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && widget.seleccion.value?.id == actual.id) {
+              widget.seleccion.value = null;
+            }
+          });
+        }
         return TabsDesplazables(
           child: Row(
             mainAxisSize: MainAxisSize.min,

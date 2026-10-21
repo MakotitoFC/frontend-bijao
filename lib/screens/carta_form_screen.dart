@@ -1,16 +1,19 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/categorias_store.dart';
+import '../data/presentaciones_store.dart';
 import '../data/subcategorias_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
+import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/taper.dart';
+import '../models/unidad_bebida.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
@@ -30,6 +33,9 @@ typedef ResultadoPlato = ({
   String? nombreFoto,
   // Tamaños del plato para guardar junto con él (null = no tocarlos).
   List<CartaVariante>? variantes,
+  // Presentaciones del plato/bebida para guardar junto con él (null = no tocarlas).
+  List<CartaPresentacion>? presentaciones,
+  bool limpiarImagen,
 });
 
 // Una fila de la lista "Tamaños" del formulario. Con [id] es un tamaño que ya
@@ -79,6 +85,47 @@ class _FilaTamano {
   }
 }
 
+class _FilaPresentacion {
+  final String? id;
+  String? unidadId;
+  String unidadNombre;
+  final TextEditingController volumen;
+  final TextEditingController precio;
+  final TextEditingController personal;
+  bool activo;
+
+  _FilaPresentacion({
+    this.id,
+    this.unidadId,
+    this.unidadNombre = '',
+    String volumen = '',
+    String precio = '',
+    String personal = '',
+    this.activo = true,
+  }) : volumen = TextEditingController(text: volumen),
+       precio = TextEditingController(text: precio),
+       personal = TextEditingController(text: personal);
+
+  factory _FilaPresentacion.de(CartaPresentacion p) => _FilaPresentacion(
+    id: p.id,
+    unidadId: p.unidad.id,
+    unidadNombre: p.unidad.unidadPresentacion,
+    volumen: p.volumenMl > 0 ? p.volumenMl.toString() : '',
+    precio: p.precioCliente.toStringAsFixed(2),
+    personal: p.precioPersonal != null &&
+            (p.precioPersonal! - p.precioCliente).abs() >= 0.005
+        ? p.precioPersonal!.toStringAsFixed(2)
+        : '',
+    activo: p.estado,
+  );
+
+  void liberar() {
+    volumen.dispose();
+    precio.dispose();
+    personal.dispose();
+  }
+}
+
 /// Formulario para Crear / Editar un plato en la `carta` (según BD.txt).
 /// Campos en tabla `carta`:
 /// - id (uuid)
@@ -121,10 +168,14 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   Uint8List? _fotoBytes;
   String? _fotoNombre;
   String? _errorFoto;
+  bool _quitarFotoActual = false;
   // Tamaños: el interruptor "Tiene tamaños" y sus filas.
   bool _tieneTamanos = false;
   bool _tamanosAvanzado = false;
   final List<_FilaTamano> _filas = [];
+  // Presentaciones: el interruptor "Tiene presentaciones" y sus filas.
+  bool _tienePresentaciones = false;
+  final List<_FilaPresentacion> _filasPres = [];
 
   @override
   void initState() {
@@ -136,6 +187,16 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
         _filas.add(_FilaTamano.de(v));
       }
       _tieneTamanos = _filas.any((f) => f.activo);
+
+      for (final p in presentacionesDeCarta(item.id)) {
+        _filasPres.add(_FilaPresentacion.de(p));
+      }
+      _tienePresentaciones = _filasPres.any((f) => f.activo);
+    }
+    if (unidadesBebida.isEmpty) {
+      CatalogService.instance.cargarUnidadesBebida().then((_) {
+        if (mounted) setState(() {});
+      });
     }
     _nombreController = TextEditingController(text: item?.nombrePlato ?? '');
     _descripcionController = TextEditingController(
@@ -213,6 +274,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     _taperSearchController.dispose();
     _taperFocusNode.dispose();
     for (final f in _filas) {
+      f.liberar();
+    }
+    for (final f in _filasPres) {
       f.liberar();
     }
     super.dispose();
@@ -300,6 +364,14 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       return;
     }
 
+    final presentacionesGuardar = _presentacionesParaGuardar(idPlato);
+    if (presentacionesGuardar.error != null) {
+      showAppToast(context, presentacionesGuardar.error!, type: ToastType.error);
+      return;
+    }
+
+    final usaOpcionesPrecio = _tieneTamanos || _tienePresentaciones;
+
     final resultado = CartaItem(
       id: idPlato,
       nombrePlato: _nombreController.text.trim(),
@@ -310,10 +382,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       taperId: _selectedTaperId,
       taperNombre: _selectedTaperNombre,
       estado: _estado,
-      precioCliente: pCliente,
-      precioPersonal: pPersonal,
+      precioCliente: usaOpcionesPrecio ? null : pCliente,
+      precioPersonal: usaOpcionesPrecio ? null : pPersonal,
       sedeId: sedeActual,
-      urlImagen: widget.item?.urlImagen,
+      urlImagen: _quitarFotoActual ? null : widget.item?.urlImagen,
       creadoEn: widget.item?.creadoEn ?? DateTime.now(),
     );
 
@@ -322,6 +394,8 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       foto: _fotoBytes,
       nombreFoto: _fotoNombre,
       variantes: tamanos.lista,
+      presentaciones: presentacionesGuardar.lista,
+      limpiarImagen: _quitarFotoActual && _fotoBytes == null,
     );
     Navigator.of(context).pop(salida);
   }
@@ -395,6 +469,76 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     );
   }
 
+  ({List<CartaPresentacion>? lista, String? error}) _presentacionesParaGuardar(
+    String idPlato,
+  ) {
+    if (!_tienePresentaciones) {
+      final existentes =
+          _filasPres.where((f) => f.id != null && f.activo).toList();
+      if (existentes.isEmpty) return (lista: null, error: null);
+      return (
+        lista: [
+          for (final f in existentes)
+            _presentacion(idPlato, f, activo: false),
+        ],
+        error: null,
+      );
+    }
+    final activas = _filasPres.where((f) => f.activo).toList();
+    if (activas.isEmpty) {
+      return (
+        lista: null,
+        error: 'Agrega al menos una presentación o apaga "Tiene presentaciones".',
+      );
+    }
+    for (final f in activas) {
+      final precio = _numeroDe(f.precio);
+      if (f.unidadId == null ||
+          f.unidadId!.isEmpty ||
+          precio == null ||
+          precio < 0) {
+        return (
+          lista: null,
+          error: 'Cada presentación necesita su envase y un precio válido.',
+        );
+      }
+    }
+    return (
+      lista: [
+        for (final f in _filasPres)
+          if (f.id != null || f.activo)
+            _presentacion(idPlato, f, activo: f.activo),
+      ],
+      error: null,
+    );
+  }
+
+  CartaPresentacion _presentacion(
+    String idPlato,
+    _FilaPresentacion f, {
+    required bool activo,
+  }) {
+    final precio = _numeroDe(f.precio) ?? 0;
+    final vol = int.tryParse(f.volumen.text.trim()) ?? 0;
+    final unidad = unidadesBebida
+            .where((u) => u.id == f.unidadId)
+            .firstOrNull ??
+        UnidadBebida(
+          id: f.unidadId ?? '',
+          unidadPresentacion:
+              f.unidadNombre.isNotEmpty ? f.unidadNombre : 'Presentación',
+        );
+    return CartaPresentacion(
+      id: f.id ?? '',
+      cartaId: idPlato,
+      unidad: unidad,
+      volumenMl: vol,
+      precioCliente: precio,
+      precioPersonal: _numeroDe(f.personal) ?? precio,
+      estado: activo,
+    );
+  }
+
   static const _tamanoMaxFoto = 5 * 1024 * 1024;
   static const _plato = CartaItem(
     id: '',
@@ -417,6 +561,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
       setState(() {
         _fotoBytes = Uint8List.fromList(bytes);
         _fotoNombre = f.name;
+        _quitarFotoActual = false;
         _errorFoto = null;
       });
     } catch (e) {
@@ -426,7 +571,9 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
 
   // Foto del plato: vista previa y botón para subirla o cambiarla.
   Widget _bloqueFoto() {
-    final hayFoto = _fotoBytes != null || widget.item?.urlImagen != null;
+    final hayFoto =
+        _fotoBytes != null ||
+        (!_quitarFotoActual && widget.item?.urlImagen != null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -439,7 +586,12 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 height: 72,
                 child: _fotoBytes != null
                     ? Image.memory(_fotoBytes!, fit: BoxFit.cover)
-                    : ImagenPlato(item: widget.item ?? _plato, tamanoIcono: 26),
+                    : ImagenPlato(
+                        item: _quitarFotoActual
+                            ? _plato
+                            : (widget.item ?? _plato),
+                        tamanoIcono: 26,
+                      ),
               ),
             ),
             const SizedBox(width: 14),
@@ -462,10 +614,29 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _elegirFoto,
-                    icon: const Icon(LucideIcons.camera, size: 16),
-                    label: Text(hayFoto ? 'Cambiar foto' : 'Subir foto'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _elegirFoto,
+                        icon: const Icon(LucideIcons.camera, size: 16),
+                        label: Text(hayFoto ? 'Cambiar foto' : 'Subir foto'),
+                      ),
+                      if (hayFoto)
+                        TextButton.icon(
+                          onPressed: () => setState(() {
+                            _fotoBytes = null;
+                            _fotoNombre = null;
+                            _quitarFotoActual = true;
+                          }),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.error,
+                          ),
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          label: const Text('Quitar foto'),
+                        ),
+                    ],
                   ),
                 ],
               ),
@@ -682,6 +853,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
 
                       // 6. Tamaños (interruptor y filas, se guardan con el plato)
                       _seccionTamanos(),
+                      const SizedBox(height: 16),
+
+                      // 6b. Presentaciones (interruptor y filas para bebidas: Vaso, Jarra, etc.)
+                      _seccionPresentaciones(),
                       const SizedBox(height: 16),
 
                       // 7. Selector de Estado (disponible / agotado)
@@ -1020,6 +1195,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 value: _tieneTamanos,
                 onChanged: (v) => setState(() {
                   _tieneTamanos = v;
+                  if (v) {
+                    _precioClienteController.clear();
+                    _precioPersonalController.clear();
+                  }
                   // Al activarlo por primera vez ya hay una fila lista.
                   if (v && _filas.every((f) => !f.activo)) {
                     _filas.add(_FilaTamano());
@@ -1196,6 +1375,279 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   'Inactivo: no se ofrece al tomar pedidos.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Presentaciones del plato (`carta_presentacion`, ej. Vaso 350 ml, Jarra 1000 ml).
+  Widget _seccionPresentaciones() {
+    final primeraUnidadId =
+        unidadesBebida.where((u) => u.estado).firstOrNull?.id;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tiene presentaciones',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ej. Vaso (350 ml) S/ 7 y Jarra (1000 ml) S/ 16. Cada '
+                      'presentación tiene su propio precio.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              AppSwitch(
+                value: _tienePresentaciones,
+                onChanged: (v) => setState(() {
+                  _tienePresentaciones = v;
+                  if (v) {
+                    _precioClienteController.clear();
+                    _precioPersonalController.clear();
+                  }
+                  if (v && _filasPres.every((f) => !f.activo)) {
+                    _filasPres.add(
+                      _FilaPresentacion(unidadId: primeraUnidadId),
+                    );
+                  }
+                }),
+              ),
+            ],
+          ),
+          if (!_tienePresentaciones &&
+              _filasPres.any((f) => f.id != null && f.activo))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Al guardar, las presentaciones que ya tenía este plato se '
+                'desactivarán (no se borran).',
+                style: TextStyle(fontSize: 12, color: AppColors.naranja),
+              ),
+            ),
+          if (_tienePresentaciones) ...[
+            const SizedBox(height: 12),
+            for (var i = 0; i < _filasPres.length; i++) _filaPresentacion(i),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: () => setState(
+                    () => _filasPres.add(
+                      _FilaPresentacion(unidadId: primeraUnidadId),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Agregar presentación'),
+                ),
+                TextButton.icon(
+                  onPressed: _crearNuevaUnidadBebidaEnFormulario,
+                  icon: const Icon(Icons.local_drink_outlined, size: 16),
+                  label: const Text('Nuevo envase (Vaso, Jarra...)'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _crearNuevaUnidadBebidaEnFormulario() async {
+    final ctrl = TextEditingController();
+    final nombre = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nuevo envase / unidad de bebida'),
+        content: CampoTexto(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 25,
+          decoration: const InputDecoration(
+            labelText: 'Nombre *',
+            hintText: 'Ej. Vaso, Jarra, Copa, Botella',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+            child: const Text('Crear'),
+          ),
+        ],
+      ),
+    );
+    if (nombre == null || nombre.isEmpty || !mounted) return;
+    try {
+      final creada = await CatalogService.instance.crearUnidadBebida(nombre);
+      if (!mounted) return;
+      setState(() {
+        for (final f in _filasPres) {
+          f.unidadId ??= creada.id;
+        }
+      });
+      showAppToast(
+        context,
+        'Envase "${creada.unidadPresentacion}" creado.',
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'No se pudo crear el envase: $e',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  Widget _filaPresentacion(int i) {
+    final f = _filasPres[i];
+    final nuevo = f.id == null;
+    final unidadesActivas = unidadesBebida.where((u) => u.estado).toList();
+    final unidadValida = unidadesActivas.any((u) => u.id == f.unidadId)
+        ? f.unidadId
+        : (unidadesActivas.isNotEmpty ? unidadesActivas.first.id : null);
+    if (f.unidadId != unidadValida && unidadValida != null) {
+      f.unidadId = unidadValida;
+    }
+
+    return Opacity(
+      opacity: f.activo ? 1 : 0.5,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: unidadValida,
+                    decoration: InputDecoration(
+                      labelText: 'Presentación',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items: [
+                      for (final u in unidadesActivas)
+                        DropdownMenuItem(
+                          value: u.id,
+                          child: Text(u.unidadPresentacion),
+                        ),
+                    ],
+                    onChanged: f.activo
+                        ? (v) => setState(() {
+                            f.unidadId = v;
+                            final u = unidadesActivas
+                                .where((x) => x.id == v)
+                                .firstOrNull;
+                            if (u != null) {
+                              f.unidadNombre = u.unidadPresentacion;
+                            }
+                          })
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: CampoTexto(
+                    controller: f.volumen,
+                    enabled: f.activo,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Volumen',
+                      hintText: '350',
+                      suffixText: 'ml',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: CampoTexto(
+                    controller: f.precio,
+                    enabled: f.activo,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Precio',
+                      prefixText: 'S/ ',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: nuevo
+                      ? 'Quitar'
+                      : (f.activo
+                            ? 'Desactivar presentación'
+                            : 'Activar de nuevo'),
+                  onPressed: () => setState(() {
+                    if (nuevo) {
+                      _filasPres.removeAt(i).liberar();
+                    } else {
+                      f.activo = !f.activo;
+                    }
+                  }),
+                  icon: Icon(
+                    nuevo
+                        ? Icons.close
+                        : (f.activo
+                              ? Icons.visibility_off_outlined
+                              : Icons.restart_alt),
+                    size: 20,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+            if (!f.activo)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Inactiva: no se ofrece al tomar pedidos.',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
               ),

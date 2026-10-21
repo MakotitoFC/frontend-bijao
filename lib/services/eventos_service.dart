@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
@@ -67,6 +67,7 @@ AccionesDeEvento traducirEvento(String nombre) {
       // carta.
       return const AccionesDeEvento(carta: true);
     case 'PLATO_AGOTADO':
+      return const AccionesDeEvento(stock: true, carta: true);
     case 'STOCK_ACTUALIZADO':
     case 'APERTURA_DIARIA_COMPLETA':
       return const AccionesDeEvento(stock: true);
@@ -143,6 +144,7 @@ class EventosService {
         pedidos: true,
         mesas: true,
         stock: true,
+        carta: true,
       );
       _agendar();
       return;

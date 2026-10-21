@@ -158,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
           loader: carta.loadLibrary,
           builder: () => carta.CartaScreen(
             esAdmin: widget.usuario.rol == AppRole.administrador,
+            usuario: widget.usuario,
             seleccion: _categoriaProductos,
             busqueda: _busquedaProductos,
             cabeceraPropia: true,
