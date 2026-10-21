@@ -2,7 +2,11 @@
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
+import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
+import '../models/movimiento_caja.dart';
+import '../services/movimiento_caja_service.dart';
+import 'app_select.dart';
 import '../services/api_client.dart';
 import '../services/pago_service.dart';
 import '../models/medio_pago.dart';
@@ -184,7 +188,31 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // Recargo del método elegido (p. ej. tarjeta): se suma al total del cliente.
   double get _recargo => _medio.recargoSobre(_saldo);
 
+  late final List<CategoriaMovimiento> _categoriasIngreso = categoriasDeTipo(TipoMovimiento.ingreso);
+  CategoriaMovimiento? _categoriaSeleccionada;
   bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _categoriaSeleccionada = _categoriasIngreso
+            .where((c) => c.nombre.toLowerCase().contains('venta'))
+            .firstOrNull ??
+        _categoriasIngreso.firstOrNull;
+    if (categoriasMovimiento.isEmpty) {
+      MovimientoCajaService.instance.cargarCategorias().then((_) {
+        if (mounted) {
+          setState(() {
+            final reloaded = categoriasDeTipo(TipoMovimiento.ingreso);
+            _categoriaSeleccionada = reloaded
+                    .where((c) => c.nombre.toLowerCase().contains('venta'))
+                    .firstOrNull ??
+                reloaded.firstOrNull;
+          });
+        }
+      });
+    }
+  }
 
   Future<void> _pagar() async {
     final saldo = _saldo;
@@ -198,6 +226,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         pedido: widget.pedido,
         medio: _medio,
         montoAbonado: saldo,
+        categoriaMovimientoId: _categoriaSeleccionada?.id,
       );
     } catch (e) {
       if (!mounted) return;
@@ -338,7 +367,20 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           tarjetaSaldo('Total a pagar', saldo + propina + taper),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+          AppSelect<CategoriaMovimiento>(
+            label: 'Concepto / Categoría del cobro',
+            flotante: true,
+            buscable: true,
+            value: _categoriaSeleccionada,
+            hint: 'Selecciona concepto de ingreso',
+            items: [
+              for (final c in categoriasDeTipo(TipoMovimiento.ingreso))
+                AppSelectItem(value: c, label: c.nombre),
+            ],
+            onChanged: (c) => setState(() => _categoriaSeleccionada = c),
+          ),
+          const SizedBox(height: 14),
           const Text(
             'Método de pago',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),

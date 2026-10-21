@@ -12,12 +12,14 @@ class ResultadoAnulacion {
   final int cantidad;
   final List<int>? foto;
   final String? nombreFoto;
+  final bool fueServido;
 
   const ResultadoAnulacion({
     required this.motivo,
     required this.cantidad,
     this.foto,
     this.nombreFoto,
+    this.fueServido = false,
   });
 }
 
@@ -43,6 +45,7 @@ class _AnulacionDialogState extends State<AnulacionDialog> {
   late int _cantidad = widget.maxCantidad;
   List<int>? _foto;
   String? _nombreFoto;
+  bool _fueServido = false;
   String? _error;
 
   @override
@@ -79,6 +82,7 @@ class _AnulacionDialogState extends State<AnulacionDialog> {
         cantidad: _cantidad,
         foto: _foto,
         nombreFoto: _nombreFoto,
+        fueServido: _fueServido,
       ),
     );
   }
@@ -179,6 +183,37 @@ class _AnulacionDialogState extends State<AnulacionDialog> {
                       ? 'Adjuntar foto (opcional)'
                       : 'Foto: $_nombreFoto',
                   overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: _fueServido ? AppColors.naranja.withValues(alpha: 0.1) : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _fueServido ? AppColors.naranja.withValues(alpha: 0.4) : Colors.grey.shade300,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: CheckboxListTile(
+                  value: _fueServido,
+                  onChanged: (v) => setState(() => _fueServido = v ?? false),
+                  title: const Text(
+                    '¿Fue servido al cliente?',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    _fueServido
+                        ? 'Al estar servido (consumido), no se repondrá el stock ni los insumos.'
+                        : 'No fue servido: se retornará el stock y sus insumos.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _fueServido ? AppColors.naranja : Colors.grey.shade600,
+                    ),
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
               ),
               const SizedBox(height: 16),

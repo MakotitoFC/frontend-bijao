@@ -30,6 +30,7 @@ class PagoService {
     required double montoAbonado,
     double propina = 0,
     String? pagador,
+    String? categoriaMovimientoId,
   }) async {
     if (!_enServidor(pedido, medio)) {
       return registrarPago(
@@ -58,6 +59,8 @@ class PagoService {
         'monto_abonado': abono,
         'propina': propinaAEnviar,
         if (pagador != null && pagador.isNotEmpty) 'pagador': pagador,
+        if (categoriaMovimientoId != null && UuidHelper.isValid(categoriaMovimientoId))
+          'categoria_movimiento_id': categoriaMovimientoId,
       },
     );
     if (res is! Map<String, dynamic>) {
