@@ -31,6 +31,56 @@ class MovimientoCajaService {
       );
   }
 
+  Future<CategoriaMovimiento> crearCategoria({
+    required String nombre,
+    required TipoMovimiento tipo,
+  }) async {
+    final res = await _api.post(
+      '/api/categorias-movimiento',
+      body: {
+        'categoria': nombre.trim(),
+        'tipo': tipo.codigo,
+        'estado': true,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió la categoría creada');
+    }
+    final cat = CategoriaMovimiento.fromJson(res);
+    categoriasMovimiento.add(cat);
+    return cat;
+  }
+
+  Future<CategoriaMovimiento> editarCategoria({
+    required String id,
+    required String nombre,
+    required TipoMovimiento tipo,
+    required bool activo,
+  }) async {
+    final res = await _api.put(
+      '/api/categorias-movimiento/$id',
+      body: {
+        'categoria': nombre.trim(),
+        'tipo': tipo.codigo,
+        'estado': activo,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió la categoría actualizada');
+    }
+    final cat = CategoriaMovimiento.fromJson(res);
+    final idx = categoriasMovimiento.indexWhere((c) => c.id == id);
+    if (idx != -1) {
+      categoriasMovimiento[idx] = cat;
+    }
+    return cat;
+  }
+
+  Future<void> eliminarCategoria(String id) async {
+    await _api.delete('/api/categorias-movimiento/$id');
+    categoriasMovimiento.removeWhere((c) => c.id == id);
+  }
+
   // Trae los movimientos desde [desde] (el inicio de la caja actual). Los que
   // solo existen en memoria se conservan.
   Future<void> cargarDelTurno(DateTime desde) async {

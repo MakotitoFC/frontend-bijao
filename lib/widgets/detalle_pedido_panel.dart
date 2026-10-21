@@ -562,6 +562,7 @@ class DetallePedidoPanel extends StatelessWidget {
         pedido.id,
         motivo: r.motivo,
         urlEvidencia: url,
+        fueServido: r.fueServido,
       );
     });
     if (ok && context.mounted) {
@@ -675,6 +676,7 @@ class DetallePedidoPanel extends StatelessWidget {
         cantidad: r.cantidad,
         motivo: r.motivo,
         urlEvidencia: url,
+        fueServido: r.fueServido,
       );
     });
     if (ok && context.mounted) {

@@ -30,6 +30,7 @@ class PagoService {
     required double montoAbonado,
     double propina = 0,
     String? pagador,
+    String? categoriaMovimientoId,
   }) async {
     // Un pedido del servidor no puede cobrarse con un método que no lo es (p. ej.
     // los de respaldo que se muestran cuando el servidor no tiene ninguno): el
@@ -68,6 +69,8 @@ class PagoService {
         'monto_abonado': abono,
         'propina': propinaAEnviar,
         if (pagador != null && pagador.isNotEmpty) 'pagador': pagador,
+        if (categoriaMovimientoId != null && UuidHelper.isValid(categoriaMovimientoId))
+          'categoria_movimiento_id': categoriaMovimientoId,
       },
     );
     if (res is! Map<String, dynamic>) {

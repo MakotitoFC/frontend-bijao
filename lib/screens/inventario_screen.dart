@@ -10,6 +10,7 @@ import '../widgets/inventario/pagina_productos.dart';
 import '../widgets/inventario/pagina_resumen.dart';
 import '../widgets/inventario/pagina_tapers.dart';
 import '../widgets/inventario/pagina_utensilios.dart';
+import '../widgets/inventario/pagina_anulaciones.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/tabs_desplazables.dart';
 
@@ -90,6 +91,12 @@ class _InventarioScreenState extends State<InventarioScreen> {
       etiqueta: 'Utensilios rotos',
       seccion: 'Movimientos',
       contenido: () => const PaginaUtensilios(),
+    ),
+    (
+      clave: 'anulaciones',
+      etiqueta: 'Anulaciones',
+      seccion: 'Movimientos',
+      contenido: () => const PaginaAnulaciones(),
     ),
   ];
 

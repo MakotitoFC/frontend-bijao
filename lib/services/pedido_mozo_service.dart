@@ -231,6 +231,7 @@ class PedidoMozoService {
     required int cantidad,
     required String motivo,
     String? urlEvidencia,
+    bool fueServido = false,
   }) => _enviar(
     pedidoId,
     () => _api.patch(
@@ -239,6 +240,7 @@ class PedidoMozoService {
         'cantidad_anular': cantidad,
         'comentario': motivo,
         'url_evidencia': ?urlEvidencia,
+        'fue_servido': fueServido,
         'version': linea.version,
       },
     ),
@@ -271,6 +273,7 @@ class PedidoMozoService {
     String pedidoId, {
     required String motivo,
     String? urlEvidencia,
+    bool fueServido = false,
   }) async {
     try {
       await _api.patch(
@@ -278,6 +281,7 @@ class PedidoMozoService {
         body: {
           'comentario': motivo,
           'url_evidencia': ?urlEvidencia,
+          'fue_servido': fueServido,
           'version': _version(pedidoId),
         },
       );
@@ -503,4 +507,23 @@ class PedidoMozoService {
     detallesPorPedido[d.id] = [...d.lineas, ...propias];
     return d;
   }
+
+  // Auditoría de anulaciones para inventario
+  Future<List<Map<String, dynamic>>> obtenerAnulaciones({
+    DateTime? desde,
+    DateTime? hasta,
+  }) async {
+    final params = <String, String>{};
+    if (desde != null) params['fecha_desde'] = desde.toIso8601String();
+    if (hasta != null) params['fecha_hasta'] = hasta.toIso8601String();
+    final res = await _api.get(
+      '/api/inventario/anulaciones',
+      queryParams: params.isEmpty ? null : params,
+    );
+    if (res is List) {
+      return res.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
 }

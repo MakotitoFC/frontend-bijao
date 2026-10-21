@@ -8,8 +8,11 @@ import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../services/api_client.dart';
 import '../services/pago_service.dart';
+import '../data/movimientos_caja_store.dart';
 import '../models/medio_pago.dart';
+import '../models/movimiento_caja.dart';
 import '../models/pedido.dart';
+import '../services/movimiento_caja_service.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
@@ -83,6 +86,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   static const _maxPagadores = 8;
 
   _Modo _modo = _Modo.iguales;
+  CategoriaMovimiento? _categoriaSeleccionada;
   final List<_Pagador> _pagadores = [];
   final Map<String, int> _asignLinea = {};
   final Map<String, int> _asignCategoria = {};
@@ -110,6 +114,22 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   @override
   void initState() {
     super.initState();
+    _categoriaSeleccionada = categoriasDeTipo(TipoMovimiento.ingreso)
+            .where((c) => c.nombre.toLowerCase().contains('venta'))
+            .firstOrNull ??
+        categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
+    if (categoriasMovimiento.isEmpty) {
+      MovimientoCajaService.instance.cargarCategorias().then((_) {
+        if (mounted) {
+          setState(() {
+            _categoriaSeleccionada = categoriasDeTipo(TipoMovimiento.ingreso)
+                    .where((c) => c.nombre.toLowerCase().contains('venta'))
+                    .firstOrNull ??
+                categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
+          });
+        }
+      });
+    }
     _reiniciar(_Modo.iguales);
     if (puedeElegirComprobante(widget.pedido)) {
       _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
@@ -374,6 +394,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             medio: pago.medio,
             montoAbonado: pago.monto,
             pagador: boleta.nombre,
+            categoriaMovimientoId: _categoriaSeleccionada?.id,
           );
           registrados++;
         }
@@ -932,6 +953,19 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           tarjetaSaldo('Total a repartir', _saldo),
+          const SizedBox(height: 12),
+          AppSelect<CategoriaMovimiento>(
+            label: 'Concepto / Categoría del cobro',
+            flotante: true,
+            buscable: true,
+            value: _categoriaSeleccionada,
+            hint: 'Selecciona concepto de ingreso',
+            items: [
+              for (final c in categoriasDeTipo(TipoMovimiento.ingreso))
+                AppSelectItem(value: c, label: c.nombre),
+            ],
+            onChanged: (c) => setState(() => _categoriaSeleccionada = c),
+          ),
           if (_propinaApp > 0 || _taperApp > 0)
             Padding(
               padding: const EdgeInsets.only(top: 6),

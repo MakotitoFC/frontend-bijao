@@ -25,6 +25,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/comprobantes_caja_panel.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/movimiento_caja_dialog.dart';
+import '../widgets/categorias_movimiento_dialog.dart';
 import '../widgets/campo_texto.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
@@ -623,6 +624,14 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
+  Future<void> _administrarCategorias() async {
+    await showBlurDialog(
+      context: context,
+      builder: (_) => const CategoriasMovimientoDialog(),
+    );
+    if (mounted) setState(() {});
+  }
+
   Future<void> _anular(MovimientoCaja m) async {
     final motivo = await showBlurDialog<String>(
       context: context,
@@ -977,6 +986,11 @@ class _CajaScreenState extends State<CajaScreen> {
                 icon: const Icon(LucideIcons.minus, size: 16),
                 label: const Text('Salida'),
                 style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              ),
+              OutlinedButton.icon(
+                onPressed: _administrarCategorias,
+                icon: const Icon(LucideIcons.tag, size: 16),
+                label: const Text('Categorías'),
               ),
             ],
           ),
