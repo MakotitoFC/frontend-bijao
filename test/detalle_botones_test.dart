@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_bijao/data/configuracion_store.dart';
 import 'package:frontend_bijao/data/pedidos_store.dart';
+import 'package:frontend_bijao/models/medio_pago.dart';
 import 'package:frontend_bijao/models/pedido.dart';
 import 'package:frontend_bijao/models/pedido_line.dart';
 import 'package:frontend_bijao/widgets/detalle_pedido_panel.dart';
@@ -30,7 +32,21 @@ const _linea = PedidoLine(
 );
 
 void main() {
+  // Los métodos de pago vienen del servidor: aquí se dan los de la prueba.
+  setUp(() {
+    mediosPago
+      ..clear()
+      ..add(
+        const MedioPago(
+          id: 'mp1',
+          medioPago: 'Efectivo',
+          aplicaComision: false,
+        ),
+      );
+  });
+
   tearDown(() {
+    mediosPago.clear();
     pedidos.clear();
     detallesPorPedido.clear();
   });

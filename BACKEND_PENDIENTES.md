@@ -274,7 +274,6 @@ Todas las rutas reciben `desde` y `hasta` (fecha) y opcionalmente `sede_id`; per
 | Rendimiento de mozos | `GET /api/reportes/rendimiento-mozos` | por mozo: pedidos, ventas, ticket promedio |
 | Horas con más ventas | `GET /api/reportes/ventas-por-hora` | ventas y pedidos por hora del día (0–23) |
 | Días con más ventas | `GET /api/reportes/ventas-por-dia-semana` | ventas y pedidos por día de la semana |
-| Métodos de pago | `GET /api/reportes/ventas-por-medio-pago` | ventas por medio de pago |
 | Tipo de servicio | `GET /api/reportes/ventas-por-tipo` | pedidos, ventas y ticket promedio por tipo (`mesa`, `llevar`, `delivery`) |
 | Plato más vendido | `GET /api/reportes/platos-mas-vendidos` | ranking de platos por unidades vendidas y por importe (`carta_id`, nombre, cantidad, ventas); parámetro `limite` (por defecto 10). Sin contar líneas anuladas ni devueltas |
 
@@ -297,14 +296,53 @@ Para el backend, confirmar o ajustar:
 
 ---
 
-# 16. Alertas de stock en tiempo real (campana del header)
+---
 
-La campana del header de la app muestra, además de los avisos del día, las **alertas de stock** de productos de inventario (`stock_actual <= stock_minimo`) y de tápers. Hoy la app las calcula cuando recibe un evento de stock y vuelve a leer `/api/productos-inventario` y `/api/tapers`.
+# 17. Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
 
-Para que sea **en tiempo real y sin lecturas de más**, se pide al backend:
+Síntoma (mesa y para llevar, solo en pago compartido): al emitir boleta o factura, SUNAT/Lucode rechaza con `El campo total 94 no coincide con la sumatoria de los ítems 55 (diferencia: 39)`.
 
-- **Evento SSE `STOCK_BAJO`** cada vez que un movimiento (pedido, anulación, compra, ajuste, merma, consumo de táper) deje un producto de inventario o un táper en o por debajo de su mínimo, con: `tipo` (`producto_inventario` | `taper`), `id`, `nombre`, `stock_actual` y `stock_minimo`. Un solo evento por cruce del mínimo (no uno por cada movimiento).
-- **Evento `STOCK_AGOTADO`** (o el mismo con `stock_actual <= 0`) cuando llegue a cero.
-- **Evento `INVENTARIO_ACTUALIZADO`** con el `id` del producto o táper cuando cambie su stock por cualquier movimiento, para refrescar el dato sin leer toda la lista.
-- Los eventos deben ir solo a usuarios con permiso de leer inventario (administrador).
-- Los tápers deberían tener `stock_minimo` configurable (hoy sin mínimo alerta solo al llegar a 0).
+## Causa (revisado en el código del backend)
+
+1. `POST /api/pagos` sin `detalles` **reparte el pago automáticamente** entre las líneas del pedido y guarda en `pago_detalle` un `monto_aplicado` parcial con `cantidad_pagada = 1` (`caja_repository.go`, "Auto-repartir entre líneas con saldo pendiente").
+2. Al emitir con `pago_id`, `ObtenerDatosPedidoParaFacturacion` (`facturacion_repository.go`) arma los ítems desde `pago_detalle` con **`PrecioUnitario = pd.precio_base`** (precio completo de la unidad), **`Cantidad = cantidad_pagada`** (1) y **`Subtotal = monto_aplicado`** (parcial). El total del comprobante sale de la suma de los `Subtotal`.
+3. Lucode calcula cada ítem como `valor_unitario × cantidad` (`facturacion_service.go` usa `PrecioUnitario/1.18` y `Cantidad`), es decir, el precio completo × 1, no el monto aplicado. Con un pago parcial (compartido), la suma de los ítems no coincide con el `total` enviado.
+4. Pasa igual con líneas de más de 1 unidad, con presentaciones/variantes/agregados (`precio` ≠ `precio_base × cantidad`) y con los tápers que se suman como ítem aparte.
+
+## Qué se pide
+
+- En los ítems del comprobante por pago, usar **`PrecioUnitario = Subtotal / Cantidad`** (el valor realmente cobrado), de modo que `Σ(valor_unitario × cantidad) = total`.
+- En general, calcular siempre el valor unitario de cada ítem desde su `Subtotal` y no desde `precio_base`; ajustar el último ítem por redondeo, como ya se hace con los descuentos.
+- Con `pago_detalle` parcial, `Cantidad` debería ser la cantidad real cubierta (o 1 con la descripción de la fracción), nunca la del pedido completo.
+- Validar antes de llamar a Lucode que `Σ(valor_unitario × cantidad × 1.18) == total` y devolver un error claro del servidor en vez del rechazo del PSE.
+
+Mientras no se corrija, los comprobantes por pagador de un pago compartido dividido en partes pueden ser rechazados; el pago de una sola persona (pago único) no se ve afectado.
+
+---
+
+# 18. El cajero no recibe el número de orden ni el detalle completo de los pedidos (bloquea la comanda del cajero)
+
+## Síntoma
+
+- El mozo ve el pedido como `#0004` y el cajero como `#ed09` (el prefijo del id): **no es el mismo número**.
+- En la comanda del cajero no aparecen las **presentaciones** (jarra, vaso, volumen) ni las **variantes** ni los **agregados** de cada plato.
+
+## Causa (revisado en el backend)
+
+- El número de orden del día (`codigo_orden`, `#0004`) solo lo entrega `GET /api/v1/mozo/pedidos/:id` (`pedido_mozo_repository.go`). Esas rutas están limitadas a los roles `MOZO` y `ADMINISTRADOR` (`main.go`: `RequireRole("MOZO", "ADMINISTRADOR")`), así que el **cajero recibe 403** y solo puede usar `GET /api/pedidos`.
+- `GET /api/pedidos` no trae `codigo_orden` y sus `detalles` no traen los nombres de la presentación, de la variante ni los agregados.
+
+## Qué se pide (cualquiera de las dos)
+
+1. **Permitir el rol `CAJERO` en lectura** de `GET /api/v1/mozo/pedidos` y `GET /api/v1/mozo/pedidos/:id` (solo esas dos rutas, sin crear ni modificar). La app ya sabe leer ese detalle completo (número, presentaciones, variantes, agregados, táper).
+2. **O completar `GET /api/pedidos`** con `codigo_orden` en cada pedido y, en cada fila de `detalles`: `carta_presentacion_id` y `presentacion_nombre`/`volumen_ml`, `carta_variante_id` y `variante_nombre`, y los agregados/modificadores elegidos.
+
+## Lado del frontend
+
+Lista para mostrar lo que llegue: toma `codigo_orden` si viene, y busca presentación y variante por id en la carta cargada. Mientras el servidor no lo envíe, el cajero seguirá viendo el prefijo del id y sin presentaciones. La app no inventa el número ni los detalles.
+
+## Actualización del ítem 18: la ruta ya está abierta al cajero, pero filtra por usuario
+
+`GET /api/v1/mozo/pedidos` y `GET /api/v1/mozo/pedidos/:id` ya aceptan el rol `CAJERO` (`mozoLectura`), pero el repositorio sigue filtrando por el usuario que consulta (`pedido_mozo_repository.go`: lista en la consulta de ~línea 157 con `AND p.usuario_id = $2`, y detalle en ~línea 281 con `AND p.usuario_id = $3`). El cajero solo recibe sus propios pedidos (ninguno), así que su comanda sigue mostrando el listado antiguo: otro número (`#1047` en vez de `#0008`), el táper como "Plato" y sin la cantidad de tápers.
+
+**Se pide:** en esas dos consultas de **lectura**, no filtrar por usuario cuando el rol es `CAJERO` o `ADMINISTRADOR` (mismo patrón que ya se usa en otra consulta: `AND ($2::uuid IS NULL OR p.usuario_id = $2)`, pasando `NULL` para esos roles). Las rutas que modifican pedidos siguen restringidas al mozo dueño.

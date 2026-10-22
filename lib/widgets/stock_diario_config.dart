@@ -104,8 +104,26 @@ class _StockDiarioConfigState extends State<StockDiarioConfig> {
                   SeccionConfig(
                     titulo: 'Apertura del día',
                     descripcion:
-                        'Registra cuántas porciones hay hoy de cada plato.',
+                        'Cada mañana indica cuántas porciones tendrás de cada '
+                        'plato. Así el sistema te avisa cuando se acaban.',
                     filas: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: ayudaApertura(
+                          pasos: const [
+                            (
+                              'Cantidades base (una sola vez):',
+                              'define cuántas porciones sueles preparar de '
+                                  'cada plato.',
+                            ),
+                            (
+                              'Abrir el día (cada día):',
+                              'revisa o ajusta las porciones de hoy y guarda. '
+                                  'Con "Usar cantidades base" se llenan solas.',
+                            ),
+                          ],
+                        ),
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Align(
@@ -114,6 +132,14 @@ class _StockDiarioConfigState extends State<StockDiarioConfig> {
                             spacing: 10,
                             runSpacing: 10,
                             children: [
+                              OutlinedButton.icon(
+                                onPressed: () => showBlurDialog<bool>(
+                                  context: context,
+                                  builder: (_) => const StockBaseDialog(),
+                                ),
+                                icon: const Icon(Icons.tune, size: 18),
+                                label: const Text('1. Definir cantidades base'),
+                              ),
                               FilledButton.icon(
                                 onPressed: () => showBlurDialog<bool>(
                                   context: context,
@@ -126,15 +152,7 @@ class _StockDiarioConfigState extends State<StockDiarioConfig> {
                                   Icons.event_available,
                                   size: 18,
                                 ),
-                                label: const Text('Abrir el día'),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () => showBlurDialog<bool>(
-                                  context: context,
-                                  builder: (_) => const StockBaseDialog(),
-                                ),
-                                icon: const Icon(Icons.tune, size: 18),
-                                label: const Text('Cantidades base'),
+                                label: const Text('2. Abrir el día de hoy'),
                               ),
                             ],
                           ),

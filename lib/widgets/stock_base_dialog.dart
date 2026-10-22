@@ -5,11 +5,13 @@ import '../models/carta_item.dart';
 import '../services/disponibilidad_service.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
+import 'apertura_diaria_dialog.dart' show ayudaApertura;
 import 'pago_dialogs.dart';
 import 'campo_texto.dart';
 
-// Cantidades base: cuántas porciones se precargan de cada plato al abrir el
-// día (el botón "Cantidades base" de la apertura). Vacío = sin cantidad base.
+// Cantidades base: cuántas porciones sueles preparar de cada plato. Se guardan
+// una vez y, al abrir el día, se pueden usar como punto de partida (botón
+// "Usar cantidades base" de la apertura). Vacío = sin cantidad base.
 class StockBaseDialog extends StatefulWidget {
   const StockBaseDialog({super.key});
 
@@ -135,11 +137,26 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
     ];
     return ModalPago(
       titulo: 'Cantidades base',
-      subtitulo: 'Porciones que se precargan cada día al abrir.',
+      subtitulo: 'Cuántas porciones sueles preparar de cada plato.',
       anchoEscritorio: 520,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ayudaApertura(
+            pasos: const [
+              (
+                'Esto se define una sola vez',
+                'y no abre el día: solo guarda cuántas porciones sueles '
+                    'preparar de cada plato.',
+              ),
+              (
+                'Cada mañana, en "Abrir el día",',
+                'puedes pulsar "Usar cantidades base" para llenar todo de '
+                    'golpe y luego ajustar lo que cambie.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           CampoTexto(
             onChanged: (v) => setState(() => _busqueda = v),
             decoration: const InputDecoration(
@@ -148,6 +165,37 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
             ),
           ),
           const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'PLATO',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 110,
+                  child: Text(
+                    'CANTIDAD BASE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (_cargando)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),

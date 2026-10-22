@@ -159,14 +159,18 @@ class PedidoLine {
     version: version,
   );
 
-  PedidoLine copyWith({String? estado}) => PedidoLine(
+  PedidoLine copyWith({
+    String? estado,
+    CartaPresentacion? presentacion,
+    CartaVariante? variante,
+  }) => PedidoLine(
     id: id,
     cartaId: cartaId,
     nombrePlato: nombrePlato,
     cantidad: cantidad,
     modificadores: modificadores,
-    presentacion: presentacion,
-    variante: variante,
+    presentacion: presentacion ?? this.presentacion,
+    variante: variante ?? this.variante,
     componentes: componentes,
     promocion: promocion,
     comentario: comentario,

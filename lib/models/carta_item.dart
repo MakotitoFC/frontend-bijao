@@ -106,7 +106,9 @@ class CartaItem {
     taperIds: taperIds ?? this.taperIds,
     taperNombre: taperNombre ?? this.taperNombre,
     precioCliente: limpiarPrecio ? null : (precioCliente ?? this.precioCliente),
-    precioPersonal: limpiarPrecio ? null : (precioPersonal ?? this.precioPersonal),
+    precioPersonal: limpiarPrecio
+        ? null
+        : (precioPersonal ?? this.precioPersonal),
     estado: estado ?? this.estado,
     sedeId: sedeId ?? this.sedeId,
     costo: costo ?? this.costo,
@@ -169,8 +171,8 @@ class CartaItem {
       stock: (json['stock'] is int)
           ? json['stock'] as int
           : (json['disponibilidad']?['cantidad_disponible'] is int
-              ? json['disponibilidad']['cantidad_disponible'] as int
-              : 0),
+                ? json['disponibilidad']['cantidad_disponible'] as int
+                : 0),
       urlImagen:
           (json['url_imagen'] is String &&
               (json['url_imagen'] as String).isNotEmpty)

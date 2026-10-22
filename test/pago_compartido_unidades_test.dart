@@ -93,12 +93,14 @@ void main() {
     expect(find.text('Unidad 2 de 3 · S/ 30.00'), findsOneWidget);
   });
 
-  testWidgets('"Por grupo" también reparte unidad por unidad', (tester) async {
+  testWidgets('ya no se ofrecen los modos "Por grupo" ni "Por categoría"', (
+    tester,
+  ) async {
     await abrir(tester);
-    await tester.tap(find.text('Por grupo'));
-    await tester.pump();
-    expect(find.text('Suri'), findsNWidgets(2));
-    expect(find.text('Chancho'), findsNWidgets(3));
+    expect(find.text('Por grupo'), findsNothing);
+    expect(find.text('Por categoría'), findsNothing);
+    expect(find.text('Partes iguales'), findsOneWidget);
+    expect(find.text('Cada uno su plato'), findsOneWidget);
   });
 
   testWidgets('con todo en el primer pagador, paga el total de la cuenta', (

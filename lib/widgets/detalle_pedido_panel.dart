@@ -206,6 +206,10 @@ class DetallePedidoPanel extends StatelessWidget {
     this.esAdmin = false,
   });
 
+  // Abre directo la elección de pago (único o compartido), sin mostrar todo el
+  // detalle del pedido: la usa el cajero desde su comanda.
+  Future<void> iniciarCobro(BuildContext context) => _elegirPago(context);
+
   String _hora(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
@@ -1635,9 +1639,8 @@ class DetallePedidoPanel extends StatelessWidget {
                                 l,
                                 !entregado,
                               ),
-                              exito: entregado
-                                  ? '"${l.nombrePlato}" vuelve a pendiente.'
-                                  : '"${l.nombrePlato}" servido.',
+                              // Sin aviso de éxito por plato: solo se avisa
+                              // al pasar el pedido completo a servido.
                             ).then((ok) {
                               if (!ok) {
                                 // Si falló, revertir estado local
@@ -2020,15 +2023,17 @@ class DetallePedidoPanel extends StatelessWidget {
         if (!_esCajero) ...[
           Row(
             children: [
-              Expanded(
-                flex: 3,
-                child: BotonImprimirWhatsapp(
-                  mostrarImprimir: _veCaja,
-                  onImprimir: () => _imprimir(context),
-                  onWhatsapp: () => _enviarWhatsapp(context),
+              // El mozo no imprime ni manda la cuenta por WhatsApp.
+              if (_veCaja) ...[
+                Expanded(
+                  flex: 3,
+                  child: BotonImprimirWhatsapp(
+                    onImprimir: () => _imprimir(context),
+                    onWhatsapp: () => _enviarWhatsapp(context),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 flex: 2,
                 child: OutlinedButton.icon(

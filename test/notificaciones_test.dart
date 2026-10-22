@@ -2,10 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend_bijao/data/inventario_store.dart';
 import 'package:frontend_bijao/data/notificaciones_store.dart';
-import 'package:frontend_bijao/models/producto_inventario.dart';
-import 'package:frontend_bijao/services/alertas_stock.dart';
 import 'package:frontend_bijao/widgets/app_toast.dart';
 import 'package:frontend_bijao/widgets/campana_notificaciones.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +13,6 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     store.reiniciar();
-    productosInventario.clear();
   });
 
   test(
@@ -50,29 +46,6 @@ void main() {
       expect(store.lista.value, isEmpty);
     },
   );
-
-  test('una alerta de stock avisa una vez y vuelve a avisar tras reponer', () {
-    productosInventario.add(
-      const ProductoInventario(
-        id: 'p1',
-        nombre: 'Arroz',
-        tipoProductoId: 't1',
-        unidadProductoId: 'u1',
-        stockActual: 2,
-        stockMinimo: 5,
-      ),
-    );
-    revisarAlertasStock();
-    revisarAlertasStock();
-    expect(store.lista.value, hasLength(1));
-    expect(store.lista.value.first.titulo, 'Stock bajo');
-
-    productosInventario[0] = productosInventario[0].copyWith(stockActual: 20);
-    revisarAlertasStock();
-    productosInventario[0] = productosInventario[0].copyWith(stockActual: 1);
-    revisarAlertasStock();
-    expect(store.lista.value, hasLength(2));
-  });
 
   testWidgets('un toast queda en la campana y se ve al abrirla', (
     tester,

@@ -44,7 +44,9 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
   @override
   void initState() {
     super.initState();
-    _medioPagoSeleccionadoId = _mediosPago.isNotEmpty ? _mediosPago.first.id : '';
+    _medioPagoSeleccionadoId = _mediosPago.isNotEmpty
+        ? _mediosPago.first.id
+        : '';
     _montoController = TextEditingController(
       text: _saldoPendiente > 0 ? _saldoPendiente.toStringAsFixed(2) : '0.00',
     );
@@ -273,7 +275,7 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  prefixIcon: const Icon(Icons.attach_money, size: 20),
+                  prefixText: 'S/ ',
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {

@@ -1,7 +1,6 @@
 import 'dart:developer' as developer;
 
 import '../data/cartas_store.dart';
-import 'alertas_stock.dart';
 import '../data/catalogos_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/compras_store.dart';
@@ -1122,7 +1121,6 @@ class CatalogService {
         tapers
           ..clear()
           ..addAll(lista);
-        revisarAlertasStock();
 
         return lista;
       }
@@ -1562,7 +1560,6 @@ class CatalogService {
         productosInventario
           ..clear()
           ..addAll(lista);
-        revisarAlertasStock();
         return lista;
       }
     } catch (e) {

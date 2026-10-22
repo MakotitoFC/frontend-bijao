@@ -417,14 +417,17 @@ Future<void> emitirComprobanteTrasCobro(
               onPressed: () => Navigator.of(dialogContext).pop('manual'),
               child: const Text('Editar / Manual'),
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop('reintentar'),
-              child: const Text('Reintentar'),
-            ),
+            // El cajero no reintenta desde aquí: avisa al administrador.
+            if (!(AuthService.instance.currentUser?.esCajero ?? false))
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop('reintentar'),
+                child: const Text('Reintentar'),
+              ),
           ],
         ),
       );
       if (accion == 'manual') {
+        if (!context.mounted) return;
         final res = await showBlurDialog<EmisionHecha>(
           context: context,
           builder: (_) => EmitirComprobanteDialog(pedido: pedido),

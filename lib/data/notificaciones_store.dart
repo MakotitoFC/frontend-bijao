@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum TipoNotificacion { exito, error, aviso, info, stock }
+enum TipoNotificacion { exito, error, aviso, info }
 
 class Notificacion {
   final String id;
@@ -58,7 +58,7 @@ class Notificacion {
 }
 
 // Notificaciones del día: los avisos (éxito, error, actualización, info) que
-// salen como toast y las alertas de stock. Se guardan en el dispositivo y solo
+// salen como toast. Se guardan en el dispositivo y solo
 // duran ese día: al día siguiente se descartan.
 class NotificacionesStore {
   NotificacionesStore._();
@@ -67,8 +67,6 @@ class NotificacionesStore {
   static const _clave = 'notificaciones_del_dia';
 
   final ValueNotifier<List<Notificacion>> lista = ValueNotifier(const []);
-  // Alertas de stock ya avisadas hoy (para no repetirlas).
-  final Set<String> _clavesStock = {};
   bool _cargado = false;
 
   int get sinLeer => lista.value.where((n) => !n.leida).length;
@@ -100,9 +98,6 @@ class NotificacionesStore {
         ...lista.value,
         ...guardadas.where((n) => !ids.contains(n.id)),
       ]..sort((a, b) => b.fecha.compareTo(a.fecha));
-      _clavesStock.addAll([
-        for (final c in (j['claves'] as List? ?? const [])) '$c',
-      ]);
     } catch (_) {}
   }
 
@@ -116,21 +111,11 @@ class NotificacionesStore {
     ];
     if (vigentes.length != lista.value.length) {
       lista.value = vigentes;
-      _clavesStock.clear();
     }
   }
 
-  void agregar(
-    TipoNotificacion tipo,
-    String titulo,
-    String mensaje, {
-    String? claveStock,
-  }) {
+  void agregar(TipoNotificacion tipo, String titulo, String mensaje) {
     _depurar();
-    if (claveStock != null) {
-      if (_clavesStock.contains(claveStock)) return;
-      _clavesStock.add(claveStock);
-    }
     final ahora = DateTime.now();
     // El mismo aviso repetido en pocos segundos se cuenta una sola vez.
     final repetida = lista.value.any(
@@ -154,11 +139,6 @@ class NotificacionesStore {
     _guardar();
   }
 
-  // El producto ya no está bajo: si vuelve a bajar, se avisa de nuevo.
-  void olvidarStock(String claveStock) {
-    if (_clavesStock.remove(claveStock)) _guardar();
-  }
-
   void marcarLeidas() {
     lista.value = [for (final n in lista.value) n.conLeida(true)];
     _guardar();
@@ -177,7 +157,6 @@ class NotificacionesStore {
         jsonEncode({
           'dia': _dia(DateTime.now()),
           'items': [for (final n in lista.value) n.toJson()],
-          'claves': _clavesStock.toList(),
         }),
       );
     } catch (_) {}
@@ -187,7 +166,6 @@ class NotificacionesStore {
   @visibleForTesting
   void reiniciar() {
     lista.value = const [];
-    _clavesStock.clear();
     _cargado = false;
   }
 }

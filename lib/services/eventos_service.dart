@@ -174,9 +174,6 @@ class EventosService {
         if (acciones.pedidos) PedidoService.instance.cargarPedidos(),
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
-        // El stock cambió: se vuelve a leer el inventario y los tápers para
-        // avisar en la campana de lo que quedó bajo (solo quien los puede ver).
-        if (acciones.stock) _revisarStock(),
         if (acciones.carta) CatalogService.instance.recargarCarta(),
         if (acciones.porLiberar && PedidoMozoService.instance.activo)
           recargarMesasPorLiberar(),
@@ -185,15 +182,6 @@ class EventosService {
       // Las pantallas vuelven a consultar por su cuenta.
     }
     revision.value++;
-  }
-
-  Future<void> _revisarStock() async {
-    try {
-      await Future.wait([
-        CatalogService.instance.cargarProductosInventario(),
-        CatalogService.instance.cargarTapers(),
-      ]);
-    } catch (_) {}
   }
 
   Future<void> _alFallar(Object? error) async {

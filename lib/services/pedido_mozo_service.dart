@@ -106,7 +106,8 @@ class PedidoMozoService {
     }
     // Las mesas cobradas que faltan liberar las informa el backend (ya filtradas
     // por usuario); no se deduce nada por los pedidos que dejan de venir.
-    await recargarMesasPorLiberar();
+    // Las mesas por liberar son del mozo y del administrador; el cajero solo lee.
+    if (activo) await recargarMesasPorLiberar();
     if (sobreLegacy) return;
     pedidos.removeWhere((p) => !vigentes.contains(p.id));
     detallesPorPedido.removeWhere((id, _) => !vigentes.contains(id));

@@ -1,5 +1,7 @@
 import '../data/mesas_store.dart';
 import '../data/pedidos_store.dart';
+import '../data/presentaciones_store.dart';
+import '../data/variantes_store.dart';
 import '../config/app_config.dart';
 import '../models/app_role.dart';
 import '../models/pedido.dart';
@@ -10,6 +12,22 @@ import 'auth_service.dart';
 import 'catalog_service.dart';
 import 'pedido_mozo_mapper.dart';
 import 'pedido_mozo_service.dart';
+
+// Línea del listado con su presentación (jarra, vaso…) y su variante, que el
+// servidor manda solo como id: se buscan en la carta ya cargada.
+PedidoLine _lineaConOpciones(Map<String, dynamic> d) {
+  final linea = PedidoLine.fromJson(d);
+  final presId = d['carta_presentacion_id']?.toString();
+  final varId = d['carta_variante_id']?.toString();
+  final presentacion = presId == null
+      ? null
+      : presentaciones.where((p) => p.id == presId).firstOrNull;
+  final variante = varId == null
+      ? null
+      : variantes.where((v) => v.id == varId).firstOrNull;
+  if (presentacion == null && variante == null) return linea;
+  return linea.copyWith(presentacion: presentacion, variante: variante);
+}
 
 class PedidoService {
   PedidoService._();
@@ -324,7 +342,7 @@ class PedidoService {
             if (detList is List) {
               final lineas = detList
                   .whereType<Map<String, dynamic>>()
-                  .map((d) => PedidoLine.fromJson(d))
+                  .map(_lineaConOpciones)
                   .toList();
               mapDetalles[p.id] = lineas;
             }
@@ -332,8 +350,11 @@ class PedidoService {
         }
 
         sincronizarPedidosDesdeServidor(listaPedidos, mapDetalles);
+        // El administrador y el cajero leen el detalle completo (número de orden,
+        // presentaciones, variantes): el servidor les abre esa lectura.
         if (AppConfig.usarApiPedidosMozo &&
-            user?.rol == AppRole.administrador) {
+            (user?.rol == AppRole.administrador ||
+                user?.rol == AppRole.cajero)) {
           try {
             await PedidoMozoService.instance.sincronizar(sobreLegacy: true);
           } catch (_) {

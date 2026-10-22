@@ -67,7 +67,10 @@ class Pedido {
 
     return Pedido(
       id: json['id']?.toString() ?? '',
+      // El número de orden del día (`codigo_orden`, "#0001") es el mismo que ve
+      // el mozo y sale en la comanda.
       numeroPedido:
+          json['codigo_orden']?.toString().replaceFirst('#', '') ??
           json['numero_pedido']?.toString() ??
           (json['id'] != null && json['id'].toString().length >= 4
               ? json['id'].toString().substring(0, 4)

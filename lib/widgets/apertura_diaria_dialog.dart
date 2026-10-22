@@ -10,6 +10,69 @@ import 'pago_dialogs.dart';
 import 'app_switch.dart';
 import 'campo_texto.dart';
 
+// Cuadro con los pasos de la apertura del día, en palabras simples.
+Widget ayudaApertura({required List<(String, String)> pasos}) => Container(
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: const Color(0xFFF0F9FF),
+    borderRadius: BorderRadius.circular(12),
+    border: Border.all(color: const Color(0xFFBAE6FD)),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (var i = 0; i < pasos.length; i++)
+        Padding(
+          padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 20,
+                height: 20,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0284C7),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '${i + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${pasos[i].$1} ',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(text: pasos[i].$2),
+                    ],
+                  ),
+                  style: const TextStyle(fontSize: 12.5, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ],
+  ),
+);
+
+const _estiloColumna = TextStyle(
+  fontSize: 10.5,
+  fontWeight: FontWeight.w700,
+  letterSpacing: 0.3,
+  color: Color(0xFF9CA3AF),
+);
+
 // Apertura del día: cuántas porciones hay hoy de cada plato. Vacío = sin
 // límite (se vende hasta que el administrador lo marque agotado). Puede
 // precargar las cantidades base de cada plato (`carta_stock_base`).
@@ -77,7 +140,7 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
       });
       showAppToast(
         context,
-        'Se cargaron las cantidades base.',
+        'Listo: se cargaron las cantidades base como porciones de hoy.',
         type: ToastType.success,
       );
     } catch (e) {
@@ -132,11 +195,26 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
     ];
     return ModalPago(
       titulo: 'Apertura del día',
-      subtitulo: 'Porciones disponibles hoy. Vacío = sin límite.',
+      subtitulo: 'Indica cuántas porciones tendrás HOY de cada plato.',
       anchoEscritorio: 560,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ayudaApertura(
+            pasos: const [
+              (
+                'Escribe las porciones de hoy',
+                'en cada plato. Si lo dejas vacío, se vende sin límite.',
+              ),
+              ('Marca "Agotado"', 'en los platos que hoy no se van a vender.'),
+              (
+                'Pulsa "Guardar apertura"',
+                'para que los mozos vean lo que hay. Con "Usar cantidades '
+                    'base" se llenan solas las que definiste antes.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -152,11 +230,36 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
               OutlinedButton.icon(
                 onPressed: _trabajando ? null : _cargarBase,
                 icon: const Icon(Icons.download_outlined, size: 18),
-                label: const Text('Cantidades base'),
+                label: const Text('Usar cantidades base'),
               ),
             ],
           ),
           const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Expanded(child: Text('PLATO', style: _estiloColumna)),
+                SizedBox(
+                  width: 90,
+                  child: Text(
+                    'PORCIONES HOY',
+                    textAlign: TextAlign.center,
+                    style: _estiloColumna,
+                  ),
+                ),
+                SizedBox(width: 8),
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    'AGOTADO',
+                    textAlign: TextAlign.center,
+                    style: _estiloColumna,
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (visibles.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),

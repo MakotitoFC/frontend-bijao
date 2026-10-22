@@ -1,7 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import '../data/configuracion_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
@@ -66,8 +65,8 @@ class ReportesScreen extends StatelessWidget {
                     child: _progresoPedidos(),
                   ),
                   derecha: _tarjeta(
-                    titulo: 'Rendimiento de meseros',
-                    child: _rendimientoMeseros(),
+                    titulo: 'Rendimiento de mozos',
+                    child: _rendimientoMozos(),
                   ),
                   flexIzquierda: 3,
                   flexDerecha: 2,
@@ -79,18 +78,9 @@ class ReportesScreen extends StatelessWidget {
                     titulo: 'Horas con más ventas',
                     child: _horasConMasVentas(),
                   ),
-                  derecha: Column(
-                    children: [
-                      _tarjeta(
-                        titulo: 'Días con más ventas',
-                        child: _diasConMasVentas(),
-                      ),
-                      const SizedBox(height: 16),
-                      _tarjeta(
-                        titulo: 'Métodos de pago',
-                        child: _metodosPago(),
-                      ),
-                    ],
+                  derecha: _tarjeta(
+                    titulo: 'Días con más ventas',
+                    child: _diasConMasVentas(),
                   ),
                   flexIzquierda: 1,
                   flexDerecha: 1,
@@ -394,7 +384,8 @@ class ReportesScreen extends StatelessWidget {
           ordenarPor: (s) => listaDe(s).length,
           celda: (s) {
             final p = _periodos(
-              (l) => l.where(s.filtro as bool Function(Pedido)).length.toDouble(),
+              (l) =>
+                  l.where(s.filtro as bool Function(Pedido)).length.toDouble(),
             );
             return valorConCambio(
               '${listaDe(s).length}',
@@ -591,16 +582,22 @@ class ReportesScreen extends StatelessWidget {
     );
   }
 
-  // --- Rendimiento de meseros (pedidos.usuario_id) ---
+  // --- Rendimiento de mozos (pedidos.usuario_id) ---
 
-  String _nombreUsuario(String? id) {
+  // Nombre del mozo: el que trae el pedido y, si falta, el de la lista de
+  // usuarios cargada. Solo sin ninguno dice "Sin asignar".
+  String _nombreMozo(String? id, List<Pedido> pedidos) {
+    for (final p in pedidos) {
+      final n = p.mozoNombre;
+      if (n != null && n.trim().isNotEmpty) return n;
+    }
     for (final u in usuarios) {
       if (u.id == id) return u.nombre;
     }
     return 'Sin asignar';
   }
 
-  Widget _rendimientoMeseros() {
+  Widget _rendimientoMozos() {
     final porMesero = <String, List<Pedido>>{};
     for (final p in _pedidosValidos) {
       final id = p.usuarioId ?? '—';
@@ -618,7 +615,7 @@ class ReportesScreen extends StatelessWidget {
     final filas = porMesero.entries.map((e) {
       final ventas = _ventasDe(e.value);
       return (
-        nombre: _nombreUsuario(e.key),
+        nombre: _nombreMozo(e.key, e.value),
         pedidos: e.value.length,
         ventas: ventas,
       );
@@ -869,40 +866,6 @@ class ReportesScreen extends StatelessWidget {
                   ),
               ],
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- Métodos de pago (pagos.medio_pago) ---
-
-  Widget _metodosPago() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final m in mediosPagoActivos) ...[
-          _filaMetodoPago(
-            m.medioPago,
-            pagos.where((p) => p.medioPago.id == m.id).length,
-          ),
-          const SizedBox(height: 10),
-        ],
-      ],
-    );
-  }
-
-  Widget _filaMetodoPago(String nombre, int cantidad) {
-    return Row(
-      children: [
-        Expanded(child: Text(nombre, style: const TextStyle(fontSize: 13))),
-        Container(width: 2, height: 16, color: AppColors.info),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 20,
-          child: Text(
-            '$cantidad',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
         ),
       ],

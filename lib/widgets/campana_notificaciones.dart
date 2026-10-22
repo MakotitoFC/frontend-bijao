@@ -6,7 +6,7 @@ import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 
 // Campana del header: cuenta lo que no se ha leído y abre las notificaciones del
-// día (avisos de éxito, error y actualización, y alertas de stock).
+// día (avisos de éxito, error, actualización e información).
 class CampanaNotificaciones extends StatefulWidget {
   const CampanaNotificaciones({super.key});
 
@@ -124,7 +124,6 @@ class _PanelNotificacionesState extends State<PanelNotificaciones> {
     TipoNotificacion.error => (Icons.error, AppColors.error),
     TipoNotificacion.aviso => (Icons.warning_amber_rounded, AppColors.warning),
     TipoNotificacion.info => (Icons.info, AppColors.info),
-    TipoNotificacion.stock => (LucideIcons.packageMinus, AppColors.naranja),
   };
 
   String _hora(DateTime d) =>

@@ -196,7 +196,6 @@ class _TaperFormDialogState extends State<TaperFormDialog> {
                   labelText: 'Precio (S/) *',
                   hintText: '0.00',
                   prefixText: 'S/ ',
-                  prefixIcon: Icon(Icons.attach_money, size: 20),
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {

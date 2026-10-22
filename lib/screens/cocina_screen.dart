@@ -27,6 +27,7 @@ import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/boleta_pedido_dialog.dart';
 import '../widgets/boton_imprimir_whatsapp.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
@@ -406,43 +407,16 @@ class _CocinaScreenState extends State<CocinaScreen> {
       pedidos.where((x) => x.id == id).firstOrNull;
 
   // Cobro en un modal con el mismo detalle de Pedidos (Pagar / Pago compartido).
+  // "Pagar": abre directo la elección de pago (único o compartido).
   Future<void> _cobrar(Pedido p) async {
-    await showBlurDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogo) {
-          final actual = _pedidoPorId(p.id) ?? p;
-          final tam = MediaQuery.sizeOf(context);
-          return Material(
-            color: Colors.transparent,
-            child: SizedBox(
-              width: AppBreakpoints.esMobile(context) ? tam.width : 440,
-              height: tam.height * 0.9,
-              child: DetallePedidoPanel(
-                key: ValueKey('cobro-${p.id}'),
-                pedido: actual,
-                esAdmin:
-                    AuthService.instance.currentUser?.rol ==
-                    AppRole.administrador,
-                onVolver: () => Navigator.of(dialogContext).pop(),
-                onCambio: () {
-                  setDialogo(() {});
-                  setState(() {});
-                  final estado = (_pedidoPorId(p.id) ?? p).estado;
-                  if (estado == 'pagado' || estado == 'anulado') {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    });
-                  }
-                },
-              ),
-            ),
-          );
-        },
-      ),
-    );
+    final actual = _pedidoPorId(p.id) ?? p;
+    await DetallePedidoPanel(
+      pedido: actual,
+      esAdmin: AuthService.instance.currentUser?.rol == AppRole.administrador,
+      onCambio: () {
+        if (mounted) setState(() {});
+      },
+    ).iniciarCobro(context);
     if (mounted) setState(() {});
   }
 
@@ -465,25 +439,78 @@ class _CocinaScreenState extends State<CocinaScreen> {
   }
 
   // Imprime la cuenta del pedido en la impresora de caja.
-  Future<void> _imprimirCuenta(Pedido p) async {
-    try {
-      await ImpresionService.instance.reimprimirPedido(p.id, tipo: 'cuenta');
-      if (mounted) {
-        showAppToast(
-          context,
-          'Cuenta enviada a la impresora de caja.',
-          type: ToastType.success,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showAppToast(
-          context,
-          'No se pudo imprimir: ${e.toString().replaceFirst('Exception: ', '')}',
-          type: ToastType.error,
-        );
-      }
-    }
+  String _metodoPago(Pedido p) {
+    final metodos = <String>{
+      for (final x in pagos.where((x) => x.pedidoId == p.id))
+        x.medioPago.medioPago,
+    };
+    return metodos.isEmpty ? 'Sin pago' : metodos.join(', ');
+  }
+
+  String _textoError(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  // Imprimir: abre el mismo ticket que el administrador (comanda de cocina y
+  // cuenta) y desde ahí se reimprime lo que haga falta.
+  void _imprimirCuenta(Pedido p) {
+    marcarPedidoImpreso(p.id);
+    showBlurDialog<void>(
+      context: context,
+      builder: (dialogContext) => BoletaPedidoDialog(
+        pedido: p,
+        mesero: nombreMeseroDe(p),
+        titulo: tituloPedido(p),
+        metodoPago: _metodoPago(p),
+        onImprimir: () {
+          ImpresionService.instance
+              .reimprimirPedido(p.id)
+              .then((_) {
+                if (mounted) {
+                  showAppToast(
+                    context,
+                    'Comanda del pedido #${p.numeroPedido} reenviada a cocina '
+                    '(REIMPRESIÓN).',
+                    type: ToastType.success,
+                  );
+                }
+              })
+              .catchError((Object e) {
+                if (mounted) {
+                  showAppToast(
+                    context,
+                    'No se pudo imprimir: ${_textoError(e)}',
+                    type: ToastType.error,
+                  );
+                }
+              });
+          Navigator.of(dialogContext).pop();
+        },
+        onImprimirCuenta: () {
+          ImpresionService.instance
+              .reimprimirPedido(p.id, tipo: 'cuenta')
+              .then((_) {
+                if (mounted) {
+                  showAppToast(
+                    context,
+                    'Cuenta del pedido #${p.numeroPedido} enviada a la '
+                    'impresora de caja.',
+                    type: ToastType.success,
+                  );
+                }
+              })
+              .catchError((Object e) {
+                if (mounted) {
+                  showAppToast(
+                    context,
+                    'No se pudo imprimir la cuenta: ${_textoError(e)}',
+                    type: ToastType.error,
+                  );
+                }
+              });
+          Navigator.of(dialogContext).pop();
+        },
+        onCerrar: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
   }
 
   Widget _pieCaja(Pedido p) {

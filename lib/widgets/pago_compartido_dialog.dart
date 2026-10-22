@@ -1118,24 +1118,6 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _modoTile(
-                _Modo.categoria,
-                Icons.category_outlined,
-                'Por categoría',
-                'Un pagador por categoría',
-              ),
-              const SizedBox(width: 8),
-              _modoTile(
-                _Modo.grupos,
-                Icons.groups_outlined,
-                'Por grupo',
-                'Subcuentas (familia A, B…)',
-              ),
-            ],
-          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),

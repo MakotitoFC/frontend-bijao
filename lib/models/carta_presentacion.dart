@@ -40,7 +40,9 @@ class CartaPresentacion {
       cartaId: json['carta_id']?.toString() ?? '',
       unidad: UnidadBebida(
         id: unidadId,
-        unidadPresentacion: unidadNombre.isNotEmpty ? unidadNombre : 'Presentación',
+        unidadPresentacion: unidadNombre.isNotEmpty
+            ? unidadNombre
+            : 'Presentación',
       ),
       volumenMl: (json['volumen_ml'] as num?)?.toInt() ?? 0,
       precioCliente: jsonDouble(json['precio_cliente']) ?? 0,
