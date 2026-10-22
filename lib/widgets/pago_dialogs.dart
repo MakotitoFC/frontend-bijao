@@ -9,6 +9,7 @@ import '../services/movimiento_caja_service.dart';
 import 'app_select.dart';
 import '../services/api_client.dart';
 import '../services/pago_service.dart';
+import '../services/catalog_service.dart';
 import '../models/medio_pago.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
@@ -215,6 +216,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             .where((c) => c.nombre.toLowerCase().contains('venta'))
             .firstOrNull ??
         _categoriasIngreso.firstOrNull;
+    if (mediosPago.isEmpty) {
+      CatalogService.instance.cargarMediosPago().then((_) {
+        if (mounted) setState(() => _medio = mediosPagoActivos.first);
+      }).catchError((_) {});
+    }
     if (categoriasMovimiento.isEmpty) {
       MovimientoCajaService.instance
           .cargarCategorias()

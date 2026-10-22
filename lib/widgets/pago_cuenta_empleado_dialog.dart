@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/configuracion_store.dart';
 import '../models/pago_cuenta_empleado.dart';
 import '../models/utensilio_roto.dart';
 import '../services/auth_service.dart';
@@ -28,15 +29,8 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
   final _notaController = TextEditingController();
 
   // Medios de pago comunes de la base de datos
-  final List<({String id, String label})> _mediosPago = [
-    (id: '66666666-6666-6666-6666-666666666661', label: 'Efectivo'),
-    (id: '66666666-6666-6666-6666-666666666662', label: 'Yape'),
-    (id: '66666666-6666-6666-6666-666666666663', label: 'Plin'),
-    (
-      id: '66666666-6666-6666-6666-666666666664',
-      label: 'Tarjeta Visa/Mastercard',
-    ),
-  ];
+  List<({String id, String label})> get _mediosPago =>
+      mediosPagoActivos.map((m) => (id: m.id, label: m.medioPago)).toList();
 
   late String _medioPagoSeleccionadoId;
   bool _guardando = false;
@@ -50,7 +44,7 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
   @override
   void initState() {
     super.initState();
-    _medioPagoSeleccionadoId = _mediosPago.first.id;
+    _medioPagoSeleccionadoId = _mediosPago.isNotEmpty ? _mediosPago.first.id : '';
     _montoController = TextEditingController(
       text: _saldoPendiente > 0 ? _saldoPendiente.toStringAsFixed(2) : '0.00',
     );

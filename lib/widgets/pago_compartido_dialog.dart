@@ -8,6 +8,7 @@ import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../services/api_client.dart';
 import '../services/pago_service.dart';
+import '../services/catalog_service.dart';
 import '../data/movimientos_caja_store.dart';
 import '../models/medio_pago.dart';
 import '../models/movimiento_caja.dart';
@@ -146,6 +147,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             .where((c) => c.nombre.toLowerCase().contains('venta'))
             .firstOrNull ??
         categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
+    if (mediosPago.isEmpty) {
+      CatalogService.instance.cargarMediosPago().then((_) {
+        if (mounted) setState(() {});
+      }).catchError((_) {});
+    }
     if (categoriasMovimiento.isEmpty) {
       MovimientoCajaService.instance
           .cargarCategorias()
