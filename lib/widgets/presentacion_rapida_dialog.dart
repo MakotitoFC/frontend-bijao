@@ -9,6 +9,7 @@ import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import 'campo_texto.dart';
+import 'app_select.dart';
 import 'dialogo_app.dart';
 
 // Agrega una presentación a un plato o bebida que ya existe (botón
@@ -71,6 +72,11 @@ class _PresentacionRapidaDialogState extends State<PresentacionRapidaDialog> {
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_creandoNuevaUnidad &&
+        (_unidadIdSeleccionada == null || _unidadIdSeleccionada!.isEmpty)) {
+      setState(() => _error = 'Selecciona una presentación');
+      return;
+    }
     final precio = _numero(_precio.text)!;
     final volumenMl = int.tryParse(_volumen.text.trim()) ?? 0;
 
@@ -122,7 +128,13 @@ class _PresentacionRapidaDialogState extends State<PresentacionRapidaDialog> {
   @override
   Widget build(BuildContext context) {
     final existentes = presentacionesDeCarta(widget.plato.id, soloActivas: true);
-    final unidadesActivas = unidadesBebida.where((u) => u.estado).toList();
+    final unidadesActivas = unidadesParaElegir(unidadesBebida);
+    // Si el elegido era uno de los repetidos, se muestra su equivalente.
+    final unidadElegida = idDeOpcion(
+      unidadesActivas,
+      unidadesBebida,
+      _unidadIdSeleccionada,
+    );
 
     return DialogoApp(
       titulo: 'Nueva presentación · ${widget.plato.nombrePlato}',
@@ -161,23 +173,19 @@ class _PresentacionRapidaDialogState extends State<PresentacionRapidaDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _unidadIdSeleccionada,
-                        decoration: const InputDecoration(
-                          labelText: 'Presentación (envase) *',
-                        ),
+                      child: AppSelect<String>(
+                        label: 'Presentación (envase) *',
+                        value: unidadElegida,
+                        hint: 'Elige el envase',
                         items: [
                           for (final u in unidadesActivas)
-                            DropdownMenuItem(
+                            AppSelectItem(
                               value: u.id,
-                              child: Text(u.unidadPresentacion),
+                              label: u.unidadPresentacion,
                             ),
                         ],
                         onChanged: (v) =>
                             setState(() => _unidadIdSeleccionada = v),
-                        validator: (v) => (v == null || v.isEmpty)
-                            ? 'Selecciona una presentación'
-                            : null,
                       ),
                     ),
                     const SizedBox(width: 8),

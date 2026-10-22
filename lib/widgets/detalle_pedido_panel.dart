@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/disponibilidad_service.dart';
 import '../services/impresion_service.dart';
+import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../services/devolucion_service.dart';
 import '../services/pedido_mozo_service.dart';
@@ -1274,47 +1275,52 @@ class DetallePedidoPanel extends StatelessWidget {
             _filaTotal(
               'Propina',
               propina,
-              onEditar: () => _editarPropina(context),
+              onEditar: _esCajero ? null : () => _editarPropina(context),
             ),
           if (tupper > 0)
-            _filaTotal('Táper', tupper, onEditar: () => _editarTupper(context)),
+            _filaTotal(
+              'Táper',
+              tupper,
+              onEditar: _esCajero ? null : () => _editarTupper(context),
+            ),
           if (pagado > 0.01) _filaTotal('Pagado', pagado),
           if (pagado > 0.01 && saldo > 0.01)
             _filaTotal('Saldo pendiente', saldo, color: AppColors.mesaOcupada),
           const SizedBox(height: 4),
           _filaTotal('Total', total, fuerte: true),
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              runSpacing: 8,
-              children: [
-                AppTag(
-                  etiqueta: 'Promoción',
-                  icono: LucideIcons.tag,
-                  activo: false,
-                  color: AppColors.naranja,
-                  onTap: () => _agregarPromocion(context),
-                ),
-                AppTag(
-                  etiqueta: 'Propina',
-                  icono: LucideIcons.handCoins,
-                  activo: false,
-                  color: AppColors.naranja,
-                  onTap: () => _editarPropina(context),
-                ),
-                // También aquí: un cliente puede pedir solo un táper.
-                AppTag(
-                  etiqueta: 'Táper',
-                  icono: LucideIcons.package,
-                  activo: false,
-                  color: Colors.black87,
-                  colorBorde: Colors.grey.shade300,
-                  onTap: () => _editarTupper(context),
-                ),
-              ],
+          if (!_esCajero)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                runSpacing: 8,
+                children: [
+                  AppTag(
+                    etiqueta: 'Promoción',
+                    icono: LucideIcons.tag,
+                    activo: false,
+                    color: AppColors.naranja,
+                    onTap: () => _agregarPromocion(context),
+                  ),
+                  AppTag(
+                    etiqueta: 'Propina',
+                    icono: LucideIcons.handCoins,
+                    activo: false,
+                    color: AppColors.naranja,
+                    onTap: () => _editarPropina(context),
+                  ),
+                  // También aquí: un cliente puede pedir solo un táper.
+                  AppTag(
+                    etiqueta: 'Táper',
+                    icono: LucideIcons.package,
+                    activo: false,
+                    color: Colors.black87,
+                    colorBorde: Colors.grey.shade300,
+                    onTap: () => _editarTupper(context),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1577,32 +1583,35 @@ class DetallePedidoPanel extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  onChanged: (_) {
-                    if (!_puedeModificar(context)) return;
-                    // Actualización optimista instantánea
-                    alternarLineaEntregada(l.id);
-                    onCambio();
-
-                    if (_api) {
-                      _ejecutar(
-                        context,
-                        () => PedidoMozoService.instance.marcarServido(
-                          pedido.id,
-                          l,
-                          !entregado,
-                        ),
-                        exito: entregado
-                            ? '"${l.nombrePlato}" vuelve a pendiente.'
-                            : '"${l.nombrePlato}" servido.',
-                      ).then((ok) {
-                        if (!ok) {
-                          // Si falló, revertir estado local
+                  // El cajero no marca entregas: la casilla queda deshabilitada.
+                  onChanged: _esCajero
+                      ? null
+                      : (_) {
+                          if (!_puedeModificar(context)) return;
+                          // Actualización optimista instantánea
                           alternarLineaEntregada(l.id);
                           onCambio();
-                        }
-                      });
-                    }
-                  },
+
+                          if (_api) {
+                            _ejecutar(
+                              context,
+                              () => PedidoMozoService.instance.marcarServido(
+                                pedido.id,
+                                l,
+                                !entregado,
+                              ),
+                              exito: entregado
+                                  ? '"${l.nombrePlato}" vuelve a pendiente.'
+                                  : '"${l.nombrePlato}" servido.',
+                            ).then((ok) {
+                              if (!ok) {
+                                // Si falló, revertir estado local
+                                alternarLineaEntregada(l.id);
+                                onCambio();
+                              }
+                            });
+                          }
+                        },
                   activeColor: AppColors.primaryGreen,
                 ),
               ),
@@ -1961,89 +1970,103 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // Imprimir (oscuro) + Devolución, y debajo Pagar (naranja) + Pago compartido (verde).
+  // Pagar e imprimir son de administración y caja: el mozo no los ve.
+  bool get _veCaja => !(AuthService.instance.currentUser?.esMozo ?? false);
+
+  // El cajero solo cobra: no sirve, no devuelve, no marca entregas ni agrega
+  // promoción, propina o táper. Imprimir y WhatsApp están en su comanda.
+  bool get _esCajero => AuthService.instance.currentUser?.esCajero ?? false;
+
   Widget _botones(BuildContext context, bool hayProductos, bool puedePagar) {
     const texto = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: BotonImprimirWhatsapp(
-                onImprimir: () => _imprimir(context),
-                onWhatsapp: () => _enviarWhatsapp(context),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: OutlinedButton.icon(
-                onPressed: hayProductos && pedido.tipoPedido != 'delivery'
-                    ? () => _devolucion(context)
-                    : null,
-                icon: const Icon(LucideIcons.undo2, size: 15),
-                label: const Text(
-                  'Devolución',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: texto,
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.black87,
-                  side: BorderSide(color: Colors.grey.shade300),
+        if (!_esCajero) ...[
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: BotonImprimirWhatsapp(
+                  mostrarImprimir: _veCaja,
+                  onImprimir: () => _imprimir(context),
+                  onWhatsapp: () => _enviarWhatsapp(context),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed: hayProductos && pedido.tipoPedido != 'delivery'
+                      ? () => _devolucion(context)
+                      : null,
+                  icon: const Icon(LucideIcons.undo2, size: 15),
+                  label: const Text(
+                    'Devolución',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: texto,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black87,
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
         // Servido y Pagar en la misma fila. "Pagar" abre la elección entre pago
         // único y compartido.
         Row(
           children: [
             // Siempre visible: queda desactivado cuando el pedido ya no está
-            // pendiente (ya se sirvió o se cerró).
-            Expanded(
-              child: FilledButton.icon(
-                onPressed:
-                    (pedido.estado == 'pendiente' || pedido.estado == 'pedido')
-                    ? () {
-                        if (!_puedeModificar(context)) return;
-                        final prevEstado = pedido.estado;
-                        actualizarEstadoPedido(pedido.id, 'servido');
-                        onCambio();
-                        _ejecutar(
-                          context,
-                          () => PedidoService.instance.cambiarEstadoPedido(
-                            pedido.id,
-                            'servido',
-                          ),
-                          exito: 'Pedido #${pedido.numeroPedido} servido.',
-                        ).then((ok) {
-                          if (!ok) {
-                            actualizarEstadoPedido(pedido.id, prevEstado);
-                            onCambio();
-                          }
-                        });
-                      }
-                    : null,
-                icon: const Icon(LucideIcons.utensilsCrossed, size: 16),
-                label: const Text('Servido', style: texto),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0284C7),
+            // pendiente (ya se sirvió o se cerró). El cajero no sirve pedidos.
+            if (!_esCajero)
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed:
+                      (pedido.estado == 'pendiente' ||
+                          pedido.estado == 'pedido')
+                      ? () {
+                          if (!_puedeModificar(context)) return;
+                          final prevEstado = pedido.estado;
+                          actualizarEstadoPedido(pedido.id, 'servido');
+                          onCambio();
+                          _ejecutar(
+                            context,
+                            () => PedidoService.instance.cambiarEstadoPedido(
+                              pedido.id,
+                              'servido',
+                            ),
+                            exito: 'Pedido #${pedido.numeroPedido} servido.',
+                          ).then((ok) {
+                            if (!ok) {
+                              actualizarEstadoPedido(pedido.id, prevEstado);
+                              onCambio();
+                            }
+                          });
+                        }
+                      : null,
+                  icon: const Icon(LucideIcons.utensilsCrossed, size: 16),
+                  label: const Text('Servido', style: texto),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: puedePagar ? () => _elegirPago(context) : null,
-                icon: const Icon(LucideIcons.banknote, size: 16),
-                label: const Text('Pagar', style: texto),
-                style: FilledButton.styleFrom(backgroundColor: _naranjaPago),
+            if (_veCaja) ...[
+              if (!_esCajero) const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: puedePagar ? () => _elegirPago(context) : null,
+                  icon: const Icon(LucideIcons.banknote, size: 16),
+                  label: const Text('Pagar', style: texto),
+                  style: FilledButton.styleFrom(backgroundColor: _naranjaPago),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ],

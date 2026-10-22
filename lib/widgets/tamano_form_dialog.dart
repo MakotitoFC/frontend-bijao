@@ -76,7 +76,7 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
     if (_cartaId == null) {
       showAppToast(
         context,
-        'Elige el plato del tamaño.',
+        'Elige el plato de la variante.',
         type: ToastType.error,
       );
       return;
@@ -110,14 +110,14 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
       Navigator.of(context).pop(guardado);
       showAppToast(
         context,
-        _editando ? 'Tamaño actualizado.' : 'Tamaño creado.',
+        _editando ? 'Variante actualizada.' : 'Variante creada.',
         type: ToastType.success,
       );
     } catch (e) {
       if (!mounted) return;
       showAppToast(
         context,
-        'Error al guardar el tamaño: $e',
+        'Error al guardar la variante: $e',
         type: ToastType.error,
       );
       setState(() => _guardando = false);
@@ -129,7 +129,7 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
     final platos = [...cartasNotifier.value]
       ..sort((a, b) => a.nombrePlato.compareTo(b.nombrePlato));
     return DialogoApp(
-      titulo: _editando ? 'Editar tamaño' : 'Nuevo tamaño',
+      titulo: _editando ? 'Editar variante' : 'Nueva variante',
       ancho: 440,
       acciones: [
         TextButton(
@@ -141,7 +141,7 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.primaryGreen,
           ),
-          child: Text(_editando ? 'Guardar' : 'Crear tamaño'),
+          child: Text(_editando ? 'Guardar' : 'Crear variante'),
         ),
       ],
       children: [
@@ -175,7 +175,7 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
                   controller: _nombre,
                   maxLength: 50,
                   decoration: const InputDecoration(
-                    labelText: 'Nombre del tamaño *',
+                    labelText: 'Nombre de la variante *',
                     hintText: 'Ej. Pequeño, Mediano, Grande',
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty)
@@ -256,7 +256,7 @@ class _TamanoFormDialogState extends State<TamanoFormDialog> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text(
-                    'Un tamaño inactivo no se ofrece al tomar pedidos.',
+                    'Una variante inactiva no se ofrece al tomar pedidos.',
                     style: TextStyle(fontSize: 12),
                   ),
                   value: _estado,

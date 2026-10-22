@@ -23,8 +23,23 @@ void main() {
     expect(mesas.tieneAcceso(_usuario(AppRole.mesero)), false);
   });
 
-  test('Mesas sigue visible para administrador y cajero', () {
+  test(
+    'Configuración y Cocina no se ven para mozo ni cajero, con permisos',
+    () {
+      final config = navItems.firstWhere((i) => i.clave == 'configuracion');
+      final cocina = navItems.firstWhere((i) => i.clave == 'cocina');
+      const permisos = {'LEER.SEDE', 'LEER.PEDIDO'};
+      for (final rol in [AppRole.mesero, AppRole.cajero]) {
+        expect(config.tieneAcceso(_usuario(rol, permisos: permisos)), false);
+        expect(cocina.tieneAcceso(_usuario(rol, permisos: permisos)), false);
+      }
+      expect(config.tieneAcceso(_usuario(AppRole.administrador)), true);
+      expect(cocina.tieneAcceso(_usuario(AppRole.trabajador)), true);
+    },
+  );
+
+  test('Mesas sigue visible para el administrador, no para el cajero', () {
     expect(mesas.tieneAcceso(_usuario(AppRole.administrador)), true);
-    expect(mesas.tieneAcceso(_usuario(AppRole.cajero)), true);
+    expect(mesas.tieneAcceso(_usuario(AppRole.cajero)), false);
   });
 }

@@ -62,6 +62,19 @@ class _Pagador {
 
 double _r2(double v) => (v * 100).roundToDouble() / 100;
 
+// Una unidad de un producto: si se pidieron 3 iguales son 3 unidades y cada una
+// se puede asignar a un pagador distinto (uno pide 1 de suri y 1 de chancho,
+// otro lo demás). El saldo de la línea se reparte en partes iguales.
+class _Unidad {
+  final PedidoLine linea;
+  final int indice; // desde 0
+  final double monto;
+
+  const _Unidad(this.linea, this.indice, this.monto);
+
+  String get clave => '${linea.id}#$indice';
+}
+
 // Reparte la cuenta entre varios pagadores. Escenarios: partes iguales, cada
 // uno su plato, por categoría (bebidas / platos / postres...) o por grupo
 // (subcuentas). Cada pagador puede usar uno o varios métodos de pago, y puede
@@ -88,7 +101,8 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   _Modo _modo = _Modo.iguales;
   CategoriaMovimiento? _categoriaSeleccionada;
   final List<_Pagador> _pagadores = [];
-  final Map<String, int> _asignLinea = {};
+  // Pagador de cada unidad de producto (clave de [_Unidad]).
+  final Map<String, int> _asignUnidad = {};
   final Map<String, int> _asignCategoria = {};
   bool _boletasIndividuales = false;
 
@@ -102,6 +116,20 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           .where(esLineaDeProducto)
           .where((l) => _saldoLinea(l) > 0.001)
           .toList();
+  late final List<_Unidad> _unidades = [
+    for (final l in _lineas) ..._unidadesDe(l),
+  ];
+
+  List<_Unidad> _unidadesDe(PedidoLine l) {
+    final n = l.cantidad < 1 ? 1 : l.cantidad;
+    final saldo = _saldoLinea(l);
+    final cada = _r2(saldo / n);
+    return [
+      for (var i = 0; i < n; i++)
+        _Unidad(l, i, i == n - 1 ? _r2(saldo - cada * (n - 1)) : cada),
+    ];
+  }
+
   late final double _extras = (detallesPorPedido[widget.pedido.id] ?? [])
       .where((l) => !esLineaDeProducto(l) && lineaDeCuenta(widget.pedido.id, l))
       .fold(0.0, (s, l) => s + _saldoLinea(l));
@@ -119,16 +147,21 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             .firstOrNull ??
         categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
     if (categoriasMovimiento.isEmpty) {
-      MovimientoCajaService.instance.cargarCategorias().then((_) {
-        if (mounted) {
-          setState(() {
-            _categoriaSeleccionada = categoriasDeTipo(TipoMovimiento.ingreso)
-                    .where((c) => c.nombre.toLowerCase().contains('venta'))
-                    .firstOrNull ??
-                categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
-          });
-        }
-      });
+      MovimientoCajaService.instance
+          .cargarCategorias()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _categoriaSeleccionada =
+                    categoriasDeTipo(TipoMovimiento.ingreso)
+                        .where((c) => c.nombre.toLowerCase().contains('venta'))
+                        .firstOrNull ??
+                    categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
+              });
+            }
+          })
+          // Sin conexión no se pueden leer las categorías: el cobro sigue.
+          .catchError((_) {});
     }
     _reiniciar(_Modo.iguales);
     if (puedeElegirComprobante(widget.pedido)) {
@@ -177,7 +210,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     }
     _pagadores.clear();
     _modo = modo;
-    _asignLinea.clear();
+    _asignUnidad.clear();
     _asignCategoria.clear();
     for (var i = 0; i < 2; i++) {
       _pagadores.add(_Pagador(_nombreDefecto(i), _medioInicial));
@@ -190,11 +223,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     _sincronizar();
   });
 
-  int _destino(PedidoLine l) {
+  int _destino(_Unidad u) {
     final n = _pagadores.length;
     final i = _modo == _Modo.categoria
-        ? (_asignCategoria[_categoriaDe(l)] ?? 0)
-        : (_asignLinea[l.id] ?? 0);
+        ? (_asignCategoria[_categoriaDe(u.linea)] ?? 0)
+        : (_asignUnidad[u.clave] ?? 0);
     return i < n ? i : 0;
   }
 
@@ -209,8 +242,8 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       ];
     }
     final base = List<double>.filled(n, 0);
-    for (final l in _lineas) {
-      base[_destino(l)] += _saldoLinea(l);
+    for (final u in _unidades) {
+      base[_destino(u)] += u.monto;
     }
     final sumaBase = base.fold(0.0, (a, b) => a + b);
     final res = <double>[];
@@ -285,12 +318,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     if (_pagadores.length <= 2) return;
     _cambiar(() {
       _pagadores.removeAt(i).liberar();
-      for (final k in _asignLinea.keys.toList()) {
-        final v = _asignLinea[k]!;
+      for (final k in _asignUnidad.keys.toList()) {
+        final v = _asignUnidad[k]!;
         if (v == i) {
-          _asignLinea[k] = 0;
+          _asignUnidad[k] = 0;
         } else if (v > i) {
-          _asignLinea[k] = v - 1;
+          _asignUnidad[k] = v - 1;
         }
       }
       for (final k in _asignCategoria.keys.toList()) {
@@ -342,11 +375,20 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         monto: monto,
       ));
     } else {
+      // Las unidades del mismo producto se juntan: "2x Suri".
+      final porLinea = <String, ({String nombre, int cant, double monto})>{};
+      for (final u in _unidades.where((u) => _destino(u) == i)) {
+        final previo = porLinea[u.linea.id];
+        porLinea[u.linea.id] = (
+          nombre: u.linea.nombrePlato,
+          cant: (previo?.cant ?? 0) + 1,
+          monto: (previo?.monto ?? 0) + u.monto,
+        );
+      }
       var suma = 0.0;
-      for (final l in _lineas.where((l) => _destino(l) == i)) {
-        final m = _saldoLinea(l);
-        suma += m;
-        items.add((descripcion: '${l.cantidad}x ${l.nombrePlato}', monto: m));
+      for (final e in porLinea.values) {
+        suma += e.monto;
+        items.add((descripcion: '${e.cant}x ${e.nombre}', monto: e.monto));
       }
       final extra = _r2(monto - suma);
       if (extra.abs() > 0.004) {
@@ -528,14 +570,19 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         );
       }
     } else {
-      for (final l in _lineas) {
+      // Una fila por unidad: si se pidieron varios iguales, cada uno se asigna
+      // por separado.
+      for (final u in _unidades) {
+        final varios = u.linea.cantidad > 1;
         filas.add(
           _filaAsignacion(
-            titulo: l.nombrePlato,
-            detalle: 'Cantidad: ${l.cantidad}',
-            monto: _saldoLinea(l),
-            valor: _destino(l),
-            onChanged: (v) => _cambiar(() => _asignLinea[l.id] = v),
+            titulo: u.linea.nombrePlato,
+            detalle: varios
+                ? 'Unidad ${u.indice + 1} de ${u.linea.cantidad}'
+                : 'Cantidad: 1',
+            monto: u.monto,
+            valor: _destino(u),
+            onChanged: (v) => _cambiar(() => _asignUnidad[u.clave] = v),
           ),
         );
       }

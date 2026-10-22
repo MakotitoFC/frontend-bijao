@@ -15,11 +15,16 @@ void main() {
     for (final nombre in [
       'PEDIDO_NUEVO',
       'MESA_LIBERADA',
-      'PLATO_AGOTADO',
       'STOCK_ACTUALIZADO',
     ]) {
       expect(traducirEvento(nombre).carta, isFalse, reason: nombre);
     }
+  });
+
+  test('un plato agotado relee el stock y también la carta', () {
+    final acciones = traducirEvento('PLATO_AGOTADO');
+    expect(acciones.stock, isTrue);
+    expect(acciones.carta, isTrue);
   });
 
   test('varios eventos seguidos se unen en una sola lectura', () {

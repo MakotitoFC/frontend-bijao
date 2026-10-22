@@ -56,17 +56,6 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
 
   void _confirmar() {
     if (!_formKey.currentState!.validate()) return;
-    if (_llevaTaper &&
-        _taperSeleccionado != null &&
-        _taperSeleccionado!.stock < _cantidad) {
-      showAppToast(
-        context,
-        'No hay stock suficiente de "${_taperSeleccionado!.nombre}". Elige otro táper.',
-        type: ToastType.error,
-      );
-      return;
-    }
-
     if (_llevaTaper && _taperSeleccionado == null) {
       showAppToast(
         context,

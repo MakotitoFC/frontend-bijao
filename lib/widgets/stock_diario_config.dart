@@ -54,90 +54,99 @@ class _StockDiarioConfigState extends State<StockDiarioConfig> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
-      child: ValueListenableBuilder<SedeConfigStock?>(
-        valueListenable: configStockNotifier,
-        builder: (context, cfg, _) {
-          if (cfg == null) return _sinDatos();
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SeccionConfig(
-                titulo: 'Cantidades diarias de platos',
-                descripcion: 'Cómo se controla cuántas porciones se pueden vender cada día.',
-                filas: [
-                  FilaSwitch(
-                    titulo: 'Exigir apertura diaria',
-                    descripcion:
-                        'Un plato sin cantidad registrada hoy no se puede vender. '
-                        'Desactivado: se vende libre hasta que lo marquen agotado.',
-                    valor: cfg.requiereAperturaDiaria,
-                    onChanged: _guardando
-                        ? null
-                        : (v) => _guardar(requiereAperturaDiaria: v),
-                  ),
-                  FilaSwitch(
-                    titulo: 'Permitir sobreventa',
-                    descripcion:
-                        'Seguir vendiendo aunque la cantidad llegue a 0.',
-                    valor: cfg.permiteSobreventa,
-                    onChanged: _guardando
-                        ? null
-                        : (v) => _guardar(permiteSobreventa: v),
-                  ),
-                  FilaSwitch(
-                    titulo: 'Marcar agotado automáticamente',
-                    descripcion:
-                        'Al llegar a 0 el plato queda como agotado solo.',
-                    valor: cfg.autoAgotar,
-                    onChanged: _guardando
-                        ? null
-                        : (v) => _guardar(autoAgotar: v),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-              SeccionConfig(
-                titulo: 'Apertura del día',
-                descripcion:
-                    'Registra cuántas porciones hay hoy de cada plato.',
-                filas: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          FilledButton.icon(
-                            onPressed: () => showBlurDialog<bool>(
-                              context: context,
-                              builder: (_) => const AperturaDiariaDialog(),
-                            ),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primaryGreen,
-                            ),
-                            icon: const Icon(Icons.event_available, size: 18),
-                            label: const Text('Abrir el día'),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: () => showBlurDialog<bool>(
-                              context: context,
-                              builder: (_) => const StockBaseDialog(),
-                            ),
-                            icon: const Icon(Icons.tune, size: 18),
-                            label: const Text('Cantidades base'),
-                          ),
-                        ],
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 880),
+          child: ValueListenableBuilder<SedeConfigStock?>(
+            valueListenable: configStockNotifier,
+            builder: (context, cfg, _) {
+              if (cfg == null) return _sinDatos();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SeccionConfig(
+                    titulo: 'Cantidades diarias de platos',
+                    descripcion: 'Cómo se controla cuántas porciones se pueden vender cada día.',
+                    filas: [
+                      FilaSwitch(
+                        titulo: 'Exigir apertura diaria',
+                        descripcion:
+                            'Un plato sin cantidad registrada hoy no se puede vender. '
+                            'Desactivado: se vende libre hasta que lo marquen agotado.',
+                        valor: cfg.requiereAperturaDiaria,
+                        onChanged: _guardando
+                            ? null
+                            : (v) => _guardar(requiereAperturaDiaria: v),
                       ),
-                    ),
+                      FilaSwitch(
+                        titulo: 'Permitir sobreventa',
+                        descripcion:
+                            'Seguir vendiendo aunque la cantidad llegue a 0.',
+                        valor: cfg.permiteSobreventa,
+                        onChanged: _guardando
+                            ? null
+                            : (v) => _guardar(permiteSobreventa: v),
+                      ),
+                      FilaSwitch(
+                        titulo: 'Marcar agotado automáticamente',
+                        descripcion:
+                            'Al llegar a 0 el plato queda como agotado solo.',
+                        valor: cfg.autoAgotar,
+                        onChanged: _guardando
+                            ? null
+                            : (v) => _guardar(autoAgotar: v),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  SeccionConfig(
+                    titulo: 'Apertura del día',
+                    descripcion:
+                        'Registra cuántas porciones hay hoy de cada plato.',
+                    filas: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () => showBlurDialog<bool>(
+                                  context: context,
+                                  builder: (_) => const AperturaDiariaDialog(),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppColors.primaryGreen,
+                                ),
+                                icon: const Icon(
+                                  Icons.event_available,
+                                  size: 18,
+                                ),
+                                label: const Text('Abrir el día'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => showBlurDialog<bool>(
+                                  context: context,
+                                  builder: (_) => const StockBaseDialog(),
+                                ),
+                                icon: const Icon(Icons.tune, size: 18),
+                                label: const Text('Cantidades base'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }

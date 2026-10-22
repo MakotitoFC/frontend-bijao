@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:frontend_bijao/models/pedido.dart';
 import 'package:frontend_bijao/models/pedido_line.dart';
 import 'package:frontend_bijao/utils/whatsapp_cuenta.dart';
@@ -156,6 +157,32 @@ void main() {
           const Offset(20, 20),
     );
     expect(imprimir, 1);
+    expect(whatsapp, 1);
+  });
+
+  testWidgets('sin impresora (mozo) queda solo la mitad de WhatsApp', (
+    tester,
+  ) async {
+    var whatsapp = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 200,
+              child: BotonImprimirWhatsapp(
+                mostrarImprimir: false,
+                onImprimir: () => fail('el mozo no imprime'),
+                onWhatsapp: () => whatsapp++,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byIcon(LucideIcons.printer), findsNothing);
+    expect(find.byType(IconoWhatsapp), findsOneWidget);
+    await tester.tap(find.byType(IconoWhatsapp));
     expect(whatsapp, 1);
   });
 

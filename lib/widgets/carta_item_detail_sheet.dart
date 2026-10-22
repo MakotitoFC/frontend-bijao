@@ -44,7 +44,7 @@ class CartaItemDetailSheet extends StatelessWidget {
         ],
         const SizedBox(height: 16),
         if (tamanos.isNotEmpty) ...[
-          Text('Tamaños', style: Theme.of(context).textTheme.titleSmall),
+          Text('Variantes', style: Theme.of(context).textTheme.titleSmall),
           ...tamanos.map(
             (v) => ListTile(
               contentPadding: EdgeInsets.zero,

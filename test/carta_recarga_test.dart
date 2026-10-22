@@ -1,8 +1,9 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_bijao/data/cartas_store.dart';
+import 'package:frontend_bijao/models/carta_item.dart';
 import 'package:frontend_bijao/services/api_client.dart';
 import 'package:frontend_bijao/services/catalog_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,13 +63,65 @@ void main() {
     );
   });
 
-  test('si ya hay una recarga en curso no empieza otra', () async {
+  test('un plato que el servidor repite se muestra una sola vez', () async {
+    const id = '01925b6a-9b1d-7234-a123-abcdef012345';
+    const sub = '01925b6a-9b1d-7234-a123-abcdef0123aa';
+    platos = [
+      // El mismo plato llega dos veces (una fila por variante con stock).
+      {
+        'id': id,
+        'nombre_plato': 'Arroz',
+        'subcategoria_id': sub,
+        'estado': 'disponible',
+      },
+      {
+        'id': id,
+        'nombre_plato': 'Arroz',
+        'subcategoria_id': sub,
+        'estado': 'disponible',
+      },
+      {
+        'id': '01925b6a-9b1d-7234-a123-abcdef012399',
+        'nombre_plato': 'Sopa',
+        'subcategoria_id': sub,
+        'estado': 'disponible',
+      },
+    ];
+    await CatalogService.instance.cargarCarta();
+    expect(cartasNotifier.value.map((c) => c.nombrePlato), ['Arroz', 'Sopa']);
+  });
+
+  test('entre repetidos se prefiere el que no está agotado', () {
+    const sub = '01925b6a-9b1d-7234-a123-abcdef0123aa';
+    CartaItem plato(String estado) => CartaItem.fromJson({
+      'id': 'p1',
+      'nombre_plato': 'Arroz',
+      'subcategoria_id': sub,
+      'estado': estado,
+    });
+    final unico = quitarPlatosRepetidos([
+      plato('agotado'),
+      plato('disponible'),
+    ]);
+    expect(unico, hasLength(1));
+    expect(unico.single.agotado, isFalse);
+    // Y si el primero ya estaba disponible, no cambia.
+    expect(
+      quitarPlatosRepetidos([plato('disponible'), plato('agotado')])
+          .single
+          .agotado,
+      isFalse,
+    );
+  });
+
+  test('si ya hay una recarga en curso no empieza otra, la encola', () async {
     await Future.wait([
       CatalogService.instance.recargarCarta(),
       CatalogService.instance.recargarCarta(),
       CatalogService.instance.recargarCarta(),
     ]);
-    // Cada ruta se pidió una sola vez, no tres.
-    expect(rutas.where((r) => r == 'GET /api/carta'), hasLength(1));
+    // Las llamadas durante una recarga no abren tres lecturas: se junta una sola
+    // pasada extra al terminar, para no perder ningún cambio en vivo.
+    expect(rutas.where((r) => r == 'GET /api/carta'), hasLength(2));
   });
 }

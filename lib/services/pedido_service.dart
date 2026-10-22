@@ -109,7 +109,7 @@ class PedidoService {
         'precio_base': l.precioBase > 0 ? l.precioBase : l.precioUnitario,
         'precio':
             (l.precioUnitario * l.cantidad) +
-            (aplicaTaper ? pTaper * l.cantidad : 0.0),
+            (aplicaTaper ? pTaper * (l.cantidadTaper ?? l.cantidad) : 0.0),
         if (l.comentario != null && l.comentario!.isNotEmpty)
           'comentarios': l.comentario,
         'estado': 'pedido',

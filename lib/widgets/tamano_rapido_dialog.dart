@@ -71,7 +71,7 @@ class _TamanoRapidoDialogState extends State<TamanoRapidoDialog> {
   Widget build(BuildContext context) {
     final existentes = variantesDeCarta(widget.plato.id);
     return DialogoApp(
-      titulo: 'Nuevo tamaño · ${widget.plato.nombrePlato}',
+      titulo: 'Nueva variante · ${widget.plato.nombrePlato}',
       ancho: 400,
       acciones: [
         TextButton(
@@ -92,7 +92,7 @@ class _TamanoRapidoDialogState extends State<TamanoRapidoDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Agregar tamaño'),
+              : const Text('Agregar variante'),
         ),
       ],
       children: [
@@ -107,7 +107,7 @@ class _TamanoRapidoDialogState extends State<TamanoRapidoDialog> {
                 autofocus: true,
                 maxLength: 50,
                 decoration: const InputDecoration(
-                  labelText: 'Nombre del tamaño *',
+                  labelText: 'Nombre de la variante *',
                   hintText: 'Ej. Pequeño, Grande',
                   counterText: '',
                 ),

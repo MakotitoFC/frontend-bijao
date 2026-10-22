@@ -216,17 +216,22 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             .firstOrNull ??
         _categoriasIngreso.firstOrNull;
     if (categoriasMovimiento.isEmpty) {
-      MovimientoCajaService.instance.cargarCategorias().then((_) {
-        if (mounted) {
-          setState(() {
-            final reloaded = categoriasDeTipo(TipoMovimiento.ingreso);
-            _categoriaSeleccionada = reloaded
-                    .where((c) => c.nombre.toLowerCase().contains('venta'))
-                    .firstOrNull ??
-                reloaded.firstOrNull;
-          });
-        }
-      });
+      MovimientoCajaService.instance
+          .cargarCategorias()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                final reloaded = categoriasDeTipo(TipoMovimiento.ingreso);
+                _categoriaSeleccionada =
+                    reloaded
+                        .where((c) => c.nombre.toLowerCase().contains('venta'))
+                        .firstOrNull ??
+                    reloaded.firstOrNull;
+              });
+            }
+          })
+          // Sin conexión no se pueden leer las categorías: el cobro sigue.
+          .catchError((_) {});
     }
   }
 

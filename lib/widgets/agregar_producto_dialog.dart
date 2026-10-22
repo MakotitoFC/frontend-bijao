@@ -18,6 +18,7 @@ import 'app_search_field.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
 import 'producto_opciones_dialog.dart';
+import 'taper_catalogo_dialog.dart';
 import 'dialogo_app.dart';
 
 // Agrega productos de la carta a un pedido ya registrado. Devuelve true si se
@@ -80,20 +81,24 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
       comentario: r.comentario,
       precioUnitario: r.precioUnitario,
       descuentoAplicado: 0,
-      precioTotalLinea: r.precioUnitario * r.cantidad,
+      precioTotalLinea: r.totalLinea,
       tipoEntrega: r.tipoEntrega,
       aplicaTaper: r.llevaTaper,
       taperId: r.taperId,
       precioTaper: r.precioTaper,
+      cantidadTaper: r.cantidadTaper,
       precioBase: r.variante?.precioCliente ?? item.precioCliente ?? 0.0,
     );
+    final lineas = [
+      linea,
+      for (final e in r.tapersAdicionales) lineaDeTaper(e.taper, e.cantidad),
+    ];
     if (AppConfig.usarApiPedidosMozo &&
         PedidoMozoService.instance.puedeOperar(widget.pedido)) {
       try {
-        await PedidoMozoService.instance.agregarProducto(
-          widget.pedido.id,
-          linea,
-        );
+        for (final l in lineas) {
+          await PedidoMozoService.instance.agregarProducto(widget.pedido.id, l);
+        }
       } on PedidoCambioException catch (e) {
         if (mounted) showAppToast(context, e.mensaje, type: ToastType.info);
         return;
@@ -110,7 +115,9 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
       if (mounted) Navigator.of(context).pop(true);
       return;
     }
-    agregarLineaAPedido(widget.pedido.id, linea);
+    for (final l in lineas) {
+      agregarLineaAPedido(widget.pedido.id, l);
+    }
     registrarConsumoAutomaticoDeLinea(linea);
     Navigator.of(context).pop(true);
   }
@@ -268,7 +275,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                     ? 'S/ ${p.precioCliente!.toStringAsFixed(2)}'
                     : (precioMinimoDeVariantes(p.id) != null
                           ? 'Desde S/ ${precioMinimoDeVariantes(p.id)!.toStringAsFixed(2)}'
-                          : 'Según tamaño'),
+                          : 'Según variante'),
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,

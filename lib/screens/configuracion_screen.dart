@@ -271,7 +271,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     return SingleChildScrollView(
       padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
       child: Align(
-        alignment: Alignment.topLeft,
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 880),
           child: Column(

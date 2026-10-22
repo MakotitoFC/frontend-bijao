@@ -9,10 +9,10 @@ const navItems = [
     clave: 'inicio',
     label: 'Inicio',
     icono: LucideIcons.house,
+    // El cajero entra directo a sus comandas: no tiene Inicio.
     rolesPermitidos: {
       AppRole.administrador,
       AppRole.mesero,
-      AppRole.cajero,
       AppRole.trabajador,
     },
   ),
@@ -20,10 +20,11 @@ const navItems = [
     clave: 'mesas',
     label: 'Mesas',
     icono: LucideIcons.layoutGrid,
-    rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+    // Solo administración: el cajero no libera ni mueve mesas.
+    rolesPermitidos: {AppRole.administrador},
     // El mozo elige la mesa dentro de "Nuevo pedido": no necesita esta vista,
     // aunque su rol tenga el permiso LEER.MESA.
-    rolesOcultos: {AppRole.mesero},
+    rolesOcultos: {AppRole.mesero, AppRole.cajero},
     permisoRequerido: 'LEER.MESA',
   ),
   NavItem(
@@ -38,6 +39,8 @@ const navItems = [
     label: 'Carta',
     icono: LucideIcons.utensilsCrossed,
     rolesPermitidos: {AppRole.administrador, AppRole.mesero},
+    // Aunque el cajero tenga el permiso de leer la carta, no usa esta vista.
+    rolesOcultos: {AppRole.cajero},
     permisoRequerido: 'LEER.CARTA',
   ),
   NavItem(
@@ -45,6 +48,9 @@ const navItems = [
     label: 'Cocina',
     icono: LucideIcons.chefHat,
     rolesPermitidos: {AppRole.administrador, AppRole.trabajador},
+    // Cocina no es del mozo ni del cajero, aunque tengan permiso para leer
+    // pedidos.
+    rolesOcultos: {AppRole.mesero, AppRole.cajero},
     permisoRequerido: 'LEER.PEDIDO',
   ),
   NavItem(
@@ -72,6 +78,8 @@ const navItems = [
         label: 'Reportes',
         icono: LucideIcons.newspaper,
         rolesPermitidos: {AppRole.administrador},
+        // El cajero tiene LEER.MOVIMIENTO por la caja, pero no ve Reportes.
+        rolesOcultos: {AppRole.cajero},
         permisoRequerido: 'LEER.MOVIMIENTO',
       ),
     ],
@@ -97,6 +105,9 @@ const navItems = [
     label: 'Configuración',
     icono: LucideIcons.settings,
     rolesPermitidos: {AppRole.administrador},
+    // El mozo y el cajero no entran a Configuración, aunque su rol traiga el
+    // permiso de leer la sede.
+    rolesOcultos: {AppRole.mesero, AppRole.cajero},
     permisoRequerido: 'LEER.SEDE',
   ),
 ];

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../data/pagos_store.dart';
+import '../services/pago_service.dart';
+import '../utils/blur_dialog.dart';
 import '../models/comprobante.dart';
 import '../models/pedido.dart';
 import '../services/api_client.dart';
@@ -10,7 +12,10 @@ import 'dialogo_app.dart';
 
 // Emite el comprobante de un pedido ya cobrado (o un ticket de venta): lo usa
 // el historial cuando el cliente pide su boleta o factura después de pagar.
-// Devuelve el comprobante emitido, o null si se cancela.
+// Devuelve el comprobante emitido y si hay que imprimirlo cuando SUNAT responda,
+// o null si se cancela.
+typedef EmisionHecha = ({Comprobante comprobante, bool imprimirDespues});
+
 class EmitirComprobanteDialog extends StatefulWidget {
   final Pedido pedido;
 
@@ -56,7 +61,12 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     });
     try {
       final c = await _eleccion.emitir(widget.pedido);
-      if (mounted) Navigator.of(context).pop<Comprobante>(c);
+      if (mounted) {
+        Navigator.of(context).pop<EmisionHecha>((
+          comprobante: c,
+          imprimirDespues: _eleccion.imprimirDespues,
+        ));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -120,4 +130,28 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       ],
     );
   }
+}
+
+// Flujo completo de emitir el comprobante de un pedido ya cobrado (o un ticket
+// de venta): lee los cobros del servidor, pide los datos y muestra el resultado,
+// que espera la respuesta de SUNAT. Lo usan el historial y la vista del cajero.
+Future<void> emitirComprobanteDePedido(BuildContext context, Pedido p) async {
+  // Sin cobros no se puede facturar: se leen del servidor.
+  try {
+    await PagoService.instance.cargarDePedido(p);
+  } catch (_) {}
+  if (!context.mounted) return;
+  final hecha = await showBlurDialog<EmisionHecha>(
+    context: context,
+    builder: (_) => EmitirComprobanteDialog(pedido: p),
+  );
+  if (hecha == null || !context.mounted) return;
+  await showBlurDialog<void>(
+    context: context,
+    builder: (_) => ComprobanteEmitidoDialog(
+      comprobante: hecha.comprobante,
+      pedido: p,
+      imprimirAlConfirmar: hecha.imprimirDespues,
+    ),
+  );
 }

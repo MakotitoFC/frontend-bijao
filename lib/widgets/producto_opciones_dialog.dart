@@ -16,6 +16,7 @@ import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
 import 'selector_taper.dart';
+import 'taper_catalogo_dialog.dart' show TaperElegido;
 import '../utils/agregados_utils.dart';
 import 'app_switch.dart';
 import 'dialogo_app.dart';
@@ -33,6 +34,12 @@ typedef ProductoConfigurado = ({
   bool llevaTaper,
   String? taperId,
   double precioTaper,
+  // Cuántos tápers se llevan (null = uno por unidad) y el total de la línea.
+  int? cantidadTaper,
+  double totalLinea,
+  // Los demás tápers elegidos (el primero va en la línea del plato): cada uno
+  // se agrega como una fila propia con su cantidad.
+  List<TaperElegido> tapersAdicionales,
 });
 
 // Modal "Agregar al pedido": presentación, extras opcionales y nota.
@@ -81,7 +88,43 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
 
   String _tipoEntrega = 'mesa'; // 'mesa', 'llevar', 'delivery'
   bool _llevaTaper = false;
-  Taper? _taperSeleccionado;
+  // Tápers elegidos, en el orden en que se marcaron (el primero va en la línea).
+  final Set<String> _tapersIds = {};
+  // Cantidad de tápers elegida a mano; 0 = igual a la cantidad del plato.
+  // Cantidad de cada táper puesta a mano (por id); sin ella, igual a la
+  // cantidad del plato.
+  final Map<String, int> _tapersManual = {};
+  int _cantTaper(String id) => _tapersManual[id] ?? _cantidad;
+
+  List<Taper> get _tapersCatalogo =>
+      CatalogService.instance.tapers.where((t) => t.estado).toList();
+
+  // Los tápers elegidos, en el orden en que se marcaron.
+  List<Taper> get _tapersElegidos {
+    final porId = {for (final t in _tapersCatalogo) t.id: t};
+    return [
+      for (final id in _tapersIds)
+        if (porId[id] != null) porId[id]!,
+    ];
+  }
+
+  // Los que trae el plato en la carta (todos los elegidos por el admin).
+  void _preelegirTapersDelPlato() {
+    final ids = widget.item.taperIds.isNotEmpty
+        ? widget.item.taperIds
+        : [
+            if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty)
+              widget.item.taperId!,
+          ];
+    final validos = {for (final t in _tapersCatalogo) t.id};
+    _tapersIds.addAll(ids.where(validos.contains));
+  }
+
+  void _alternarTaper(Taper t) {
+    setState(() {
+      if (!_tapersIds.remove(t.id)) _tapersIds.add(t.id);
+    });
+  }
 
   late final List<Map<String, dynamic>> _extrasSimples = agregadosSimples(
     widget.item.agregados,
@@ -98,24 +141,15 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     } else if (_presentaciones.isNotEmpty) {
       _presentacion = _presentaciones.first;
     }
-    final tapers = CatalogService.instance.tapers
-        .where((t) => t.estado)
-        .toList();
-    // Solo marcar por defecto si el plato en carta tiene asignado su taper_id
-    if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
-      _taperSeleccionado = tapers
-          .where((t) => t.id == widget.item.taperId)
-          .firstOrNull;
-    }
-    // Si taper_id es null en la tabla carta no se preselecciona ninguno, queda a decisión del mozo
+    // Solo se marcan por defecto los tápers que el plato trae en la carta; si
+    // no tiene ninguno, queda a decisión del mozo.
+    _preelegirTapersDelPlato();
 
     // Entrega según el pedido en curso (lo mismo que hace tocar el chip).
     final inicial = widget.tipoEntregaInicial;
     if (inicial == 'llevar' || inicial == 'delivery') {
       _tipoEntrega = inicial;
-      if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty) {
-        _llevaTaper = true;
-      }
+      if (_tapersIds.isNotEmpty) _llevaTaper = true;
     }
   }
 
@@ -141,13 +175,15 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               .where((it) => elegidos.contains('${it['nombre']}'))
               .fold(0.0, (s2, it) => s2 + (precioDeAgregado(it) ?? 0));
     });
-    final taperMonto = (_llevaTaper && _taperSeleccionado != null)
-        ? _taperSeleccionado!.precio
-        : 0.0;
-    return base + extrasSimples + extrasGrupos + taperMonto;
+    return base + extrasSimples + extrasGrupos;
   }
 
-  double get _total => _precioUnitario * _cantidad;
+  // Precio de los tápers elegidos: cada uno, tantas veces como tápers se lleven.
+  double get _totalTaper => _llevaTaper
+      ? _tapersElegidos.fold(0.0, (s, t) => s + t.precio * _cantTaper(t.id))
+      : 0.0;
+
+  double get _total => _precioUnitario * _cantidad + _totalTaper;
 
   // Porciones que aún se pueden agregar de lo elegido (null = sin tope).
   int? get _tope {
@@ -206,20 +242,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       );
       return;
     }
-    if (_llevaTaper && _taperSeleccionado == null) {
+    if (_llevaTaper && _tapersIds.isEmpty) {
       showAppToast(
         context,
         'Selecciona el táper a utilizar para "${widget.item.nombrePlato}".',
-        type: ToastType.error,
-      );
-      return;
-    }
-    if (_llevaTaper &&
-        _taperSeleccionado != null &&
-        _taperSeleccionado!.stock < _cantidad) {
-      showAppToast(
-        context,
-        'No hay stock suficiente de "${_taperSeleccionado!.nombre}". Elige otro táper.',
         type: ToastType.error,
       );
       return;
@@ -247,6 +273,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               precioAjuste: precioDeAgregado(it) ?? 0,
             ),
     ];
+    final elegidos = _llevaTaper ? _tapersElegidos : const <Taper>[];
+    final primero = elegidos.firstOrNull;
+    // En la línea del plato va solo el primer táper; los demás son filas
+    // propias, con su propio total.
+    final totalLinea =
+        _precioUnitario * _cantidad +
+        (primero == null ? 0.0 : primero.precio * _cantTaper(primero.id));
     Navigator.of(context).pop<ProductoConfigurado>((
       cantidad: _cantidad,
       presentacion: _presentacion,
@@ -255,13 +288,21 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       comentario: _comentarioController.text.trim().isEmpty
           ? null
           : _comentarioController.text.trim(),
-      precioUnitario: _precioUnitario,
+      // Precio por unidad con el táper repartido: el total exacto va en
+      // [totalLinea].
+      precioUnitario: totalLinea / _cantidad,
       tipoEntrega: _tipoEntrega,
       llevaTaper: _llevaTaper,
-      taperId: _llevaTaper ? _taperSeleccionado?.id : null,
-      precioTaper: (_llevaTaper && _taperSeleccionado != null)
-          ? _taperSeleccionado!.precio
-          : 0.0,
+      taperId: primero?.id,
+      precioTaper: primero?.precio ?? 0.0,
+      cantidadTaper: (primero != null && _tapersManual.containsKey(primero.id))
+          ? _tapersManual[primero.id]
+          : null,
+      totalLinea: totalLinea,
+      tapersAdicionales: [
+        for (final t in elegidos.skip(1))
+          (taper: t, cantidad: _cantTaper(t.id)),
+      ],
     ));
   }
 
@@ -349,12 +390,12 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     ),
                     if (_variantes.isNotEmpty) ...[
                       const SizedBox(height: 18),
-                      _tituloSeccion('Elige el tamaño', obligatorio: true),
+                      _tituloSeccion('Elige la variante', obligatorio: true),
                       const SizedBox(height: 6),
                       for (final v in _variantes) _filaVariante(v),
                     ] else if (_presentaciones.isNotEmpty) ...[
                       const SizedBox(height: 18),
-                      _tituloSeccion('Elige el tamaño', obligatorio: true),
+                      _tituloSeccion('Elige la variante', obligatorio: true),
                       const SizedBox(height: 6),
                       for (final p in _presentaciones) _filaRadio(p),
                     ],
@@ -597,13 +638,8 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                 onChanged: (val) {
                   setState(() {
                     _llevaTaper = val;
-                    if (_llevaTaper &&
-                        _taperSeleccionado == null &&
-                        widget.item.taperId != null &&
-                        widget.item.taperId!.isNotEmpty) {
-                      _taperSeleccionado = tapers
-                          .where((t) => t.id == widget.item.taperId)
-                          .firstOrNull;
+                    if (_llevaTaper && _tapersIds.isEmpty) {
+                      _preelegirTapersDelPlato();
                     }
                   });
                 },
@@ -620,9 +656,11 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             else
               SelectorTaper(
                 tapers: tapers,
-                seleccionado: _taperSeleccionado,
+                seleccionados: _tapersIds,
                 cantidadNecesaria: _cantidad,
-                onElegir: (t) => setState(() => _taperSeleccionado = t),
+                cantidades: {for (final id in _tapersIds) id: _cantTaper(id)},
+                onAlternar: _alternarTaper,
+                onCantidad: (t, c) => setState(() => _tapersManual[t.id] = c),
               ),
           ],
         ],

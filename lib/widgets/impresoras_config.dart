@@ -415,7 +415,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
     return SingleChildScrollView(
       padding: EdgeInsets.all(pad),
       child: Align(
-        alignment: Alignment.topLeft,
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 880),
           child: cfg == null

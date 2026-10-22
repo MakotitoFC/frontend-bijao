@@ -56,6 +56,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Se abre la primera vista a la que el rol tiene acceso (el cajero no tiene
+    // Inicio).
+    final primera = navItems
+        .where((i) => i.tieneAcceso(widget.usuario))
+        .firstOrNull;
+    if (primera != null && primera.clave != _seleccionado) {
+      final hijo = primera.hijos
+          .where((h) => h.tieneAcceso(widget.usuario))
+          .firstOrNull;
+      _seleccionado = primera.esGrupo
+          ? (hijo?.clave ?? primera.clave)
+          : primera.clave;
+    }
     CatalogService.instance.cargarCatalogos();
     EventosService.instance.iniciar();
     WidgetsBinding.instance.addPostFrameCallback((_) => _pedirCambioDePin());
@@ -152,6 +165,13 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'mesas':
         return MesasScreen(usuario: widget.usuario);
       case 'pedidos':
+        // El cajero ve las comandas con el detalle y los botones de cobro.
+        if (widget.usuario.esCajero) {
+          return DeferredWidget(
+            loader: cocina.loadLibrary,
+            builder: () => cocina.CocinaScreen(modoCaja: true),
+          );
+        }
         return PedidosScreen(usuario: widget.usuario);
       case 'productos':
         return DeferredWidget(
@@ -416,9 +436,16 @@ class _GlobalHeader extends StatelessWidget {
         ),
       );
     }
-    // Mobile: barra fija de ancho completo, con el logo a la izquierda.
+    // Mobile: barra fija de ancho completo, con el logo a la izquierda. El fondo
+    // llega hasta arriba del todo y el contenido empieza bajo la barra de
+    // estado del celular (hora, señal y batería).
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        10 + MediaQuery.paddingOf(context).top,
+        12,
+        10,
+      ),
       decoration: BoxDecoration(
         color: AppColors.header,
         border: Border(bottom: BorderSide(color: Colors.grey.shade200)),

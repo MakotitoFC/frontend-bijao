@@ -126,232 +126,254 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
       return true;
     }).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: AppSearchField(
-                hint: 'Buscar plato, mozo, mesa o motivo...',
-                ajustarAlTexto: false,
-                onChanged: (v) => setState(() => _busqueda = v),
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.outlined(
-              tooltip: 'Actualizar lista',
-              onPressed: _cargar,
-              icon: const Icon(LucideIcons.refreshCw, size: 16),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        TabsDesplazables(
-          child: Row(
-            children: [
-              AppTag(
-                etiqueta: 'Todas (${_anulaciones.length})',
-                activo: _filtro == 'todas',
-                onTap: () => setState(() => _filtro = 'todas'),
-              ),
-              AppTag(
-                etiqueta:
-                    'Servidas (${_anulaciones.where((a) => a['fue_servido'] == true).length})',
-                activo: _filtro == 'servido',
-                color: AppColors.naranja,
-                onTap: () => setState(() => _filtro = 'servido'),
-              ),
-              AppTag(
-                etiqueta:
-                    'No servidas (${_anulaciones.where((a) => a['fue_servido'] != true).length})',
-                activo: _filtro == 'no_servido',
-                color: AppColors.primaryGreen,
-                onTap: () => setState(() => _filtro = 'no_servido'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        if (_cargando)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (filtradas.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 48),
-            child: Center(
-              child: Column(
+    // Mismo margen lateral que las demás páginas de Inventario. Sin ancho
+    // máximo: la tabla necesita todo el espacio disponible.
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // El buscador termina en la columna "Cant." de la tabla (Fecha 150 +
+          // Plato + Cant. 80); no se estira hasta el borde.
+          LayoutBuilder(
+            builder: (context, c) {
+              const fijas = 150.0 + 80 + 190 + 100; // columnas de ancho fijo
+              const minimo = 1150.0; // ancho mínimo de la tabla
+              final ancho = c.maxWidth >= minimo
+                  ? 150 + 80 + (c.maxWidth - fijas) * 14 / 50
+                  : 150 + 80 + 170.0;
+              return Row(
                 children: [
-                  Icon(LucideIcons.ban, size: 40, color: Colors.grey.shade400),
-                  const SizedBox(height: 10),
-                  Text(
-                    _busqueda.isNotEmpty || _filtro != 'todas'
-                        ? 'No se encontraron anulaciones con los filtros aplicados'
-                        : 'No se registran anulaciones de pedidos o platos',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  SizedBox(
+                    width: ancho.clamp(260.0, c.maxWidth - 56),
+                    child: AppSearchField(
+                      hint: 'Buscar plato, mozo, mesa o motivo...',
+                      ajustarAlTexto: false,
+                      onChanged: (v) => setState(() => _busqueda = v),
+                    ),
                   ),
                 ],
-              ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          TabsDesplazables(
+            child: Row(
+              children: [
+                AppTag(
+                  etiqueta: 'Todas (${_anulaciones.length})',
+                  activo: _filtro == 'todas',
+                  onTap: () => setState(() => _filtro = 'todas'),
+                ),
+                AppTag(
+                  etiqueta:
+                      'Servidas (${_anulaciones.where((a) => a['fue_servido'] == true).length})',
+                  activo: _filtro == 'servido',
+                  color: AppColors.naranja,
+                  onTap: () => setState(() => _filtro = 'servido'),
+                ),
+                AppTag(
+                  etiqueta:
+                      'No servidas (${_anulaciones.where((a) => a['fue_servido'] != true).length})',
+                  activo: _filtro == 'no_servido',
+                  color: AppColors.primaryGreen,
+                  onTap: () => setState(() => _filtro = 'no_servido'),
+                ),
+              ],
             ),
-          )
-        else
-          TablaApp<Map<String, dynamic>>(
-            filas: filtradas,
-            altoFila: 62,
-            columnas: [
-              ColumnaTabla(
-                titulo: 'Fecha y hora',
-                ancho: 150,
-                ordenarPor: (a) => _fecha(a['fecha']),
-                celda: (a) => TablaApp.texto(_fecha(a['fecha'])),
-              ),
-              ColumnaTabla(
-                titulo: 'Plato / Ítem',
-                flex: 1.4,
-                anchoMin: 170,
-                ordenarPor: (a) =>
-                    (a['plato_nombre'] ?? 'Pedido Completo').toString(),
-                celda: (a) => Row(
+          ),
+          const SizedBox(height: 14),
+          if (_cargando)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (filtradas.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Center(
+                child: Column(
                   children: [
                     Icon(
-                      a['pedido_detalle_id'] == null
-                          ? LucideIcons.receiptText
-                          : LucideIcons.utensils,
-                      size: 16,
-                      color: AppColors.naranja,
+                      LucideIcons.ban,
+                      size: 40,
+                      color: Colors.grey.shade400,
                     ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: TablaApp.texto(
-                        (a['plato_nombre'] ?? 'Pedido Completo').toString(),
+                    const SizedBox(height: 10),
+                    Text(
+                      _busqueda.isNotEmpty || _filtro != 'todas'
+                          ? 'No se encontraron anulaciones con los filtros aplicados'
+                          : 'No se registran anulaciones de pedidos o platos',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            TablaApp<Map<String, dynamic>>(
+              filas: filtradas,
+              altoFila: 62,
+              columnas: [
+                ColumnaTabla(
+                  titulo: 'Fecha y hora',
+                  ancho: 150,
+                  ordenarPor: (a) => _fecha(a['fecha']),
+                  celda: (a) => TablaApp.texto(_fecha(a['fecha'])),
+                ),
+                ColumnaTabla(
+                  titulo: 'Plato / Ítem',
+                  flex: 1.4,
+                  anchoMin: 170,
+                  ordenarPor: (a) =>
+                      (a['plato_nombre'] ?? 'Pedido Completo').toString(),
+                  celda: (a) => Row(
+                    children: [
+                      Icon(
+                        a['pedido_detalle_id'] == null
+                            ? LucideIcons.receiptText
+                            : LucideIcons.utensils,
+                        size: 16,
+                        color: AppColors.naranja,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: TablaApp.texto(
+                          (a['plato_nombre'] ?? 'Pedido Completo').toString(),
+                          fuerte: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ColumnaTabla(
+                  titulo: 'Cant.',
+                  ancho: 80,
+                  ordenarPor: (a) => (a['cantidad'] ?? 1) as num,
+                  celda: (a) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${a['cantidad'] ?? 1}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+                ColumnaTabla(
+                  titulo: 'Pedido / Origen',
+                  anchoMin: 130,
+                  celda: (a) => Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TablaApp.texto(
+                        (a['mesa_numero'] != null && a['mesa_numero'] > 0)
+                            ? 'Mesa ${a['mesa_numero']}'
+                            : (a['tipo_pedido'] ?? 'Pedido')
+                                  .toString()
+                                  .toUpperCase(),
                         fuerte: true,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              ColumnaTabla(
-                titulo: 'Cant.',
-                ancho: 80,
-                ordenarPor: (a) => (a['cantidad'] ?? 1) as num,
-                celda: (a) => Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${a['cantidad'] ?? 1}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
-              ColumnaTabla(
-                titulo: 'Pedido / Origen',
-                anchoMin: 130,
-                celda: (a) => Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TablaApp.texto(
-                      (a['mesa_numero'] != null && a['mesa_numero'] > 0)
-                          ? 'Mesa ${a['mesa_numero']}'
-                          : (a['tipo_pedido'] ?? 'Pedido')
-                                .toString()
-                                .toUpperCase(),
-                      fuerte: true,
-                    ),
-                    Text(
-                      '${a['tipo_pedido'] ?? 'normal'}',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        color: Colors.grey.shade500,
+                      Text(
+                        '${a['tipo_pedido'] ?? 'normal'}',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: Colors.grey.shade500,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              ColumnaTabla(
-                titulo: 'Anulado por',
-                anchoMin: 130,
-                ordenarPor: (a) => (a['usuario_nombre'] ?? '—').toString(),
-                celda: (a) => Row(
-                  children: [
-                    const Icon(LucideIcons.user, size: 14, color: Colors.grey),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: TablaApp.texto(
-                        (a['usuario_nombre'] ?? '—').toString(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              ColumnaTabla(
-                titulo: '¿Fue servido?',
-                ancho: 190,
-                ordenarPor: (a) => a['fue_servido'] == true ? 1 : 0,
-                celda: (a) => a['fue_servido'] == true
-                    ? const AppTag(
-                        etiqueta: 'Servido (Consumido)',
-                        activo: false,
-                        color: AppColors.naranja,
-                      )
-                    : const AppTag(
-                        etiqueta: 'No servido (Retornado)',
-                        activo: false,
-                        color: AppColors.primaryGreen,
-                      ),
-              ),
-              ColumnaTabla(
-                titulo: 'Motivo / Comentario',
-                flex: 1.6,
-                anchoMin: 200,
-                celda: (a) => Tooltip(
-                  message: (a['comentario'] ?? '').toString(),
-                  child: Text(
-                    _limpiarComentario((a['comentario'] ?? '').toString()),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TablaApp.estiloTexto.copyWith(fontSize: 12.5),
+                    ],
                   ),
                 ),
-              ),
-              ColumnaTabla(
-                titulo: 'Evidencia',
-                ancho: 100,
-                celda: (a) =>
-                    (a['url_evidencia'] != null &&
-                        (a['url_evidencia'] as String).isNotEmpty)
-                    ? IconButton(
-                        tooltip: 'Ver foto de evidencia',
-                        icon: const Icon(
-                          LucideIcons.image,
-                          size: 18,
+                ColumnaTabla(
+                  titulo: 'Anulado por',
+                  anchoMin: 130,
+                  ordenarPor: (a) => (a['usuario_nombre'] ?? '—').toString(),
+                  celda: (a) => Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.user,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: TablaApp.texto(
+                          (a['usuario_nombre'] ?? '—').toString(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ColumnaTabla(
+                  titulo: '¿Fue servido?',
+                  ancho: 190,
+                  ordenarPor: (a) => a['fue_servido'] == true ? 1 : 0,
+                  celda: (a) => a['fue_servido'] == true
+                      ? const AppTag(
+                          etiqueta: 'Servido (Consumido)',
+                          activo: false,
+                          color: AppColors.naranja,
+                        )
+                      : const AppTag(
+                          etiqueta: 'No servido (Retornado)',
+                          activo: false,
                           color: AppColors.primaryGreen,
                         ),
-                        onPressed: () =>
-                            _verEvidencia(a['url_evidencia'] as String),
-                      )
-                    : Text(
-                        'Sin foto',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade400,
+                ),
+                ColumnaTabla(
+                  titulo: 'Motivo / Comentario',
+                  flex: 1.6,
+                  anchoMin: 200,
+                  celda: (a) => Tooltip(
+                    message: (a['comentario'] ?? '').toString(),
+                    child: Text(
+                      _limpiarComentario((a['comentario'] ?? '').toString()),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TablaApp.estiloTexto.copyWith(fontSize: 12.5),
+                    ),
+                  ),
+                ),
+                ColumnaTabla(
+                  titulo: 'Evidencia',
+                  ancho: 100,
+                  celda: (a) =>
+                      (a['url_evidencia'] != null &&
+                          (a['url_evidencia'] as String).isNotEmpty)
+                      ? IconButton(
+                          tooltip: 'Ver foto de evidencia',
+                          icon: const Icon(
+                            LucideIcons.image,
+                            size: 18,
+                            color: AppColors.primaryGreen,
+                          ),
+                          onPressed: () =>
+                              _verEvidencia(a['url_evidencia'] as String),
+                        )
+                      : Text(
+                          'Sin foto',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
+                          ),
                         ),
-                      ),
-              ),
-            ],
-          ),
-      ],
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }

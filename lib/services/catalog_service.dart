@@ -37,6 +37,19 @@ import 'auth_service.dart';
 import 'disponibilidad_service.dart';
 import 'promocion_service.dart';
 
+// El servidor puede repetir un plato (trae una fila por cada variante o
+// presentación con stock del día). Se deja uno solo por `id`; si alguna
+// repetición no está agotada se prefiere esa, para no esconder un plato que sí
+// se puede vender. Conserva el orden en que llegaron.
+List<CartaItem> quitarPlatosRepetidos(List<CartaItem> platos) {
+  final porId = <String, CartaItem>{};
+  for (final p in platos) {
+    final previo = porId[p.id];
+    if (previo == null || (previo.agotado && !p.agotado)) porId[p.id] = p;
+  }
+  return porId.values.toList();
+}
+
 class CatalogService {
   CatalogService._();
   static final CatalogService instance = CatalogService._();
@@ -522,9 +535,11 @@ class CatalogService {
 
       final res = await _api.get('/api/carta$queryStr');
       if (res is List) {
-        final List<CartaItem> lista = res
-            .map((item) => CartaItem.fromJson(item as Map<String, dynamic>))
-            .toList();
+        final List<CartaItem> lista = quitarPlatosRepetidos(
+          res
+              .map((item) => CartaItem.fromJson(item as Map<String, dynamic>))
+              .toList(),
+        );
 
         // El servidor devuelve los tamaños y presentaciones de cada plato dentro del plato.
         for (final raw in res.whereType<Map<String, dynamic>>()) {
@@ -541,10 +556,10 @@ class CatalogService {
           if (presList is List) {
             reemplazarPresentacionesDeCarta(id, [
               for (final p in presList.whereType<Map<String, dynamic>>())
-                CartaPresentacion.fromJson(
-                  {'carta_id': id, ...p},
-                  catalogoUnidades: unidadesBebida,
-                ),
+                CartaPresentacion.fromJson({
+                  'carta_id': id,
+                  ...p,
+                }, catalogoUnidades: unidadesBebida),
             ]);
           }
         }
@@ -607,10 +622,10 @@ class CatalogService {
     if (lista is List) {
       reemplazarPresentacionesDeCarta(cartaId, [
         for (final p in lista.whereType<Map<String, dynamic>>())
-          CartaPresentacion.fromJson(
-            {'carta_id': cartaId, ...p},
-            catalogoUnidades: unidadesBebida,
-          ),
+          CartaPresentacion.fromJson({
+            'carta_id': cartaId,
+            ...p,
+          }, catalogoUnidades: unidadesBebida),
       ]);
     } else {
       await cargarPresentaciones();
@@ -631,7 +646,8 @@ class CatalogService {
 
     final tieneOpciones =
         (variantes != null && variantes.any((v) => v.estado)) ||
-        (presentacionesPlato != null && presentacionesPlato.any((p) => p.estado));
+        (presentacionesPlato != null &&
+            presentacionesPlato.any((p) => p.estado));
 
     final body = {
       if (variantes != null && variantes.isNotEmpty)
@@ -646,6 +662,7 @@ class CatalogService {
       if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
       if (item.taperId != null && item.taperId!.isNotEmpty)
         'taper_id': item.taperId,
+      if (item.taperIds.isNotEmpty) 'taper_ids': item.taperIds,
       'estado': item.estado,
       if (!tieneOpciones && item.precioCliente != null)
         'precio_cliente': item.precioCliente,
@@ -688,7 +705,8 @@ class CatalogService {
   }) async {
     final tieneOpciones =
         (variantes != null && variantes.any((v) => v.estado)) ||
-        (presentacionesPlato != null && presentacionesPlato.any((p) => p.estado));
+        (presentacionesPlato != null &&
+            presentacionesPlato.any((p) => p.estado));
 
     final body = {
       if (variantes != null && variantes.isNotEmpty)
@@ -700,6 +718,7 @@ class CatalogService {
       'nombre_plato': item.nombrePlato,
       'descripcion': item.descripcion,
       if (item.subcategoriaId != null) 'subcategoria_id': item.subcategoriaId,
+      'taper_ids': item.taperIds,
       'taper_id': (item.taperId != null && item.taperId!.isNotEmpty)
           ? item.taperId
           : '00000000-0000-0000-0000-000000000000',
@@ -728,7 +747,9 @@ class CatalogService {
         sku: item.sku,
         stock: item.stock,
         agregados: item.agregados,
-        urlImagen: limpiarImagen ? null : (res['url_imagen']?.toString() ?? item.urlImagen),
+        urlImagen: limpiarImagen
+            ? null
+            : (res['url_imagen']?.toString() ?? item.urlImagen),
       );
 
       cartasNotifier.value = cartasNotifier.value
@@ -940,7 +961,10 @@ class CatalogService {
 
   Future<CartaPresentacion> crearPresentacion(CartaPresentacion p) async {
     final body = {
-      if (p.id.isNotEmpty && UuidHelper.isValid(p.id)) 'id': p.id else 'id': UuidHelper.v7(),
+      if (p.id.isNotEmpty && UuidHelper.isValid(p.id))
+        'id': p.id
+      else
+        'id': UuidHelper.v7(),
       'carta_id': p.cartaId,
       'unidad_bebida_id': p.unidad.id,
       if (p.volumenMl > 0) 'volumen_ml': p.volumenMl,

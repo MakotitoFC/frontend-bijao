@@ -324,16 +324,21 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           comentario: resultado.comentario,
           precioUnitario: resultado.precioUnitario,
           descuentoAplicado: 0,
-          precioTotalLinea: resultado.precioUnitario * resultado.cantidad,
+          precioTotalLinea: resultado.totalLinea,
           tipoEntrega: resultado.tipoEntrega,
           aplicaTaper: resultado.llevaTaper,
           taperId: resultado.taperId,
           precioTaper: resultado.precioTaper,
+          cantidadTaper: resultado.cantidadTaper,
           esLibre: false,
           precioBase:
               resultado.variante?.precioCliente ?? item.precioCliente ?? 0.0,
         ),
       );
+      // Los demás tápers elegidos van como filas propias.
+      for (final e in resultado.tapersAdicionales) {
+        _carrito.add(lineaDeTaper(e.taper, e.cantidad));
+      }
     });
   }
 
@@ -490,7 +495,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       notas: _notasController.text.trim().isEmpty
           ? null
           : _notasController.text.trim(),
-      clienteNombre: _nombreController.text.trim().isEmpty
+      clienteNombre: esMesa || _nombreController.text.trim().isEmpty
           ? null
           : _nombreController.text.trim(),
       clienteCelular: esDelivery && _telefonoController.text.trim().isNotEmpty
@@ -1352,14 +1357,16 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           ],
         ),
         const SizedBox(height: 16),
-        _campoTexto(
-          controller: _nombreController,
-          hint: widget.tipo == 'llevar'
-              ? 'Nombre del cliente'
-              : 'Nombre del cliente (opcional)',
-          icono: Icons.person_outline,
-          contentPaddingVertical: 16,
-        ),
+        // En una mesa el nombre del cliente no se pide.
+        if (widget.tipo != 'mesa')
+          _campoTexto(
+            controller: _nombreController,
+            hint: widget.tipo == 'llevar'
+                ? 'Nombre del cliente'
+                : 'Nombre del cliente (opcional)',
+            icono: Icons.person_outline,
+            contentPaddingVertical: 16,
+          ),
         if (esDelivery) ...[
           const SizedBox(height: 10),
           _campoTexto(

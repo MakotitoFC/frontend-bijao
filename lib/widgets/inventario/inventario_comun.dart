@@ -30,7 +30,8 @@ String fechaCorta(DateTime d) =>
 String cantidadTexto(double v) =>
     v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
-// Página con scroll y ancho máximo, igual que las de Configuración.
+// Página con scroll, ancho máximo y contenido centrado, igual que las de
+// Configuración.
 class PaginaInventario extends StatelessWidget {
   final List<Widget> secciones;
 
@@ -41,7 +42,7 @@ class PaginaInventario extends StatelessWidget {
     return SingleChildScrollView(
       padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
       child: Align(
-        alignment: Alignment.topLeft,
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 880),
           child: Column(

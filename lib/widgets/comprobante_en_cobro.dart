@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -57,6 +59,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
   String? error;
 
   bool get emite => tipo != 'ninguno';
+  // ¿Hay que imprimir después de la respuesta de SUNAT? (boleta o factura)
+  bool get imprimirDespues => imprimir && tipo != 'ticket_venta';
   bool get boletaExigeDni => total >= montoBoletaConDocumento;
   bool get dniValido => RegExp(r'^\d{8}$').hasMatch(dni.text.trim());
   bool get rucValido => RegExp(r'^\d{11}$').hasMatch(ruc.text.trim());
@@ -129,7 +133,10 @@ class ComprobanteEnCobro extends ChangeNotifier {
       pedidoId: pedido.id,
       tipoDocumento: tipo,
       pagoId: pagoId,
-      imprimir: imprimir,
+      // Boleta y factura se imprimen cuando SUNAT ya respondió (ver
+      // `ComprobanteEmitidoDialog`), para que el papel lleve los datos
+      // confirmados. El ticket interno no espera a SUNAT.
+      imprimir: tipo == 'ticket_venta' && imprimir,
       clienteTipoDoc: switch (tipo) {
         'factura' => '6',
         'boleta' => conDni ? '1' : '0',
@@ -362,7 +369,11 @@ Future<void> emitirComprobanteTrasCobro(
       if (!context.mounted) return;
       await showBlurDialog<void>(
         context: context,
-        builder: (_) => ComprobanteEmitidoDialog(comprobante: c, pedido: pedido),
+        builder: (_) => ComprobanteEmitidoDialog(
+          comprobante: c,
+          pedido: pedido,
+          imprimirAlConfirmar: eleccion.imprimirDespues,
+        ),
       );
       return;
     } catch (e) {
@@ -392,22 +403,101 @@ Future<void> emitirComprobanteTrasCobro(
   }
 }
 
+// Llamadas al servidor del resultado de la emisión. Se pueden reemplazar en las
+// pruebas para simular la respuesta de SUNAT sin red.
+@visibleForTesting
+Future<Comprobante> Function(String id) consultarEstadoComprobante = (id) =>
+    FacturacionService.instance.consultarEstado(id);
+@visibleForTesting
+Future<void> Function(String id) imprimirComprobante = (id) =>
+    FacturacionService.instance.reimprimir(id);
+@visibleForTesting
+Duration esperaEntreConsultas = const Duration(seconds: 2);
+
 // Resultado de la emisión: número, estado y accesos al PDF, la impresora y
-// WhatsApp.
-class ComprobanteEmitidoDialog extends StatelessWidget {
+// WhatsApp. SUNAT tarda unos segundos en responder: si el comprobante quedó
+// pendiente se consulta su estado cada pocos segundos y, cuando llega la
+// respuesta, se imprime (si se pidió) con los datos ya confirmados.
+class ComprobanteEmitidoDialog extends StatefulWidget {
   final Comprobante comprobante;
   final Pedido pedido;
+  // Imprimir apenas SUNAT confirme (boleta y factura).
+  final bool imprimirAlConfirmar;
 
   const ComprobanteEmitidoDialog({
     super.key,
     required this.comprobante,
     required this.pedido,
+    this.imprimirAlConfirmar = false,
   });
 
-  Future<void> _reimprimir(BuildContext context) async {
+  @override
+  State<ComprobanteEmitidoDialog> createState() =>
+      _ComprobanteEmitidoDialogState();
+}
+
+class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
+  static const _maxIntentos = 10;
+
+  late Comprobante _c = widget.comprobante;
+  Timer? _timer;
+  bool _esperando = false;
+  bool _impreso = false;
+  int _intentos = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_c.pendiente) {
+      _esperar();
+    } else {
+      _imprimirSiCorresponde();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _esperar() {
+    _timer?.cancel();
+    _intentos = 0;
+    setState(() => _esperando = true);
+    _timer = Timer.periodic(esperaEntreConsultas, (_) async {
+      _intentos++;
+      try {
+        final nuevo = await consultarEstadoComprobante(_c.id);
+        if (!mounted) return;
+        setState(() => _c = nuevo);
+      } catch (_) {
+        // Un fallo puntual de red no corta la espera.
+      }
+      if (!mounted) return;
+      if (!_c.pendiente) {
+        _timer?.cancel();
+        setState(() => _esperando = false);
+        _imprimirSiCorresponde();
+      } else if (_intentos >= _maxIntentos) {
+        _timer?.cancel();
+        setState(() => _esperando = false);
+      }
+    });
+  }
+
+  // Imprime una sola vez, y solo si SUNAT no lo rechazó.
+  Future<void> _imprimirSiCorresponde() async {
+    if (!widget.imprimirAlConfirmar || _impreso) return;
+    if (_c.rechazado || _c.anulado || _c.pendiente) return;
+    _impreso = true;
+    await _reimprimir(_c);
+  }
+
+  Future<void> _reimprimir(Comprobante c) async {
     try {
-      await FacturacionService.instance.reimprimir(comprobante.id);
-      if (context.mounted) {
+      await imprimirComprobante(c.id);
+      if (mounted) {
         showAppToast(
           context,
           'Comprobante enviado a la impresora de caja.',
@@ -415,27 +505,28 @@ class ComprobanteEmitidoDialog extends StatelessWidget {
         );
       }
     } catch (e) {
-      if (context.mounted) {
+      _impreso = false;
+      if (mounted) {
         showAppToast(context, _mensajeError(e), type: ToastType.error);
       }
     }
   }
 
-  Future<void> _whatsapp(BuildContext context) async {
-    final c = comprobante;
+  Future<void> _whatsapp(Comprobante c) async {
     final url = c.pdfTicketUrl ?? c.pdfA4Url;
     if (url == null) return;
     final numero = await showBlurDialog<String>(
       context: context,
-      builder: (_) => WhatsappCuentaDialog(celularInicial: pedido.clienteCelular),
+      builder: (_) =>
+          WhatsappCuentaDialog(celularInicial: widget.pedido.clienteCelular),
     );
-    if (numero == null || !context.mounted) return;
+    if (numero == null || !mounted) return;
     final texto =
         'Hola, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} '
         '${c.numeroComprobante} de ${negocio.nombre}. '
         'Total: S/ ${c.total.toStringAsFixed(2)}. Descárgala aquí: $url';
     final abierto = await abrirWhatsapp(numero, texto);
-    if (!abierto && context.mounted) {
+    if (!abierto && mounted) {
       showAppToast(
         context,
         'No se pudo abrir WhatsApp.',
@@ -446,7 +537,7 @@ class ComprobanteEmitidoDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = comprobante;
+    final c = _c;
     final ok = c.estadoSunat == 'ACEPTADO' || c.esInterno;
     final color = ok
         ? AppColors.primaryGreen
@@ -485,13 +576,47 @@ class ComprobanteEmitidoDialog extends StatelessWidget {
                     'S/ ${c.total.toStringAsFixed(2)}',
                     style: TextStyle(fontWeight: FontWeight.w700, color: color),
                   ),
-                  if (c.pendiente)
+                  if (_esperando)
                     const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Text(
-                        'SUNAT aún no confirma. Revisa su estado en Caja.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12),
+                      padding: EdgeInsets.only(top: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Esperando la respuesta de SUNAT…',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (c.pendiente)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Column(
+                        children: [
+                          Text(
+                            widget.imprimirAlConfirmar
+                                ? 'SUNAT aún no responde. El comprobante quedó '
+                                      'guardado y se imprimirá cuando llegue la '
+                                      'respuesta.'
+                                : 'SUNAT aún no confirma. Revisa su estado en '
+                                      'Caja.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          TextButton(
+                            onPressed: _esperar,
+                            child: const Text('Consultar de nuevo'),
+                          ),
+                        ],
                       ),
                     ),
                 ],
@@ -515,13 +640,13 @@ class ComprobanteEmitidoDialog extends StatelessWidget {
                     label: const Text('PDF A4'),
                   ),
                 OutlinedButton.icon(
-                  onPressed: () => _reimprimir(context),
+                  onPressed: c.pendiente ? null : () => _reimprimir(c),
                   icon: const Icon(LucideIcons.printer, size: 16),
                   label: const Text('Reimprimir'),
                 ),
                 if (c.pdfTicketUrl != null || c.pdfA4Url != null)
                   FilledButton.icon(
-                    onPressed: () => _whatsapp(context),
+                    onPressed: () => _whatsapp(c),
                     icon: const Icon(LucideIcons.messageCircle, size: 16),
                     label: const Text('Enviar por WhatsApp'),
                     style: estiloBotonWhatsapp,

@@ -28,14 +28,17 @@ class IconoWhatsapp extends StatelessWidget {
 
 // Un solo botón oscuro con dos mitades: impresora | WhatsApp (trazo blanco).
 // La primera abre el ticket para imprimir; la segunda manda la cuenta al cliente.
+// Con [mostrarImprimir] en false queda solo la mitad de WhatsApp.
 class BotonImprimirWhatsapp extends StatelessWidget {
   final VoidCallback onImprimir;
   final VoidCallback onWhatsapp;
+  final bool mostrarImprimir;
 
   const BotonImprimirWhatsapp({
     super.key,
     required this.onImprimir,
     required this.onWhatsapp,
+    this.mostrarImprimir = true,
   });
 
   @override
@@ -57,12 +60,14 @@ class BotonImprimirWhatsapp extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Row(
           children: [
-            mitad(
-              'Imprimir',
-              onImprimir,
-              const Icon(LucideIcons.printer, size: 20, color: Colors.white),
-            ),
-            Container(width: 1, height: 22, color: Colors.white24),
+            if (mostrarImprimir) ...[
+              mitad(
+                'Imprimir',
+                onImprimir,
+                const Icon(LucideIcons.printer, size: 20, color: Colors.white),
+              ),
+              Container(width: 1, height: 22, color: Colors.white24),
+            ],
             mitad(
               'Enviar la cuenta por WhatsApp',
               onWhatsapp,

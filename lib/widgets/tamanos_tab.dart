@@ -54,7 +54,7 @@ class _TamanosTabState extends State<TamanosTab> {
   Future<void> _eliminar(CartaVariante t) async {
     final ok = await confirmarAccion(
       context,
-      titulo: 'Eliminar tamaño',
+      titulo: 'Eliminar variante',
       mensaje: '¿Eliminar "${t.nombre}"?',
     );
     if (!ok) return;
@@ -69,7 +69,7 @@ class _TamanosTabState extends State<TamanosTab> {
       showAppToast(
         context,
         enUso
-            ? 'No se puede eliminar: el tamaño ya se usó en pedidos. '
+            ? 'No se puede eliminar: la variante ya se usó en pedidos. '
                   'Márcalo como inactivo.'
             : 'Error al eliminar: $texto',
         type: ToastType.error,
@@ -133,7 +133,7 @@ class _TamanosTabState extends State<TamanosTab> {
             TextButton.icon(
               onPressed: () => _abrirFormulario(cartaId: plato.id),
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Tamaño'),
+              label: const Text('Variante'),
             ),
           ],
         ),
@@ -160,12 +160,12 @@ class _TamanosTabState extends State<TamanosTab> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 CabeceraSeccion(
-                  titulo: 'Tamaños de platos',
+                  titulo: 'Variantes de platos',
                   descripcion:
-                      'Tamaños con precio propio (por ejemplo, pescado pequeño, '
-                      'mediano y grande). El plato solo los muestra.',
+                      'Variantes con precio propio (por ejemplo, pollo o carne, o '
+                      'pescado pequeño y grande). El plato solo las muestra.',
                   accion: BotonNuevo(
-                    etiqueta: 'Tamaño',
+                    etiqueta: 'Variante',
                     onPressed: () => _abrirFormulario(),
                   ),
                 ),
@@ -184,7 +184,7 @@ class _TamanosTabState extends State<TamanosTab> {
                     child: Text(
                       _cargando
                           ? 'Cargando…'
-                          : 'Aún no hay tamaños. Crea el primero con "Tamaño".',
+                          : 'Aún no hay variantes. Crea la primera con "Variante".',
                       style: TextStyle(color: Colors.grey.shade600),
                     ),
                   )

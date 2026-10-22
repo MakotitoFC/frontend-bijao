@@ -17,7 +17,10 @@ class CartaItem {
   // Subcategorías del plato (Segundo, Bebida, Snack…). El backend solo guarda
   // una (`carta.subcategoria_id`): se envía la primera.
   final List<String> subcategoriaIds;
+  // Tápers del plato. `taperId` es el principal (el primero): es el único que
+  // el servidor guarda hoy; `taperIds` lleva todos los elegidos.
   final String? taperId;
+  final List<String> taperIds;
   final String? taperNombre;
   final double? precioCliente;
   final double? precioPersonal;
@@ -44,6 +47,7 @@ class CartaItem {
     this.categoriaNombre,
     this.subcategoriaIds = const [],
     this.taperId,
+    this.taperIds = const [],
     this.taperNombre,
     this.precioCliente,
     this.precioPersonal,
@@ -75,6 +79,7 @@ class CartaItem {
     String? categoriaNombre,
     List<String>? subcategoriaIds,
     String? taperId,
+    List<String>? taperIds,
     String? taperNombre,
     double? precioCliente,
     double? precioPersonal,
@@ -98,6 +103,7 @@ class CartaItem {
     categoriaNombre: categoriaNombre ?? this.categoriaNombre,
     subcategoriaIds: subcategoriaIds ?? this.subcategoriaIds,
     taperId: taperId ?? this.taperId,
+    taperIds: taperIds ?? this.taperIds,
     taperNombre: taperNombre ?? this.taperNombre,
     precioCliente: limpiarPrecio ? null : (precioCliente ?? this.precioCliente),
     precioPersonal: limpiarPrecio ? null : (precioPersonal ?? this.precioPersonal),
@@ -149,6 +155,9 @@ class CartaItem {
                 json['subcategoria_id'] as String,
             ],
       taperId: json['taper_id'] as String?,
+      taperIds: json['taper_ids'] is List
+          ? [for (final x in json['taper_ids']) x.toString()]
+          : [if (json['taper_id'] is String) json['taper_id'] as String],
       taperNombre: json['taper_nombre'] as String?,
       precioCliente: pCli,
       precioPersonal: pPer,
@@ -184,6 +193,7 @@ class CartaItem {
     'categoria_id': categoriaId,
     if (subcategoriaId != null) 'subcategoria_id': subcategoriaId,
     if (taperId != null) 'taper_id': taperId,
+    if (taperIds.isNotEmpty) 'taper_ids': taperIds,
     if (taperNombre != null) 'taper_nombre': taperNombre,
     'estado': estado,
     if (precioCliente != null) 'precio_cliente': precioCliente,

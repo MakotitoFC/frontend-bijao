@@ -14,7 +14,6 @@ import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
-import '../models/comprobante.dart';
 import '../models/movimiento_caja.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
@@ -41,6 +40,13 @@ String _nombreUsuario(String? id) {
   }
   return '—';
 }
+
+// Mozo que tomó el pedido: el nombre que manda el servidor o, si falta, el
+// del usuario del pedido.
+String _mozoDe(Pedido p) =>
+    (p.mozoNombre != null && p.mozoNombre!.trim().isNotEmpty)
+    ? p.mozoNombre!
+    : _nombreUsuario(p.usuarioId);
 
 String _fecha(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
@@ -70,9 +76,10 @@ class HistorialPedidosScreen extends StatefulWidget {
 class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   final _busqueda = TextEditingController();
   String _filtro = 'todos'; // todos | pagados | por_cobrar
-  // Rango de fechas de los pedidos mostrados (por defecto, hoy).
+  // Rango de fechas de los pedidos mostrados (por defecto, los últimos 7 días:
+  // un turno que pasa de medianoche no debe esconder los pedidos de anoche).
   DateTimeRange? _rango = DateTimeRange(
-    start: DateUtils.dateOnly(DateTime.now()),
+    start: DateUtils.dateOnly(DateTime.now().subtract(const Duration(days: 6))),
     end: DateUtils.dateOnly(DateTime.now()),
   );
 
@@ -306,20 +313,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   // Boleta, factura o ticket de venta de un pedido: también después de cobrarlo,
   // por si el cliente lo pide más tarde.
   Future<void> _emitirComprobante(Pedido p) async {
-    // Se leen los cobros del servidor: sin ellos no se puede facturar.
-    try {
-      await PagoService.instance.cargarDePedido(p);
-    } catch (_) {}
-    if (!mounted) return;
-    final c = await showBlurDialog<Comprobante>(
-      context: context,
-      builder: (_) => EmitirComprobanteDialog(pedido: p),
-    );
-    if (c == null || !mounted) return;
-    await showBlurDialog<void>(
-      context: context,
-      builder: (_) => ComprobanteEmitidoDialog(comprobante: c, pedido: p),
-    );
+    await emitirComprobanteDePedido(context, p);
     if (mounted) setState(() {});
   }
 
@@ -404,24 +398,16 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
           celda: (p) => TablaApp.texto(p.ubicacion),
         ),
         ColumnaTabla(
-          titulo: 'Mesero',
+          titulo: 'Mozo',
           flex: 1,
-          ordenarPor: (p) => _nombreUsuario(p.usuarioId).toLowerCase(),
-          celda: (p) => TablaApp.texto(_nombreUsuario(p.usuarioId)),
+          ordenarPor: (p) => _mozoDe(p).toLowerCase(),
+          celda: (p) => TablaApp.texto(_mozoDe(p)),
         ),
         ColumnaTabla(
           titulo: 'Total',
           ancho: 100,
           ordenarPor: (p) => totalDePedido(p.id),
           celda: (p) => TablaApp.texto(_soles(totalDePedido(p.id))),
-        ),
-        ColumnaTabla(
-          titulo: 'Cobrado',
-          ancho: 100,
-          ordenarPor: (p) => totalDePedido(p.id) - saldoPendienteDePedido(p.id),
-          celda: (p) => TablaApp.texto(
-            _soles(totalDePedido(p.id) - saldoPendienteDePedido(p.id)),
-          ),
         ),
         ColumnaTabla(
           titulo: 'Método',
@@ -575,7 +561,6 @@ class _CajaScreenState extends State<CajaScreen> {
   // Cierre con el servidor: el monto inicial sale de la apertura y el servidor
   // calcula lo que debería haber (ventas, ingresos y salidas).
   Future<void> _cerrarCajaServidor() async {
-    final t = estadoCajaServidor?.totales;
     final efectivo = TextEditingController();
     final tarjeta = TextEditingController();
     final digital = TextEditingController();
@@ -593,14 +578,12 @@ class _CajaScreenState extends State<CajaScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (t != null)
-                  Text(
-                    'Debería haber: efectivo ${_soles(t.efectivoEsperado)} '
-                    '(incluye el monto inicial de ${_soles(t.montoInicial)}), '
-                    'tarjeta ${_soles(t.tarjeta)}, '
-                    'digital (Yape/Plin) ${_soles(t.digital)}.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                  ),
+                // Lo que "debería haber" es interno: el cajero cuenta y declara
+                // sin verlo, y el sistema calcula la diferencia.
+                Text(
+                  'Cuenta el dinero de la caja y escribe lo que hay.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
                 const SizedBox(height: 14),
                 _campoDialogo(efectivo, 'Efectivo declarado (S/)'),
                 _campoDialogo(tarjeta, 'Tarjeta declarada (S/)'),
@@ -726,8 +709,6 @@ class _CajaScreenState extends State<CajaScreen> {
       await _cerrarCajaServidor();
       return;
     }
-    final esperado = netoPorGrupo(inicioCajaActual);
-    final extra = totalesMovimientos(inicioCajaActual);
     final inicial = TextEditingController(text: '0');
     final efectivo = TextEditingController();
     final tarjeta = TextEditingController();
@@ -746,20 +727,9 @@ class _CajaScreenState extends State<CajaScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Debería haber, contando cobros, ingresos y salidas: '
-                  'efectivo ${_soles(esperado.efectivo)} (más el monto inicial), '
-                  'tarjeta ${_soles(esperado.tarjeta)}, '
-                  'digital (Yape/Plin) ${_soles(esperado.digital)}.',
+                  'Cuenta el dinero de la caja y escribe lo que hay.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                 ),
-                if (extra.ingresos > 0 || extra.egresos > 0) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Incluye ${_soles(extra.ingresos)} de ingresos y '
-                    '${_soles(extra.egresos)} de salidas.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
                 const SizedBox(height: 14),
                 _campoDialogo(inicial, 'Monto inicial (S/)'),
                 _campoDialogo(efectivo, 'Efectivo declarado (S/)'),
@@ -827,23 +797,16 @@ class _CajaScreenState extends State<CajaScreen> {
     final ingresos = srv?.ingresos ?? extra.ingresos;
     final salidas = srv?.salidas ?? extra.egresos;
     final numPedidos = srv?.numPedidos ?? t.pedidos;
-    final efectivoEsperado =
-        srv?.efectivoEsperado ??
-        resumen
-            .where((f) => grupoDeMedio(f.medio) == 'efectivo')
-            .fold<double>(0.0, (s, f) => s + f.neto);
     final movimientos = movimientosDesde(desde);
     final rangoCierres = _rangoCierres;
     final cierres = rangoCierres == null
         ? cierresCaja
         : [
             for (final c in cierresCaja)
-              if (!DateUtils.dateOnly(c.fechaCierre).isBefore(
-                    DateUtils.dateOnly(rangoCierres.start),
-                  ) &&
-                  !DateUtils.dateOnly(c.fechaCierre).isAfter(
-                    DateUtils.dateOnly(rangoCierres.end),
-                  ))
+              if (!DateUtils.dateOnly(c.fechaCierre)
+                      .isBefore(DateUtils.dateOnly(rangoCierres.start)) &&
+                  !DateUtils.dateOnly(c.fechaCierre)
+                      .isAfter(DateUtils.dateOnly(rangoCierres.end)))
                 c,
           ];
     return Scaffold(
@@ -930,28 +893,13 @@ class _CajaScreenState extends State<CajaScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _dato('Ventas', ventas),
-                      _dato('Ingresos', ingresos),
-                      _dato('Salidas', salidas),
-                      _dato(
-                        'Efectivo esperado',
-                        efectivoEsperado,
-                        destacado: true,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    srv != null
-                        ? 'El efectivo esperado es el monto inicial + ventas + '
-                              'ingresos − salidas en efectivo.'
-                        : 'El efectivo esperado es ventas + ingresos − salidas en '
-                              'efectivo; falta sumar el monto inicial, que se escribe al cerrar.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  _tarjetasCaja(
+                    filas: filas,
+                    ventas: ventas,
+                    delivery: srv?.delivery ?? 0,
+                    numPedidos: numPedidos,
+                    ingresos: ingresos,
+                    salidas: salidas,
                   ),
                   const SizedBox(height: 14),
                   const Text(
@@ -986,7 +934,8 @@ class _CajaScreenState extends State<CajaScreen> {
                       ColumnaTabla(
                         titulo: 'Neto',
                         ordenarPor: (f) => f.neto,
-                        celda: (f) => TablaApp.texto(_soles(f.neto), fuerte: true),
+                        celda: (f) =>
+                            TablaApp.texto(_soles(f.neto), fuerte: true),
                       ),
                     ],
                   ),
@@ -1059,48 +1008,57 @@ class _CajaScreenState extends State<CajaScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // El título a la izquierda y los botones en el otro extremo.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Expanded(
-                child: Text(
-                  'Ingresos y salidas',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ),
-              Flexible(
-                flex: 3,
-                child: Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: () => _registrar(TipoMovimiento.ingreso),
-                      icon: const Icon(LucideIcons.plus, size: 16),
-                      label: const Text('Ingreso'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                      ),
+          // El título a la izquierda y los botones en el otro extremo; en un
+          // ancho chico los botones bajan debajo del título.
+          LayoutBuilder(
+            builder: (context, c) {
+              const titulo = Text(
+                'Ingresos y salidas',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              );
+              final angosto = c.maxWidth < 560;
+              final botones = Wrap(
+                alignment: angosto ? WrapAlignment.start : WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _registrar(TipoMovimiento.ingreso),
+                    icon: const Icon(LucideIcons.plus, size: 16),
+                    label: const Text('Ingreso'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
                     ),
-                    FilledButton.icon(
-                      onPressed: () => _registrar(TipoMovimiento.egreso),
-                      icon: const Icon(LucideIcons.minus, size: 16),
-                      label: const Text('Salida'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.error,
-                      ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _registrar(TipoMovimiento.egreso),
+                    icon: const Icon(LucideIcons.minus, size: 16),
+                    label: const Text('Salida'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.error,
                     ),
-                    OutlinedButton.icon(
-                      onPressed: _administrarCategorias,
-                      icon: const Icon(LucideIcons.tag, size: 16),
-                      label: const Text('Categorías'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _administrarCategorias,
+                    icon: const Icon(LucideIcons.tag, size: 16),
+                    label: const Text('Categorías'),
+                  ),
+                ],
+              );
+              if (angosto) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [titulo, const SizedBox(height: 10), botones],
+                );
+              }
+              return Row(
+                children: [
+                  titulo,
+                  const SizedBox(width: 16),
+                  Expanded(child: botones),
+                ],
+              );
+            },
           ),
           if (_errorMovimientos != null) ...[
             const SizedBox(height: 10),
@@ -1339,30 +1297,174 @@ class _CajaScreenState extends State<CajaScreen> {
     ];
   }
 
-  Widget _dato(String etiqueta, double valor, {bool destacado = false}) {
-    return Container(
-      width: 140,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: destacado
-            ? AppColors.primaryGreen.withValues(alpha: 0.12)
-            : AppColors.background,
-        borderRadius: BorderRadius.circular(12),
+  // Tarjetas del resumen de la caja actual, con lo que el servidor calcula:
+  // ventas, delivery, y lo cobrado en efectivo, tarjeta y digital.
+  Widget _tarjetasCaja({
+    required List<FilaResumenMedio> filas,
+    required double ventas,
+    required double delivery,
+    required int numPedidos,
+    required double ingresos,
+    required double salidas,
+  }) {
+    double ventasDe(String grupo) => filas
+        .where((f) => grupoDeMedio(f.medio) == grupo)
+        .fold(0.0, (s, f) => s + f.ventas);
+    final tarjetas = [
+      _tarjetaCaja(
+        LucideIcons.trendingUp,
+        const Color(0xFF3B82F6),
+        const Color(0xFFEFF6FF),
+        'Ingresos Brutos',
+        ventas,
+        '$numPedidos pedidos totales',
       ),
-      child: Column(
+      _tarjetaCaja(
+        LucideIcons.trendingUp,
+        const Color(0xFF10B981),
+        const Color(0xFFE8F7F1),
+        'Ventas de Comida',
+        ventas - delivery,
+        'Libre de delivery',
+      ),
+      _tarjetaCaja(
+        LucideIcons.user,
+        const Color(0xFFF59E0B),
+        const Color(0xFFFFF4E0),
+        'Ventas Delivery',
+        delivery,
+        'Cobrado en pedidos de delivery',
+      ),
+      _tarjetaCaja(
+        LucideIcons.dollarSign,
+        const Color(0xFF10B981),
+        const Color(0xFFE8F7F1),
+        'Ventas Efectivo',
+        ventasDe('efectivo'),
+        'Cobrado en efectivo',
+      ),
+      _tarjetaCaja(
+        LucideIcons.creditCard,
+        const Color(0xFF8B5CF6),
+        const Color(0xFFF3EEFF),
+        'Tarjetas / POS',
+        ventasDe('tarjeta'),
+        null,
+      ),
+      _tarjetaCaja(
+        LucideIcons.smartphone,
+        const Color(0xFFD946EF),
+        const Color(0xFFFCEBFD),
+        'Yape / Plin',
+        ventasDe('digital'),
+        null,
+      ),
+      _tarjetaCaja(
+        LucideIcons.arrowDownLeft,
+        const Color(0xFF16A34A),
+        const Color(0xFFE8F7F1),
+        'Ingresos',
+        ingresos,
+        null,
+      ),
+      _tarjetaCaja(
+        LucideIcons.arrowUpRight,
+        AppColors.error,
+        const Color(0xFFFDECEC),
+        'Salidas',
+        salidas,
+        null,
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, c) {
+        const espacio = 12.0;
+        final columnas = c.maxWidth >= 1000 ? 4 : (c.maxWidth >= 560 ? 2 : 1);
+        final ancho = (c.maxWidth - espacio * (columnas - 1)) / columnas;
+        return Wrap(
+          spacing: espacio,
+          runSpacing: espacio,
+          children: [
+            for (final tarjeta in tarjetas)
+              SizedBox(width: ancho, child: tarjeta),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tarjetaCaja(
+    IconData icono,
+    Color color,
+    Color fondo,
+    String titulo,
+    double valor,
+    String? detalle,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            etiqueta,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: fondo,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icono, size: 20, color: color),
           ),
-          const SizedBox(height: 2),
-          Text(
-            _soles(valor),
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: destacado ? AppColors.primaryGreen : Colors.black87,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  titulo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _soles(valor),
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                if (detalle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    detalle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

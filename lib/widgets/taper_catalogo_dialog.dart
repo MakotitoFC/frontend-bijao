@@ -53,6 +53,9 @@ class _TaperCatalogoDialogState extends State<TaperCatalogoDialog> {
 
   int _cant(Taper t) => _cantidades[t.id] ?? 0;
 
+  String _stock(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
   double get _total =>
       widget.tapers.fold(0.0, (s, t) => s + t.precio * _cant(t));
 
@@ -80,8 +83,24 @@ class _TaperCatalogoDialogState extends State<TaperCatalogoDialog> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(
-                  'S/ ${t.precio.toStringAsFixed(2)} c/u',
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'S/ ${t.precio.toStringAsFixed(2)} c/u · ',
+                      ),
+                      // El stock es informativo: no impide agregar.
+                      TextSpan(
+                        text: 'Stock ${_stock(t.stock)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: c > t.stock
+                              ? AppColors.naranja
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],

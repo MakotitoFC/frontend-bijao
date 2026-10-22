@@ -27,6 +27,8 @@ class PedidoLine {
   final bool aplicaTaper;
   final String? taperId;
   final double precioTaper;
+  // Cuántos tápers se llevan. Vacío = uno por cada unidad del plato.
+  final int? cantidadTaper;
   final bool esLibre;
   final String? nombreLibre;
   final String? descripcionLibre;
@@ -53,6 +55,7 @@ class PedidoLine {
     this.aplicaTaper = false,
     this.taperId,
     this.precioTaper = 0.0,
+    this.cantidadTaper,
     this.esLibre = false,
     this.nombreLibre,
     this.descripcionLibre,
@@ -147,6 +150,7 @@ class PedidoLine {
     aplicaTaper: aplicaTaper,
     taperId: taperId,
     precioTaper: precioTaper,
+    cantidadTaper: cantidadTaper,
     esLibre: esLibre,
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
@@ -173,6 +177,7 @@ class PedidoLine {
     aplicaTaper: aplicaTaper,
     taperId: taperId,
     precioTaper: precioTaper,
+    cantidadTaper: cantidadTaper,
     esLibre: esLibre,
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
@@ -206,6 +211,7 @@ class PedidoLine {
       aplicaTaper: aplicaTaper,
       taperId: taperId,
       precioTaper: precioTaper,
+      cantidadTaper: cantidadTaper,
       esLibre: esLibre,
       nombreLibre: nombreLibre,
       descripcionLibre: descripcionLibre,

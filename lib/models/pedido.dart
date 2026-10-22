@@ -78,8 +78,8 @@ class Pedido {
       tipoPedido: json['tipo']?.toString() ?? 'mesa',
       fechaPedido: fecha,
       notas: json['comentarios']?.toString(),
-      clienteNombre:
-          json['cliente_nombre']?.toString() ?? json['mozo_nombre']?.toString(),
+      // El mozo no es el cliente: va aparte en `mozoNombre`.
+      clienteNombre: json['cliente_nombre']?.toString(),
       clienteCelular: json['cliente_celular']?.toString(),
       direccionDelivery: json['direccion_delivery']?.toString(),
       referenciaDelivery: json['referencia']?.toString(),

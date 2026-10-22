@@ -179,9 +179,9 @@ class _CartaScreenState extends State<CartaScreen> {
     setState(() {});
     showAppToast(
       context,
-      'Tamaño "${creado.nombre}" agregado a ${item.nombrePlato}.',
+      'Variante "${creado.nombre}" agregada a ${item.nombrePlato}.',
       type: ToastType.success,
-      titulo: 'Tamaño creado',
+      titulo: 'Variante creada',
     );
   }
 
@@ -733,7 +733,7 @@ class _CartaScreenState extends State<CartaScreen> {
                           ),
                           icon: const Icon(Icons.add, size: 16),
                           label: const Text(
-                            'Tamaño',
+                            'Variante',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,

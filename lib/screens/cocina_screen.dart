@@ -13,25 +13,38 @@ import '../data/categorias_store.dart';
 import '../data/incidencias_store.dart';
 import '../data/inventario_store.dart';
 import '../data/insumos_store.dart';
+import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
 import '../utils/nota_pedido.dart';
 import '../models/pedido_line.dart';
+import '../models/app_role.dart';
+import '../services/auth_service.dart';
 import '../services/eventos_service.dart';
+import '../services/impresion_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/boton_imprimir_whatsapp.dart';
 import '../widgets/cronometro_pedido.dart';
+import '../widgets/detalle_pedido_panel.dart';
+import '../widgets/whatsapp_cuenta_dialog.dart';
 import '../widgets/tabs_desplazables.dart';
 import '../widgets/campo_texto.dart';
 
 // Vista de cocina: tabs por estado y una tarjeta por pedido
 // (`pedidos` + `pedido_items`). Solo consulta: el backend no tiene estados de
 // preparación; el pedido pasa a "servido" cuando lo marca el mozo.
+//
+// Con [modoCaja] es la vista del cajero: las mismas comandas, con el detalle de
+// cada producto (variante, notas, táper), su precio y el total, y los botones
+// Pagar, Emitir comprobante e Imprimir. No hay casillas para marcar.
 class CocinaScreen extends StatefulWidget {
-  const CocinaScreen({super.key});
+  final bool modoCaja;
+
+  const CocinaScreen({super.key, this.modoCaja = false});
 
   @override
   State<CocinaScreen> createState() => _CocinaScreenState();
@@ -350,7 +363,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
               ),
             for (final l in entrada.value) ...[
               Divider(height: 1, color: Colors.grey.shade300),
-              _producto(l),
+              _producto(l, p),
             ],
           ],
           if (p.clienteNombre != null ||
@@ -378,6 +391,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
               ),
             ),
           ],
+          if (widget.modoCaja) _pieCaja(p),
           const SizedBox(height: 10),
         ],
       ),
@@ -385,6 +399,167 @@ class _CocinaScreenState extends State<CocinaScreen> {
   }
 
   static const double _radioTicket = 8;
+
+  // ---- Vista del cajero: total y botones de la tarjeta ----
+
+  Pedido? _pedidoPorId(String id) =>
+      pedidos.where((x) => x.id == id).firstOrNull;
+
+  // Cobro en un modal con el mismo detalle de Pedidos (Pagar / Pago compartido).
+  Future<void> _cobrar(Pedido p) async {
+    await showBlurDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogo) {
+          final actual = _pedidoPorId(p.id) ?? p;
+          final tam = MediaQuery.sizeOf(context);
+          return Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: AppBreakpoints.esMobile(context) ? tam.width : 440,
+              height: tam.height * 0.9,
+              child: DetallePedidoPanel(
+                key: ValueKey('cobro-${p.id}'),
+                pedido: actual,
+                esAdmin:
+                    AuthService.instance.currentUser?.rol ==
+                    AppRole.administrador,
+                onVolver: () => Navigator.of(dialogContext).pop(),
+                onCambio: () {
+                  setDialogo(() {});
+                  setState(() {});
+                  final estado = (_pedidoPorId(p.id) ?? p).estado;
+                  if (estado == 'pagado' || estado == 'anulado') {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    });
+                  }
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  // Manda la cuenta del pedido por WhatsApp.
+  void _enviarWhatsapp(Pedido p) {
+    final total = totalDePedido(p.id);
+    final pagado = total - saldoPendienteDePedido(p.id);
+    final metodos = <String>{
+      for (final x in pagos.where((x) => x.pedidoId == p.id))
+        x.medioPago.medioPago,
+    };
+    enviarCuentaPorWhatsapp(
+      context,
+      pedido: p,
+      lineas: detallesPorPedido[p.id] ?? const [],
+      metodoPago: metodos.join(', '),
+      pagado: pagado > 0.001 ? pagado : 0,
+      recargo: recargoCobradoDePedido(p.id),
+    );
+  }
+
+  // Imprime la cuenta del pedido en la impresora de caja.
+  Future<void> _imprimirCuenta(Pedido p) async {
+    try {
+      await ImpresionService.instance.reimprimirPedido(p.id, tipo: 'cuenta');
+      if (mounted) {
+        showAppToast(
+          context,
+          'Cuenta enviada a la impresora de caja.',
+          type: ToastType.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showAppToast(
+          context,
+          'No se pudo imprimir: ${e.toString().replaceFirst('Exception: ', '')}',
+          type: ToastType.error,
+        );
+      }
+    }
+  }
+
+  Widget _pieCaja(Pedido p) {
+    final total = totalDePedido(p.id);
+    final saldo = saldoPendienteDePedido(p.id);
+    final cobrado = total - saldo;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Divider(height: 1, color: Colors.grey.shade300),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'TOTAL',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+              Text(
+                'S/ ${total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (cobrado > 0.01 && saldo > 0.01)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 0),
+            child: Text(
+              'Cobrado S/ ${cobrado.toStringAsFixed(2)} · '
+              'Falta S/ ${saldo.toStringAsFixed(2)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: SizedBox(
+                  height: AppSizes.boton,
+                  child: FilledButton.icon(
+                    onPressed: saldo > 0.01 ? () => _cobrar(p) : null,
+                    icon: const Icon(LucideIcons.banknote, size: 15),
+                    label: const Text('Pagar'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFF07F13),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Imprimir la cuenta y mandarla por WhatsApp, junto a Pagar.
+              Expanded(
+                flex: 2,
+                child: BotonImprimirWhatsapp(
+                  onImprimir: () => _imprimirCuenta(p),
+                  onWhatsapp: () => _enviarWhatsapp(p),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   // Categoría del producto de la línea ('' si no se conoce).
   String _categoriaDe(PedidoLine l) {
@@ -483,7 +658,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
   }
 
   // Producto del ticket: cantidad y nombre; opciones y notas en rojo.
-  Widget _producto(PedidoLine l) {
+  Widget _producto(PedidoLine l, Pedido p) {
     final incidencia = l.estado == 'incidencia'
         ? incidenciaDeLinea(l.id)
         : null;
@@ -496,6 +671,12 @@ class _CocinaScreenState extends State<CocinaScreen> {
       if (l.presentacion != null)
         '${l.presentacion!.unidad.unidadPresentacion} ${l.presentacion!.volumenMl}ml',
       ...l.modificadores.map((m) => m.nombre),
+      // El cajero ve si el producto lleva táper.
+      if (widget.modoCaja && l.cartaId != cartaIdTaper)
+        if (l.aplicaTaper)
+          'Táper: sí (${l.cantidadTaper ?? l.cantidad})'
+        else if (p.tipoPedido != 'mesa')
+          'Táper: no',
     ];
     return Container(
       color: incidencia != null ? const Color(0xFFFBE4E4) : null,
@@ -550,7 +731,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
                       style: estiloRojo.copyWith(fontWeight: FontWeight.w800),
                     ),
                   ),
-                if (insumosPendientesDe(l).isNotEmpty)
+                if (!widget.modoCaja && insumosPendientesDe(l).isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: InkWell(
@@ -579,6 +760,17 @@ class _CocinaScreenState extends State<CocinaScreen> {
               ],
             ),
           ),
+          if (widget.modoCaja)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                'S/ ${l.precioTotalLinea.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -104,32 +104,32 @@ void main() {
     tester,
   ) async {
     await abrir(tester, _item(), (_) {});
-    expect(find.text('Tiene tamaños'), findsOneWidget);
-    expect(find.text('Agregar tamaño'), findsNothing); // apagado: sin filas
+    expect(find.text('Tiene variantes'), findsOneWidget);
+    expect(find.text('Agregar variante'), findsNothing); // apagado: sin filas
 
-    await tester.tap(find.byType(AppSwitch));
+    await tester.tap(find.byType(AppSwitch).first);
     await tester.pumpAndSettle();
-    expect(find.text('Agregar tamaño'), findsOneWidget);
-    expect(campo('Tamaño'), findsOneWidget);
+    expect(find.text('Agregar variante'), findsOneWidget);
+    expect(campo('Variante'), findsOneWidget);
 
-    await tester.tap(find.text('Agregar tamaño'));
+    await tester.tap(find.text('Agregar variante'));
     await tester.pumpAndSettle();
-    expect(campo('Tamaño'), findsNWidgets(2));
+    expect(campo('Variante'), findsNWidgets(2));
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('guardar con tamaños los devuelve con nombre y precio', (
+  testWidgets('guardar con variantes los devuelve con nombre y precio', (
     tester,
   ) async {
     ResultadoPlato? salida;
     await abrir(tester, _item(), (r) => salida = r);
-    await tester.tap(find.byType(AppSwitch));
+    await tester.tap(find.byType(AppSwitch).first);
     await tester.pumpAndSettle();
-    await tester.enterText(campo('Tamaño'), 'Pequeño');
+    await tester.enterText(campo('Variante'), 'Pequeño');
     await tester.enterText(campo('Precio'), '18');
-    await tester.tap(find.text('Agregar tamaño'));
+    await tester.tap(find.text('Agregar variante'));
     await tester.pumpAndSettle();
-    await tester.enterText(campo('Tamaño').last, 'Grande');
+    await tester.enterText(campo('Variante').last, 'Grande');
     await tester.enterText(campo('Precio').last, '28');
     await guardar(tester);
 
@@ -151,13 +151,13 @@ void main() {
       salida = r;
       cerro = true;
     });
-    await tester.tap(find.byType(AppSwitch));
+    await tester.tap(find.byType(AppSwitch).first);
     await tester.pumpAndSettle();
     await guardar(tester);
     expect(cerro, isFalse); // sigue abierto
     expect(salida, isNull);
     expect(
-      find.text('Cada tamaño necesita su nombre y un precio válido.'),
+      find.text('Cada variante necesita su nombre y un precio válido.'),
       findsOneWidget,
     );
     await tester.pumpWidget(const SizedBox());
@@ -178,8 +178,8 @@ void main() {
     ResultadoPlato? salida;
     await abrir(tester, _item(), (r) => salida = r);
     // Ya tiene un tamaño activo: el interruptor empieza encendido.
-    expect(campo('Tamaño'), findsOneWidget);
-    await tester.tap(find.byType(AppSwitch));
+    expect(campo('Variante'), findsOneWidget);
+    await tester.tap(find.byType(AppSwitch).first);
     await tester.pumpAndSettle();
     expect(find.textContaining('se desactivarán'), findsOneWidget);
     await guardar(tester);

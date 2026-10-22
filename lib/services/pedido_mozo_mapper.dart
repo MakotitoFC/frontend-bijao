@@ -161,7 +161,11 @@ List<Map<String, dynamic>> itemsDeLinea(
     },
     // El táper se cobra aparte: una fila propia con su cantidad.
     if (l.aplicaTaper && _esUuid(l.taperId))
-      {'taper_id': l.taperId, 'cantidad': l.cantidad, 'tipo_entrega': entrega},
+      {
+        'taper_id': l.taperId,
+        'cantidad': l.cantidadTaper ?? l.cantidad,
+        'tipo_entrega': entrega,
+      },
   ];
 }
 

@@ -196,52 +196,61 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 880),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Expanded(
-                child: Text(
-                  'Promociones',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Promociones',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _nuevaPromocion,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                    ),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Promoción'),
+                  ),
+                ],
               ),
-              FilledButton.icon(
-                onPressed: _nuevaPromocion,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                ),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Promoción'),
+              const SizedBox(height: 4),
+              Text(
+                'El mozo vende cada promoción tal como la configuras. Solo puede '
+                'cambiar un producto por otra opción que registres aquí, y solo '
+                'si el cliente lo pide.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
+              const SizedBox(height: 14),
+              if (promociones.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 36),
+                  child: Center(
+                    child: Text(
+                      'Aún no hay promociones registradas',
+                      style: TextStyle(color: Colors.grey.shade500),
+                    ),
+                  ),
+                )
+              else
+                for (final p in promociones) ...[
+                  _tarjeta(p),
+                  const SizedBox(height: 12),
+                ],
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'El mozo vende cada promoción tal como la configuras. Solo puede '
-            'cambiar un producto por otra opción que registres aquí, y solo '
-            'si el cliente lo pide.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 14),
-          if (promociones.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 36),
-              child: Center(
-                child: Text(
-                  'Aún no hay promociones registradas',
-                  style: TextStyle(color: Colors.grey.shade500),
-                ),
-              ),
-            )
-          else
-            for (final p in promociones) ...[
-              _tarjeta(p),
-              const SizedBox(height: 12),
-            ],
-        ],
+        ),
       ),
     );
   }
