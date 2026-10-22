@@ -371,6 +371,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 
   Widget _tabla(List<Pedido> filas) {
     return TablaApp<Pedido>(
+      porPagina: 10,
       filas: filas,
       columnas: [
         ColumnaTabla(
@@ -388,6 +389,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
         ColumnaTabla(
           titulo: 'Cliente',
           flex: 1.2,
+          rol: RolTarjeta.titulo,
           ordenarPor: (p) => (p.clienteNombre ?? '').toLowerCase(),
           celda: (p) => TablaApp.texto(p.clienteNombre ?? '—', fuerte: true),
         ),
@@ -417,12 +419,14 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
         ColumnaTabla(
           titulo: 'Pago',
           ancho: 110,
+          rol: RolTarjeta.estado,
           ordenarPor: (p) => _estadoPago(p),
           celda: (p) => _chipPago(_estadoPago(p)),
         ),
         ColumnaTabla(
           titulo: 'Acciones',
           ancho: 110,
+          rol: RolTarjeta.acciones,
           celda: (p) => _acciones(p),
         ),
       ],
@@ -908,6 +912,7 @@ class _CajaScreenState extends State<CajaScreen> {
                   ),
                   const SizedBox(height: 6),
                   TablaApp<FilaResumenMedio>(
+                    porPagina: 10,
                     filas: filas,
                     columnas: [
                       ColumnaTabla(
@@ -988,8 +993,12 @@ class _CajaScreenState extends State<CajaScreen> {
                     )
                   else
                     TablaApp<CierreCaja>(
+                      porPagina: 10,
                       filas: cierres,
                       columnas: _columnasCierres(),
+                      // En el celular, la tarjeta muestra lo principal y al
+                      // tocarla se ve el cierre completo.
+                      onTarjeta: _verCierreCompleto,
                     ),
                 ],
               ),
@@ -1230,6 +1239,64 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
+  // Detalle completo de un cierre (celular): hoja inferior con su barra de
+  // arrastre y todas las columnas de la tabla.
+  void _verCierreCompleto(CierreCaja c) {
+    final columnas = _columnasCierres();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.92,
+        builder: (context, scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          children: [
+            Text(
+              'Cierre del ${_fecha(c.fechaCierre)}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            for (final col in columnas)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      col.titulo.toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: col.celda(c),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<ColumnaTabla<CierreCaja>> _columnasCierres() {
     ColumnaTabla<CierreCaja> monto(
       String titulo,
@@ -1238,6 +1305,7 @@ class _CajaScreenState extends State<CajaScreen> {
     }) => ColumnaTabla(
       titulo: titulo,
       anchoMin: 96,
+      rol: titulo == 'Total' ? RolTarjeta.dato : RolTarjeta.oculta,
       ordenarPor: valor,
       celda: (c) => TablaApp.texto(_soles(valor(c)), fuerte: fuerte),
     );
@@ -1251,6 +1319,7 @@ class _CajaScreenState extends State<CajaScreen> {
       ColumnaTabla(
         titulo: 'Cajero',
         anchoMin: 120,
+        rol: RolTarjeta.oculta,
         ordenarPor: (c) =>
             (c.usuarioNombre ?? _nombreUsuario(c.usuarioId)).toLowerCase(),
         celda: (c) => TablaApp.texto(
@@ -1277,6 +1346,7 @@ class _CajaScreenState extends State<CajaScreen> {
       ColumnaTabla(
         titulo: 'Dif. efectivo',
         anchoMin: 110,
+        rol: RolTarjeta.dato,
         ordenarPor: (c) => c.diferenciaEfectivo,
         celda: (c) {
           final dif = c.diferenciaEfectivo;
@@ -1292,6 +1362,7 @@ class _CajaScreenState extends State<CajaScreen> {
       ColumnaTabla(
         titulo: 'Notas',
         anchoMin: 140,
+        rol: RolTarjeta.oculta,
         celda: (c) => TablaApp.texto(c.notas ?? '—'),
       ),
     ];
@@ -1310,6 +1381,9 @@ class _CajaScreenState extends State<CajaScreen> {
     double ventasDe(String grupo) => filas
         .where((f) => grupoDeMedio(f.medio) == grupo)
         .fold(0.0, (s, f) => s + f.ventas);
+    // Menos que una tablet: tarjetas en miniatura, 2 columnas por 2 filas, con
+    // desplazamiento hacia el lado para ver el resto.
+    final mini = AppBreakpoints.esMenorATablet(context);
     final tarjetas = [
       _tarjetaCaja(
         LucideIcons.trendingUp,
@@ -1376,6 +1450,38 @@ class _CajaScreenState extends State<CajaScreen> {
         null,
       ),
     ];
+    if (mini) {
+      return LayoutBuilder(
+        builder: (context, c) {
+          const espacio = 8.0;
+          // Un poco menos de la mitad: se asoma la siguiente columna.
+          final ancho = (c.maxWidth - espacio) / 2 - 14;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < tarjetas.length; i += 2) ...[
+                  if (i > 0) const SizedBox(width: espacio),
+                  SizedBox(
+                    width: ancho,
+                    child: Column(
+                      children: [
+                        tarjetas[i],
+                        if (i + 1 < tarjetas.length) ...[
+                          const SizedBox(height: espacio),
+                          tarjetas[i + 1],
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      );
+    }
     return LayoutBuilder(
       builder: (context, c) {
         const espacio = 12.0;
@@ -1401,8 +1507,9 @@ class _CajaScreenState extends State<CajaScreen> {
     double valor,
     String? detalle,
   ) {
+    final mini = AppBreakpoints.esMenorATablet(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(mini ? 10 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1419,15 +1526,17 @@ class _CajaScreenState extends State<CajaScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: mini ? 30 : 44,
+            height: mini ? 30 : 44,
+            // Sin fondo de color: el grupo de tarjetas es todo blanco.
             decoration: BoxDecoration(
-              color: fondo,
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(mini ? 9 : 12),
+              border: Border.all(color: fondo),
             ),
-            child: Icon(icono, size: 20, color: color),
+            child: Icon(icono, size: mini ? 15 : 20, color: color),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: mini ? 8 : 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1437,25 +1546,25 @@ class _CajaScreenState extends State<CajaScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: mini ? 11 : 13,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey.shade600,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: mini ? 2 : 4),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _soles(valor),
-                    style: const TextStyle(
-                      fontSize: 24,
+                    style: TextStyle(
+                      fontSize: mini ? 15 : 24,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF111827),
                     ),
                   ),
                 ),
-                if (detalle != null) ...[
+                if (detalle != null && !mini) ...[
                   const SizedBox(height: 2),
                   Text(
                     detalle,

@@ -1,5 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
+// Papel de una columna cuando la tabla se muestra como tarjetas.
+enum RolTarjeta {
+  // Va como "ETIQUETA ..... valor" al pie de la tarjeta.
+  dato,
+  // Título de la tarjeta, bajo la cabecera.
+  titulo,
+  // Va a la derecha del título (estado, etiqueta de color).
+  estado,
+  // Va a la derecha de la cabecera (botones de la fila).
+  acciones,
+  // No aparece en la tarjeta (sí en la tabla y en el detalle).
+  oculta,
+}
+
 // Una columna de [TablaApp]. Si tiene [ordenarPor], el encabezado se puede tocar
 // para ordenar las filas por ese valor (ascendente y, al tocar otra vez,
 // descendente).
@@ -14,6 +30,8 @@ class ColumnaTabla<T> {
   final double anchoMin;
   final Comparable<Object?> Function(T fila)? ordenarPor;
   final Alignment alineacion;
+  // Cómo se ubica en la vista de tarjetas (menos de tablet).
+  final RolTarjeta rol;
 
   const ColumnaTabla({
     required this.titulo,
@@ -23,6 +41,7 @@ class ColumnaTabla<T> {
     this.anchoMin = 110,
     this.ordenarPor,
     this.alineacion = Alignment.centerLeft,
+    this.rol = RolTarjeta.dato,
   });
 
   double get minimo => ancho ?? anchoMin;
@@ -36,6 +55,10 @@ class TablaApp<T> extends StatefulWidget {
   final List<T> filas;
   final double altoFila;
   final ValueChanged<T>? onFila;
+  // Filas por página; null = todas en una sola página.
+  final int? porPagina;
+  // Se avisa al tocar una tarjeta (solo en la vista de tarjetas).
+  final ValueChanged<T>? onTarjeta;
 
   const TablaApp({
     super.key,
@@ -43,6 +66,8 @@ class TablaApp<T> extends StatefulWidget {
     required this.filas,
     this.altoFila = 52,
     this.onFila,
+    this.porPagina,
+    this.onTarjeta,
   });
 
   static const colorBorde = Color(0xFFE5E7EB);
@@ -71,6 +96,97 @@ class TablaApp<T> extends StatefulWidget {
 class _TablaAppState<T> extends State<TablaApp<T>> {
   int? _orden;
   bool _asc = true;
+  int _pagina = 0;
+
+  int get _paginas {
+    final n = widget.porPagina;
+    if (n == null || widget.filas.isEmpty) return 1;
+    return (widget.filas.length / n).ceil();
+  }
+
+  // Las filas de la página actual, ya ordenadas.
+  List<T> get _filasPagina {
+    final todas = _filas;
+    final n = widget.porPagina;
+    if (n == null) return todas;
+    final pagina = _pagina.clamp(0, _paginas - 1);
+    final ini = pagina * n;
+    return todas.sublist(ini, (ini + n).clamp(0, todas.length));
+  }
+
+  // Selector de páginas: píldora flotante como en las demás listas.
+  Widget _paginador() {
+    final paginas = _paginas;
+    if (paginas <= 1) return const SizedBox.shrink();
+    final actual = _pagina.clamp(0, paginas - 1);
+    Widget flecha(IconData i, bool activa, VoidCallback f) => IconButton(
+      visualDensity: VisualDensity.compact,
+      onPressed: activa ? f : null,
+      icon: Icon(i, size: 18),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: TablaApp.colorBorde),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              flecha(
+                Icons.chevron_left,
+                actual > 0,
+                () => setState(() => _pagina = actual - 1),
+              ),
+              for (var i = 0; i < paginas; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => setState(() => _pagina = i),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == actual ? AppColors.primaryGreen : null,
+                      ),
+                      child: Text(
+                        '${i + 1}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: i == actual
+                              ? Colors.white
+                              : const Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              flecha(
+                Icons.chevron_right,
+                actual < paginas - 1,
+                () => setState(() => _pagina = actual + 1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   List<T> get _filas {
     final i = _orden;
@@ -181,10 +297,137 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
         : InkWell(onTap: () => onFila(fila), child: contenido);
   }
 
+  // Una fila como tarjeta: la primera columna arriba a la izquierda (con las
+  // acciones a la derecha), la columna `titulo` (con el estado a la derecha)
+  // y las demás como "ETIQUETA ..... valor". Solo muestra lo que ya tiene la
+  // tabla: no agrega datos ni acciones.
+  Widget _tarjeta(T fila) {
+    final cols = widget.columnas;
+    final acciones = cols
+        .where((c) => c.rol == RolTarjeta.acciones)
+        .firstOrNull;
+    final estado = cols.where((c) => c.rol == RolTarjeta.estado).firstOrNull;
+    final titulo = cols.where((c) => c.rol == RolTarjeta.titulo).firstOrNull;
+    final datos = [
+      for (final c in cols)
+        if (c.rol == RolTarjeta.dato) c,
+    ];
+    if (datos.isEmpty) return const SizedBox.shrink();
+    final cabecera = datos.first;
+    final resto = datos.skip(1).toList();
+    const linea = Divider(height: 1, color: TablaApp.colorBorde);
+    final accionesFila = acciones?.celda(fila);
+    final onFila = widget.onTarjeta ?? widget.onFila;
+    final tarjeta = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: TablaApp.colorBorde),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DefaultTextStyle.merge(
+                    style: const TextStyle(color: Color(0xFF6B7280)),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: cabecera.celda(fila),
+                    ),
+                  ),
+                ),
+                if (accionesFila != null) ...[
+                  const SizedBox(width: 8),
+                  accionesFila,
+                ],
+              ],
+            ),
+          ),
+          linea,
+          if (titulo != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: titulo.celda(fila),
+                    ),
+                  ),
+                  if (estado != null) ...[
+                    const SizedBox(width: 8),
+                    estado.celda(fila),
+                  ],
+                ],
+              ),
+            ),
+          if (resto.isNotEmpty) ...[
+            if (titulo != null) linea,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: Column(
+                children: [
+                  for (final c in resto)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Text(
+                            c.titulo.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: c.celda(fila),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+    return onFila == null
+        ? tarjeta
+        : InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => onFila(fila),
+            child: tarjeta,
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
     final minimo = widget.columnas.fold<double>(0, (s, c) => s + c.minimo);
-    final filas = _filas;
+    final filas = _filasPagina;
+    if (AppBreakpoints.esMenorATablet(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < filas.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _tarjeta(filas[i]),
+          ],
+          _paginador(),
+        ],
+      );
+    }
     final cuerpo = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -194,7 +437,7 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
           _fila(filas[i], i == filas.length - 1),
       ],
     );
-    return Container(
+    final marco = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -211,6 +454,10 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
           );
         },
       ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [marco, _paginador()],
     );
   }
 }

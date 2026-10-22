@@ -67,7 +67,7 @@ void main() {
     expect(control.completo, isFalse); // el DNI tiene 8 dígitos
   });
 
-  testWidgets('desde S/ 700 la boleta exige el DNI del cliente', (
+  testWidgets('con más de S/ 700 la boleta exige el DNI del cliente', (
     tester,
   ) async {
     final control = await abrir(tester, 850);
@@ -75,6 +75,16 @@ void main() {
     await tester.pump();
     expect(find.textContaining('SUNAT exige el DNI'), findsOneWidget);
     expect(control.completo, isFalse);
+  });
+
+  testWidgets('con S/ 700 exactos el DNI de la boleta es opcional', (
+    tester,
+  ) async {
+    final control = await abrir(tester, 700);
+    await tester.tap(find.text('Boleta'));
+    await tester.pump();
+    expect(find.textContaining('SUNAT exige el DNI'), findsNothing);
+    expect(control.completo, isTrue);
   });
 
   testWidgets('factura pide RUC de 11 dígitos y razón social', (tester) async {

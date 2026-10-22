@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_bijao/data/configuracion_store.dart';
 import 'package:frontend_bijao/data/movimientos_caja_store.dart';
 import 'package:frontend_bijao/data/pagos_store.dart';
 import 'package:frontend_bijao/models/app_role.dart';
+import 'package:frontend_bijao/models/medio_pago.dart';
 import 'package:frontend_bijao/models/movimiento_caja.dart';
 import 'package:frontend_bijao/models/usuario.dart';
 import 'package:frontend_bijao/screens/pagos_screen.dart';
@@ -45,6 +47,16 @@ Finder _boton(String etiqueta) => find.ancestor(
 
 void main() {
   setUp(() {
+    // Los métodos de pago vienen del servidor: aquí se dan los de la prueba.
+    mediosPago
+      ..clear()
+      ..add(
+        const MedioPago(
+          id: 'mp1',
+          medioPago: 'Efectivo',
+          aplicaComision: false,
+        ),
+      );
     SharedPreferences.setMockInitialValues({});
     pagos.clear();
     movimientosCaja.clear();

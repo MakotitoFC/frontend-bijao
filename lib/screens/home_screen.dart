@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/borrador_pedido_store.dart';
+import '../widgets/campana_notificaciones.dart';
 import '../data/nav_items.dart';
 import '../models/categoria_comida.dart';
 import '../models/app_role.dart';
@@ -364,31 +365,6 @@ class _GlobalHeader extends StatelessWidget {
   });
 
   // Botón cuadrado de esquinas redondeadas con el trazo del ícono en gris.
-  Widget _botonIcono(IconData icono, String tooltip, VoidCallback onTap) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Center(
-              child: Icon(icono, size: 20, color: Colors.grey.shade600),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (barraFija) {
@@ -429,7 +405,7 @@ class _GlobalHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                _botonIcono(LucideIcons.bell, 'Notificaciones', () {}),
+                const CampanaNotificaciones(),
               ],
             ),
           ],
@@ -454,7 +430,7 @@ class _GlobalHeader extends StatelessWidget {
         children: [
           const _Logo(),
           const Spacer(),
-          _botonIcono(LucideIcons.bell, 'Notificaciones', () {}),
+          const CampanaNotificaciones(),
           const SizedBox(width: 10),
           _MenuUsuario(
             usuario: usuario,

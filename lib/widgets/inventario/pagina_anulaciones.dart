@@ -215,6 +215,7 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
             )
           else
             TablaApp<Map<String, dynamic>>(
+              porPagina: 10,
               filas: filtradas,
               altoFila: 62,
               columnas: [
@@ -226,6 +227,7 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
                 ),
                 ColumnaTabla(
                   titulo: 'Plato / Ítem',
+                  rol: RolTarjeta.titulo,
                   flex: 1.4,
                   anchoMin: 170,
                   ordenarPor: (a) =>
@@ -318,6 +320,7 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
                 ),
                 ColumnaTabla(
                   titulo: '¿Fue servido?',
+                  rol: RolTarjeta.estado,
                   ancho: 190,
                   ordenarPor: (a) => a['fue_servido'] == true ? 1 : 0,
                   celda: (a) => a['fue_servido'] == true

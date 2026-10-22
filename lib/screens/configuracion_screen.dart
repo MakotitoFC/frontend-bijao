@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
@@ -776,8 +776,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       ),
       SeccionConfig(
         titulo: 'Permisos por rol',
-        descripcion:
-            'Marca qué puede hacer cada rol del sistema (tabla rol_permiso).',
+        descripcion: 'Marca qué puede hacer cada rol del sistema.',
         filas: [
           if (_cargandoRBAC && _rolesRBAC.isEmpty)
             const Padding(
@@ -797,7 +796,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 builder: (context, c) {
                   final columnas = _rolesRBAC.length * 104.0;
                   final ancho = (c.maxWidth - columnas - 16).clamp(
-                    220.0,
+                    c.maxWidth < 220 ? c.maxWidth : 220.0,
                     c.maxWidth,
                   );
                   return Align(
@@ -867,7 +866,9 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       );
     }
 
-    const anchoRol = 104.0;
+    // En el celular las columnas de roles son más angostas para que quepan más.
+    final movil = AppBreakpoints.esMobile(context);
+    final anchoRol = movil ? 74.0 : 104.0;
     final estiloCabecera = TextStyle(
       fontSize: 12.5,
       fontWeight: FontWeight.w600,
@@ -877,7 +878,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       columnWidths: {
         0: const FlexColumnWidth(),
         for (var i = 0; i < _rolesRBAC.length; i++)
-          i + 1: const FixedColumnWidth(anchoRol),
+          i + 1: FixedColumnWidth(anchoRol),
       },
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       border: TableBorder(
@@ -965,7 +966,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 child: Text('Permiso', style: estiloCabecera),
               ),
               for (final r in _rolesRBAC)
-                Center(child: Text(r.rol, style: estiloCabecera)),
+                Center(
+                  child: Text(
+                    r.rol,
+                    textAlign: TextAlign.center,
+                    style: estiloCabecera.copyWith(fontSize: movil ? 11 : 12.5),
+                  ),
+                ),
             ],
           ),
         ]),
@@ -984,8 +991,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(24, 4, 0, 4),
+                        // Sin recortar: el nombre del permiso baja de línea.
                         child: Text(
                           p.permiso,
+                          softWrap: true,
                           style: const TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w500,
@@ -1009,7 +1018,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     // Con muchos roles la tabla se desplaza hacia el lado.
     return LayoutBuilder(
       builder: (context, c) {
-        final minimo = 260 + _rolesRBAC.length * anchoRol;
+        final minimo = (movil ? 200 : 260) + _rolesRBAC.length * anchoRol;
         if (c.maxWidth >= minimo) return tabla;
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -1028,132 +1037,152 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           rol: u.rolNombre.isNotEmpty ? u.rolNombre : 'Sin rol',
         );
 
+    final identidad = [
+      CircleAvatar(
+        radius: 18,
+        backgroundColor: AppColors.primaryGreen.withValues(alpha: 0.12),
+        child: Text(
+          u.usuario.isEmpty ? '?' : u.usuario[0].toUpperCase(),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryGreen,
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              u.usuario + (soyYo ? ' (tú)' : ''),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            Text(
+              u.email,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      ),
+    ];
+    // El selector de rol, sin ancho propio: lo da el diseño según el espacio.
+    final selectorRol = IgnorePointer(
+      ignoring: soyYo,
+      child: Opacity(
+        opacity: soyYo ? 0.6 : 1,
+        child: AppSelect<String>(
+          value: rolActual.id,
+          items: [
+            for (final r in _rolesRBAC)
+              AppSelectItem(value: r.id, label: r.rol),
+          ],
+          onChanged: (id) async {
+            if (id == null || id == u.rolId) return;
+            try {
+              await CatalogService.instance.actualizarRolUsuario(u.id, id);
+              if (!mounted) return;
+              final nombre = _rolesRBAC.firstWhere((r) => r.id == id).rol;
+              showAppToast(
+                context,
+                'Rol de ${u.usuario} actualizado a $nombre',
+                type: ToastType.success,
+              );
+              await _cargarRBAC();
+            } catch (e) {
+              if (!mounted) return;
+              showAppToast(
+                context,
+                'Error actualizando rol: $e',
+                type: ToastType.error,
+              );
+            }
+          },
+        ),
+      ),
+    );
+    final interruptor = Tooltip(
+      message: soyYo
+          ? 'No puedes desactivarte'
+          : (u.estado ? 'Desactivar usuario' : 'Activar usuario'),
+      child: AppSwitch(
+        value: u.estado,
+        onChanged: soyYo
+            ? null
+            : (v) async {
+                try {
+                  await CatalogService.instance.actualizarEstadoUsuario(
+                    u.id,
+                    v,
+                  );
+                  if (!mounted) return;
+                  showAppToast(
+                    context,
+                    v
+                        ? 'Usuario "${u.usuario}" activado'
+                        : 'Usuario "${u.usuario}" desactivado',
+                    type: v ? ToastType.success : ToastType.info,
+                  );
+                  await _cargarRBAC();
+                } catch (e) {
+                  if (!mounted) return;
+                  showAppToast(
+                    context,
+                    'Error actualizando estado: $e',
+                    type: ToastType.error,
+                  );
+                }
+              },
+        activeThumbColor: Colors.white,
+        activeTrackColor: AppColors.primaryGreen,
+      ),
+    );
+    final permisos = Tooltip(
+      message: 'Gestionar permisos directos y roles',
+      child: IconButton(
+        icon: const Icon(
+          LucideIcons.shieldCheck,
+          color: AppColors.primaryGreen,
+          size: 20,
+        ),
+        onPressed: () => _gestionarPermisosUsuario(u),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: AppColors.primaryGreen.withValues(alpha: 0.12),
-            child: Text(
-              u.usuario.isEmpty ? '?' : u.usuario[0].toUpperCase(),
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryGreen,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // En un ancho chico los controles bajan a una segunda línea.
+          if (c.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  u.usuario + (soyYo ? ' (tú)' : ''),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  u.email,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                Row(children: identidad),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: selectorRol),
+                    const SizedBox(width: 8),
+                    interruptor,
+                    const SizedBox(width: 4),
+                    permisos,
+                  ],
                 ),
               ],
-            ),
-          ),
-          SizedBox(
-            width: 190,
-            child: IgnorePointer(
-              ignoring: soyYo,
-              child: Opacity(
-                opacity: soyYo ? 0.6 : 1,
-                child: AppSelect<String>(
-                  value: rolActual.id,
-                  items: [
-                    for (final r in _rolesRBAC)
-                      AppSelectItem(value: r.id, label: r.rol),
-                  ],
-                  onChanged: (id) async {
-                    if (id == null || id == u.rolId) return;
-                    try {
-                      await CatalogService.instance.actualizarRolUsuario(
-                        u.id,
-                        id,
-                      );
-                      if (!mounted) return;
-                      final nombre = _rolesRBAC
-                          .firstWhere((r) => r.id == id)
-                          .rol;
-                      showAppToast(
-                        context,
-                        'Rol de ${u.usuario} actualizado a $nombre',
-                        type: ToastType.success,
-                      );
-                      await _cargarRBAC();
-                    } catch (e) {
-                      if (!mounted) return;
-                      showAppToast(
-                        context,
-                        'Error actualizando rol: $e',
-                        type: ToastType.error,
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: soyYo
-                ? 'No puedes desactivarte'
-                : (u.estado ? 'Desactivar usuario' : 'Activar usuario'),
-            child: AppSwitch(
-              value: u.estado,
-              onChanged: soyYo
-                  ? null
-                  : (v) async {
-                      try {
-                        await CatalogService.instance.actualizarEstadoUsuario(
-                          u.id,
-                          v,
-                        );
-                        if (!mounted) return;
-                        showAppToast(
-                          context,
-                          v
-                              ? 'Usuario "${u.usuario}" activado'
-                              : 'Usuario "${u.usuario}" desactivado',
-                          type: v ? ToastType.success : ToastType.info,
-                        );
-                        await _cargarRBAC();
-                      } catch (e) {
-                        if (!mounted) return;
-                        showAppToast(
-                          context,
-                          'Error actualizando estado: $e',
-                          type: ToastType.error,
-                        );
-                      }
-                    },
-              activeThumbColor: Colors.white,
-              activeTrackColor: AppColors.primaryGreen,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Gestionar permisos directos y roles',
-            child: IconButton(
-              icon: const Icon(
-                LucideIcons.shieldCheck,
-                color: AppColors.primaryGreen,
-                size: 20,
-              ),
-              onPressed: () => _gestionarPermisosUsuario(u),
-            ),
-          ),
-        ],
+            );
+          }
+          return Row(
+            children: [
+              ...identidad,
+              SizedBox(width: 190, child: selectorRol),
+              const SizedBox(width: 8),
+              interruptor,
+              const SizedBox(width: 8),
+              permisos,
+            ],
+          );
+        },
       ),
     );
   }

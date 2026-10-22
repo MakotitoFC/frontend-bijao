@@ -20,6 +20,7 @@ import '../services/api_client.dart';
 import '../services/disponibilidad_service.dart';
 import '../services/impresion_service.dart';
 import '../services/auth_service.dart';
+import '../data/configuracion_store.dart';
 import '../services/catalog_service.dart';
 import '../services/devolucion_service.dart';
 import '../services/pedido_mozo_service.dart';
@@ -448,12 +449,23 @@ class DetallePedidoPanel extends StatelessWidget {
       }
     }
     if (!context.mounted) return;
-    final efecto = registrarIncidencia(
-      pedido: pedido,
-      linea: linea,
-      reporte: reporte,
-      aplicarEfecto: !enServidor,
-    );
+    final ({Incidencia incidencia, String resumen}) efecto;
+    try {
+      efecto = registrarIncidencia(
+        pedido: pedido,
+        linea: linea,
+        reporte: reporte,
+        aplicarEfecto: !enServidor,
+      );
+    } on StateError catch (e) {
+      showAppToast(
+        context,
+        e.message,
+        type: ToastType.error,
+        titulo: 'Devolución no registrada',
+      );
+      return;
+    }
     showAppToast(
       context,
       '${linea.nombrePlato}: ${etiquetaDeResolucion(resultado.resolucion)}. ${resumenServidor ?? efecto.resumen}',
@@ -490,12 +502,34 @@ class DetallePedidoPanel extends StatelessWidget {
     }
   }
 
+  // Los métodos de pago vienen del servidor: sin ninguno no se puede cobrar.
+  Future<bool> _hayMediosPago(BuildContext context) async {
+    if (mediosPagoActivos.isEmpty) {
+      try {
+        await CatalogService.instance.cargarMediosPago();
+      } catch (_) {}
+    }
+    if (mediosPagoActivos.isNotEmpty) return true;
+    if (context.mounted) {
+      showAppToast(
+        context,
+        'No hay métodos de pago activos en el servidor. Pide al administrador '
+        'que los configure en Configuración.',
+        type: ToastType.error,
+        titulo: 'Sin métodos de pago',
+      );
+    }
+    return false;
+  }
+
   // Devuelve true si el usuario pidió regresar a la elección del tipo de pago.
   Future<bool> _pagar(
     BuildContext context, {
     required bool compartido,
     bool permiteVolver = true,
   }) async {
+    if (!await _hayMediosPago(context)) return true;
+    if (!context.mounted) return false;
     if (compartido) {
       final r = await showBlurDialog<Object>(
         context: context,
@@ -526,6 +560,7 @@ class DetallePedidoPanel extends StatelessWidget {
       onCambio();
       return false;
     }
+    if (!context.mounted) return false;
     final r = await showBlurDialog<Object>(
       context: context,
       builder: (_) => PagarPedidoDialog(

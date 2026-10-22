@@ -1,4 +1,4 @@
-﻿import '../data/pagos_store.dart';
+import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/medio_pago.dart';
 import '../models/pago.dart';
@@ -69,7 +69,8 @@ class PagoService {
         'monto_abonado': abono,
         'propina': propinaAEnviar,
         if (pagador != null && pagador.isNotEmpty) 'pagador': pagador,
-        if (categoriaMovimientoId != null && UuidHelper.isValid(categoriaMovimientoId))
+        if (categoriaMovimientoId != null &&
+            UuidHelper.isValid(categoriaMovimientoId))
           'categoria_movimiento_id': categoriaMovimientoId,
       },
     );
@@ -96,7 +97,9 @@ class PagoService {
   Future<void> cargarDelRango(DateTime desde, DateTime hasta) async {
     String dos(int n) => n.toString().padLeft(2, '0');
     String f(DateTime d) => '${d.year}-${dos(d.month)}-${dos(d.day)}';
-    final res = await _api.get('/api/pagos?desde=${f(desde)}&hasta=${f(hasta)}');
+    final res = await _api.get(
+      '/api/pagos?desde=${f(desde)}&hasta=${f(hasta)}',
+    );
     if (res is! List) return;
     agregarPagosDelServidor(res.whereType<Map<String, dynamic>>().toList());
   }

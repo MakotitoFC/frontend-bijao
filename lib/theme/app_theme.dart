@@ -56,6 +56,12 @@ class AppBreakpoints {
 
   static bool esMobile(BuildContext context) =>
       MediaQuery.sizeOf(context).width < mobile;
+
+  // Menos que una tablet: las tablas pasan a tarjetas.
+  static const double tablet = 768;
+
+  static bool esMenorATablet(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < tablet;
 }
 
 class AppTheme {

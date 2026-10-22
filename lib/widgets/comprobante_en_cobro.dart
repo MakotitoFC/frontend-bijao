@@ -23,7 +23,8 @@ import 'campo_texto.dart';
 import 'dialogo_app.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
-// A partir de este total SUNAT exige los datos del cliente en una boleta.
+// Hasta este total (inclusive) el DNI de la boleta es opcional; por encima,
+// SUNAT exige los datos del cliente.
 const montoBoletaConDocumento = 700.0;
 
 String _mensajeError(Object e) => e is ApiException
@@ -33,7 +34,9 @@ String _mensajeError(Object e) => e is ApiException
 // Solo administración y caja eligen el comprobante al cobrar.
 bool puedeElegirComprobante(Pedido pedido) {
   final u = AuthService.instance.currentUser;
-  return UuidHelper.isValid(pedido.id) && u != null && (u.esAdmin || u.esCajero);
+  return UuidHelper.isValid(pedido.id) &&
+      u != null &&
+      (u.esAdmin || u.esCajero);
 }
 
 // Lo que el cajero eligió en el cobro: ninguno, ticket de venta (interno, sin
@@ -41,9 +44,10 @@ bool puedeElegirComprobante(Pedido pedido) {
 // después de registrar el cobro, porque el servidor no factura sin un pago.
 class ComprobanteEnCobro extends ChangeNotifier {
   ComprobanteEnCobro(this.total, {String tipoInicial = 'ninguno'})
-      : tipo = tipoInicial;
+    : tipo = tipoInicial;
 
-  final double total;
+  // Total que cubre el comprobante (en el pago compartido, lo de ese pagador).
+  double total;
 
   String tipo;
   bool conDni = false;
@@ -61,7 +65,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
   bool get emite => tipo != 'ninguno';
   // ¿Hay que imprimir después de la respuesta de SUNAT? (boleta o factura)
   bool get imprimirDespues => imprimir && tipo != 'ticket_venta';
-  bool get boletaExigeDni => total >= montoBoletaConDocumento;
+  bool get boletaExigeDni => total > montoBoletaConDocumento;
   bool get dniValido => RegExp(r'^\d{8}$').hasMatch(dni.text.trim());
   bool get rucValido => RegExp(r'^\d{11}$').hasMatch(ruc.text.trim());
 
@@ -123,8 +127,10 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   // Emite el comprobante elegido para [pedido]. Se llama con el cobro ya
   // registrado: se vincula al primer pago del pedido.
-  Future<Comprobante> emitir(Pedido pedido) {
-    final pagoId = pagos
+  // [pagoId] fija el pago al que se vincula (en el pago compartido, el de cada
+  // pagador); sin él se usa el primero del pedido.
+  Future<Comprobante> emitir(Pedido pedido, {String? pagoId}) {
+    pagoId ??= pagos
         .where((p) => p.pedidoId == pedido.id && !p.esReembolso)
         .map((p) => p.id)
         .where(UuidHelper.isValid)
@@ -256,7 +262,10 @@ class SelectorComprobante extends StatelessWidget {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
-                AppSwitch(value: control.conDni, onChanged: control.alternarDni),
+                AppSwitch(
+                  value: control.conDni,
+                  onChanged: control.alternarDni,
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -272,7 +281,7 @@ class SelectorComprobante extends StatelessWidget {
             ] else
               Text(
                 control.boletaExigeDni
-                    ? 'Por el monto (desde S/ ${montoBoletaConDocumento.toStringAsFixed(0)}) '
+                    ? 'Por el monto (más de S/ ${montoBoletaConDocumento.toStringAsFixed(0)}) '
                           'SUNAT exige el DNI del cliente.'
                     : 'Sin DNI sale a nombre de CLIENTES VARIOS.',
                 style: TextStyle(
@@ -360,12 +369,13 @@ class SelectorComprobante extends StatelessWidget {
 Future<void> emitirComprobanteTrasCobro(
   BuildContext context,
   Pedido pedido,
-  ComprobanteEnCobro eleccion,
-) async {
+  ComprobanteEnCobro eleccion, {
+  String? pagoId,
+}) async {
   if (!eleccion.emite) return;
   while (context.mounted) {
     try {
-      final c = await eleccion.emitir(pedido);
+      final c = await eleccion.emitir(pedido, pagoId: pagoId);
       if (!context.mounted) return;
       await showBlurDialog<void>(
         context: context,

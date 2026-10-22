@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/notificaciones_store.dart';
 import '../theme/app_theme.dart';
 
 enum ToastType { success, error, warning, info }
@@ -12,6 +13,23 @@ void showAppToast(
   String? titulo,
   Duration duration = const Duration(seconds: 3),
 }) {
+  // Queda guardado en la campana del header durante el día.
+  NotificacionesStore.instance.agregar(
+    switch (type) {
+      ToastType.success => TipoNotificacion.exito,
+      ToastType.error => TipoNotificacion.error,
+      ToastType.warning => TipoNotificacion.aviso,
+      ToastType.info => TipoNotificacion.info,
+    },
+    titulo ??
+        switch (type) {
+          ToastType.success => 'Éxito',
+          ToastType.error => 'Error',
+          ToastType.warning => 'Atención',
+          ToastType.info => 'Info',
+        },
+    message,
+  );
   final overlay = Overlay.of(context, rootOverlay: true);
   late OverlayEntry entry;
   entry = OverlayEntry(

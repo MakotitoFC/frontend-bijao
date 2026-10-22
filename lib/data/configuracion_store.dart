@@ -122,29 +122,12 @@ final List<Horario> horarios = [
     ),
 ];
 
-// Efectivo siempre disponible como método de cobro, aunque no se haya
-// configurado ninguno todavía (tabla `medio_pago`, valor por defecto).
-const medioEfectivo = MedioPago(
-  id: 'mp1',
-  medioPago: 'Efectivo',
-  aplicaComision: false,
-);
-
-// Métodos de pago disponibles mientras no se configuren otros: efectivo, yape
-// y tarjeta.
-const mediosPagoBase = [
-  medioEfectivo,
-  MedioPago(id: 'mp2', medioPago: 'Yape', aplicaComision: false),
-  MedioPago(id: 'mp3', medioPago: 'Tarjeta', aplicaComision: false),
-];
-
 // Métodos de pago editables (`medio_pago`). Se cargan desde el backend.
 final List<MedioPago> mediosPago = [];
 
-List<MedioPago> get mediosPagoActivos {
-  final activos = mediosPago.where((m) => m.activo).toList();
-  return activos.isEmpty ? mediosPagoBase : activos;
-}
+// Solo los que trae el servidor y están activos; sin conexión puede ser vacía.
+List<MedioPago> get mediosPagoActivos =>
+    mediosPago.where((m) => m.activo).toList();
 
 // Restaurantes / sedes (`restaurantes.direccion`, `telefono`, `activo`). Se
 // cargan desde el backend; queda 1 de prueba para que el login funcione.

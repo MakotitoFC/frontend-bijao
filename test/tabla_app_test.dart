@@ -3,35 +3,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_bijao/widgets/tabla_app.dart';
 
 void main() {
-  Future<void> abrir(WidgetTester tester, double ancho) async {
+  Future<void> abrir(
+    WidgetTester tester,
+    double ancho, {
+    double? anchoTabla,
+  }) async {
     tester.view.physicalSize = Size(ancho, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TablaApp<({String nombre, int monto})>(
-            filas: const [
-              (nombre: 'Beto', monto: 30),
-              (nombre: 'Ana', monto: 10),
-              (nombre: 'Carla', monto: 20),
-            ],
-            columnas: [
-              ColumnaTabla(
-                titulo: 'Nombre',
-                ordenarPor: (f) => f.nombre,
-                celda: (f) => TablaApp.texto(f.nombre),
-              ),
-              ColumnaTabla(
-                titulo: 'Monto',
-                ordenarPor: (f) => f.monto,
-                celda: (f) => TablaApp.texto('S/ ${f.monto}'),
-              ),
-              ColumnaTabla(
-                titulo: 'Sin orden',
-                celda: (f) => TablaApp.texto('x'),
-              ),
-            ],
+          body: SizedBox(
+            width: anchoTabla,
+            child: TablaApp<({String nombre, int monto})>(
+              filas: const [
+                (nombre: 'Beto', monto: 30),
+                (nombre: 'Ana', monto: 10),
+                (nombre: 'Carla', monto: 20),
+              ],
+              columnas: [
+                ColumnaTabla(
+                  titulo: 'Nombre',
+                  ordenarPor: (f) => f.nombre,
+                  celda: (f) => TablaApp.texto(f.nombre),
+                ),
+                ColumnaTabla(
+                  titulo: 'Monto',
+                  ordenarPor: (f) => f.monto,
+                  celda: (f) => TablaApp.texto('S/ ${f.monto}'),
+                ),
+                ColumnaTabla(
+                  titulo: 'Sin orden',
+                  celda: (f) => TablaApp.texto('x'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -72,10 +79,19 @@ void main() {
     expect(nombres(tester), ['Ana', 'Carla', 'Beto']);
   });
 
-  testWidgets('si no cabe, se desplaza hacia el lado sin desbordar', (
+  testWidgets('en menos de una tablet se ve como tarjetas, sin desbordar', (
     tester,
   ) async {
     await abrir(tester, 200);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(find.text('Ana'), findsOneWidget);
+  });
+
+  testWidgets('si no cabe en una tablet, se desplaza hacia el lado', (
+    tester,
+  ) async {
+    await abrir(tester, 800, anchoTabla: 200);
     expect(tester.takeException(), isNull);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });

@@ -48,12 +48,16 @@ class _FilaPago {
 class _Pagador {
   final TextEditingController nombre;
   final List<_FilaPago> pagos;
+  // Comprobante que pide este pagador (ninguno, boleta o factura); null si el
+  // pedido no admite comprobante.
+  ComprobanteEnCobro? comprobante;
 
   _Pagador(String nombre, MedioPago medio)
     : nombre = TextEditingController(text: nombre),
       pagos = [_FilaPago(medio)];
 
   void liberar() {
+    comprobante?.dispose();
     nombre.dispose();
     for (final p in pagos) {
       p.monto.dispose();
@@ -138,19 +142,32 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   MedioPago get _medioInicial => mediosPagoActivos.first;
 
   // Comprobante a emitir al saldar la cuenta (solo administración y caja).
-  ComprobanteEnCobro? _comprobante;
+  // Cada pagador puede pedir un comprobante distinto: uno ninguno, otro boleta
+  // y otro factura. Se crea al armar los pagadores.
+  late final bool _admiteComprobante = puedeElegirComprobante(widget.pedido);
+
+  ComprobanteEnCobro? _nuevoComprobante() {
+    if (!_admiteComprobante) return null;
+    return ComprobanteEnCobro(0)..addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _categoriaSeleccionada = categoriasDeTipo(TipoMovimiento.ingreso)
+    _categoriaSeleccionada =
+        categoriasDeTipo(TipoMovimiento.ingreso)
             .where((c) => c.nombre.toLowerCase().contains('venta'))
             .firstOrNull ??
         categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
     if (mediosPago.isEmpty) {
-      CatalogService.instance.cargarMediosPago().then((_) {
-        if (mounted) setState(() {});
-      }).catchError((_) {});
+      CatalogService.instance
+          .cargarMediosPago()
+          .then((_) {
+            if (mounted) setState(() {});
+          })
+          .catchError((_) {});
     }
     if (categoriasMovimiento.isEmpty) {
       MovimientoCajaService.instance
@@ -170,17 +187,10 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           .catchError((_) {});
     }
     _reiniciar(_Modo.iguales);
-    if (puedeElegirComprobante(widget.pedido)) {
-      _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
-        ..addListener(() {
-          if (mounted) setState(() {});
-        });
-    }
   }
 
   @override
   void dispose() {
-    _comprobante?.dispose();
     for (final p in _pagadores) {
       p.liberar();
     }
@@ -219,7 +229,10 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     _asignUnidad.clear();
     _asignCategoria.clear();
     for (var i = 0; i < 2; i++) {
-      _pagadores.add(_Pagador(_nombreDefecto(i), _medioInicial));
+      _pagadores.add(
+        _Pagador(_nombreDefecto(i), _medioInicial)
+          ..comprobante = _nuevoComprobante(),
+      );
     }
     _sincronizar();
   }
@@ -315,7 +328,8 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     if (_pagadores.length >= _maxPagadores) return;
     _cambiar(() {
       _pagadores.add(
-        _Pagador(_nombreDefecto(_pagadores.length), _medioInicial),
+        _Pagador(_nombreDefecto(_pagadores.length), _medioInicial)
+          ..comprobante = _nuevoComprobante(),
       );
     });
   }
@@ -416,6 +430,47 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   bool _guardando = false;
 
+  // Cada pagador con monto tiene completos los datos de su comprobante.
+  bool get _comprobantesCompletos {
+    final montos = _montos;
+    for (var i = 0; i < _pagadores.length; i++) {
+      if (montos[i] <= 0.005) continue;
+      if (!(_pagadores[i].comprobante?.completo ?? true)) return false;
+    }
+    return true;
+  }
+
+  // Selector de comprobante de un pagador, con lo que paga como total (así la
+  // boleta de más de S/ 700 pide el DNI de ese pagador, no del pedido entero).
+  Widget _comprobanteDe(int i, double monto) {
+    final p = _pagadores[i];
+    final control = p.comprobante;
+    if (control == null) return const SizedBox.shrink();
+    control.total = monto + _recargoDe(p);
+    final nombre = p.nombre.text.trim().isEmpty
+        ? _nombreDefecto(i)
+        : p.nombre.text.trim();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$nombre · S/ ${control.total.toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          SelectorComprobante(control: control),
+        ],
+      ),
+    );
+  }
+
   String _mensajeError(Object e) => e is ApiException
       ? e.message
       : e.toString().replaceFirst('Exception: ', '');
@@ -434,16 +489,21 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     // están en el servidor: se vuelve a leer y se avisa.
     var registrados = 0;
     final total = boletas.fold<int>(0, (s, b) => s + b.pagos.length);
+    // Id del primer pago de cada pagador (por posición): a él se vincula su
+    // comprobante.
+    final pagoDe = <int, String>{};
     try {
-      for (final boleta in boletas) {
+      for (var b = 0; b < boletas.length; b++) {
+        final boleta = boletas[b];
         for (final pago in boleta.pagos) {
-          await PagoService.instance.registrar(
+          final registrado = await PagoService.instance.registrar(
             pedido: widget.pedido,
             medio: pago.medio,
             montoAbonado: pago.monto,
             pagador: boleta.nombre,
             categoriaMovimientoId: _categoriaSeleccionada?.id,
           );
+          pagoDe.putIfAbsent(b, () => registrado.id);
           registrados++;
         }
       }
@@ -478,10 +538,21 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
-    // La cuenta quedó saldada: se emite el comprobante elegido.
-    final eleccion = _comprobante;
-    if (eleccion != null) {
-      await emitirComprobanteTrasCobro(context, widget.pedido, eleccion);
+    // La cuenta quedó saldada: se emite el comprobante que pidió cada pagador
+    // (uno puede no querer nada, otro boleta y otro factura).
+    final conMonto = [
+      for (var i = 0; i < _pagadores.length; i++)
+        if (montos[i] > 0.005) _pagadores[i],
+    ];
+    for (var b = 0; b < conMonto.length; b++) {
+      final eleccion = conMonto[b].comprobante;
+      if (eleccion == null || !eleccion.emite) continue;
+      await emitirComprobanteTrasCobro(
+        context,
+        widget.pedido,
+        eleccion,
+        pagoId: pagoDe[b],
+      );
       if (!mounted) return;
     }
     Navigator.of(context)
@@ -1127,10 +1198,13 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           const SizedBox(height: 8),
           for (var i = 0; i < _pagadores.length; i++)
             _tarjetaPagador(i, montos[i]),
-          if (_comprobante != null) ...[
-            const SizedBox(height: 4),
-            SelectorComprobante(control: _comprobante!),
-            const SizedBox(height: 16),
+          if (_admiteComprobante) ...[
+            const SizedBox(height: 12),
+            _etiquetaSeccion('COMPROBANTE DE CADA UNO'),
+            const SizedBox(height: 8),
+            for (var i = 0; i < _pagadores.length; i++)
+              if (montos[i] > 0.005) _comprobanteDe(i, montos[i]),
+            const SizedBox(height: 8),
           ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1189,8 +1263,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
               Expanded(
                 flex: 3,
                 child: FilledButton.icon(
-                  onPressed:
-                      _valido && !_guardando && (_comprobante?.completo ?? true)
+                  onPressed: _valido && !_guardando && _comprobantesCompletos
                       ? _confirmar
                       : null,
                   icon: const Icon(LucideIcons.users, size: 18),

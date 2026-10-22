@@ -20,10 +20,10 @@ Incidencia? incidenciaDeLinea(String lineaId) {
   return null;
 }
 
-MedioPago _medioPorId(String? id) => mediosPagoActivos.firstWhere(
-  (m) => m.id == id,
-  orElse: () => mediosPagoActivos.first,
-);
+// El método con ese id o, si no está, el primero activo; null si no hay ninguno.
+MedioPago? _medioPorId(String? id) =>
+    mediosPagoActivos.where((m) => m.id == id).firstOrNull ??
+    mediosPagoActivos.firstOrNull;
 
 String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
 
@@ -46,8 +46,19 @@ String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
     resolucion: reporte.resolucion,
     fecha: DateTime.now(),
   );
+  if (!aplicarEfecto) {
+    incidencias.insert(0, incidencia);
+    return (incidencia: incidencia, resumen: '');
+  }
+  // Devolver dinero exige un método de pago del servidor: sin ninguno falla
+  // antes de registrar nada.
+  if (montoPagadoDeLinea(linea.id) > 0 &&
+      _medioPorId(reporte.medioReembolsoId) == null) {
+    throw StateError(
+      'No hay métodos de pago activos en el servidor para devolver el dinero.',
+    );
+  }
   incidencias.insert(0, incidencia);
-  if (!aplicarEfecto) return (incidencia: incidencia, resumen: '');
   marcarLineaComoIncidencia(pedido.id, linea.id);
 
   final monto = linea.precioTotalLinea;
@@ -65,7 +76,7 @@ String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
       );
       final devuelto = pagadoLinea > 0 ? pagadoLinea.clamp(0, monto) : 0.0;
       if (ajuste != null && devuelto > 0.001) {
-        final medio = _medioPorId(reporte.medioReembolsoId);
+        final medio = _medioPorId(reporte.medioReembolsoId)!;
         registrarReembolso(
           pedido: pedido,
           lineaAjuste: ajuste,
@@ -116,7 +127,7 @@ String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
             ? pagadoLinea.clamp(0, -diferencia).toDouble()
             : 0.0;
         if (ajuste != null && devuelto > 0.001) {
-          final medio = _medioPorId(reporte.medioReembolsoId);
+          final medio = _medioPorId(reporte.medioReembolsoId)!;
           registrarReembolso(
             pedido: pedido,
             lineaAjuste: ajuste,

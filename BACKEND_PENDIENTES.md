@@ -222,3 +222,89 @@ Hoy no existe nada de esto en el servidor, y el frontend no lo implementa hasta 
 ## Lado del frontend (pendiente)
 
 Una vez definido, la app agrega en Configuración una vista de turnos, un selector de turno en el usuario mozo y el mensaje de "fuera de turno" al iniciar sesión.
+
+---
+
+# 12. Series de comprobantes por sede y por caja
+
+Cada caja debe emitir con su propia **serie**, armada con el tipo de comprobante, la sede y el número de caja. La serie SUNAT tiene **4 caracteres**:
+
+`[tipo][sede][caja de 2 dígitos]` → ejemplos de formato: `BA01` (boleta, sede A, caja 01) o `F101` (factura, sede 1, caja 01). Cada negocio decide qué carácter usa por sede.
+
+- Tipo: `B` boleta, `F` factura.
+- Sede: **un carácter, letra o número**, que el negocio asigna a cada sede (por ejemplo `A`, `B` o `1`, `2`). Lo define el administrador; no hay valores fijos.
+- Caja: número de la caja dentro de la sede (01, 02…).
+
+## Hoy
+
+`facturacion_service.go` usa series fijas por defecto (`B001`, `F001`, `T001`) cuando la app no manda `serie`, y la tabla `sede` no tiene código de serie. No existe dónde guardar la caja a la que pertenece cada serie.
+
+## Qué se pide
+
+- **`sede`:** columna para el código de la sede (1 carácter, letra o número, único por negocio), con lectura y edición para el administrador.
+- **Cajas:** que cada caja tenga su número dentro de la sede (01, 02…) y que el backend entregue, por caja, su serie de boleta y de factura (por ejemplo `serie_boleta: "BA01"`, `serie_factura: "FA01"`) en el estado/listado de cajas.
+- **Emisión:** que `POST /comprobantes` use la serie de la caja que emite (y siga aceptando `serie` si la app la manda), con el correlativo propio de esa serie (`uq_comprobante_sede_serie_numero`).
+- **Validación:** rechazar series que no tengan 4 caracteres alfanuméricos o que no empiecen con `B`/`F`.
+- **Permisos:** `LEER`/`ACTUALIZAR` para el administrador sobre la letra de sede y el número de caja.
+
+## Lado del frontend (pendiente hasta que el backend lo entregue)
+
+- En **Configuración > Negocio**, definir el código (letra o número) de cada sede.
+- En la vista **Caja**, una columna "Serie" por caja (boleta y factura).
+- Al emitir un comprobante, mostrar la serie que se usará antes de confirmar.
+
+No se muestran ni se inventan series en la app mientras el servidor no las envíe.
+
+# 13. DNI en boletas (aviso)
+
+La app exige el DNI (8 dígitos) cuando la boleta es de **más de S/ 700**; hasta S/ 700 (inclusive) es opcional y sale como `CLIENTES VARIOS`. El backend debería validar lo mismo: rechazar una boleta de más de S/ 700 sin DNI.
+
+---
+
+# 14. Reportes: rutas que necesita la vista (habilitada para el administrador)
+
+La vista **Reportes** (Ventas > Reportes) está habilitada y hoy calcula todo en la app con los pedidos y pagos que ya tiene cargados (solo lo que hay en memoria). Para que sea correcta con todo el historial y en tiempo real, el backend debe entregar los agregados por rango de fechas. Sin definir todavía: caja ciega, arqueo y reportes diario/semanal/mensual de ventas (no se implementan hasta que se definan).
+
+Todas las rutas reciben `desde` y `hasta` (fecha) y opcionalmente `sede_id`; permiso `LEER.MOVIMIENTO` (administrador):
+
+| Sección de la vista | Ruta sugerida | Qué devuelve |
+|---|---|---|
+| Cantidad de pedidos, ventas totales, ticket promedio | `GET /api/reportes/resumen` | `pedidos`, `ventas_total`, `ticket_promedio` del rango (sin anulados) |
+| Progreso de pedidos | `GET /api/reportes/pedidos-por-estado` | cantidad por estado (`pendiente`, `servido`, `pagado`, `anulado`, `devuelto`) |
+| Rendimiento de mozos | `GET /api/reportes/rendimiento-mozos` | por mozo: pedidos, ventas, ticket promedio |
+| Horas con más ventas | `GET /api/reportes/ventas-por-hora` | ventas y pedidos por hora del día (0–23) |
+| Días con más ventas | `GET /api/reportes/ventas-por-dia-semana` | ventas y pedidos por día de la semana |
+| Métodos de pago | `GET /api/reportes/ventas-por-medio-pago` | ventas por medio de pago |
+| Tipo de servicio | `GET /api/reportes/ventas-por-tipo` | pedidos, ventas y ticket promedio por tipo (`mesa`, `llevar`, `delivery`) |
+| Plato más vendido | `GET /api/reportes/platos-mas-vendidos` | ranking de platos por unidades vendidas y por importe (`carta_id`, nombre, cantidad, ventas); parámetro `limite` (por defecto 10). Sin contar líneas anuladas ni devueltas |
+
+Notas:
+- Los importes deben salir de los pagos cobrados (no de pedidos anulados ni devoluciones).
+- La hora y el día deben calcularse en la zona horaria de la sede.
+- El nombre del rol del usuario es **mozo** (no "mesero"); los textos y campos del servidor deberían usar "mozo".
+
+---
+
+# 15. Pago compartido con un comprobante distinto por pagador
+
+En el pago compartido, cada pagador puede pedir lo suyo: uno ningún comprobante, otro boleta y otro factura. La app registra los pagos de cada uno y luego emite **un comprobante por pagador**, vinculado con `pago_id` al primer pago de ese pagador (`POST /api/v1/facturacion/comprobantes`).
+
+Para el backend, confirmar o ajustar:
+
+- **Varios comprobantes por pedido:** `ExisteComprobanteActivo(pedido, pago)` ya distingue por pago; debe permitir una boleta y una factura activas en el mismo pedido si son de pagos distintos.
+- **Importe del comprobante:** cuando viene `pago_id`, el comprobante debe cubrir **lo pagado por ese pagador** y no el total del pedido. Si un pagador pagó con varios métodos (varios pagos), el comprobante debería cubrir todos sus pagos: se propone aceptar `pago_ids` (lista) además de `pago_id`.
+- **Sin duplicar el total:** la suma de los comprobantes de un pedido no debería superar su total.
+
+---
+
+# 16. Alertas de stock en tiempo real (campana del header)
+
+La campana del header de la app muestra, además de los avisos del día, las **alertas de stock** de productos de inventario (`stock_actual <= stock_minimo`) y de tápers. Hoy la app las calcula cuando recibe un evento de stock y vuelve a leer `/api/productos-inventario` y `/api/tapers`.
+
+Para que sea **en tiempo real y sin lecturas de más**, se pide al backend:
+
+- **Evento SSE `STOCK_BAJO`** cada vez que un movimiento (pedido, anulación, compra, ajuste, merma, consumo de táper) deje un producto de inventario o un táper en o por debajo de su mínimo, con: `tipo` (`producto_inventario` | `taper`), `id`, `nombre`, `stock_actual` y `stock_minimo`. Un solo evento por cruce del mínimo (no uno por cada movimiento).
+- **Evento `STOCK_AGOTADO`** (o el mismo con `stock_actual <= 0`) cuando llegue a cero.
+- **Evento `INVENTARIO_ACTUALIZADO`** con el `id` del producto o táper cuando cambie su stock por cualquier movimiento, para refrescar el dato sin leer toda la lista.
+- Los eventos deben ir solo a usuarios con permiso de leer inventario (administrador).
+- Los tápers deberían tener `stock_minimo` configurable (hoy sin mínimo alerta solo al llegar a 0).

@@ -467,11 +467,18 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       descripcion:
           'Las comandas salen solas a cocina al tomar el pedido y al agregarle '
           'productos. Aquí ves si cada impresora responde en la red.',
-      accion: OutlinedButton.icon(
-        onPressed: _cargarEstadoYCola,
-        icon: const Icon(LucideIcons.refreshCw, size: 15),
-        label: const Text('Actualizar'),
-      ),
+      // En el celular, solo el ícono.
+      accion: AppBreakpoints.esMobile(context)
+          ? IconButton.outlined(
+              tooltip: 'Actualizar',
+              onPressed: _cargarEstadoYCola,
+              icon: const Icon(LucideIcons.refreshCw, size: 16),
+            )
+          : OutlinedButton.icon(
+              onPressed: _cargarEstadoYCola,
+              icon: const Icon(LucideIcons.refreshCw, size: 15),
+              label: const Text('Actualizar'),
+            ),
       filas: [
         _filaImpresora(
           nombre: 'Cocina',

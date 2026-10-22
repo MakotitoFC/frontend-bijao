@@ -37,11 +37,7 @@ class MovimientoCajaService {
   }) async {
     final res = await _api.post(
       '/api/categorias-movimiento',
-      body: {
-        'categoria': nombre.trim(),
-        'tipo': tipo.codigo,
-        'estado': true,
-      },
+      body: {'categoria': nombre.trim(), 'tipo': tipo.codigo, 'estado': true},
     );
     if (res is! Map<String, dynamic>) {
       throw Exception('El servidor no devolvió la categoría creada');
@@ -59,11 +55,7 @@ class MovimientoCajaService {
   }) async {
     final res = await _api.put(
       '/api/categorias-movimiento/$id',
-      body: {
-        'categoria': nombre.trim(),
-        'tipo': tipo.codigo,
-        'estado': activo,
-      },
+      body: {'categoria': nombre.trim(), 'tipo': tipo.codigo, 'estado': activo},
     );
     if (res is! Map<String, dynamic>) {
       throw Exception('El servidor no devolvió la categoría actualizada');

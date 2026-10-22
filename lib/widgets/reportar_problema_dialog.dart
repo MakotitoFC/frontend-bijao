@@ -9,6 +9,7 @@ import '../data/configuracion_store.dart';
 import '../data/creditos_store.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
+import 'app_toast.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
 
@@ -93,7 +94,7 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
   String? _resolucion;
   String? _reemplazo; // id de carta o _manual
   late String _medioReembolsoId =
-      widget.medioOriginalId ?? mediosPagoActivos.first.id;
+      widget.medioOriginalId ?? mediosPagoActivos.firstOrNull?.id ?? '';
   bool _intentado = false;
 
   @override
@@ -230,6 +231,17 @@ class _ReportarProblemaDialogState extends State<ReportarProblemaDialog> {
     if (_resolucion == 'cambio' && _reemplazo == null) return;
     if (_evidencia == _fotoClave && _foto == null) {
       setState(() => _errorFoto = 'Sube la foto o elige "Sin evidencia".');
+      return;
+    }
+    if (_devuelveDinero &&
+        !mediosPagoActivos.any((m) => m.id == _medioReembolsoId)) {
+      showAppToast(
+        context,
+        'No hay un método de pago para devolver el dinero. Pide al '
+        'administrador que los configure en Configuración.',
+        type: ToastType.error,
+        titulo: 'Sin métodos de pago',
+      );
       return;
     }
     final evidencia = _evidencia == _otro
