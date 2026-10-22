@@ -21,6 +21,7 @@ import 'app_tag.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
+import 'emitir_comprobante_dialog.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
 // Hasta este total (inclusive) el DNI de la boleta es opcional; por encima,
@@ -388,27 +389,59 @@ Future<void> emitirComprobanteTrasCobro(
       return;
     } catch (e) {
       if (!context.mounted) return;
-      final reintentar = await showBlurDialog<bool>(
+      final accion = await showBlurDialog<String>(
         context: context,
         builder: (dialogContext) => AlertaApp(
           title: const Text('Comprobante no emitido'),
-          content: Text(
-            'El cobro quedó registrado, pero no se pudo emitir el comprobante: '
-            '${_mensajeError(e)}',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'El cobro quedó registrado, pero no se pudo emitir el comprobante:\n'
+                '${_mensajeError(e)}',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Puedes reintentar el envío o abrir el formulario para revisar y editar los datos manualmente.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop('cerrar'),
               child: const Text('Cerrar'),
             ),
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop('manual'),
+              child: const Text('Editar / Manual'),
+            ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop('reintentar'),
               child: const Text('Reintentar'),
             ),
           ],
         ),
       );
-      if (reintentar != true) return;
+      if (accion == 'manual') {
+        final res = await showBlurDialog<EmisionHecha>(
+          context: context,
+          builder: (_) => EmitirComprobanteDialog(pedido: pedido),
+        );
+        if (res != null && context.mounted) {
+          await showBlurDialog<void>(
+            context: context,
+            builder: (_) => ComprobanteEmitidoDialog(
+              comprobante: res.comprobante,
+              pedido: pedido,
+              imprimirAlConfirmar: res.imprimirDespues,
+            ),
+          );
+        }
+        return;
+      }
+      if (accion != 'reintentar') return;
     }
   }
 }
