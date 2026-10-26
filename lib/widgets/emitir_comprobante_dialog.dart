@@ -108,7 +108,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 12),
-        SelectorComprobante(control: _eleccion, permiteNinguno: false),
+        SelectorComprobante(control: _eleccion),
         if (_bloqueadoPorCobro)
           const Padding(
             padding: EdgeInsets.only(top: 10),

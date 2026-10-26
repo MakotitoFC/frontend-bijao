@@ -56,6 +56,68 @@ const _prefijoDescuento = 'Descuento: ';
 
 String tituloPedido(Pedido p) => p.ubicacion;
 
+// Abre el ticket del pedido (comanda de cocina y cuenta) y reimprime lo que se
+// pida, las veces que haga falta. Lo usan la comanda del cajero y el Historial.
+void mostrarTicketDelPedido(BuildContext context, Pedido p) {
+  String metodos() {
+    final m = mediosDePagoDe(p.id);
+    return m.isEmpty ? 'Sin pago' : m.join(', ');
+  }
+
+  String texto(Object e) => e is ApiException
+      ? e.message
+      : e.toString().replaceFirst('Exception: ', '');
+
+  void imprimir(
+    BuildContext dialogContext, {
+    required String tipo,
+    required String exito,
+    required String fallo,
+  }) {
+    ImpresionService.instance
+        .reimprimirPedido(p.id, tipo: tipo)
+        .then((_) {
+          if (context.mounted) {
+            showAppToast(context, exito, type: ToastType.success);
+          }
+        })
+        .catchError((Object e) {
+          if (context.mounted) {
+            showAppToast(context, '$fallo: ${texto(e)}', type: ToastType.error);
+          }
+        });
+    Navigator.of(dialogContext).pop();
+  }
+
+  marcarPedidoImpreso(p.id);
+  showBlurDialog<void>(
+    context: context,
+    builder: (dialogContext) => BoletaPedidoDialog(
+      pedido: p,
+      mesero: nombreMeseroDe(p),
+      titulo: tituloPedido(p),
+      metodoPago: metodos(),
+      onImprimir: () => imprimir(
+        dialogContext,
+        tipo: 'cocina',
+        exito:
+            'Comanda del pedido #${p.numeroPedido} reenviada a cocina '
+            '(REIMPRESIÓN).',
+        fallo: 'No se pudo imprimir',
+      ),
+      onImprimirCuenta: () => imprimir(
+        dialogContext,
+        tipo: 'cuenta',
+        exito:
+            'Cuenta del pedido #${p.numeroPedido} enviada a la impresora de '
+            'caja.',
+        fallo: 'No se pudo imprimir la cuenta',
+      ),
+      onCerrar: () => Navigator.of(dialogContext).pop(),
+    ),
+  );
+}
+
 String nombreMeseroDe(Pedido p) {
   final nombre = p.mozoNombre;
   if (nombre != null && nombre.isNotEmpty) return nombre;
@@ -1323,6 +1385,15 @@ class DetallePedidoPanel extends StatelessWidget {
               onEditar: _esCajero ? null : () => _editarTupper(context),
             ),
           if (pagado > 0.01) _filaTotal('Pagado', pagado),
+          // Con qué medio(s) se pagó, cada uno con su monto.
+          if (pagado > 0.01)
+            for (final m in pagosPorMedioDe(pedido.id))
+              _filaTotal('Pagó con ${m.medio}', m.monto),
+          // Efectivo que entregó el cliente y vuelto (solo en este dispositivo).
+          if (efectivoRecibidoPorPedido[pedido.id] case final e?) ...[
+            _filaTotal('Efectivo recibido', e.recibido),
+            _filaTotal('Vuelto', e.vuelto),
+          ],
           if (pagado > 0.01 && saldo > 0.01)
             _filaTotal('Saldo pendiente', saldo, color: AppColors.mesaOcupada),
           const SizedBox(height: 4),

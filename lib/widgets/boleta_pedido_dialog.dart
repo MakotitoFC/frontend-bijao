@@ -43,7 +43,7 @@ class BoletaPedidoDialog extends StatefulWidget {
 }
 
 class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
-  // 'comanda' o 'cuenta'.
+  // 'comanda', 'cuenta', 'ticket_venta', 'boleta' o 'factura'.
   String _tab = 'comanda';
 
   @override
@@ -58,19 +58,42 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
     final lineas = detallesPorPedido[pedido.id] ?? const [];
     final total = totalDePedido(pedido.id);
     final pagado = total - saldoPendienteDePedido(pedido.id);
-    final ticket = _tab == 'comanda'
-        ? ticketComanda(pedido: pedido, lineas: lineas, mozo: widget.mesero)
-        : ticketBoleta(
-            pedido: pedido,
-            lineas: lineas,
-            mozo: widget.mesero,
-            sede: datosDeLaSede(),
-            metodoPago: widget.metodoPago == 'Sin pago'
-                ? ''
-                : widget.metodoPago,
-            pagado: pagado > 0.001 ? pagado : 0,
-            recargo: recargoCobradoDePedido(pedido.id),
-          );
+    final efectivo = efectivoRecibidoPorPedido[pedido.id];
+    final metodo = widget.metodoPago == 'Sin pago' ? '' : widget.metodoPago;
+    final ticket = switch (_tab) {
+      'comanda' => ticketComanda(
+        pedido: pedido,
+        lineas: lineas,
+        mozo: widget.mesero,
+      ),
+      'cuenta' => ticketBoleta(
+        pedido: pedido,
+        lineas: lineas,
+        mozo: widget.mesero,
+        sede: datosDeLaSede(),
+        pagos: pagosPorMedioDe(pedido.id),
+        metodoPago: metodo,
+        pagado: pagado > 0.001 ? pagado : 0,
+        recargo: recargoCobradoDePedido(pedido.id),
+        recibido: efectivo?.recibido ?? 0,
+        vuelto: efectivo?.vuelto ?? 0,
+      ),
+      // Ticket de venta, boleta o factura: vista previa de lo que se emitirá.
+      _ => ticketComprobante(
+        tipo: _tab,
+        pedido: pedido,
+        lineas: lineas,
+        mozo: widget.mesero,
+        sede: datosDeLaSede(),
+        pagos: pagosPorMedioDe(pedido.id),
+        metodoPago: metodo,
+        pagado: pagado > 0.001 ? pagado : 0,
+        recargo: recargoCobradoDePedido(pedido.id),
+        recibido: efectivo?.recibido ?? 0,
+        vuelto: efectivo?.vuelto ?? 0,
+      ),
+    };
+    final esComprobante = _tab != 'comanda' && _tab != 'cuenta';
     return DialogoApp(
       titulo: 'Ticket · Pedido #${pedido.numeroPedido}',
       ancho: 480,
@@ -83,7 +106,9 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             label: const Text('Reimprimir comanda'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
           ),
-        if (_tab == 'cuenta' && widget.onImprimirCuenta != null)
+        if (_tab == 'cuenta' &&
+            !esComprobante &&
+            widget.onImprimirCuenta != null)
           FilledButton.icon(
             onPressed: widget.onImprimirCuenta,
             icon: const Icon(LucideIcons.printer, size: 16),
@@ -106,6 +131,21 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
               activo: _tab == 'cuenta',
               onTap: () => setState(() => _tab = 'cuenta'),
             ),
+            AppTag(
+              etiqueta: 'Ticket de venta',
+              activo: _tab == 'ticket_venta',
+              onTap: () => setState(() => _tab = 'ticket_venta'),
+            ),
+            AppTag(
+              etiqueta: 'Boleta',
+              activo: _tab == 'boleta',
+              onTap: () => setState(() => _tab = 'boleta'),
+            ),
+            AppTag(
+              etiqueta: 'Factura',
+              activo: _tab == 'factura',
+              onTap: () => setState(() => _tab = 'factura'),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -113,7 +153,11 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
           _tab == 'comanda'
               ? 'Así sale en la impresora de cocina (sin precios). Al '
                     'reimprimirla, el papel lleva el rótulo REIMPRESION.'
-              : 'Detalle de lo consumido, sin validez tributaria.',
+              : (_tab == 'cuenta'
+                    ? 'Detalle de lo consumido, sin validez tributaria.'
+                    : 'Vista previa de lo que se emitirá: la serie, el número y el '
+                          'código QR los asigna el sistema al emitir, y los datos '
+                          'del cliente se piden al cobrar.'),
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 12),
@@ -124,7 +168,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             borderRadius: BorderRadius.circular(12),
           ),
           // La boleta lleva logo; la comanda de cocina no.
-          child: TicketConLogo(lineas: ticket, conLogo: _tab == 'cuenta'),
+          child: TicketConLogo(lineas: ticket, conLogo: _tab != 'comanda'),
         ),
         const SizedBox(height: 12),
       ],

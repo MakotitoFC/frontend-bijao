@@ -111,13 +111,9 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   final _telefonoController = TextEditingController();
   final _direccionController = TextEditingController();
   final _referenciaController = TextEditingController();
-  // Costo de envío del delivery: depende de la dirección, por eso se escribe en
-  // cada pedido (sugerido: el monto de Configuración, si está activo).
-  late final _envioController = TextEditingController(
-    text: config.cargoDeliveryHabilitado
-        ? config.cargoDeliveryMonto.toStringAsFixed(2)
-        : '',
-  );
+  // Monto del delivery: obligatorio. Varía según la dirección y lo registra caja
+  // o administración, así que se escribe en cada pedido (nunca viene sugerido).
+  final _envioController = TextEditingController();
   final _notasController = TextEditingController();
 
   bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
@@ -470,6 +466,26 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         );
         return;
       }
+    }
+    if (esDelivery &&
+        double.tryParse(_envioController.text.trim().replaceAll(',', '.')) ==
+            null) {
+      await showBlurDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertaApp(
+          title: const Text('NO INGRESASTE EL MONTO'),
+          content: const Text(
+            'Escribe el monto del delivery antes de confirmar el pedido.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return;
     }
     if (esDelivery &&
         (_telefonoController.text.trim().isEmpty ||
@@ -1162,8 +1178,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               children: [
                 Text(
                   item.nombrePlato,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
@@ -1289,8 +1304,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           const SizedBox(height: 8),
           Text(
             item.nombrePlato,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            softWrap: true,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
           const SizedBox(height: 2),
@@ -1393,7 +1407,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           const SizedBox(height: 10),
           _campoTexto(
             controller: _envioController,
-            hint: 'Costo de envío (S/)',
+            hint: 'Monto del delivery (S/) * Obligatorio',
             icono: Icons.delivery_dining_outlined,
             teclado: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => setState(() {}),
@@ -1766,8 +1780,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               children: [
                 Text(
                   linea.nombrePlato,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 12.5,
@@ -1846,8 +1859,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               children: [
                 Text(
                   linea.nombrePlato,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 12,

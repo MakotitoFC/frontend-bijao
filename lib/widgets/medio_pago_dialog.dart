@@ -4,6 +4,7 @@ import '../models/medio_pago.dart';
 import '../services/api_client.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
+import 'app_select.dart';
 import 'app_switch.dart';
 import 'dialogo_app.dart';
 
@@ -28,6 +29,11 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
         : '',
   );
   late bool _comision = widget.medio?.aplicaComision ?? false;
+  // Grupo del método: de él salen las tarjetas de Caja. Al crear uno nuevo se
+  // propone según el nombre (por ejemplo, "Yape Joel" → digital) hasta que se
+  // elija a mano.
+  late String _grupo = widget.medio?.grupo ?? 'tarjeta';
+  bool _grupoElegido = false;
   bool _guardando = false;
   String? _error;
 
@@ -66,6 +72,7 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
           descripcion: _descripcion.text,
           aplicaComision: _comision,
           porcentajeComision: _comision ? porcentaje : 0,
+          grupo: _grupo,
         );
       } else {
         await servicio.crearMedioPago(
@@ -73,6 +80,7 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
           descripcion: _descripcion.text,
           aplicaComision: _comision,
           porcentajeComision: _comision ? porcentaje : 0,
+          grupo: _grupo,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -108,6 +116,33 @@ class _MedioPagoDialogState extends State<MedioPagoDialog> {
           controller: _nombre,
           hint: 'Ej. Efectivo, Yape, Tarjeta',
           autofocus: true,
+          onChanged: (v) {
+            if (!_editando && !_grupoElegido) {
+              setState(() => _grupo = grupoPorNombre(v));
+            }
+          },
+        ),
+        const SizedBox(height: 14),
+        AppSelect<String>(
+          label: 'Grupo',
+          flotante: true,
+          value: _grupo,
+          items: [
+            for (final g in gruposMedioPago)
+              AppSelectItem(value: g, label: etiquetaGrupoMedioPago(g)),
+          ],
+          onChanged: (v) => setState(() {
+            _grupo = v ?? _grupo;
+            _grupoElegido = true;
+          }),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            'Con el grupo se suman las tarjetas de Caja: todos los Yape van en '
+            '"Digital", aunque tengan nombres distintos.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
         ),
         const SizedBox(height: 14),
         CampoDialogo(

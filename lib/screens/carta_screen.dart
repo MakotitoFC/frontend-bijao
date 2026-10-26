@@ -652,8 +652,7 @@ class _CartaScreenState extends State<CartaScreen> {
                   const SizedBox(height: 2),
                   Text(
                     item.nombrePlato,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
@@ -689,8 +688,10 @@ class _CartaScreenState extends State<CartaScreen> {
                         estadoDisp.tipo == TipoDisponibilidad.conCantidad
                             ? '${estadoDisp.quedan ?? 0}'
                             : (estadoDisp.tipo == TipoDisponibilidad.agotado
-                                ? '0 (Agotado)'
-                                : (item.stock > 0 ? '${item.stock}' : 'Libre')),
+                                  ? '0 (Agotado)'
+                                  : (item.stock > 0
+                                        ? '${item.stock}'
+                                        : 'Libre')),
                       ),
                     ],
                   ),

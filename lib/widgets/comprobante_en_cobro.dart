@@ -40,11 +40,12 @@ bool puedeElegirComprobante(Pedido pedido) {
       (u.esAdmin || u.esCajero);
 }
 
-// Lo que el cajero eligió en el cobro: ninguno, ticket de venta (interno, sin
+// Lo que el cajero eligió en el cobro: ticket de venta (interno, sin
 // SUNAT), boleta (con o sin DNI) o factura (con RUC). El comprobante se emite
 // después de registrar el cobro, porque el servidor no factura sin un pago.
 class ComprobanteEnCobro extends ChangeNotifier {
-  ComprobanteEnCobro(this.total, {String tipoInicial = 'ninguno'})
+  // Siempre se emite un comprobante: el ticket de venta es el de por defecto.
+  ComprobanteEnCobro(this.total, {String tipoInicial = 'ticket_venta'})
     : tipo = tipoInicial;
 
   // Total que cubre el comprobante (en el pago compartido, lo de ese pagador).
@@ -175,14 +176,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
 // Sección "Comprobante" del diálogo de cobro.
 class SelectorComprobante extends StatelessWidget {
   final ComprobanteEnCobro control;
-  // En el cobro se puede no emitir nada ("Ninguno"); al emitir después, no.
-  final bool permiteNinguno;
 
-  const SelectorComprobante({
-    super.key,
-    required this.control,
-    this.permiteNinguno = true,
-  });
+  const SelectorComprobante({super.key, required this.control});
 
   Widget _campo(
     TextEditingController c,
@@ -322,7 +317,6 @@ class SelectorComprobante extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final t in [
-                if (permiteNinguno) ('ninguno', 'Ninguno'),
                 ('ticket_venta', 'Ticket de venta'),
                 ('boleta', 'Boleta'),
                 ('factura', 'Factura'),

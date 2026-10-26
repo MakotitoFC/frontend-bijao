@@ -5,6 +5,7 @@ import '../widgets/dialogo_app.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cierres_store.dart';
+import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../services/caja_service.dart';
@@ -27,6 +28,8 @@ import '../widgets/comprobantes_caja_panel.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/emitir_comprobante_dialog.dart';
 import '../widgets/movimiento_caja_dialog.dart';
+import '../widgets/app_select.dart';
+import '../widgets/selector_dia.dart';
 import '../widgets/selector_rango_fechas.dart';
 import '../widgets/tabla_app.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
@@ -76,10 +79,11 @@ class HistorialPedidosScreen extends StatefulWidget {
 class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   final _busqueda = TextEditingController();
   String _filtro = 'todos'; // todos | pagados | por_cobrar
-  // Rango de fechas de los pedidos mostrados (por defecto, los últimos 7 días:
-  // un turno que pasa de medianoche no debe esconder los pedidos de anoche).
+  String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
+  // Día de los pedidos mostrados (por defecto, hoy); se cambia con las flechas
+  // o el calendario.
   DateTimeRange? _rango = DateTimeRange(
-    start: DateUtils.dateOnly(DateTime.now().subtract(const Duration(days: 6))),
+    start: DateUtils.dateOnly(DateTime.now()),
     end: DateUtils.dateOnly(DateTime.now()),
   );
 
@@ -126,8 +130,19 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     if (p.estado == 'anulado') return 'Anulado';
     if (p.estado == 'pagado') return 'Pagado';
     final hayPagos = pagos.any((x) => x.pedidoId == p.id);
+    if (hayPagos &&
+        totalDePedido(p.id) > 0 &&
+        saldoPendienteDePedido(p.id) <= 0.01) {
+      return 'Pagado';
+    }
     return hayPagos ? 'Parcial' : 'Por cobrar';
   }
+
+  // Nombres de los medios de pago para el filtro (los activos y los usados).
+  List<String> get _nombresMedios => <String>{
+    for (final m in mediosPagoActivos) m.medioPago,
+    for (final p in pagos) p.medioPago.medioPago,
+  }.toList()..sort();
 
   String _metodos(Pedido p) {
     final m = <String>{
@@ -141,6 +156,10 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     final t = _busqueda.text.trim().toLowerCase();
     return pedidos.where((p) {
       if (!_enRango(p)) return false;
+      if (_medioFiltro != 'todos' &&
+          !mediosDePagoDe(p.id).contains(_medioFiltro)) {
+        return false;
+      }
       final ep = _estadoPago(p);
       if (_filtro == 'pagados' && ep != 'Pagado') return false;
       if (_filtro == 'por_cobrar' && ep != 'Por cobrar' && ep != 'Parcial') {
@@ -216,17 +235,35 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
               LayoutBuilder(
                 builder: (context, c) {
                   const titulo = Text(
-                    'Historial de pedidos',
+                    'Historial de ventas',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   );
                   final controles = [
                     _pastilla('Todos', 'todos'),
                     _pastilla('Pagados', 'pagados'),
                     _pastilla('Por cobrar', 'por_cobrar'),
-                    SelectorRangoFechas(
-                      valor: _rango,
-                      permiteTodas: true,
-                      onChanged: _cambiarRango,
+                    SelectorDia(
+                      dia: _rango?.start ?? DateTime.now(),
+                      onChanged: (d) =>
+                          _cambiarRango(DateTimeRange(start: d, end: d)),
+                    ),
+                    SizedBox(
+                      width: 220,
+                      child: AppSelect<String>(
+                        compacto: true,
+                        value: _medioFiltro,
+                        hint: 'Medio de pago',
+                        items: [
+                          const AppSelectItem(
+                            value: 'todos',
+                            label: 'Todos los medios de pago',
+                          ),
+                          for (final n in _nombresMedios)
+                            AppSelectItem(value: n, label: n),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _medioFiltro = v ?? 'todos'),
+                      ),
                     ),
                     AppSearchField(
                       controller: _busqueda,
@@ -342,6 +379,13 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   Widget _acciones(Pedido p) {
     final estado = _estadoPago(p);
     final botones = [
+      // Reimprimir la cuenta o la comanda, las veces que haga falta.
+      _botonAccion(
+        'Reimprimir cuenta o comanda',
+        LucideIcons.printer,
+        Colors.black87,
+        () => mostrarTicketDelPedido(context, p),
+      ),
       if (estado != 'Pagado' && estado != 'Anulado')
         _botonAccion(
           'Cobrar',
@@ -413,19 +457,35 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
         ),
         ColumnaTabla(
           titulo: 'Método',
-          ancho: 110,
-          celda: (p) => TablaApp.texto(_metodos(p)),
+          flex: 1.3,
+          anchoMin: 150,
+          celda: (p) => Tooltip(
+            message: _metodos(p),
+            child: Text(
+              _metodos(p),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TablaApp.estiloTexto,
+            ),
+          ),
         ),
         ColumnaTabla(
           titulo: 'Pago',
           ancho: 110,
           rol: RolTarjeta.estado,
           ordenarPor: (p) => _estadoPago(p),
-          celda: (p) => _chipPago(_estadoPago(p)),
+          celda: (p) => Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              _chipPago(_estadoPago(p)),
+              if (pagadoSinServir(p)) _chipPago('Sin servir'),
+            ],
+          ),
         ),
         ColumnaTabla(
           titulo: 'Acciones',
-          ancho: 110,
+          ancho: 150,
           rol: RolTarjeta.acciones,
           celda: (p) => _acciones(p),
         ),
@@ -1378,9 +1438,8 @@ class _CajaScreenState extends State<CajaScreen> {
     required double ingresos,
     required double salidas,
   }) {
-    double ventasDe(String grupo) => filas
-        .where((f) => grupoDeMedio(f.medio) == grupo)
-        .fold(0.0, (s, f) => s + f.ventas);
+    double ventasDe(String grupo) =>
+        filas.where((f) => f.grupo == grupo).fold(0.0, (s, f) => s + f.ventas);
     // Menos que una tablet: tarjetas en miniatura, 2 columnas por 2 filas, con
     // desplazamiento hacia el lado para ver el resto.
     final mini = AppBreakpoints.esMenorATablet(context);

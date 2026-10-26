@@ -23,17 +23,18 @@ void main() {
     return control;
   }
 
-  testWidgets('arranca en Ninguno: no emite nada y deja cobrar', (
+  testWidgets('arranca en Ticket de venta y no ofrece "Ninguno"', (
     tester,
   ) async {
     final control = await abrir(tester, 52);
-    expect(find.text('Ninguno'), findsOneWidget);
+    expect(find.text('Ninguno'), findsNothing);
     expect(find.text('Ticket de venta'), findsOneWidget);
     expect(find.text('Boleta'), findsOneWidget);
     expect(find.text('Factura'), findsOneWidget);
-    expect(control.emite, isFalse);
+    expect(control.tipo, 'ticket_venta');
+    expect(control.emite, isTrue);
     expect(control.completo, isTrue);
-    expect(find.text('Imprimir en la ticketera de caja'), findsNothing);
+    expect(find.text('Imprimir en la ticketera de caja'), findsOneWidget);
   });
 
   testWidgets('ticket de venta emite sin pedir datos', (tester) async {
@@ -104,16 +105,16 @@ void main() {
     expect(find.byTooltip('Buscar en SUNAT'), findsOneWidget);
   });
 
-  testWidgets('volver a Ninguno vuelve a dejar cobrar aunque falten datos', (
+  testWidgets('volver al ticket de venta vuelve a dejar cobrar', (
     tester,
   ) async {
     final control = await abrir(tester, 52);
     await tester.tap(find.text('Factura'));
     await tester.pump();
     expect(control.completo, isFalse);
-    await tester.tap(find.text('Ninguno'));
+    await tester.tap(find.text('Ticket de venta'));
     await tester.pump();
-    expect(control.emite, isFalse);
+    expect(control.emite, isTrue);
     expect(control.completo, isTrue);
   });
 }

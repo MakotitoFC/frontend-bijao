@@ -3,6 +3,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/borrador_pedido_store.dart';
 import '../widgets/campana_notificaciones.dart';
+import '../widgets/aviso_caja_cerrada.dart';
 import '../data/nav_items.dart';
 import '../models/categoria_comida.dart';
 import '../models/app_role.dart';
@@ -72,7 +73,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     CatalogService.instance.cargarCatalogos();
     EventosService.instance.iniciar();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _pedirCambioDePin());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pedirCambioDePin();
+      _avisarCajaCerrada();
+    });
+  }
+
+  // Quien tiene la vista de Caja puede abrirla desde el aviso.
+  bool get _puedeAbrirCaja =>
+      navItems.any((i) => i.clave == 'caja' && i.tieneAcceso(widget.usuario));
+
+  // Al entrar al sistema: si la caja está cerrada, se avisa (con "Ir a abrir"
+  // para cajero y administrador).
+  Future<void> _avisarCajaCerrada() async {
+    if (!await cajaCerrada() || !mounted) return;
+    await mostrarAvisoCajaCerrada(
+      context,
+      irAAbrir: _puedeAbrirCaja ? () => _irA('caja') : null,
+    );
   }
 
   // El backend marca `debe_cambiar_pin` mientras el PIN siga siendo el
@@ -120,8 +138,8 @@ class _HomeScreenState extends State<HomeScreen> {
       descripcion: 'Comandas pendientes por preparar',
     ),
     'historial_pedidos': (
-      titulo: 'Historial de pedidos',
-      descripcion: 'Pedidos y su estado de pago',
+      titulo: 'Ventas',
+      descripcion: 'Historial de ventas y su estado de pago',
     ),
     'caja': (titulo: 'Caja', descripcion: 'Caja actual y cierres de caja'),
     'reportes': (titulo: 'Reportes', descripcion: 'Ventas y reportes'),
@@ -173,7 +191,10 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: () => cocina.CocinaScreen(modoCaja: true),
           );
         }
-        return PedidosScreen(usuario: widget.usuario);
+        return PedidosScreen(
+          usuario: widget.usuario,
+          onIrACaja: _puedeAbrirCaja ? () => _irA('caja') : null,
+        );
       case 'productos':
         return DeferredWidget(
           loader: carta.loadLibrary,

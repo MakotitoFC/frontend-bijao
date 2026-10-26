@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import 'campo_texto.dart';
 
-// Buscador común de todas las vistas: un solo campo con lupa, del mismo alto
-// que tags y selects, con el borde y el placeholder del resto de campos y un
-// ancho que se ajusta al texto de su placeholder.
+// Buscador común de todas las vistas: un solo campo con lupa, de tamaño medio
+// (46 px de alto y texto de 14) en celular, tablet y escritorio, con el borde y
+// el placeholder del resto de campos. En escritorio y tablet el ancho se ajusta
+// al texto de su placeholder; en el celular ocupa todo el ancho.
 class AppSearchField extends StatelessWidget {
   final String hint;
   final TextEditingController? controller;
@@ -21,48 +21,59 @@ class AppSearchField extends StatelessWidget {
     this.ajustarAlTexto = true,
   });
 
+  // Alto y texto del buscador, iguales en los tres dispositivos.
+  static const double _alto = 46;
+  // Esquinas más redondeadas que las del resto de campos.
+  static const double _radio = 16;
+  static const double _tamanoTexto = 14;
+
   // Lupa + márgenes + algo de espacio para escribir.
-  static const double _extra = 14 + 22 + 12 + 24;
+  static const double _extra = 14 + 24 + 12 + 24;
 
   static OutlineInputBorder _borde(Color color, [double ancho = 1]) =>
       OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppRadii.tag),
+        borderRadius: BorderRadius.circular(_radio),
         borderSide: BorderSide(color: color, width: ancho),
       );
 
   @override
   Widget build(BuildContext context) {
-    const estiloHint = TextStyle(fontSize: CampoTexto.tamanoPlaceholder);
+    const estiloHint = TextStyle(fontSize: _tamanoTexto);
     final medida = TextPainter(
       text: TextSpan(text: hint, style: estiloHint),
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout();
+    // En el celular el buscador ocupa todo el ancho y es más alto, para verlo
+    // y tocarlo con comodidad.
+    final movil = AppBreakpoints.esMobile(context);
     return SizedBox(
-      width: ajustarAlTexto ? medida.width + _extra + 20 : double.infinity,
-      height: AppSizes.control,
+      width: (ajustarAlTexto && !movil)
+          ? medida.width + _extra + 20
+          : double.infinity,
+      height: _alto,
       child: TextField(
         controller: controller,
         onChanged: onChanged,
         cursorColor: AppColors.primaryGreen,
-        style: const TextStyle(fontSize: CampoTexto.tamanoTexto),
+        style: const TextStyle(fontSize: _tamanoTexto),
         decoration: InputDecoration(
           isDense: true,
           filled: true,
           fillColor: Colors.white,
           hintText: hint,
           hintStyle: TextStyle(
-            fontSize: CampoTexto.tamanoPlaceholder,
+            fontSize: _tamanoTexto,
             color: Colors.grey.shade500,
           ),
-          prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey.shade500),
+          prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey.shade500),
           prefixIconConstraints: const BoxConstraints(
-            minWidth: 38,
-            minHeight: 18,
+            minWidth: 40,
+            minHeight: 20,
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
-            vertical: 9,
+            vertical: 13,
           ),
           border: _borde(Colors.grey.shade300),
           enabledBorder: _borde(Colors.grey.shade300),

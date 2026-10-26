@@ -521,7 +521,7 @@ class _MesasPlanoState extends State<MesasPlano> {
         // Escala del dibujo según el ancho disponible.
         final scale = c.maxWidth >= 640
             ? 1.0
-            : (c.maxWidth >= 420 ? 0.82 : 0.68);
+            : (c.maxWidth >= 420 ? 0.9 : 0.82);
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           child: _sala(zona, scale, c.maxWidth - 32),

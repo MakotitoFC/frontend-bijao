@@ -98,6 +98,7 @@ class TotalesCajaServidor {
           if (m is Map<String, dynamic>)
             FilaResumenMedio(
               m['medio_pago_nombre']?.toString() ?? '',
+              grupoServidor: m['grupo']?.toString(),
               ventas: jsonDouble(m['ventas']) ?? 0,
               ingresos: jsonDouble(m['ingresos']) ?? 0,
               egresos: jsonDouble(m['salidas']) ?? 0,

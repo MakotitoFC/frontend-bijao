@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
@@ -29,6 +30,9 @@ typedef BoletaPagador = ({
   List<({String descripcion, double monto})> items,
   double total,
   List<({MedioPago medio, double monto})> pagos,
+  // Efectivo que entregó y vuelto que se le dio (0 si pagó justo).
+  double recibido,
+  double vuelto,
 });
 
 typedef ResultadoPagoCompartido = ({
@@ -48,9 +52,11 @@ class _FilaPago {
 class _Pagador {
   final TextEditingController nombre;
   final List<_FilaPago> pagos;
-  // Comprobante que pide este pagador (ninguno, boleta o factura); null si el
+  // Comprobante que pide este pagador (ticket, boleta o factura); null si el
   // pedido no admite comprobante.
   ComprobanteEnCobro? comprobante;
+  // Efectivo con el que paga (para el vuelto); vacío = pagó justo.
+  final recibido = TextEditingController();
 
   _Pagador(String nombre, MedioPago medio)
     : nombre = TextEditingController(text: nombre),
@@ -59,6 +65,7 @@ class _Pagador {
   void liberar() {
     comprobante?.dispose();
     nombre.dispose();
+    recibido.dispose();
     for (final p in pagos) {
       p.monto.dispose();
     }
@@ -142,7 +149,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   MedioPago get _medioInicial => mediosPagoActivos.first;
 
   // Comprobante a emitir al saldar la cuenta (solo administración y caja).
-  // Cada pagador puede pedir un comprobante distinto: uno ninguno, otro boleta
+  // Cada pagador puede pedir un comprobante distinto: uno ticket, otro boleta
   // y otro factura. Se crea al armar los pagadores.
   late final bool _admiteComprobante = puedeElegirComprobante(widget.pedido);
 
@@ -280,6 +287,25 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     return res;
   }
 
+  // Lo que este pagador paga en efectivo (sin recargo).
+  double _efectivoDe(_Pagador p) => p.pagos
+      .where((f) => f.medio.grupo == 'efectivo')
+      .fold(0.0, (s, f) => s + leerMonto(f.monto.text));
+
+  double _vueltoDe(_Pagador p) {
+    final r = leerMonto(p.recibido.text);
+    final e = _efectivoDe(p);
+    return e > 0.005 && r > e + 0.005 ? r - e : 0.0;
+  }
+
+  // Vacío = pagó justo; si se escribe, tiene que alcanzar para su efectivo.
+  bool _recibidoValido(_Pagador p) {
+    final e = _efectivoDe(p);
+    return p.recibido.text.trim().isEmpty ||
+        e <= 0.005 ||
+        leerMonto(p.recibido.text) >= e - 0.005;
+  }
+
   // Pagadores con un solo método siguen automáticamente a su monto.
   void _sincronizar() {
     final montos = _montos;
@@ -320,6 +346,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       final p = _pagadores[i];
       if ((_sumaPagos(p) - montos[i]).abs() > 0.01) return false;
       if (p.pagos.any((f) => leerMonto(f.monto.text) <= 0)) return false;
+      if (!_recibidoValido(p)) return false;
     }
     return hayAlguno;
   }
@@ -425,6 +452,8 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         for (final f in p.pagos)
           (medio: f.medio, monto: leerMonto(f.monto.text)),
       ],
+      recibido: _vueltoDe(p) > 0.005 ? leerMonto(p.recibido.text) : 0,
+      vuelto: _vueltoDe(p),
     );
   }
 
@@ -530,6 +559,13 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       return;
     }
     if (!mounted) return;
+    final vueltoTotal = boletas.fold(0.0, (s, b) => s + b.vuelto);
+    if (vueltoTotal > 0.005) {
+      efectivoRecibidoPorPedido[widget.pedido.id] = (
+        recibido: boletas.fold(0.0, (s, b) => s + b.recibido),
+        vuelto: vueltoTotal,
+      );
+    }
     showAppToast(
       context,
       'Pago compartido entre ${boletas.length} · '
@@ -932,6 +968,36 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                       ),
                     ),
                   ),
+                if (conMonto && _efectivoDe(p) > 0.005) ...[
+                  const SizedBox(height: 8),
+                  CampoTexto(
+                    controller: p.recibido,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'Paga en efectivo con (S/) · opcional, para el vuelto',
+                      errorText: _recibidoValido(p)
+                          ? null
+                          : 'Falta: su efectivo es S/ ${_efectivoDe(p).toStringAsFixed(2)}',
+                    ),
+                  ),
+                  if (_vueltoDe(p) > 0.005)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Vuelto: S/ ${_vueltoDe(p).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                ],
                 Row(
                   children: [
                     Expanded(

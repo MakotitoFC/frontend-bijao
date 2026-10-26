@@ -9,6 +9,10 @@ enum _LadoSilla { izquierda, derecha, arriba, abajo }
 // Tarjeta de mesa (número de sillas según `Mesa.capacidad`). Si `unidas` no
 // está vacío, dibuja una sola mesa ancha (varias mesas por pedido); si no
 // entra en el ancho disponible, se dibuja compacta (`simplificada`).
+// Área táctil mínima de los íconos de la tarjeta (desunir y editar) y su tamaño.
+const double _areaToque = 44;
+const double _tamanoIcono = 20;
+
 class MesaCard extends StatelessWidget {
   static const double _cuerpoChico = 110;
   static const double _cuerpoGrande = 150;
@@ -181,7 +185,7 @@ class MesaCard extends StatelessWidget {
                                 Flexible(child: _tagZona(scale)),
                               ],
                               if (_unida && onDesunir != null)
-                                SizedBox(width: 22 * scale),
+                                const SizedBox(width: _areaToque - 8),
                             ],
                           ),
                           const Spacer(),
@@ -223,36 +227,43 @@ class MesaCard extends StatelessWidget {
                       ),
                       if (_unida && onDesunir != null)
                         Positioned(
-                          top: 0,
-                          right: 0,
-                          child: InkWell(
-                            onTap: onDesunir,
-                            borderRadius: BorderRadius.circular(20),
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: Icon(
-                                LucideIcons.unlink,
-                                size: 16 * scale,
-                                color: textoPrincipal,
+                          top: -10,
+                          right: -10,
+                          child: Tooltip(
+                            message: 'Desunir mesas',
+                            child: InkWell(
+                              onTap: onDesunir,
+                              borderRadius: BorderRadius.circular(24),
+                              child: SizedBox.square(
+                                dimension: _areaToque,
+                                child: Center(
+                                  child: Icon(
+                                    LucideIcons.unlink,
+                                    size: _tamanoIcono,
+                                    color: textoPrincipal,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       if (onEditar != null)
                         Positioned(
-                          bottom: 0,
-                          right: 0,
+                          bottom: -10,
+                          right: -10,
                           child: Tooltip(
                             message: 'Editar mesa',
                             child: InkWell(
                               onTap: onEditar,
-                              borderRadius: BorderRadius.circular(20),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Icon(
-                                  LucideIcons.pencil,
-                                  size: 14 * scale,
-                                  color: textoPrincipal,
+                              borderRadius: BorderRadius.circular(24),
+                              child: SizedBox.square(
+                                dimension: _areaToque,
+                                child: Center(
+                                  child: Icon(
+                                    LucideIcons.pencil,
+                                    size: _tamanoIcono - 2,
+                                    color: textoPrincipal,
+                                  ),
                                 ),
                               ),
                             ),

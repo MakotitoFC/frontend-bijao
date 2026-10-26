@@ -260,8 +260,14 @@ List<LineaTicket> ticketBoleta({
   required String mozo,
   required DatosSede sede,
   String metodoPago = '',
+  // Lo cobrado por cada medio (con su nombre, por ejemplo cada Yape): si viene,
+  // el ticket lista todos los medios con su monto.
+  List<({String medio, double monto})> pagos = const [],
   double pagado = 0,
   double recargo = 0,
+  // Efectivo que entregó el cliente y vuelto que se le dio (0 si pagó justo).
+  double recibido = 0,
+  double vuelto = 0,
 }) {
   final productos = [
     for (final l in lineas)
@@ -362,11 +368,19 @@ List<LineaTicket> ticketBoleta({
       LineaTicket(padLinea('SALDO PENDIENTE', soles(saldo)), negrita: true),
     );
   }
+  if (vuelto > 0.001 && recibido > 0.001) {
+    salida
+      ..add(LineaTicket(padLinea('EFECTIVO RECIBIDO', soles(recibido))))
+      ..add(LineaTicket(padLinea('VUELTO', soles(vuelto)), negrita: true));
+  }
   salida.addAll(
     _pieBoleta(
       total: totalCobrado,
       pagoCon: [
-        if (pagado > 0.001)
+        if (pagado > 0.001 && pagos.isNotEmpty)
+          for (final p in pagos)
+            'PAGO CON: ${p.medio.toUpperCase()} ${soles(p.monto)}'
+        else if (pagado > 0.001)
           'PAGO CON: ${metodoPago.isEmpty ? 'EFECTIVO' : metodoPago.toUpperCase()}'
               ' ${soles(pagado + (conRecargo ? recargo : 0))}'
         else
@@ -374,6 +388,135 @@ List<LineaTicket> ticketBoleta({
       ],
     ),
   );
+  return salida;
+}
+
+// Vista previa del ticket de venta, la boleta o la factura de un pedido
+// ([tipo]: 'ticket_venta', 'boleta' o 'factura'): el detalle de la cuenta con el
+// título del documento, los datos del cliente y, en boleta y factura, el
+// desglose del IGV. La serie, el número y el código QR los asigna el sistema al
+// emitir, por eso aquí van como marcas.
+List<LineaTicket> ticketComprobante({
+  required String tipo,
+  required Pedido pedido,
+  required List<PedidoLine> lineas,
+  required String mozo,
+  required DatosSede sede,
+  String metodoPago = '',
+  List<({String medio, double monto})> pagos = const [],
+  double pagado = 0,
+  double recargo = 0,
+  double recibido = 0,
+  double vuelto = 0,
+  // Datos del cliente (DNI o RUC y su nombre); si faltan, van como marcas.
+  String? documentoCliente,
+  String? denominacionCliente,
+  String? direccionCliente,
+}) {
+  final base = ticketBoleta(
+    pedido: pedido,
+    lineas: lineas,
+    mozo: mozo,
+    sede: sede,
+    metodoPago: metodoPago,
+    pagos: pagos,
+    pagado: pagado,
+    recargo: recargo,
+    recibido: recibido,
+    vuelto: vuelto,
+  );
+  final esFactura = tipo == 'factura';
+  final esBoleta = tipo == 'boleta';
+  final titulo = esFactura
+      ? 'FACTURA ELECTRONICA'
+      : (esBoleta ? 'BOLETA DE VENTA ELECTRONICA' : 'TICKET DE VENTA');
+  final serie = esFactura
+      ? 'F###-########'
+      : (esBoleta ? 'B###-########' : 'T###-########');
+  final total =
+      lineas.fold(0.0, (s, l) => s + l.precioTotalLinea) +
+      (recargo > 0.001 ? recargo : 0);
+  final gravada = total / 1.18;
+  final igv = total - gravada;
+  String doc(String? v, String vacio) =>
+      (v == null || v.trim().isEmpty) ? vacio : v.trim();
+
+  final salida = <LineaTicket>[];
+  for (final l in base) {
+    final x = l.texto;
+    if (x == 'CUENTA DE CONSUMO') {
+      salida.add(LineaTicket.centro(titulo, negrita: true));
+    } else if (x == 'No es comprobante de pago') {
+      salida.add(
+        LineaTicket.centro(
+          esFactura || esBoleta
+              ? 'VISTA PREVIA'
+              : 'Documento interno, sin validez tributaria',
+        ),
+      );
+    } else if (x == pedido.numeroPedido && l.doble) {
+      // El número de orden se cambia por la serie y el número del documento.
+      salida.add(LineaTicket.centro(serie, negrita: true, doble: true));
+    } else if (x.startsWith('Cliente: ')) {
+      if (esFactura) {
+        salida
+          ..add(
+            LineaTicket('RUC: ${doc(documentoCliente, '(se pide al emitir)')}'),
+          )
+          ..add(
+            LineaTicket(
+              'Razon social: ${doc(denominacionCliente, '(se pide al emitir)')}',
+            ),
+          );
+        if (direccionCliente != null && direccionCliente.trim().isNotEmpty) {
+          salida.add(LineaTicket('Direccion: ${direccionCliente.trim()}'));
+        }
+      } else if (esBoleta) {
+        salida
+          ..add(
+            LineaTicket(
+              'Cliente: ${doc(denominacionCliente, 'CLIENTES VARIOS')}',
+            ),
+          )
+          ..add(LineaTicket('DNI: ${doc(documentoCliente, '00000000')}'));
+      } else {
+        salida.add(l);
+      }
+    } else if (x == 'DOCUMENTO SIN VALIDEZ TRIBUTARIA') {
+      salida.add(
+        LineaTicket.centro(
+          esFactura || esBoleta
+              ? 'Representacion impresa de la ${esFactura ? 'factura' : 'boleta'} electronica'
+              : 'DOCUMENTO INTERNO SIN VALIDEZ TRIBUTARIA',
+        ),
+      );
+    } else if (x == 'Pida su boleta o factura en caja') {
+      salida.add(
+        LineaTicket.centro(
+          esFactura || esBoleta
+              ? 'Consulte su comprobante en la SUNAT'
+              : 'Pida su boleta o factura en caja',
+        ),
+      );
+    } else if ((esFactura || esBoleta) && x.startsWith('TOTAL') && l.doble) {
+      // Antes del total: base imponible e IGV.
+      salida
+        ..add(LineaTicket(padLinea('OP. GRAVADA', soles(gravada))))
+        ..add(LineaTicket(padLinea('IGV (18%)', soles(igv))))
+        ..add(l);
+    } else {
+      salida.add(l);
+    }
+  }
+  // Boleta y factura llevan el código QR de SUNAT, que se genera al emitir.
+  if (esFactura || esBoleta) {
+    final i = salida.lastIndexWhere(
+      (l) => l.texto.startsWith('Representacion'),
+    );
+    if (i > 0) {
+      salida.insert(i, const LineaTicket.centro('[ CODIGO QR AL EMITIR ]'));
+    }
+  }
   return salida;
 }
 
@@ -387,6 +530,9 @@ List<LineaTicket> ticketPagador({
   required DatosSede sede,
   // Recargo por el método de pago (p. ej. tarjeta), que se suma a su total.
   double recargo = 0,
+  // Efectivo que entregó y vuelto que se le dio (0 si pagó justo).
+  double recibido = 0,
+  double vuelto = 0,
 }) {
   final conRecargo = recargo > 0.001;
   final totalCobrado = total + (conRecargo ? recargo : 0);
@@ -426,6 +572,11 @@ List<LineaTicket> ticketPagador({
       doble: true,
     ),
   );
+  if (vuelto > 0.001 && recibido > 0.001) {
+    salida
+      ..add(LineaTicket(padLinea('EFECTIVO RECIBIDO', soles(recibido))))
+      ..add(LineaTicket(padLinea('VUELTO', soles(vuelto)), negrita: true));
+  }
   salida.addAll(
     _pieBoleta(
       total: totalCobrado,

@@ -118,6 +118,7 @@ class CatalogService {
     String? descripcion,
     bool aplicaComision = false,
     double porcentajeComision = 0,
+    String grupo = 'tarjeta',
   }) async {
     final sedeId = AuthService.instance.currentUser?.sedeId;
     final res = await _api.post(
@@ -129,6 +130,7 @@ class CatalogService {
           'descripcion': descripcion.trim(),
         'aplica_comision': aplicaComision,
         'porcentaje_comision': aplicaComision ? porcentajeComision : 0,
+        'grupo': grupo,
         'estado': true,
         if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
       },
@@ -145,6 +147,7 @@ class CatalogService {
     bool? aplicaComision,
     double? porcentajeComision,
     bool? activo,
+    String? grupo,
   }) async {
     final res = await _api.put(
       '/api/medios-pago/$id',
@@ -153,6 +156,7 @@ class CatalogService {
         'descripcion': ?descripcion?.trim(),
         'aplica_comision': ?aplicaComision,
         'porcentaje_comision': ?porcentajeComision,
+        'grupo': ?grupo,
         'estado': ?activo,
       },
     );

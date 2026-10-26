@@ -29,6 +29,47 @@ double montoPagadoDeLinea(String pedidoDetalleId) => pagoDetalles
     .where((d) => d.pedidoDetalleId == pedidoDetalleId)
     .fold(0.0, (sum, d) => sum + d.montoAplicado);
 
+// Nombres de los medios de pago con los que se cobró un pedido (todos, sin
+// repetir): "Yape Joel", "Efectivo"…
+List<String> mediosDePagoDe(String pedidoId) => [
+  ...{
+    for (final p in pagos.where(
+      (x) => x.pedidoId == pedidoId && !x.esReembolso,
+    ))
+      p.medioPago.medioPago,
+  },
+];
+
+// Efectivo que entregó el cliente al pagar y vuelto que se le dio, por pedido.
+// El servidor no lo guarda: sale en el ticket de este dispositivo.
+final Map<String, ({double recibido, double vuelto})>
+efectivoRecibidoPorPedido = {};
+
+// Lo cobrado por cada medio de pago de un pedido (con el nombre del medio:
+// "Yape Joel", "Efectivo"), sumando los pagos del mismo medio. Es lo que sale en
+// el ticket.
+List<({String medio, double monto})> pagosPorMedioDe(String pedidoId) {
+  final porMedio = <String, double>{};
+  for (final p in pagos.where(
+    (x) => x.pedidoId == pedidoId && !x.esReembolso,
+  )) {
+    porMedio.update(
+      p.medioPago.medioPago,
+      (v) => v + p.montoCobrado,
+      ifAbsent: () => p.montoCobrado,
+    );
+  }
+  return [for (final e in porMedio.entries) (medio: e.key, monto: e.value)];
+}
+
+// Pedido ya cobrado por completo que todavía no sale (sigue pendiente de
+// servir): se marca con un tag para que no se confunda con uno por cobrar.
+bool pagadoSinServir(Pedido p) {
+  if (p.estado != 'pendiente' && p.estado != 'pedido') return false;
+  if (!pagos.any((x) => x.pedidoId == p.id && !x.esReembolso)) return false;
+  return totalDePedido(p.id) > 0 && saldoPendienteDePedido(p.id) <= 0.01;
+}
+
 double saldoPendienteDePedido(String pedidoId) {
   final lineas = detallesPorPedido[pedidoId] ?? [];
   return lineas.fold(

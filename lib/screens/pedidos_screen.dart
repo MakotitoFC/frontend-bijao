@@ -5,6 +5,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/borrador_pedido_store.dart';
 import '../data/mesas_por_liberar_store.dart';
+import '../data/configuracion_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/app_role.dart';
@@ -17,6 +18,9 @@ import '../services/pedido_mozo_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../widgets/app_search_field.dart';
+import '../widgets/app_select.dart';
+import '../widgets/aviso_caja_cerrada.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/cronometro_pedido.dart';
@@ -29,8 +33,10 @@ import '../widgets/tabs_desplazables.dart';
 // `pedidos_detalle`) a la izquierda y detalle del pedido elegido a la derecha.
 class PedidosScreen extends StatefulWidget {
   final Usuario usuario;
+  // Lleva a la vista de Caja (solo para quien puede abrirla).
+  final VoidCallback? onIrACaja;
 
-  const PedidosScreen({super.key, required this.usuario});
+  const PedidosScreen({super.key, required this.usuario, this.onIrACaja});
 
   @override
   State<PedidosScreen> createState() => _PedidosScreenState();
@@ -40,7 +46,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
   static const _anchoDetalle = 390.0;
   static const _anchoMinDosSecciones = 900.0;
 
-  String? _estadoFiltro; // null = Todos
+  String? _tipoFiltro; // null = Todos; 'mesa' | 'delivery' | 'llevar'
+  final _busqueda = TextEditingController();
   String? _seleccionId; // pedido mostrado en el detalle
   bool _armandoPedido = false; // true = la vista muestra "Nuevo pedido"
   String? _tipoNuevoPedido; // 'mesa' | 'delivery', elegido en el modal
@@ -78,6 +85,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     EventosService.instance.revision.removeListener(_alCambiarEnVivo);
     mesasPorLiberarNotifier.removeListener(_alCambiarEnVivo);
     _pollingTimer?.cancel();
+    _busqueda.dispose();
     super.dispose();
   }
 
@@ -208,34 +216,70 @@ class _PedidosScreenState extends State<PedidosScreen> {
   // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
   bool _esActivo(Pedido p) => p.abierto;
 
+  String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
+
+  // Pedidos cobrados (aunque sea en parte) con el medio elegido.
+  bool _conMedio(Pedido p) =>
+      _medioFiltro == 'todos' || mediosDePagoDe(p.id).contains(_medioFiltro);
+
+  // Texto del buscador: coincide con la mesa, el mozo, el número del pedido o
+  // el cliente (sin distinguir mayúsculas ni tildes).
+  bool _coincide(Pedido p) {
+    final q = _normalizar(_busqueda.text.trim());
+    if (q.isEmpty) return true;
+    final campos = [
+      p.ubicacion,
+      if (p.mesaNumero > 0) 'mesa ${p.mesaNumero}',
+      nombreMeseroDe(p),
+      p.numeroPedido,
+      p.clienteNombre ?? '',
+    ];
+    return campos.any((c) => _normalizar(c).contains(q));
+  }
+
+  static String _normalizar(String t) {
+    const de = 'áàäâéèëêíìïîóòöôúùüûñ';
+    const a = 'aaaaeeeeiiiioooouuuun';
+    final b = StringBuffer();
+    for (final c in t.toLowerCase().split('')) {
+      final i = de.indexOf(c);
+      b.write(i >= 0 ? a[i] : c);
+    }
+    return b.toString();
+  }
+
   List<Pedido> get _cola {
-    final base = pedidos.where(_esActivo);
-    if (_estadoFiltro == null) return base.toList();
-    if (_estadoFiltro == 'pendiente') {
-      return base
-          .where((p) => p.estado == 'pendiente' || p.estado == 'pedido')
+    // "Pagados": los ya cobrados. En "Todos" y en los demás filtros solo están
+    // los pedidos abiertos, para que lo cobrado no estorbe.
+    if (_tipoFiltro == 'pagados') {
+      return pedidos
+          .where((p) => p.estado == 'pagado' && _conMedio(p) && _coincide(p))
           .toList();
     }
-    return base.where((p) => p.estado == _estadoFiltro).toList();
+    final base = pedidos.where((p) => _esActivo(p) && _coincide(p));
+    if (_tipoFiltro == null) return base.toList();
+    return base.where((p) => p.tipoPedido == _tipoFiltro).toList();
   }
 
   // Pedido elegido, o null si ya no está activo (pagado/cancelado/devuelto).
   Pedido? get _seleccionado {
     for (final p in pedidos) {
-      if (p.id == _seleccionId && _esActivo(p)) return p;
+      if (p.id == _seleccionId &&
+          (_esActivo(p) ||
+              (_tipoFiltro == 'pagados' && p.estado == 'pagado'))) {
+        return p;
+      }
     }
     return null;
   }
 
-  int _contarEstado(String? estado) {
+  int _contarTipo(String? tipo) {
+    if (tipo == 'pagados') {
+      return pedidos.where((p) => p.estado == 'pagado').length;
+    }
     final base = pedidos.where(_esActivo);
-    if (estado == null) return base.length;
-    return base.where((p) {
-      if (estado == 'pendiente') {
-        return p.estado == 'pendiente' || p.estado == 'pedido';
-      }
-      return p.estado == estado;
-    }).length;
+    if (tipo == null) return base.length;
+    return base.where((p) => p.tipoPedido == tipo).length;
   }
 
   String _fecha(DateTime d) =>
@@ -246,6 +290,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   // "Nuevo Pedido" abre el modal de elegir tipo; luego arma el pedido inline.
   Future<void> _nuevoPedido() async {
+    // Sin caja abierta no se registran pedidos.
+    if (await cajaCerrada()) {
+      if (!mounted) return;
+      await mostrarAvisoCajaCerrada(context, irAAbrir: widget.onIrACaja);
+      return;
+    }
+    if (!mounted) return;
     final tipo = await showBlurDialog<String>(
       context: context,
       builder: (_) => const ElegirTipoPedidoDialog(),
@@ -382,6 +433,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
           _cabeceraCola(),
           const SizedBox(height: 12),
           _filtroEstado(),
+          const SizedBox(height: 10),
+          _buscador(),
           const SizedBox(height: 14),
           _mesasPorLiberar(),
           Expanded(
@@ -456,12 +509,15 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
-  // Tabs de estado (`pedidos.estado`), cada una con su cantidad.
+  // Tabs por tipo de pedido (mesa, delivery, para llevar), cada una con su
+  // cantidad.
   Widget _filtroEstado() {
     const opciones = <(String?, String)>[
       (null, 'Todos'),
-      ('pendiente', 'Pendiente'),
-      ('servido', 'Servido'),
+      ('mesa', 'Mesa'),
+      ('delivery', 'Delivery'),
+      ('llevar', 'Para llevar'),
+      ('pagados', 'Pagados'),
     ];
     // Tabs y "Nuevo Pedido" en la misma fila; si los tabs no caben aparecen las
     // flechas para desplazarlos.
@@ -471,7 +527,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
           child: TabsDesplazables(
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: [for (final o in opciones) _pastillaEstado(o.$1, o.$2)],
+              children: [for (final o in opciones) _pastillaTipo(o.$1, o.$2)],
             ),
           ),
         ),
@@ -481,13 +537,100 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
-  Widget _pastillaEstado(String? valor, String etiqueta) {
+  // Buscador y, solo en "Pagados", filtro por medio de pago (por ejemplo, cada
+  // número de Yape).
+  Widget _buscador() {
+    final nombres = <String>{
+      for (final m in mediosPagoActivos) m.medioPago,
+      for (final p in pagos) p.medioPago.medioPago,
+    }.toList()..sort();
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        AppSearchField(
+          controller: _busqueda,
+          hint: 'Buscar mesa, mozo o pedido...',
+          onChanged: (_) => setState(() {}),
+        ),
+        if (_tipoFiltro == 'pagados')
+          SizedBox(
+            width: 240,
+            child: AppSelect<String>(
+              compacto: true,
+              value: _medioFiltro,
+              hint: 'Medio de pago',
+              items: [
+                const AppSelectItem(
+                  value: 'todos',
+                  label: 'Todos los medios de pago',
+                ),
+                for (final n in nombres) AppSelectItem(value: n, label: n),
+              ],
+              onChanged: (v) => setState(() => _medioFiltro = v ?? 'todos'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _pastillaTipo(String? valor, String etiqueta) {
     return AppTag(
       etiqueta: etiqueta,
-      activo: _estadoFiltro == valor,
-      cantidad: _contarEstado(valor),
-      onTap: () => setState(() => _estadoFiltro = valor),
+      activo: _tipoFiltro == valor,
+      cantidad: _contarTipo(valor),
+      onTap: () => setState(() {
+        _tipoFiltro = valor;
+        if (valor != 'pagados') _medioFiltro = 'todos';
+      }),
     );
+  }
+
+  // Color y ícono de cada tipo de pedido: mesa (verde), para llevar (azul) y
+  // delivery (violeta).
+  (Color, IconData) _estiloDeTipo(String tipo) => switch (tipo) {
+    'delivery' => (const Color(0xFF7C3AED), LucideIcons.bike),
+    'llevar' => (AppColors.info, LucideIcons.packageCheck),
+    _ => (AppColors.primaryGreenDark, LucideIcons.utensils),
+  };
+
+  Widget _tipoDePedido(Pedido p) {
+    final (color, icono) = _estiloDeTipo(p.tipoPedido);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 17, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              tituloPedido(p),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Texto de la línea de pago de la tarjeta (null si aún no se cobró).
+  String? _lineaDePago(Pedido p) {
+    final cobrados = mediosDePagoDe(p.id);
+    if (cobrados.isNotEmpty) return 'Pagó con ${cobrados.join(' · ')}';
+    return null;
   }
 
   Widget _tarjetaPedido(Pedido p) {
@@ -542,24 +685,24 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   ),
                 ),
                 const Spacer(),
-                BadgeEstadoPedido(p.estado),
+                if (p.estado == 'pagado')
+                  // Ya cobrado: "Pagado" en rojo con letras blancas.
+                  const _TagPagado(cobrado: true)
+                else ...[
+                  // Cobrado antes de servir: "Pagado" en naranja.
+                  if (pagadoSinServir(p)) ...[
+                    const _TagPagado(),
+                    const SizedBox(width: 6),
+                  ],
+                  BadgeEstadoPedido(p.estado),
+                ],
               ],
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                Flexible(
-                  child: Text(
-                    tituloPedido(p),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
+                // El tipo de pedido (Mesa, Para llevar, Delivery) con su color.
+                Flexible(child: _tipoDePedido(p)),
                 if (esPedidoDeEmpleado(p)) ...[
                   const SizedBox(width: 6),
                   const TagEmpleado(),
@@ -570,6 +713,26 @@ class _PedidosScreenState extends State<PedidosScreen> {
             Text(
               _fecha(p.fechaPedido),
               style: TextStyle(fontSize: 11, color: tenue),
+            ),
+            // Mozo que atiende el pedido (el de esa mesa).
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Icon(LucideIcons.user, size: 12, color: tenue),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Mozo: ${nombreMeseroDe(p)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                ),
+              ],
             ),
             if (p.notas != null) ...[
               const SizedBox(height: 4),
@@ -661,7 +824,59 @@ class _PedidosScreenState extends State<PedidosScreen> {
                 CronometroPedido(pedido: p),
               ],
             ),
+            // Con qué medios se cobró, si ya hay cobros.
+            if (_lineaDePago(p) case final linea?) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(LucideIcons.wallet, size: 15, color: tenue),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      linea,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Tag de un pedido ya cobrado que todavía no sale.
+class _TagPagado extends StatelessWidget {
+  // true: el pedido ya está cobrado (rojo); false: se cobró antes de servir
+  // (naranja).
+  final bool cobrado;
+
+  const _TagPagado({this.cobrado = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: cobrado ? AppColors.error : AppColors.naranja,
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: const Text(
+        'Pagado',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
         ),
       ),
     );

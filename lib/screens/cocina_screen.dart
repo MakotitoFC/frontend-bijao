@@ -22,15 +22,15 @@ import '../models/pedido_line.dart';
 import '../models/app_role.dart';
 import '../services/auth_service.dart';
 import '../services/eventos_service.dart';
-import '../services/impresion_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/boleta_pedido_dialog.dart';
+import '../widgets/aviso_caja_cerrada.dart';
 import '../widgets/boton_imprimir_whatsapp.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
+import '../widgets/nuevo_pedido_dialog.dart';
 import '../widgets/whatsapp_cuenta_dialog.dart';
 import '../widgets/tabs_desplazables.dart';
 import '../widgets/campo_texto.dart';
@@ -198,6 +198,35 @@ class _CocinaScreenState extends State<CocinaScreen> {
     return 'Insumo';
   }
 
+  // El cajero registra los pedidos de delivery: se abre el armado del pedido a
+  // pantalla completa, ya como delivery. No hay pedidos sin caja abierta.
+  Future<void> _nuevoDelivery() async {
+    final usuario = AuthService.instance.currentUser;
+    if (usuario == null) return;
+    if (await cajaCerrada()) {
+      if (!mounted) return;
+      await mostrarAvisoCajaCerrada(context);
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (rutaContext) => Scaffold(
+          backgroundColor: AppColors.background,
+          body: SafeArea(
+            child: NuevoPedidoDialog(
+              usuario: usuario,
+              tipo: 'delivery',
+              onTerminar: (_) => Navigator.of(rutaContext).pop(),
+              onVolver: () => Navigator.of(rutaContext).pop(),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final visibles = _visibles;
@@ -208,14 +237,37 @@ class _CocinaScreenState extends State<CocinaScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-            child: TabsDesplazables(
-              child: Row(
-                children: [
-                  _tab('Todos', _contar(null), _filtro == null, null),
-                  for (final (valor, etiqueta) in _estados)
-                    _tab(etiqueta, _contar(valor), _filtro == valor, valor),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabsDesplazables(
+                    child: Row(
+                      children: [
+                        _tab('Todos', _contar(null), _filtro == null, null),
+                        for (final (valor, etiqueta) in _estados)
+                          _tab(
+                            etiqueta,
+                            _contar(valor),
+                            _filtro == valor,
+                            valor,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Caja registra los pedidos de delivery.
+                if (widget.modoCaja) ...[
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: _nuevoDelivery,
+                    icon: const Icon(LucideIcons.bike, size: 16),
+                    label: const Text('Nuevo delivery'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
           Expanded(
@@ -439,79 +491,9 @@ class _CocinaScreenState extends State<CocinaScreen> {
   }
 
   // Imprime la cuenta del pedido en la impresora de caja.
-  String _metodoPago(Pedido p) {
-    final metodos = <String>{
-      for (final x in pagos.where((x) => x.pedidoId == p.id))
-        x.medioPago.medioPago,
-    };
-    return metodos.isEmpty ? 'Sin pago' : metodos.join(', ');
-  }
-
-  String _textoError(Object e) => e.toString().replaceFirst('Exception: ', '');
-
   // Imprimir: abre el mismo ticket que el administrador (comanda de cocina y
   // cuenta) y desde ahí se reimprime lo que haga falta.
-  void _imprimirCuenta(Pedido p) {
-    marcarPedidoImpreso(p.id);
-    showBlurDialog<void>(
-      context: context,
-      builder: (dialogContext) => BoletaPedidoDialog(
-        pedido: p,
-        mesero: nombreMeseroDe(p),
-        titulo: tituloPedido(p),
-        metodoPago: _metodoPago(p),
-        onImprimir: () {
-          ImpresionService.instance
-              .reimprimirPedido(p.id)
-              .then((_) {
-                if (mounted) {
-                  showAppToast(
-                    context,
-                    'Comanda del pedido #${p.numeroPedido} reenviada a cocina '
-                    '(REIMPRESIÓN).',
-                    type: ToastType.success,
-                  );
-                }
-              })
-              .catchError((Object e) {
-                if (mounted) {
-                  showAppToast(
-                    context,
-                    'No se pudo imprimir: ${_textoError(e)}',
-                    type: ToastType.error,
-                  );
-                }
-              });
-          Navigator.of(dialogContext).pop();
-        },
-        onImprimirCuenta: () {
-          ImpresionService.instance
-              .reimprimirPedido(p.id, tipo: 'cuenta')
-              .then((_) {
-                if (mounted) {
-                  showAppToast(
-                    context,
-                    'Cuenta del pedido #${p.numeroPedido} enviada a la '
-                    'impresora de caja.',
-                    type: ToastType.success,
-                  );
-                }
-              })
-              .catchError((Object e) {
-                if (mounted) {
-                  showAppToast(
-                    context,
-                    'No se pudo imprimir la cuenta: ${_textoError(e)}',
-                    type: ToastType.error,
-                  );
-                }
-              });
-          Navigator.of(dialogContext).pop();
-        },
-        onCerrar: () => Navigator.of(dialogContext).pop(),
-      ),
-    );
-  }
+  void _imprimirCuenta(Pedido p) => mostrarTicketDelPedido(context, p);
 
   Widget _pieCaja(Pedido p) {
     final total = totalDePedido(p.id);

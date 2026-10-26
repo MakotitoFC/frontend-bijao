@@ -146,8 +146,8 @@ void main() {
       }
 
       expect(find.text('Más opciones'), findsOneWidget);
-      // El grupo "Ventas" va como título gris con sus tarjetas debajo.
-      expect(find.text('Ventas'), findsWidgets);
+      // Ventas, Caja y Reportes son tarjetas independientes (sin grupo).
+      expect(find.text('Ventas'), findsOneWidget);
       final reportes = find.text('Reportes');
       final caja = find.text('Caja');
       expect(reportes, findsWidgets);
@@ -155,9 +155,9 @@ void main() {
 
       // Dos columnas: dos tarjetas por fila con el mismo ancho, que juntas
       // llenan el ancho de la hoja menos el margen.
-      final hijos = find.text('Historial de pedidos');
+      final hijos = find.text('Ventas');
       expect(hijos, findsOneWidget);
-      final a = tester.getTopLeft(find.text('Historial de pedidos')).dy;
+      final a = tester.getTopLeft(find.text('Ventas')).dy;
       final b = tester.getTopLeft(find.text('Caja').last).dy;
       expect(a, b); // misma fila
       expect(tester.takeException(), isNull);

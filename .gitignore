@@ -54,3 +54,6 @@ replay_pid*.log
 .widget_preview/
 .env
 .BACKEND_PENDIENTES.md
+.NOTAS_JIRA_DETALLE.md
+.NOTAS_JIRA.md
+.OBSERVACIONES_MARCHA_BLANCA.md

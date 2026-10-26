@@ -53,36 +53,30 @@ const navItems = [
     rolesOcultos: {AppRole.mesero, AppRole.cajero},
     permisoRequerido: 'LEER.PEDIDO',
   ),
+  // Ventas, Caja y Reportes son módulos independientes, cada uno con su propia
+  // vista, para no confundir las ventas con la caja.
   NavItem(
-    clave: 'ventas',
+    clave: 'historial_pedidos',
     label: 'Ventas',
+    icono: LucideIcons.receipt,
+    rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+    permisoRequerido: 'LEER.PEDIDOS',
+  ),
+  NavItem(
+    clave: 'caja',
+    label: 'Caja',
     icono: LucideIcons.wallet,
     rolesPermitidos: {AppRole.administrador, AppRole.cajero},
-    hijos: [
-      NavItem(
-        clave: 'historial_pedidos',
-        label: 'Historial de pedidos',
-        icono: LucideIcons.receipt,
-        rolesPermitidos: {AppRole.administrador, AppRole.cajero},
-        permisoRequerido: 'LEER.PEDIDOS',
-      ),
-      NavItem(
-        clave: 'caja',
-        label: 'Caja',
-        icono: LucideIcons.wallet,
-        rolesPermitidos: {AppRole.administrador, AppRole.cajero},
-        permisoRequerido: 'LEER.PAGO',
-      ),
-      NavItem(
-        clave: 'reportes',
-        label: 'Reportes',
-        icono: LucideIcons.newspaper,
-        rolesPermitidos: {AppRole.administrador},
-        // El cajero tiene LEER.MOVIMIENTO por la caja, pero no ve Reportes.
-        rolesOcultos: {AppRole.cajero},
-        permisoRequerido: 'LEER.MOVIMIENTO',
-      ),
-    ],
+    permisoRequerido: 'LEER.PAGO',
+  ),
+  NavItem(
+    clave: 'reportes',
+    label: 'Reportes',
+    icono: LucideIcons.newspaper,
+    rolesPermitidos: {AppRole.administrador},
+    // El cajero tiene LEER.MOVIMIENTO por la caja, pero no ve Reportes.
+    rolesOcultos: {AppRole.cajero},
+    permisoRequerido: 'LEER.MOVIMIENTO',
   ),
   // Vista "Finanzas" oculta por ahora: sin ítem en el menú no se puede abrir
   // (la pantalla sigue en `home_screen.dart` para activarla de nuevo).

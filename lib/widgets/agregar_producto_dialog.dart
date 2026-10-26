@@ -249,8 +249,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                   children: [
                     Text(
                       p.nombrePlato,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,

@@ -1,3 +1,4 @@
+import '../models/medio_pago.dart';
 import '../models/movimiento_caja.dart';
 import 'configuracion_store.dart';
 import 'pagos_store.dart';
@@ -62,27 +63,34 @@ List<MovimientoCaja> movimientosDesde(DateTime desde) =>
 // el servidor los totales de la caja.
 String grupoDeMedio(String nombre) {
   final n = nombre.trim().toLowerCase();
-  if (n == 'efectivo') return 'efectivo';
-  if (n == 'yape' || n == 'plin') return 'digital';
-  return 'tarjeta';
+  // El grupo que eligió el administrador para ese medio; si no está en la
+  // lista, el que se supone por el nombre.
+  final medio = mediosPago.where((m) => m.medioPago.trim().toLowerCase() == n);
+  return medio.isNotEmpty ? medio.first.grupo : grupoPorNombre(nombre);
 }
 
 // Una fila del resumen de caja: lo que entró por ventas, los ingresos y las
 // salidas de un medio de pago.
 class FilaResumenMedio {
   final String medio;
+  // Grupo del medio si el servidor lo manda (efectivo, tarjeta o digital).
+  final String? grupoServidor;
   double ventas;
   double ingresos;
   double egresos;
 
   FilaResumenMedio(
     this.medio, {
+    this.grupoServidor,
     this.ventas = 0,
     this.ingresos = 0,
     this.egresos = 0,
   });
 
   double get neto => ventas + ingresos - egresos;
+
+  // Grupo para sumar en las tarjetas de Caja.
+  String get grupo => grupoServidor ?? grupoDeMedio(medio);
 }
 
 // Resumen de la caja desde [desde]: una fila por medio de pago con actividad
@@ -136,7 +144,7 @@ List<FilaResumenMedio> resumenPorMedio(DateTime desde) {
 ) {
   var efectivo = 0.0, tarjeta = 0.0, digital = 0.0;
   for (final f in resumenPorMedio(desde)) {
-    switch (grupoDeMedio(f.medio)) {
+    switch (f.grupo) {
       case 'efectivo':
         efectivo += f.neto;
       case 'digital':

@@ -346,3 +346,90 @@ Lista para mostrar lo que llegue: toma `codigo_orden` si viene, y busca presenta
 `GET /api/v1/mozo/pedidos` y `GET /api/v1/mozo/pedidos/:id` ya aceptan el rol `CAJERO` (`mozoLectura`), pero el repositorio sigue filtrando por el usuario que consulta (`pedido_mozo_repository.go`: lista en la consulta de ~línea 157 con `AND p.usuario_id = $2`, y detalle en ~línea 281 con `AND p.usuario_id = $3`). El cajero solo recibe sus propios pedidos (ninguno), así que su comanda sigue mostrando el listado antiguo: otro número (`#1047` en vez de `#0008`), el táper como "Plato" y sin la cantidad de tápers.
 
 **Se pide:** en esas dos consultas de **lectura**, no filtrar por usuario cuando el rol es `CAJERO` o `ADMINISTRADOR` (mismo patrón que ya se usa en otra consulta: `AND ($2::uuid IS NULL OR p.usuario_id = $2)`, pasando `NULL` para esos roles). Las rutas que modifican pedidos siguen restringidas al mozo dueño.
+
+---
+
+# 19. Medios de pago: grupo para sumar bien los totales de Caja (varios Yape)
+
+> **Atendido por el backend** (commit `1d8a769`, migración `00004`): `medio_pago.grupo` y los totales de caja por grupo ya existen. El frontend ya lo usa (selector de grupo en Configuración, tarjetas de Caja y elección por tipo en el cobro). **Falta confirmar:** filtrar y ordenar el listado de pedidos y los reportes por `fecha_pago`.
+
+## Síntoma
+
+Con varios medios de Yape ("Yape Joel", "Yape local"…), las tarjetas de Caja no suman los ingresos de Yape y el cuadre falla.
+
+## Causa
+
+`caja_repository.go` clasifica el medio **por nombre exacto** (`nombreLower == "yape"`, `"plin"`, `"efectivo"`); cualquier otro nombre cae en tarjeta. Los totales por medio, el efectivo esperado y el cierre usan esa clasificación.
+
+## Qué se pide
+
+- Una columna **`grupo`** en `medio_pago` con los valores `efectivo`, `tarjeta` o `digital`, obligatoria, que el administrador elige al crear o editar el medio. Asignar el grupo a los medios ya existentes (Efectivo → `efectivo`, Yape y Plin → `digital`, el resto → `tarjeta`).
+- Calcular los totales de caja, el efectivo esperado y el cierre por **grupo**, no por nombre.
+- Devolver el `grupo` en los listados de medios de pago y en el resumen por medio.
+- Filtrar y ordenar el listado de pedidos y los reportes por la **fecha del pago** (`fecha_pago`).
+
+## Lado del frontend
+
+Elige el grupo al crear o editar un medio, y usa el grupo en las tarjetas, la tabla por medio y el efectivo esperado. Mientras el servidor no lo devuelva, sigue usando el nombre.
+
+---
+
+# 20. Mesas unidas: el pedido solo toma la primera mesa
+
+## Síntoma
+
+Al unir mesas (por ejemplo T-1 y T-3) y crear el pedido, el servidor solo registra la primera mesa. La unión vive solo en la memoria de la app: se pierde al recargar y los demás dispositivos no la ven.
+
+## Causa (revisado en el backend)
+
+La tabla `mesa_pedido` ya admite **varias mesas por pedido** (una fila por mesa), pero `POST /api/v1/mozo/pedidos` recibe un solo `mesa_id` y `pedido_mozo_repository.go` inserta una sola fila en `mesa_pedido`. La app guarda la unión en una lista local (`gruposUnidos`).
+
+## Qué se pide
+
+- **Crear** el pedido con una lista de mesas (por ejemplo `mesas_ids`), insertar una fila en `mesa_pedido` por cada una y marcar **todas** como ocupadas. Si llega solo `mesa_id`, seguir funcionando igual.
+- **Devolver** la lista de mesas del pedido en el listado y en el detalle (`mesas`: número e id de cada una), para que todos los dispositivos vean la unión.
+- **Liberar** todas las mesas del pedido al cobrarlo o anularlo (cerrar todas las filas de `mesa_pedido`).
+- Opcional: desunir una mesa de un pedido en curso.
+
+## Lado del frontend
+
+Enviar todas las mesas de la unión al crear el pedido y mostrar la unión que devuelve el servidor, en vez de la lista local. Mientras el servidor no lo devuelva, la unión sigue solo en la app.
+
+---
+
+# 21. Delivery lo registran caja y administración; caja abierta para todos; cambio de mesa
+
+## Delivery: el cajero debe poder crear pedidos de delivery
+
+Decisión: los pedidos de **delivery** los registran **caja (cajero) y administración**; el **mozo no**. El monto del delivery es **obligatorio** (varía por pedido) y se escribe al crear el pedido. La app ya oculta el delivery al mozo y agrega un botón "Nuevo delivery" en las comandas del cajero.
+
+Hoy `POST /api/v1/mozo/pedidos` está limitado a `MOZO` y `ADMINISTRADOR` (`main.go`), así que el cajero recibiría 403. Se pide:
+
+- Permitir al rol `CAJERO` crear pedidos **solo de tipo delivery** (y sus productos, `POST /:id/items`), con `CREAR.PEDIDO` y `CREAR.PEDIDO_DETALLE`.
+- Rechazar en el servidor un delivery sin `costo_envio` (campo obligatorio, se acepta 0) y un delivery creado por un mozo, con un error claro.
+- Opcional: ruta para que caja y administración cambien el costo de envío de un delivery ya creado.
+
+## Estado de la caja para todos los roles
+
+`GET /api/v1/caja/estado-actual` exige `LEER.CIERRE_CAJA`, y el mozo probablemente no lo tiene, por lo que la app no puede saber que la caja está cerrada. Se pide una ruta liviana (por ejemplo `GET /api/v1/caja/abierta` → `{ "abierta": true }`) que puedan leer todos los roles, y **rechazar la creación de pedidos con la caja cerrada** (`409`, con código `CAJA_CERRADA`).
+
+## Cambio de mesa
+
+`PATCH /:id/cambiar-mesa` rechaza una mesa destino ocupada ("ya tiene un pedido en curso"), aunque el comentario del código dice que soporta el traspaso. Definir si se permite traspasar a una mesa ocupada (y entonces implementarlo) o solo a mesas libres. Además, la ruta está limitada a `MOZO` y `ADMINISTRADOR`; el administrador debe poder cambiar la mesa de pedidos de otros mozos.
+
+---
+
+# 22. Pago en efectivo: guardar y devolver el efectivo recibido y el vuelto
+
+Cuando el cliente paga en efectivo, caja escribe con cuánto paga y la app calcula el vuelto. Eso debe verse en el ticket y en el detalle del pedido. Hoy el servidor no tiene dónde guardarlo: la app lo conserva solo en el dispositivo donde se cobró, así que no aparece en otros dispositivos, se pierde al reiniciar y no sale en el ticket que imprime el servidor.
+
+## Qué se pide
+
+- En `POST /api/pagos`, dos campos opcionales: **`monto_recibido`** (efectivo que entregó el cliente) y **`vuelto`** (lo que se le devolvió). Guardarlos en el pago.
+- Devolverlos en las rutas que listan pagos y en el detalle del pedido (`GET /api/pagos`, `GET /api/pedidos/:id`), para que la app los muestre en cualquier dispositivo.
+- En el ticket y comprobante que imprime el servidor, agregar las líneas **EFECTIVO RECIBIDO** y **VUELTO** después del total. El **total no cambia**: el vuelto no es un descuento.
+- El vuelto **no suma a las ventas ni al efectivo esperado de Caja**: lo que entra a caja es el monto cobrado, no lo recibido.
+
+## Lado del frontend
+
+Ya calcula el vuelto en el cobro y lo muestra en el ticket (cuenta y vista previa de ticket de venta, boleta y factura) y en el detalle del pedido. Cuando el servidor lo devuelva, la app dejará de depender del dato local y enviará los campos nuevos en el pago.

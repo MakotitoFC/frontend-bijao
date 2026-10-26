@@ -50,6 +50,8 @@ class BoletasPagadoresDialog extends StatelessWidget {
                 pagador: b.nombre,
                 items: b.items,
                 total: b.total,
+                recibido: b.recibido,
+                vuelto: b.vuelto,
                 // Cada pago incluye su recargo (p. ej. tarjeta): es lo que
                 // pagó de verdad con ese método.
                 pagos: [

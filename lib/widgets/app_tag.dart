@@ -42,8 +42,10 @@ class AppTag extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          height: AppSizes.control,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          // Alto mínimo: si el texto es largo y no cabe en una línea, baja a la
+          // siguiente y el tag crece, en vez de cortarse con "…".
+          constraints: const BoxConstraints(minHeight: AppSizes.control),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: activo ? colorBase : Colors.white,
             borderRadius: BorderRadius.circular(AppRadii.tag),
@@ -63,8 +65,7 @@ class AppTag extends StatelessWidget {
               Flexible(
                 child: Text(
                   etiqueta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
