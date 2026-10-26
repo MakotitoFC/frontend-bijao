@@ -353,11 +353,14 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       // Se registra en el servidor; si lo rechaza, no queda nada cobrado.
       for (final c in cobros) {
         if (c.monto <= 0.005) continue;
+        final esEfectivo = c.medio.grupo == 'efectivo' || c.medio.medioPago.toLowerCase().contains('efectivo');
         await PagoService.instance.registrar(
           pedido: widget.pedido,
           medio: c.medio,
           montoAbonado: c.monto,
           categoriaMovimientoId: _categoriaSeleccionada?.id,
+          montoRecibido: esEfectivo && _recibido > 0.005 ? _recibido : null,
+          vuelto: esEfectivo && _vuelto > 0.005 ? _vuelto : null,
         );
         registrados++;
       }

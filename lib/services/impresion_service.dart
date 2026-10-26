@@ -81,4 +81,32 @@ class ImpresionService {
   Future<void> abrirCajon() async {
     await _api.post('/api/v1/caja/abrir-cajon', body: {});
   }
+
+  // ----------------------------------------------------------------------
+  // PLANTILLAS DE IMPRESIÓN LOW-CODE
+  // ----------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> obtenerPlantillas() async {
+    final res = await _api.get('$_base/plantillas');
+    if (res is List) {
+      return res.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> obtenerPlantilla(String tipo) async {
+    final res = await _api.get('$_base/plantillas/$tipo');
+    return Map<String, dynamic>.from(res as Map);
+  }
+
+  Future<Map<String, dynamic>> actualizarPlantilla(
+    String tipo,
+    Map<String, dynamic> datos,
+  ) async {
+    final res = await _api.put('$_base/plantillas/$tipo', body: datos);
+    if (res is Map && res['plantilla'] is Map) {
+      return Map<String, dynamic>.from(res['plantilla'] as Map);
+    }
+    return {};
+  }
 }

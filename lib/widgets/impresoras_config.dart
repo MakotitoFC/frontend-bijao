@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -12,11 +12,12 @@ import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'config_widgets.dart';
 import 'logo_tickets_editor.dart';
+import 'plantillas_impresion_editor.dart';
 import 'inventario/inventario_comun.dart' show EtiquetaFila, confirmarAccion;
 
-// Configuración > Impresoras (solo administrador): estado de la impresora de
-// cocina y de caja, sus IP, qué datos lleva la comanda, el logo de caja y la
-// cola de impresión.
+// ConfiguraciÃ³n > Impresoras (solo administrador): estado de la impresora de
+// cocina y de caja, sus IP, quÃ© datos lleva la comanda, el logo de caja y la
+// cola de impresiÃ³n.
 class ImpresorasConfig extends StatefulWidget {
   const ImpresorasConfig({super.key});
 
@@ -89,11 +90,11 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
         _cola = r[1] as ColaImpresion;
       });
     } catch (_) {
-      // Se conserva lo último que se vio.
+      // Se conserva lo Ãºltimo que se vio.
     }
   }
 
-  // Guarda solo lo que cambió y vuelve a leer la configuración.
+  // Guarda solo lo que cambiÃ³ y vuelve a leer la configuraciÃ³n.
   Future<void> _guardar(Map<String, dynamic> cambios, {String? aviso}) async {
     setState(() => _guardando = true);
     try {
@@ -164,13 +165,13 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
     try {
       await _servicio.abrirCajon();
       if (mounted) {
-        showAppToast(context, 'Cajón abierto.', type: ToastType.success);
+        showAppToast(context, 'CajÃ³n abierto.', type: ToastType.success);
       }
     } catch (e) {
       if (mounted) {
         showAppToast(
           context,
-          'No se pudo abrir el cajón: ${_mensaje(e)}',
+          'No se pudo abrir el cajÃ³n: ${_mensaje(e)}',
           type: ToastType.error,
         );
       }
@@ -206,8 +207,8 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       context,
       titulo: 'Cancelar trabajos pendientes',
       mensaje:
-          'Se descartan las comandas que están esperando impresora (por '
-          'ejemplo, tras un corte de luz) y no se imprimirán. Los pedidos no '
+          'Se descartan las comandas que estÃ¡n esperando impresora (por '
+          'ejemplo, tras un corte de luz) y no se imprimirÃ¡n. Los pedidos no '
           'se tocan.',
       etiqueta: 'Cancelar pendientes',
     );
@@ -218,7 +219,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       showAppToast(
         context,
         n == 0
-            ? 'No había trabajos pendientes.'
+            ? 'No habÃ­a trabajos pendientes.'
             : '$n trabajo(s) pendiente(s) cancelado(s).',
         type: ToastType.info,
       );
@@ -234,7 +235,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       if (!mounted) return;
       showAppToast(
         context,
-        'Se volverá a intentar imprimir ${t.codigoOrden}.',
+        'Se volverÃ¡ a intentar imprimir ${t.codigoOrden}.',
         type: ToastType.info,
       );
       _cargarEstadoYCola();
@@ -247,10 +248,10 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
 
   Widget _chip(bool habilitada, bool conectada, {required bool cargando}) {
     if (!habilitada) return const EtiquetaFila('Desactivada');
-    if (cargando) return const EtiquetaFila('Comprobando…');
+    if (cargando) return const EtiquetaFila('Comprobandoâ€¦');
     return conectada
         ? const EtiquetaFila('Conectada', color: AppColors.primaryGreen)
-        : const EtiquetaFila('Sin conexión', color: AppColors.error);
+        : const EtiquetaFila('Sin conexiÃ³n', color: AppColors.error);
   }
 
   Widget _filaImpresora({
@@ -375,7 +376,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
-                      t.codigoOrden.isEmpty ? '—' : t.codigoOrden,
+                      t.codigoOrden.isEmpty ? 'â€”' : t.codigoOrden,
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
@@ -390,7 +391,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
                     if (hora.isNotEmpty) hora,
                     if (t.intentos > 0) '${t.intentos} intento(s)',
                     if ((t.error ?? '').isNotEmpty) t.error!,
-                  ].join(' · '),
+                  ].join(' Â· '),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
@@ -429,6 +430,8 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
                     const SizedBox(height: 32),
                     _seccionCaja(cfg),
                     const SizedBox(height: 32),
+                    const PlantillasImpresionEditor(),
+                    const SizedBox(height: 32),
                     _seccionCola(cfg),
                   ],
                 ),
@@ -443,8 +446,8 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       children: [
         Text(
           _cargando
-              ? 'Cargando…'
-              : 'No se pudo leer la configuración de impresoras'
+              ? 'Cargandoâ€¦'
+              : 'No se pudo leer la configuraciÃ³n de impresoras'
                     '${_errorCarga == null ? '' : ': $_errorCarga'}',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey.shade600),
@@ -466,8 +469,8 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       titulo: 'Estado de las impresoras',
       descripcion:
           'Las comandas salen solas a cocina al tomar el pedido y al agregarle '
-          'productos. Aquí ves si cada impresora responde en la red.',
-      // En el celular, solo el ícono.
+          'productos. AquÃ­ ves si cada impresora responde en la red.',
+      // En el celular, solo el Ã­cono.
       accion: AppBreakpoints.esMobile(context)
           ? IconButton.outlined(
               tooltip: 'Actualizar',
@@ -494,7 +497,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
           conectada: e?.cajaConectada ?? false,
           destino: 'caja',
           extra: cfg.cajaHabilitada ? _abrirCajon : null,
-          etiquetaExtra: 'Abrir cajón',
+          etiquetaExtra: 'Abrir cajÃ³n',
         ),
       ],
     );
@@ -504,7 +507,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
     return SeccionConfig(
       titulo: 'Comanda de cocina',
       descripcion:
-          'La comanda no lleva precios ni totales. Elige qué más se imprime.',
+          'La comanda no lleva precios ni totales. Elige quÃ© mÃ¡s se imprime.',
       filas: [
         _switch(
           'Impresora de cocina activa',
@@ -520,13 +523,13 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
         ),
         _switch(
           'Mostrar el mozo',
-          'Nombre de quien tomó el pedido.',
+          'Nombre de quien tomÃ³ el pedido.',
           cfg.cocinaMostrarMozo,
           'cocina_mostrar_mozo',
         ),
         _switch(
           'Mostrar fecha y hora',
-          'Cuándo se tomó el pedido.',
+          'CuÃ¡ndo se tomÃ³ el pedido.',
           cfg.cocinaMostrarFecha,
           'cocina_mostrar_fecha',
         ),
@@ -538,7 +541,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
         ),
         _switch(
           'Marcar los productos para llevar',
-          'Indica "PARA LLEVAR / TAPER" en cada producto que va en táper.',
+          'Indica "PARA LLEVAR / TAPER" en cada producto que va en tÃ¡per.',
           cfg.cocinaMostrarTaper,
           'cocina_mostrar_taper',
         ),
@@ -548,7 +551,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
             children: [
               const Expanded(
                 child: Text(
-                  'Tamaño de letra',
+                  'TamaÃ±o de letra',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -608,10 +611,10 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
     final trabajos = cola?.trabajos ?? const <TrabajoImpresion>[];
     final pendientes = cola?.pendientes ?? e?.colaPendientes ?? 0;
     return SeccionConfig(
-      titulo: 'Cola de impresión',
+      titulo: 'Cola de impresiÃ³n',
       descripcion:
-          '${cola?.completados ?? e?.colaCompletados ?? 0} impresos · '
-          '$pendientes pendientes · '
+          '${cola?.completados ?? e?.colaCompletados ?? 0} impresos Â· '
+          '$pendientes pendientes Â· '
           '${cola?.conError ?? e?.colaErrores ?? 0} con error',
       filas: [
         FilaSwitch(
@@ -623,8 +626,8 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
           onChanged: _guardando ? null : _pausar,
         ),
         _switch(
-          'Omitir lo pendiente de días anteriores',
-          'Si la impresora se enciende otro día, esas comandas no se imprimen '
+          'Omitir lo pendiente de dÃ­as anteriores',
+          'Si la impresora se enciende otro dÃ­a, esas comandas no se imprimen '
               '(ahorra papel).',
           cfg.descartarAntiguosDias,
           'descartar_antiguos_dias',
@@ -650,7 +653,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 18),
             child: Text(
-              'Aún no hay trabajos de impresión.',
+              'AÃºn no hay trabajos de impresiÃ³n.',
               style: TextStyle(color: Colors.grey.shade600),
             ),
           )

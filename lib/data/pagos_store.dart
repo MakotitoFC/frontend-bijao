@@ -286,7 +286,7 @@ Pago pagoDeServidor(
   String? pagador,
 }) {
   final porcentaje = jsonDouble(json['porcentaje_comision']) ?? 0;
-  return Pago(
+  final p = Pago(
     id: json['id']?.toString() ?? '',
     pedidoId: json['pedido_id']?.toString() ?? pedido?.id ?? '',
     mesaNumero:
@@ -308,7 +308,18 @@ Pago pagoDeServidor(
         DateTime.now(),
     // Quién pagó: lo que dice el servidor (`pagador`) o, si no, lo recibido.
     pagador: json['pagador']?.toString() ?? pagador,
+    montoRecibido: jsonDouble(json['monto_recibido']),
+    vuelto: jsonDouble(json['vuelto']),
   );
+  final rec = jsonDouble(json['monto_recibido']) ?? 0;
+  final vue = jsonDouble(json['vuelto']) ?? 0;
+  if (vue > 0.001 && rec > 0.001) {
+    final pid = p.pedidoId;
+    if (pid.isNotEmpty) {
+      efectivoRecibidoPorPedido[pid] = (recibido: rec, vuelto: vue);
+    }
+  }
+  return p;
 }
 
 // Deja en memoria un pago que el servidor ya registró (con el reparto entre las

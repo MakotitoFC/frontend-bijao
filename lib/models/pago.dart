@@ -14,6 +14,8 @@ class Pago {
   final DateTime fechaPago;
   // Quién pagó (pago compartido) o motivo del movimiento (ej. "Reembolso").
   final String? pagador;
+  final double? montoRecibido;
+  final double? vuelto;
 
   const Pago({
     required this.id,
@@ -26,6 +28,8 @@ class Pago {
     required this.propina,
     required this.fechaPago,
     this.pagador,
+    this.montoRecibido,
+    this.vuelto,
   });
 
   bool get esReembolso => montoAbonado < 0;

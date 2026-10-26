@@ -525,12 +525,15 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       for (var b = 0; b < boletas.length; b++) {
         final boleta = boletas[b];
         for (final pago in boleta.pagos) {
+          final esEfectivo = pago.medio.grupo == 'efectivo' || pago.medio.medioPago.toLowerCase().contains('efectivo');
           final registrado = await PagoService.instance.registrar(
             pedido: widget.pedido,
             medio: pago.medio,
             montoAbonado: pago.monto,
             pagador: boleta.nombre,
             categoriaMovimientoId: _categoriaSeleccionada?.id,
+            montoRecibido: esEfectivo && boleta.recibido > 0.005 ? boleta.recibido : null,
+            vuelto: esEfectivo && boleta.vuelto > 0.005 ? boleta.vuelto : null,
           );
           pagoDe.putIfAbsent(b, () => registrado.id);
           registrados++;
