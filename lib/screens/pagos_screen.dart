@@ -13,6 +13,7 @@ import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/usuarios_store.dart';
+import '../models/caja_servidor.dart';
 import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
 import '../models/movimiento_caja.dart';
@@ -21,6 +22,7 @@ import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
+import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/comprobante_en_cobro.dart';
@@ -80,6 +82,8 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   final _busqueda = TextEditingController();
   String _filtro = 'todos'; // todos | pagados | por_cobrar
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
+  String _tipoFiltro = 'todos'; // todos | mesa | llevar | delivery
+  String _mozoFiltro = 'todos'; // id del mozo, o 'todos'
   // Día de los pedidos mostrados (por defecto, hoy); se cambia con las flechas
   // o el calendario.
   DateTimeRange? _rango = DateTimeRange(
@@ -111,10 +115,22 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     _cargarPagos();
   }
 
+  // Fecha y hora del último pago del pedido (null si aún no se cobró nada).
+  DateTime? _fechaPago(Pedido p) {
+    DateTime? ultima;
+    for (final x in pagos) {
+      if (x.pedidoId != p.id || x.esReembolso) continue;
+      if (ultima == null || x.fechaPago.isAfter(ultima)) ultima = x.fechaPago;
+    }
+    return ultima;
+  }
+
+  // El día se filtra por la fecha del pago; un pedido sin cobrar todavía se
+  // ubica por la fecha en que se tomó.
   bool _enRango(Pedido p) {
     final r = _rango;
     if (r == null) return true;
-    final d = DateUtils.dateOnly(p.fechaPedido);
+    final d = DateUtils.dateOnly(_fechaPago(p) ?? p.fechaPedido);
     return !d.isBefore(DateUtils.dateOnly(r.start)) &&
         !d.isAfter(DateUtils.dateOnly(r.end));
   }
@@ -144,6 +160,16 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     for (final p in pagos) p.medioPago.medioPago,
   }.toList()..sort();
 
+  // Mozos que tomaron pedidos, para el filtro (id y nombre).
+  List<({String id, String nombre})> get _mozos {
+    final ids = {
+      for (final p in pedidos)
+        if (p.usuarioId != null) p.usuarioId!,
+    };
+    return [for (final id in ids) (id: id, nombre: _nombreUsuario(id))]
+      ..sort((a, b) => a.nombre.compareTo(b.nombre));
+  }
+
   String _metodos(Pedido p) {
     final m = <String>{
       for (final x in pagos.where((x) => x.pedidoId == p.id))
@@ -160,6 +186,16 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
           !mediosDePagoDe(p.id).contains(_medioFiltro)) {
         return false;
       }
+      // Mesa es todo lo que no es delivery ni para llevar (Mesa 2, Mesa 19...).
+      if (_tipoFiltro != 'todos') {
+        final tipo = switch (p.tipoPedido) {
+          'delivery' => 'delivery',
+          'llevar' => 'llevar',
+          _ => 'mesa',
+        };
+        if (tipo != _tipoFiltro) return false;
+      }
+      if (_mozoFiltro != 'todos' && p.usuarioId != _mozoFiltro) return false;
       final ep = _estadoPago(p);
       if (_filtro == 'pagados' && ep != 'Pagado') return false;
       if (_filtro == 'por_cobrar' && ep != 'Por cobrar' && ep != 'Parcial') {
@@ -265,25 +301,49 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                             setState(() => _medioFiltro = v ?? 'todos'),
                       ),
                     ),
+                    SizedBox(
+                      width: 170,
+                      child: AppSelect<String>(
+                        compacto: true,
+                        value: _tipoFiltro,
+                        hint: 'Tipo de pedido',
+                        items: const [
+                          AppSelectItem(
+                            value: 'todos',
+                            label: 'Todos los tipos',
+                          ),
+                          AppSelectItem(value: 'mesa', label: 'Mesa'),
+                          AppSelectItem(value: 'llevar', label: 'Para llevar'),
+                          AppSelectItem(value: 'delivery', label: 'Delivery'),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _tipoFiltro = v ?? 'todos'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 170,
+                      child: AppSelect<String>(
+                        compacto: true,
+                        value: _mozoFiltro,
+                        hint: 'Mozo',
+                        items: [
+                          const AppSelectItem(
+                            value: 'todos',
+                            label: 'Todos los mozos',
+                          ),
+                          for (final m in _mozos)
+                            AppSelectItem(value: m.id, label: m.nombre),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _mozoFiltro = v ?? 'todos'),
+                      ),
+                    ),
                     AppSearchField(
                       controller: _busqueda,
                       hint: 'Buscar pedido o cliente...',
                       onChanged: (_) => setState(() {}),
                     ),
                   ];
-                  if (c.maxWidth >= 1040) {
-                    return Row(
-                      children: [
-                        titulo,
-                        const Spacer(),
-                        ...controles.take(3),
-                        const SizedBox(width: 8),
-                        controles[3],
-                        const SizedBox(width: 8),
-                        controles.last,
-                      ],
-                    );
-                  }
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -317,33 +377,6 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
       etiqueta: etiqueta,
       activo: _filtro == valor,
       onTap: () => setState(() => _filtro = valor),
-    );
-  }
-
-  Widget _chipPago(String estado) {
-    final (fondo, tinta) = switch (estado) {
-      'Pagado' => (
-        AppColors.neonVerde.withValues(alpha: 0.22),
-        AppColors.verdeTexto,
-      ),
-      'Parcial' => (const Color(0xFFFFF3E0), const Color(0xFFEF6C00)),
-      'Anulado' => (Colors.grey.shade200, const Color(0xFF6B7280)),
-      _ => (const Color(0xFFFCE4EC), const Color(0xFFC2185B)),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        estado,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: tinta,
-        ),
-      ),
     );
   }
 
@@ -415,33 +448,27 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 
   Widget _tabla(List<Pedido> filas) {
     return TablaApp<Pedido>(
-      porPagina: 10,
+      porPagina: 8,
       filas: filas,
       columnas: [
         ColumnaTabla(
-          titulo: 'Pedido',
-          ancho: 100,
-          ordenarPor: (p) => p.numeroPedido,
-          celda: (p) => TablaApp.texto('#${p.numeroPedido}'),
-        ),
-        ColumnaTabla(
-          titulo: 'Fecha',
+          titulo: 'Fecha de pago',
           ancho: 150,
-          ordenarPor: (p) => p.fechaPedido,
-          celda: (p) => TablaApp.texto(_fecha(p.fechaPedido)),
-        ),
-        ColumnaTabla(
-          titulo: 'Cliente',
-          flex: 1.2,
-          rol: RolTarjeta.titulo,
-          ordenarPor: (p) => (p.clienteNombre ?? '').toLowerCase(),
-          celda: (p) => TablaApp.texto(p.clienteNombre ?? '—', fuerte: true),
+          ordenarPor: (p) => _fechaPago(p) ?? DateTime(1970),
+          celda: (p) {
+            final f = _fechaPago(p);
+            return TablaApp.texto(f == null ? '— (sin pago)' : _fecha(f));
+          },
         ),
         ColumnaTabla(
           titulo: 'Tipo',
-          ancho: 110,
+          ancho: 150,
+          rol: RolTarjeta.titulo,
           ordenarPor: (p) => p.ubicacion,
-          celda: (p) => TablaApp.texto(p.ubicacion),
+          celda: (p) => Align(
+            alignment: Alignment.centerLeft,
+            child: EtiquetaTipoPedido(pedido: p, tamano: 13),
+          ),
         ),
         ColumnaTabla(
           titulo: 'Mozo',
@@ -456,31 +483,16 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
           celda: (p) => TablaApp.texto(_soles(totalDePedido(p.id))),
         ),
         ColumnaTabla(
-          titulo: 'Método',
+          titulo: 'Método de pago',
           flex: 1.3,
           anchoMin: 150,
           celda: (p) => Tooltip(
             message: _metodos(p),
             child: Text(
               _metodos(p),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              softWrap: true,
               style: TablaApp.estiloTexto,
             ),
-          ),
-        ),
-        ColumnaTabla(
-          titulo: 'Pago',
-          ancho: 110,
-          rol: RolTarjeta.estado,
-          ordenarPor: (p) => _estadoPago(p),
-          celda: (p) => Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: [
-              _chipPago(_estadoPago(p)),
-              if (pagadoSinServir(p)) _chipPago('Sin servir'),
-            ],
           ),
         ),
         ColumnaTabla(
@@ -958,6 +970,7 @@ class _CajaScreenState extends State<CajaScreen> {
                   ),
                   const SizedBox(height: 14),
                   _tarjetasCaja(
+                    apertura: estadoCajaServidor?.apertura,
                     filas: filas,
                     ventas: ventas,
                     delivery: srv?.delivery ?? 0,
@@ -1008,12 +1021,34 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _panelMovimientos(movimientos),
+            // Ingresos y salidas, y comprobantes de hoy, en la misma fila (uno
+            // debajo del otro si no caben).
+            LayoutBuilder(
+              builder: (context, c) {
+                final panelMov = _panelMovimientos(movimientos);
+                if (!CajaService.instance.enServidor) return panelMov;
+                const comprobantes = ComprobantesCajaPanel();
+                if (c.maxWidth < 900) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      panelMov,
+                      const SizedBox(height: 16),
+                      comprobantes,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: panelMov),
+                    const SizedBox(width: 16),
+                    const Expanded(child: comprobantes),
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: 16),
-            if (CajaService.instance.enServidor) ...[
-              const ComprobantesCajaPanel(),
-              const SizedBox(height: 16),
-            ],
             Container(
               decoration: _panel,
               padding: const EdgeInsets.all(16),
@@ -1159,7 +1194,16 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
             )
           else
-            for (final m in movimientos) _filaMovimiento(m),
+            // Se ven 4 registros; el resto se desplaza.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: Scrollbar(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [for (final m in movimientos) _filaMovimiento(m)],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1365,13 +1409,13 @@ class _CajaScreenState extends State<CajaScreen> {
     }) => ColumnaTabla(
       titulo: titulo,
       anchoMin: 96,
-      rol: titulo == 'Total' ? RolTarjeta.dato : RolTarjeta.oculta,
+      rol: RolTarjeta.dato,
       ordenarPor: valor,
       celda: (c) => TablaApp.texto(_soles(valor(c)), fuerte: fuerte),
     );
     return [
       ColumnaTabla(
-        titulo: 'Cierre',
+        titulo: 'Fecha',
         ancho: 150,
         ordenarPor: (c) => c.fechaCierre,
         celda: (c) => TablaApp.texto(_fecha(c.fechaCierre)),
@@ -1379,7 +1423,7 @@ class _CajaScreenState extends State<CajaScreen> {
       ColumnaTabla(
         titulo: 'Cajero',
         anchoMin: 120,
-        rol: RolTarjeta.oculta,
+        rol: RolTarjeta.titulo,
         ordenarPor: (c) =>
             (c.usuarioNombre ?? _nombreUsuario(c.usuarioId)).toLowerCase(),
         celda: (c) => TablaApp.texto(
@@ -1387,21 +1431,7 @@ class _CajaScreenState extends State<CajaScreen> {
           fuerte: true,
         ),
       ),
-      ColumnaTabla(
-        titulo: 'Pedidos',
-        ancho: 84,
-        ordenarPor: (c) => c.numPedidos,
-        celda: (c) => TablaApp.texto('${c.numPedidos}'),
-      ),
       monto('Inicial', (c) => c.montoInicial),
-      monto('Efectivo', (c) => c.totalEfectivo),
-      monto('Tarjeta', (c) => c.totalTarjeta),
-      monto('Yape', (c) => c.totalYape),
-      monto('Plin', (c) => c.totalPlin),
-      monto('Delivery', (c) => c.totalDelivery),
-      monto('Total', (c) => c.totalGeneral, fuerte: true),
-      monto('Ingresos', (c) => c.totalIngresos),
-      monto('Salidas', (c) => c.totalEgresos),
       monto('Declarado', (c) => c.montoDeclarado),
       ColumnaTabla(
         titulo: 'Dif. efectivo',
@@ -1419,18 +1449,13 @@ class _CajaScreenState extends State<CajaScreen> {
           );
         },
       ),
-      ColumnaTabla(
-        titulo: 'Notas',
-        anchoMin: 140,
-        rol: RolTarjeta.oculta,
-        celda: (c) => TablaApp.texto(c.notas ?? '—'),
-      ),
     ];
   }
 
   // Tarjetas del resumen de la caja actual, con lo que el servidor calcula:
   // ventas, delivery, y lo cobrado en efectivo, tarjeta y digital.
   Widget _tarjetasCaja({
+    AperturaCaja? apertura,
     required List<FilaResumenMedio> filas,
     required double ventas,
     required double delivery,
@@ -1444,6 +1469,20 @@ class _CajaScreenState extends State<CajaScreen> {
     // desplazamiento hacia el lado para ver el resto.
     final mini = AppBreakpoints.esMenorATablet(context);
     final tarjetas = [
+      // Con cuánto efectivo abrió el turno (lo escribe quien abre la caja).
+      if (apertura != null)
+        _tarjetaCaja(
+          LucideIcons.lockOpen,
+          const Color(0xFF0EA5E9),
+          const Color(0xFFE6F6FD),
+          'Monto de apertura',
+          apertura.montoInicial,
+          [
+            if ((apertura.usuarioNombre ?? '').isNotEmpty)
+              'Abrió ${apertura.usuarioNombre}',
+            _hora(apertura.fechaApertura),
+          ].join(' · '),
+        ),
       _tarjetaCaja(
         LucideIcons.trendingUp,
         const Color(0xFF3B82F6),

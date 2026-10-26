@@ -37,7 +37,10 @@ DateTime _soloDia(DateTime d) => DateUtils.dateOnly(d);
 
 // Texto corto del rango para el botón: "Hoy", "Ayer", "20 oct 2026" o
 // "20 oct – 21 oct 2026".
-String etiquetaRangoFechas(DateTimeRange? r, {String vacio = 'Todas las fechas'}) {
+String etiquetaRangoFechas(
+  DateTimeRange? r, {
+  String vacio = 'Todas las fechas',
+}) {
   if (r == null) return vacio;
   final hoy = _soloDia(DateTime.now());
   final ini = _soloDia(r.start);
@@ -99,6 +102,15 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
     final ancho = anchoPantalla - 24 < 340 ? anchoPantalla - 24 : 340.0;
     // Se alinea al borde derecho del botón salvo que se salga de la pantalla.
     final derecha = posicion.dx + caja.size.width - ancho >= 12;
+    // Si abajo no hay lugar para el calendario (unos 440 px), se abre hacia
+    // arriba; si en ningún lado cabe entero, hacia donde haya más espacio y con
+    // desplazamiento.
+    final altoPantalla = MediaQuery.sizeOf(context).height;
+    final abajo = altoPantalla - (posicion.dy + caja.size.height) - 16;
+    final arriba = posicion.dy - 16;
+    const altoTarjeta = 440.0;
+    final haciaArriba = abajo < altoTarjeta && arriba > abajo;
+    final disponible = (haciaArriba ? arriba : abajo).clamp(200.0, 2000.0);
     _entrada = OverlayEntry(
       builder: (_) => Stack(
         children: [
@@ -111,19 +123,30 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
           CompositedTransformFollower(
             link: _enlace,
             showWhenUnlinked: false,
-            targetAnchor: derecha ? Alignment.bottomRight : Alignment.bottomLeft,
-            followerAnchor: derecha ? Alignment.topRight : Alignment.topLeft,
-            offset: const Offset(0, 8),
+            targetAnchor: haciaArriba
+                ? (derecha ? Alignment.topRight : Alignment.topLeft)
+                : (derecha ? Alignment.bottomRight : Alignment.bottomLeft),
+            followerAnchor: haciaArriba
+                ? (derecha ? Alignment.bottomRight : Alignment.bottomLeft)
+                : (derecha ? Alignment.topRight : Alignment.topLeft),
+            offset: Offset(0, haciaArriba ? -8 : 8),
             child: Align(
-              alignment: derecha ? Alignment.topRight : Alignment.topLeft,
-              child: _TarjetaRango(
-                ancho: ancho,
-                inicial: widget.valor,
-                permiteTodas: widget.permiteTodas,
-                onAplicar: (r) {
-                  widget.onChanged(r);
-                  _cerrar();
-                },
+              alignment: haciaArriba
+                  ? (derecha ? Alignment.bottomRight : Alignment.bottomLeft)
+                  : (derecha ? Alignment.topRight : Alignment.topLeft),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: disponible),
+                child: SingleChildScrollView(
+                  child: _TarjetaRango(
+                    ancho: ancho,
+                    inicial: widget.valor,
+                    permiteTodas: widget.permiteTodas,
+                    onAplicar: (r) {
+                      widget.onChanged(r);
+                      _cerrar();
+                    },
+                  ),
+                ),
               ),
             ),
           ),

@@ -54,6 +54,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
   String tipo;
   bool conDni = false;
   bool imprimir = true;
+  // Boleta o factura con una sola línea "Consumo" en vez del detalle de platos.
+  bool soloConsumo = false;
   final ruc = TextEditingController();
   final razon = TextEditingController();
   final direccion = TextEditingController();
@@ -96,6 +98,11 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   void alternarDni(bool v) {
     conDni = v;
+    notifyListeners();
+  }
+
+  void alternarSoloConsumo(bool v) {
+    soloConsumo = v;
     notifyListeners();
   }
 
@@ -145,6 +152,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
       // `ComprobanteEmitidoDialog`), para que el papel lleve los datos
       // confirmados. El ticket interno no espera a SUNAT.
       imprimir: tipo == 'ticket_venta' && imprimir,
+      soloConsumo: soloConsumo && tipo != 'ticket_venta',
       clienteTipoDoc: switch (tipo) {
         'factura' => '6',
         'boleta' => conDni ? '1' : '0',
@@ -331,6 +339,21 @@ class SelectorComprobante extends StatelessWidget {
           if (control.emite) ...[
             const SizedBox(height: 14),
             _formulario(),
+            if (control.tipo != 'ticket_venta')
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Solo "Consumo" (sin el detalle de los platos)',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  AppSwitch(
+                    value: control.soloConsumo,
+                    onChanged: control.alternarSoloConsumo,
+                  ),
+                ],
+              ),
             Row(
               children: [
                 const Expanded(

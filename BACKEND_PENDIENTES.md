@@ -433,3 +433,48 @@ Cuando el cliente paga en efectivo, caja escribe con cuánto paga y la app calcu
 ## Lado del frontend
 
 Ya calcula el vuelto en el cobro y lo muestra en el ticket (cuenta y vista previa de ticket de venta, boleta y factura) y en el detalle del pedido. Cuando el servidor lo devuelva, la app dejará de depender del dato local y enviará los campos nuevos en el pago.
+
+---
+
+# 23. Error al leer la caja: "no existe la columna a.caja_id"
+
+`GET /api/v1/caja/estado-actual` falla con `pq: no existe la columna a.caja_id at position 9:30 (42703)`. La consulta de `caja_repository.go` (alrededor de la línea 1223) lee `a.caja_id` de `apertura_caja`, y `migrations/00001_initial_schema.sql` sí define esa columna (y la tabla `caja`). Ninguna migración posterior la agrega.
+
+## Causa probable
+
+La base donde corre el servidor se creó con una versión anterior de la `00001`, sin `apertura_caja.caja_id`. Como las migraciones ya aplicadas no se vuelven a ejecutar, la base quedó distinta del código.
+
+## Qué se pide
+
+- Alinear la base con el código: recrearla desde la `00001` vigente, o agregar una migración que cree la tabla `caja` (con sus series) y la columna `apertura_caja.caja_id` con su relación.
+- Revisar `facturacion_service.go` (`JOIN caja c ON c.id = ac.caja_id`), que depende de lo mismo.
+- Comprobar en cada ambiente (local, pruebas, producción) con: `SELECT column_name FROM information_schema.columns WHERE table_name = 'apertura_caja';`
+
+## Efecto en el frontend
+
+Sin leer el estado de la caja, la app no puede avisar "Caja cerrada" ni bloquear pedidos, y muestra el error en la vista de Caja. Mientras no se corrija, el aviso de caja cerrada no se puede probar.
+
+---
+
+# 24. Comprobante "solo Consumo", delivery al imprimir y reimpresión de la cuenta
+
+## Boleta o factura con "Consumo"
+
+Algunos clientes no quieren el detalle de platos en la boleta o factura, sino una sola línea "Consumo". La app ya manda **`solo_consumo: true`** en `POST /api/v1/facturacion/comprobantes` (o la ruta de emisión vigente) cuando el cajero lo elige al cobrar. Se pide: con ese campo, emitir el comprobante con **una sola línea "CONSUMO"** por el total (con su IGV), sin los ítems; y que el ticket impreso lo respete. Sin el campo, todo igual que hoy.
+
+## El monto del delivery no sale al imprimir ni se suma
+
+En pantalla el cargo por delivery se ve y se suma al total, pero lo que **imprime el servidor** (cuenta, ticket de venta y comprobante) no lo trae. Se pide agregar la línea **CARGO POR DELIVERY** y que el total impreso y el del comprobante lo incluyan (el monto sale de `costo_envio` del pedido).
+
+## Reimprimir la cuenta, también ya pagada
+
+Caja y administración deben poder **imprimir y reimprimir la cuenta las veces que quieran**, esté o no pagado el pedido, y sin importar quién lo tomó. Hoy `POST` de reimpresión (`tipo: 'cuenta'`) debe verificarse para `CAJERO` y `ADMINISTRADOR`: que no exija ser el mozo dueño ni un pedido sin pagar. La app ya muestra el botón "Imprimir cuenta" a ambos.
+
+## Cierre de caja sin límite de horas
+
+No encontré en el backend ninguna regla de 12 horas ni cierre automático (`CerrarCaja`/`RegistrarCierre` no comparan horas). Si hay una regla en el servidor o en otro proceso, hay que quitarla para que cajero y administrador cierren cuando quieran. Confirmar con el backend si existe.
+
+## Historial de ventas por fecha de pago
+
+El historial de ventas ahora muestra la **fecha y hora del pago** (no la del pedido) y filtra el día por esa fecha. Se pide que `GET /api/pagos` (por rango de fechas) filtre por **`fecha_pago`**, y que el pedido de un pago hecho en el rango venga en la lista de pedidos aunque se haya tomado otro día (por ejemplo, tomado a las 23:50 y cobrado a las 00:10). Es lo mismo que pide el ítem 19 para los totales de Caja.
+

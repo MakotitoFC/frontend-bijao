@@ -304,10 +304,20 @@ class DetallePedidoPanel extends StatelessWidget {
 
   // Con la API del mozo, solo el mozo que tomó el pedido puede modificarlo.
   bool _puedeModificar(BuildContext context) {
-    if (!_api || PedidoMozoService.instance.puedeOperar(pedido)) return true;
+    // Un mozo nunca modifica el pedido de otro mozo, ni siquiera sin servidor.
+    final u = AuthService.instance.currentUser;
+    final ajeno =
+        u != null &&
+        u.esMozo &&
+        pedido.usuarioId != null &&
+        pedido.usuarioId != u.id;
+    if (!ajeno && (!_api || PedidoMozoService.instance.puedeOperar(pedido))) {
+      return true;
+    }
     showAppToast(
       context,
-      'Solo el mozo que tomó este pedido puede modificarlo.',
+      'Este pedido es de ${nombreMeseroDe(pedido)}: solo ese mozo puede '
+      'modificarlo.',
       type: ToastType.info,
     );
     return false;
@@ -410,7 +420,10 @@ class DetallePedidoPanel extends StatelessWidget {
           }
           Navigator.of(dialogContext).pop();
         },
-        onImprimirCuenta: _api && PedidoMozoService.instance.puedeOperar(pedido)
+        // Caja y administración reimprimen la cuenta las veces que quieran, esté
+        // o no pagado; el mozo solo la de sus pedidos.
+        onImprimirCuenta:
+            _api && (_veCaja || PedidoMozoService.instance.puedeOperar(pedido))
             ? () {
                 ImpresionService.instance
                     .reimprimirPedido(pedido.id, tipo: 'cuenta')
@@ -1368,7 +1381,9 @@ class DetallePedidoPanel extends StatelessWidget {
           _filaTotal(
             'Descuento extra',
             -descExtra,
-            onEditar: () => _agregarAjuste(context),
+            // El mozo solo usa las promociones que ya existen; el descuento a
+            // medida lo ponen caja y administración.
+            onEditar: _veCaja ? () => _agregarAjuste(context) : null,
           ),
           if (devoluciones.abs() > 0.001)
             _filaTotal('Ajustes por devolución', devoluciones),
@@ -1399,19 +1414,19 @@ class DetallePedidoPanel extends StatelessWidget {
           const SizedBox(height: 4),
           _filaTotal('Total', total, fuerte: true),
           const SizedBox(height: 8),
-          if (!_esCajero)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                runSpacing: 8,
-                children: [
-                  AppTag(
-                    etiqueta: 'Promoción',
-                    icono: LucideIcons.tag,
-                    activo: false,
-                    color: AppColors.naranja,
-                    onTap: () => _agregarPromocion(context),
-                  ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              runSpacing: 8,
+              children: [
+                AppTag(
+                  etiqueta: 'Promoción',
+                  icono: LucideIcons.tag,
+                  activo: false,
+                  color: AppColors.naranja,
+                  onTap: () => _agregarPromocion(context),
+                ),
+                if (!_esCajero) ...[
                   AppTag(
                     etiqueta: 'Propina',
                     icono: LucideIcons.handCoins,
@@ -1429,8 +1444,9 @@ class DetallePedidoPanel extends StatelessWidget {
                     onTap: () => _editarTupper(context),
                   ),
                 ],
-              ),
+              ],
             ),
+          ),
         ],
       ),
     );

@@ -152,12 +152,11 @@ class _SelectorTaperState extends State<SelectorTaper> {
           margin: const EdgeInsets.only(bottom: 4),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: activo
-                ? AppColors.primaryGreen.withValues(alpha: 0.1)
-                : Colors.transparent,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: activo ? AppColors.primaryGreen : Colors.grey.shade200,
+              width: activo ? 1.6 : 1,
             ),
           ),
           child: Column(

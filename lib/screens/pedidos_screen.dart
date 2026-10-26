@@ -19,6 +19,7 @@ import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
+import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_select.dart';
 import '../widgets/aviso_caja_cerrada.dart';
 import '../widgets/app_tag.dart';
@@ -587,44 +588,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
-  // Color y ícono de cada tipo de pedido: mesa (verde), para llevar (azul) y
-  // delivery (violeta).
-  (Color, IconData) _estiloDeTipo(String tipo) => switch (tipo) {
-    'delivery' => (const Color(0xFF7C3AED), LucideIcons.bike),
-    'llevar' => (AppColors.info, LucideIcons.packageCheck),
-    _ => (AppColors.primaryGreenDark, LucideIcons.utensils),
-  };
-
-  Widget _tipoDePedido(Pedido p) {
-    final (color, icono) = _estiloDeTipo(p.tipoPedido);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icono, size: 17, color: color),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              tituloPedido(p),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-                color: color,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _tipoDePedido(Pedido p) => EtiquetaTipoPedido(pedido: p);
 
   // Texto de la línea de pago de la tarjeta (null si aún no se cobró).
   String? _lineaDePago(Pedido p) {

@@ -32,6 +32,8 @@ class FacturacionService {
     String? clienteDenominacion,
     String? clienteDireccion,
     bool imprimir = true,
+    // Una sola línea "Consumo" en vez del detalle de platos (boleta o factura).
+    bool soloConsumo = false,
   }) async {
     final res = await _api.post(
       '$_base/comprobantes',
@@ -46,6 +48,7 @@ class FacturacionService {
         'cliente_denominacion': ?clienteDenominacion,
         'cliente_direccion': ?clienteDireccion,
         'imprimir': imprimir,
+        if (soloConsumo) 'solo_consumo': true,
       },
     );
     if (res is! Map<String, dynamic>) {

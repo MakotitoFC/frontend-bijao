@@ -995,9 +995,11 @@ class _Sidebar extends StatelessWidget {
               _cabecera(),
               const Divider(height: 1, color: Colors.white12),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Column(children: _construirTiles()),
+                child: _ListaConIndicador(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Column(children: _construirTiles()),
+                  ),
                 ),
               ),
               _seccionCuenta(),
@@ -1293,6 +1295,79 @@ class _Logo extends StatelessWidget {
       'assets/images/logo_bijao.png',
       height: 36,
       fit: BoxFit.contain,
+    );
+  }
+}
+
+// Muestra una flecha hacia abajo al pie de una lista con desplazamiento cuando
+// todavía hay opciones por ver; desaparece al llegar al final.
+class _ListaConIndicador extends StatefulWidget {
+  final Widget child;
+
+  const _ListaConIndicador({required this.child});
+
+  @override
+  State<_ListaConIndicador> createState() => _ListaConIndicadorState();
+}
+
+class _ListaConIndicadorState extends State<_ListaConIndicador> {
+  bool _hayMas = false;
+
+  void _medir(ScrollMetrics m) {
+    final hayMas = m.maxScrollExtent - m.pixels > 4;
+    if (hayMas != _hayMas) setState(() => _hayMas = hayMas);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        NotificationListener<ScrollMetricsNotification>(
+          onNotification: (n) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _medir(n.metrics);
+            });
+            return false;
+          },
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (n) {
+              _medir(n.metrics);
+              return false;
+            },
+            child: widget.child,
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 150),
+              opacity: _hayMas ? 1 : 0,
+              child: Container(
+                height: 28,
+                alignment: Alignment.bottomCenter,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.navbar.withValues(alpha: 0),
+                      AppColors.navbar,
+                    ],
+                  ),
+                ),
+                child: const Icon(
+                  LucideIcons.chevronDown,
+                  size: 18,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
