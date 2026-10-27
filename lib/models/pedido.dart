@@ -22,6 +22,7 @@ class Pedido {
   final String? mozoNombre; // nombre del mozo que devuelve el backend
   // `pedidos.tipo = 'empleado'`: el pedido es para el personal.
   final bool esEmpleado;
+  final double costoDelivery;
 
   const Pedido({
     required this.id,
@@ -41,6 +42,7 @@ class Pedido {
     this.version = 1,
     this.mozoNombre,
     this.esEmpleado = false,
+    this.costoDelivery = 0.0,
   });
 
   factory Pedido.fromJson(Map<String, dynamic> json) {
@@ -91,6 +93,10 @@ class Pedido {
       version: (json['version'] as num?)?.toInt() ?? 1,
       mozoNombre: json['mozo_nombre']?.toString(),
       esEmpleado: json['tipo']?.toString() == 'empleado',
+      costoDelivery: (json['costo_delivery'] as num?)?.toDouble() ??
+          (json['delivery'] is Map
+              ? (json['delivery']['costo_envio'] as num?)?.toDouble() ?? 0.0
+              : (json['costo_envio'] as num?)?.toDouble() ?? 0.0),
     );
   }
 

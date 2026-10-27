@@ -422,9 +422,7 @@ class DetallePedidoPanel extends StatelessWidget {
         },
         // Caja y administración reimprimen la cuenta las veces que quieran, esté
         // o no pagado; el mozo solo la de sus pedidos.
-        onImprimirCuenta:
-            _api && (_veCaja || PedidoMozoService.instance.puedeOperar(pedido))
-            ? () {
+        onImprimirCuenta: () {
                 ImpresionService.instance
                     .reimprimirPedido(pedido.id, tipo: 'cuenta')
                     .then((_) {
@@ -447,8 +445,7 @@ class DetallePedidoPanel extends StatelessWidget {
                       }
                     });
                 Navigator.of(dialogContext).pop();
-              }
-            : null,
+              },
         onCerrar: () => Navigator.of(dialogContext).pop(),
       ),
     );

@@ -62,6 +62,16 @@ class ComprobanteEnCobro extends ChangeNotifier {
     notifyListeners();
   }
   void alternarPorConsumo(bool v) => alternarSoloConsumo(v);
+  bool incluirRecargo = false;
+  bool incluirDelivery = false;
+  void alternarIncluirRecargo(bool v) {
+    incluirRecargo = v;
+    notifyListeners();
+  }
+  void alternarIncluirDelivery(bool v) {
+    incluirDelivery = v;
+    notifyListeners();
+  }
   final ruc = TextEditingController();
   final razon = TextEditingController();
   final direccion = TextEditingController();
@@ -173,6 +183,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
       imprimir: tipo == 'ticket_venta' && imprimir,
       soloConsumo: soloConsumo && tipo != 'ticket_venta',
       porConsumo: soloConsumo && tipo != 'ticket_venta',
+      incluirRecargo: incluirRecargo && tipo != 'ticket_venta',
+      incluirDelivery: incluirDelivery && tipo != 'ticket_venta',
       clienteTipoDoc: switch (tipo) {
         'factura' => '6',
         'boleta' => conDni ? '1' : '0',
@@ -204,8 +216,9 @@ class ComprobanteEnCobro extends ChangeNotifier {
 // Sección "Comprobante" del diálogo de cobro.
 class SelectorComprobante extends StatelessWidget {
   final ComprobanteEnCobro control;
+  final Pedido? pedido;
 
-  const SelectorComprobante({super.key, required this.control});
+  const SelectorComprobante({super.key, required this.control, this.pedido});
 
   Widget _campo(
     TextEditingController c,
@@ -402,7 +415,7 @@ class SelectorComprobante extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Solo "Consumo" (sin el detalle de los platos)',
+                          'Emitir por consumo',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                         ),
                         Text(
@@ -419,6 +432,60 @@ class SelectorComprobante extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
+              if (!control.soloConsumo) ...[
+                if (pedido != null && recargoCobradoDePedido(pedido!.id) > 0.001) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Incluir recargo por tarjeta (+S/ ${recargoCobradoDePedido(pedido!.id).toStringAsFixed(2)})',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            const Text(
+                              'Suma la comisión de la tarjeta al comprobante fiscal',
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      AppSwitch(
+                        value: control.incluirRecargo,
+                        onChanged: control.alternarIncluirRecargo,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (pedido != null && (pedido!.tipoPedido == 'delivery' || pedido!.costoDelivery > 0)) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Incluir costo de delivery (+S/ ${pedido!.costoDelivery.toStringAsFixed(2)})',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            const Text(
+                              'Añade el flete de envío al comprobante fiscal',
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      AppSwitch(
+                        value: control.incluirDelivery,
+                        onChanged: control.alternarIncluirDelivery,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
             ],
             Row(
               children: [

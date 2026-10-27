@@ -286,11 +286,13 @@ List<LineaTicket> ticketBoleta({
           l.cartaId == cartaIdAjuste && l.nombrePlato.startsWith('Descuento: '),
     ),
   );
-  final cargo = suma(lineas.where((l) => l.cartaId == cartaIdCargoDelivery));
+  final cargoLinea = suma(lineas.where((l) => l.cartaId == cartaIdCargoDelivery));
+  final cargo = cargoLinea > 0.001 ? cargoLinea : pedido.costoDelivery;
+  final deliverySuma = cargoLinea <= 0.001 ? cargo : 0.0;
   final propina = suma(lineas.where(esLineaPropina));
   final tupper = suma(lineas.where(esLineaTupper));
   final devoluciones = suma(lineas.where(esAjusteDeDevolucion));
-  final total = suma(lineas);
+  final total = suma(lineas) + deliverySuma;
   final saldo = total - pagado;
   final conRecargo = recargo > 0.001;
   // Lo que paga el cliente: la cuenta más el recargo.

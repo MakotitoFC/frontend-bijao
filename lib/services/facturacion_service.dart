@@ -138,6 +138,8 @@ class FacturacionService {
     // Una sola línea "Consumo" en vez del detalle de platos (boleta o factura).
     bool soloConsumo = false,
     bool porConsumo = false,
+    bool incluirRecargo = false,
+    bool incluirDelivery = false,
   }) async {
     final esConsumo = soloConsumo || porConsumo;
     final res = await _api.post(
@@ -153,6 +155,8 @@ class FacturacionService {
         'cliente_denominacion': ?clienteDenominacion,
         'cliente_direccion': ?clienteDireccion,
         'imprimir': imprimir,
+        'incluir_recargo': incluirRecargo,
+        'incluir_delivery': incluirDelivery,
         if (esConsumo) ...{
           'solo_consumo': true,
           'por_consumo': true,

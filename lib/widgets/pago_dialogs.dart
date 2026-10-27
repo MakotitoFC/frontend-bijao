@@ -720,7 +720,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ],
           if (_comprobante != null) ...[
             const SizedBox(height: 18),
-            SelectorComprobante(control: _comprobante!),
+            SelectorComprobante(
+              control: _comprobante!,
+              pedido: widget.pedido,
+            ),
           ],
           if (_recargo > 0 || propina > 0 || taper > 0)
             Container(

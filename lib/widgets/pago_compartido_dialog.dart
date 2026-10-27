@@ -494,7 +494,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          SelectorComprobante(control: control),
+          SelectorComprobante(control: control, pedido: widget.pedido),
         ],
       ),
     );

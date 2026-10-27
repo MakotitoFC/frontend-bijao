@@ -74,6 +74,7 @@ class Comprobante {
   };
 
   bool get esInterno => tipoDocumento == 'ticket_venta';
+  bool get esFiscal => tipoDocumento == 'boleta' || tipoDocumento == 'factura';
   bool get anulado => estadoSunat == 'ANULADO';
   bool get pendiente =>
       estadoSunat == 'PENDIENTE' || estadoSunat == 'ERROR_CONEXION';
