@@ -22,6 +22,10 @@ import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_select.dart';
 import '../widgets/aviso_caja_cerrada.dart';
+import '../data/cierres_store.dart';
+import '../models/turno.dart';
+import '../services/caja_service.dart';
+import '../widgets/dialogo_app.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/cronometro_pedido.dart';
@@ -92,6 +96,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   Future<void> _cargar() async {
     await PedidoService.instance.cargarPedidos();
+    if (CajaService.instance.enServidor) {
+      try {
+        await CajaService.instance.cargarEstado();
+      } catch (_) {}
+    }
     // Para saber qué mesas siguen ocupadas (franja "Mesas por liberar").
     if (PedidoMozoService.instance.activo) {
       await CatalogService.instance.cargarMesas();
@@ -417,6 +426,153 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
+  Widget _bannerCajaCerrada() {
+    if (!CajaService.instance.enServidor) return const SizedBox.shrink();
+    if (estadoCajaServidor?.abierta == true) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.shade400, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.alertTriangle, size: 22, color: Colors.amber.shade900),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Caja cerrada',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber.shade900,
+                  ),
+                ),
+                Text(
+                  'No se podrán cobrar pedidos ni registrar pagos hasta que se abra la caja.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.amber.shade900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_esAdmin || widget.usuario.rol == AppRole.cajero) ...[
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: _abrirCajaDialog,
+              icon: const Icon(LucideIcons.lockOpen, size: 16),
+              label: const Text('Abrir Caja Ahora'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _abrirCajaDialog() async {
+    final montoCtrl = TextEditingController(text: '0');
+    final notasCtrl = TextEditingController();
+    List<Turno> turnos = [];
+    try {
+      turnos = await CajaService.instance.cargarTurnos();
+    } catch (_) {}
+    String? turnoSeleccionadoId = turnos.firstOrNull?.id;
+
+    if (!mounted) return;
+    final confirmado = await showBlurDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertaApp(
+          title: const Text('Apertura Rápida de Caja'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Ingresa el efectivo inicial y turno para comenzar a registrar pagos.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: montoCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Monto inicial (S/)',
+                    prefixText: 'S/ ',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (turnos.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    value: turnoSeleccionadoId,
+                    decoration: const InputDecoration(labelText: 'Turno'),
+                    items: [
+                      for (final t in turnos)
+                        DropdownMenuItem(
+                          value: t.id,
+                          child: Text('${t.nombre} (${t.horaInicio} - ${t.horaFin})'),
+                        ),
+                    ],
+                    onChanged: (val) {
+                      setDialogState(() => turnoSeleccionadoId = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: notasCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Notas u observaciones (opcional)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+              child: const Text('Abrir Caja'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmado != true || !mounted) return;
+    final monto = double.tryParse(montoCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+    try {
+      await CajaService.instance.abrir(
+        montoInicial: monto,
+        turnoId: turnoSeleccionadoId,
+        notas: notasCtrl.text.trim(),
+      );
+      if (mounted) {
+        showAppToast(context, 'Caja abierta con éxito.', type: ToastType.success);
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
   // --- cola de pedidos ---
 
   Widget _colaPedidos() {
@@ -431,6 +587,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _bannerCajaCerrada(),
           _cabeceraCola(),
           const SizedBox(height: 12),
           _filtroEstado(),

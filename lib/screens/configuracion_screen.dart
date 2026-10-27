@@ -27,6 +27,7 @@ import '../widgets/logo_tickets_editor.dart';
 import '../widgets/promociones_config.dart';
 import '../widgets/usuario_permisos_dialog.dart';
 import '../widgets/stock_diario_config.dart';
+import '../widgets/turnos_config_widget.dart';
 import '../widgets/app_switch.dart';
 
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
@@ -210,6 +211,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         etiqueta: 'Sede y Facturación',
         seccion: 'Negocio',
         contenido: () => const SedeFiscalConfig(),
+      ),
+    if (widget.usuario.esAdmin)
+      (
+        clave: 'turnos_caja',
+        etiqueta: 'Turnos de Caja',
+        seccion: 'Negocio',
+        contenido: () => const TurnosConfigWidget(),
       ),
     (
       clave: 'negocio',

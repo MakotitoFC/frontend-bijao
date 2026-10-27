@@ -108,17 +108,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
     notifyListeners();
   }
 
-  void alternarSoloConsumo(bool v) {
-    soloConsumo = v;
-    notifyListeners();
-  }
-
   void alternarImprimir(bool v) {
     imprimir = v;
-    notifyListeners();
-  }
-  void alternarPorConsumo(bool v) {
-    porConsumo = v;
     notifyListeners();
   }
 

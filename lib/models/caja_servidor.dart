@@ -9,6 +9,11 @@ class AperturaCaja {
   final DateTime fechaApertura;
   final String? usuarioNombre;
   final String? notas;
+  final String? turnoId;
+  final String? turnoNombre;
+  final String? fechaOperativa;
+  final String? cajaId;
+  final String? cajaNombre;
 
   const AperturaCaja({
     required this.id,
@@ -16,6 +21,11 @@ class AperturaCaja {
     required this.fechaApertura,
     this.usuarioNombre,
     this.notas,
+    this.turnoId,
+    this.turnoNombre,
+    this.fechaOperativa,
+    this.cajaId,
+    this.cajaNombre,
   });
 
   factory AperturaCaja.fromJson(Map<String, dynamic> json) => AperturaCaja(
@@ -27,6 +37,11 @@ class AperturaCaja {
         DateTime.now(),
     usuarioNombre: json['usuario_nombre']?.toString(),
     notas: json['notas']?.toString(),
+    turnoId: json['turno_id']?.toString(),
+    turnoNombre: json['turno_nombre']?.toString(),
+    fechaOperativa: json['fecha_operativa']?.toString(),
+    cajaId: json['caja_id']?.toString(),
+    cajaNombre: json['caja_nombre']?.toString(),
   );
 }
 

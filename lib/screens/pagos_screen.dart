@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/api_client.dart';
 
 import '../widgets/dialogo_app.dart';
 
@@ -578,6 +580,7 @@ class _CajaScreenState extends State<CajaScreen> {
   Future<void> _abrirCaja() async {
     final monto = TextEditingController(text: '0');
     final notas = TextEditingController();
+
     final confirmar = await showBlurDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertaApp(
@@ -634,6 +637,130 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
+  Future<void> _traspasoCaja() async {
+    final notasCtrl = TextEditingController();
+    List<Map<String, dynamic>> usuarios = [];
+    try {
+      final res = await ApiClient.instance.get('/api/v1/usuarios');
+      if (res is List) {
+        usuarios = res.whereType<Map<String, dynamic>>().where((u) {
+          final rol = (u['rol'] ?? '').toString().toUpperCase();
+          final activo = u['activo'] == true || u['estado'] == true;
+          return activo && (rol.contains('ADMIN') || rol.contains('CAJ'));
+        }).toList();
+      }
+    } catch (_) {}
+
+    String? nuevoUsuarioId = usuarios.firstOrNull?['id']?.toString();
+
+    final confirmar = await showBlurDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertaApp(
+          title: const Text('Traspaso de Responsable de Caja'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Transfiere la posesión de la caja activa a otro administrador o cajero sin cerrar la sesión ni afectar el cuadre.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 14),
+                if (usuarios.isNotEmpty)
+                  DropdownButtonFormField<String>(
+                    value: nuevoUsuarioId,
+                    decoration: const InputDecoration(labelText: 'Nuevo responsable'),
+                    items: [
+                      for (final u in usuarios)
+                        DropdownMenuItem(
+                          value: u['id']?.toString(),
+                          child: Text('${u['nombre'] ?? u['usuario']} (${u['rol']})'),
+                        ),
+                    ],
+                    onChanged: (val) => setDlgState(() => nuevoUsuarioId = val),
+                  )
+                else
+                  const Text('No se encontraron otros usuarios cajeros o administradores activos.'),
+                const SizedBox(height: 12),
+                CampoTexto(
+                  controller: notasCtrl,
+                  decoration: const InputDecoration(labelText: 'Motivo / Observaciones (opcional)'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: nuevoUsuarioId == null ? null : () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+              child: const Text('Efectuar Traspaso'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmar != true || nuevoUsuarioId == null || !mounted) return;
+
+    try {
+      await CajaService.instance.traspaso(
+        nuevoUsuarioId: nuevoUsuarioId!,
+        notas: notasCtrl.text.trim(),
+      );
+      if (mounted) {
+        showAppToast(context, 'Traspaso de caja efectuado con éxito.', type: ToastType.success);
+        _cargar();
+      }
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
+  Future<void> _imprimirReporteTurno() async {
+    try {
+      showAppToast(context, 'Enviando resumen de turno a la impresora...', type: ToastType.info);
+      await CajaService.instance.imprimirReporteTurno();
+      if (mounted) {
+        showAppToast(context, 'Resumen de turno impreso con éxito.', type: ToastType.success);
+      }
+    } catch (e) {
+      if (mounted) showAppToast(context, 'Error al imprimir: $e', type: ToastType.error);
+    }
+  }
+
+  Future<void> _imprimirReporteDiaConsolidado() async {
+    try {
+      showAppToast(context, 'Enviando consolidado del día a la impresora...', type: ToastType.info);
+      await CajaService.instance.imprimirReporteDiaConsolidado();
+      if (mounted) {
+        showAppToast(context, 'Consolidado del día impreso con éxito.', type: ToastType.success);
+      }
+    } catch (e) {
+      if (mounted) showAppToast(context, 'Error al imprimir: $e', type: ToastType.error);
+    }
+  }
+
+  Future<void> _abrirReporteDiaDetallado() async {
+    final url = CajaService.instance.urlReporteDiaDetalladoHTML();
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) showAppToast(context, 'No se pudo abrir el navegador: $url', type: ToastType.error);
+      }
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
   // Cierre con el servidor: el monto inicial sale de la apertura y el servidor
   // calcula lo que debería haber (ventas, ingresos y salidas).
   Future<void> _cerrarCajaServidor() async {
@@ -641,6 +768,7 @@ class _CajaScreenState extends State<CajaScreen> {
     final tarjeta = TextEditingController();
     final digital = TextEditingController();
     final notas = TextEditingController();
+
     double n(TextEditingController c) =>
         double.tryParse(c.text.trim().replaceAll(',', '.')) ?? 0;
     final confirmar = await showBlurDialog<bool>(
@@ -790,6 +918,7 @@ class _CajaScreenState extends State<CajaScreen> {
     final tarjeta = TextEditingController();
     final digital = TextEditingController();
     final notas = TextEditingController();
+
     double n(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
     final confirmar = await showBlurDialog<bool>(
       context: context,
@@ -958,13 +1087,78 @@ class _CajaScreenState extends State<CajaScreen> {
                           ],
                         ),
                       ),
-                      FilledButton.icon(
-                        onPressed: _cajaCerrada ? null : _cerrarCaja,
-                        icon: const Icon(LucideIcons.lock, size: 16),
-                        label: const Text('Cerrar caja'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primaryGreen,
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (!_cajaCerrada && CajaService.instance.enServidor)
+                            OutlinedButton.icon(
+                              onPressed: _traspasoCaja,
+                              icon: const Icon(LucideIcons.userCheck, size: 16),
+                              label: const Text('Traspaso de Caja'),
+                            ),
+                          if (CajaService.instance.enServidor)
+                            PopupMenuButton<String>(
+                              tooltip: 'Reportes de Caja',
+                              onSelected: (val) {
+                                if (val == 'turno') _imprimirReporteTurno();
+                                if (val == 'dia_print') _imprimirReporteDiaConsolidado();
+                                if (val == 'dia_pdf') _abrirReporteDiaDetallado();
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'turno',
+                                  child: Row(
+                                    children: [
+                                      Icon(LucideIcons.printer, size: 16, color: Colors.blue),
+                                      SizedBox(width: 8),
+                                      Text('1. Imprimir Resumen del Turno (Ticket)'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'dia_print',
+                                  child: Row(
+                                    children: [
+                                      Icon(LucideIcons.receipt, size: 16, color: Colors.green),
+                                      SizedBox(width: 8),
+                                      Text('2. Imprimir Consolidado del Día (Ticket)'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'dia_pdf',
+                                  child: Row(
+                                    children: [
+                                      Icon(LucideIcons.fileText, size: 16, color: Colors.purple),
+                                      SizedBox(width: 8),
+                                      Text('3. Ver Detallado del Día (PDF/HTML)'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              child: const OutlinedButton(
+                                onPressed: null,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(LucideIcons.barChart2, size: 16),
+                                    SizedBox(width: 6),
+                                    Text('Reportes ▾'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          FilledButton.icon(
+                            onPressed: _cajaCerrada ? null : _cerrarCaja,
+                            icon: const Icon(LucideIcons.lock, size: 16),
+                            label: const Text('Cerrar caja'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primaryGreen,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
