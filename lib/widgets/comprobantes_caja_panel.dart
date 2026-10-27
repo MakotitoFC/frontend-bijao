@@ -312,7 +312,16 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
               ),
             )
           else
-            for (final c in _lista) _fila(c),
+            // Se ven 5 comprobantes; el resto se desplaza.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 430),
+              child: Scrollbar(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [for (final c in _lista) _fila(c)],
+                ),
+              ),
+            ),
         ],
       ),
     );

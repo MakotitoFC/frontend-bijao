@@ -135,8 +135,11 @@ class FacturacionService {
     String? clienteDenominacion,
     String? clienteDireccion,
     bool imprimir = true,
+    // Una sola línea "Consumo" en vez del detalle de platos (boleta o factura).
+    bool soloConsumo = false,
     bool porConsumo = false,
   }) async {
+    final esConsumo = soloConsumo || porConsumo;
     final res = await _api.post(
       '$_base/comprobantes',
       // La emisión puede tardar: SUNAT responde en unos segundos.
@@ -150,7 +153,10 @@ class FacturacionService {
         'cliente_denominacion': ?clienteDenominacion,
         'cliente_direccion': ?clienteDireccion,
         'imprimir': imprimir,
-        'por_consumo': porConsumo,
+        if (esConsumo) ...{
+          'solo_consumo': true,
+          'por_consumo': true,
+        },
       },
     );
     if (res is! Map<String, dynamic>) {

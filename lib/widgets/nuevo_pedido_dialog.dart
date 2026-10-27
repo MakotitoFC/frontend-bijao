@@ -15,6 +15,7 @@ import '../data/mesas_store.dart';
 import '../data/borrador_pedido_store.dart';
 import '../data/categorias_store.dart';
 import '../data/pedidos_store.dart';
+import 'detalle_pedido_panel.dart' show nombreMeseroDe;
 import '../data/promociones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/app_role.dart';
@@ -457,25 +458,28 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       showAppToast(context, 'Selecciona una mesa.', type: ToastType.error);
       return;
     }
-    if (widget.tipo == 'llevar') {
-      if (_nombreController.text.trim().isEmpty) {
-        showAppToast(
-          context,
-          'Ingresa el nombre del cliente.',
-          type: ToastType.error,
-        );
-        return;
-      }
-    }
-    if (esDelivery &&
-        double.tryParse(_envioController.text.trim().replaceAll(',', '.')) ==
-            null) {
+    // Datos que pide cada tipo: para llevar, el nombre; delivery, nombre,
+    // celular, dirección y monto del delivery.
+    final faltan = <String>[
+      if (!esMesa && _nombreController.text.trim().isEmpty)
+        'Nombre del cliente',
+      if (esDelivery && _telefonoController.text.trim().isEmpty)
+        'Celular / WhatsApp',
+      if (esDelivery && _direccionController.text.trim().isEmpty)
+        'Dirección de entrega',
+      if (esDelivery &&
+          double.tryParse(_envioController.text.trim().replaceAll(',', '.')) ==
+              null)
+        'Monto del delivery',
+    ];
+    if (faltan.isNotEmpty) {
       await showBlurDialog<void>(
         context: context,
         builder: (dialogContext) => AlertaApp(
-          title: const Text('NO INGRESASTE EL MONTO'),
-          content: const Text(
-            'Escribe el monto del delivery antes de confirmar el pedido.',
+          title: const Text('FALTAN DATOS DEL PEDIDO'),
+          content: Text(
+            'Antes de confirmar el pedido ${esDelivery ? 'de delivery' : 'para llevar'} '
+            'ingresa:\n\n${faltan.map((f) => '• $f').join('\n')}',
           ),
           actions: [
             FilledButton(
@@ -484,16 +488,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             ),
           ],
         ),
-      );
-      return;
-    }
-    if (esDelivery &&
-        (_telefonoController.text.trim().isEmpty ||
-            _direccionController.text.trim().isEmpty)) {
-      showAppToast(
-        context,
-        'Ingresa el celular y la dirección de entrega.',
-        type: ToastType.error,
       );
       return;
     }
@@ -702,9 +696,16 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   void _elegirMesa(Mesa mesa) {
     if (!mesa.estaLibre) {
+      // Se dice de quién es, para no sumar productos a la mesa de otro mozo.
+      final ocupante = pedidos
+          .where((p) => p.todasLasMesas.contains(mesa.numero) && p.abierto)
+          .firstOrNull;
+      final mozo = ocupante == null ? '' : nombreMeseroDe(ocupante);
       showAppToast(
         context,
-        'La mesa ${mesa.numero} está ocupada.',
+        mozo.isEmpty
+            ? 'La mesa ${mesa.numero} está ocupada.'
+            : 'La mesa ${mesa.numero} está ocupada por $mozo.',
         type: ToastType.error,
       );
       return;
@@ -1375,9 +1376,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         if (widget.tipo != 'mesa')
           _campoTexto(
             controller: _nombreController,
-            hint: widget.tipo == 'llevar'
-                ? 'Nombre del cliente'
-                : 'Nombre del cliente (opcional)',
+            hint: 'Nombre del cliente * Obligatorio',
             icono: Icons.person_outline,
             contentPaddingVertical: 16,
           ),

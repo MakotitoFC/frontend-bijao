@@ -53,8 +53,15 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   String tipo;
   bool conDni = false;
-  bool porConsumo = false;
   bool imprimir = true;
+  // Boleta o factura con una sola línea "Consumo" en vez del detalle de platos.
+  bool soloConsumo = false;
+  bool get porConsumo => soloConsumo;
+  void alternarSoloConsumo(bool v) {
+    soloConsumo = v;
+    notifyListeners();
+  }
+  void alternarPorConsumo(bool v) => alternarSoloConsumo(v);
   final ruc = TextEditingController();
   final razon = TextEditingController();
   final direccion = TextEditingController();
@@ -98,6 +105,11 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   void alternarDni(bool v) {
     conDni = v;
+    notifyListeners();
+  }
+
+  void alternarSoloConsumo(bool v) {
+    soloConsumo = v;
     notifyListeners();
   }
 
@@ -168,7 +180,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
       // `ComprobanteEmitidoDialog`), para que el papel lleve los datos
       // confirmados. El ticket interno no espera a SUNAT.
       imprimir: tipo == 'ticket_venta' && imprimir,
-      porConsumo: porConsumo,
+      soloConsumo: soloConsumo && tipo != 'ticket_venta',
+      porConsumo: soloConsumo && tipo != 'ticket_venta',
       clienteTipoDoc: switch (tipo) {
         'factura' => '6',
         'boleta' => conDni ? '1' : '0',
@@ -390,7 +403,7 @@ class SelectorComprobante extends StatelessWidget {
           if (control.emite) ...[
             const SizedBox(height: 14),
             _formulario(),
-            if (control.tipo == 'boleta' || control.tipo == 'factura') ...[
+            if (control.tipo != 'ticket_venta') ...[
               Row(
                 children: [
                   const Expanded(
@@ -398,7 +411,7 @@ class SelectorComprobante extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Emitir por consumo',
+                          'Solo "Consumo" (sin el detalle de los platos)',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                         ),
                         Text(
@@ -409,8 +422,8 @@ class SelectorComprobante extends StatelessWidget {
                     ),
                   ),
                   AppSwitch(
-                    value: control.porConsumo,
-                    onChanged: control.alternarPorConsumo,
+                    value: control.soloConsumo,
+                    onChanged: control.alternarSoloConsumo,
                   ),
                 ],
               ),

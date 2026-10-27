@@ -44,7 +44,8 @@ class SubmenuSuperior extends StatelessWidget {
     required this.onSeleccionar,
   });
 
-  static const _tinta = Color(0xFF111827);
+  // Barra oscura con letras blancas.
+  static const _tinta = Colors.white;
 
   // Agrupa las entradas: cada etiqueta de sección junto con las opciones que
   // le siguen forma una pestaña con desplegable.
@@ -78,7 +79,7 @@ class SubmenuSuperior extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: AppColors.primaryGreen,
+      color: AppColors.navbar,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
