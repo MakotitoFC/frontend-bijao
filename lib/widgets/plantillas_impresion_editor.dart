@@ -19,14 +19,14 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
   final _servicio = ImpresionService.instance;
 
   final List<Map<String, String>> _tiposDocumento = [
+    {'tipo': 'CUENTA_CONSUMO', 'nombre': 'Cuenta de Consumo'},
     {'tipo': 'COMANDA_COCINA', 'nombre': 'Comanda Cocina'},
     {'tipo': 'TICKET_VENTA', 'nombre': 'Ticket de Venta'},
     {'tipo': 'BOLETA_ELECTRONICA', 'nombre': 'Boleta Electrónica'},
     {'tipo': 'FACTURA_ELECTRONICA', 'nombre': 'Factura Electrónica'},
-    {'tipo': 'CUENTA_CONSUMO', 'nombre': 'Cuenta de Consumo'},
   ];
 
-  String _tipoSeleccionado = 'COMANDA_COCINA';
+  String _tipoSeleccionado = 'CUENTA_CONSUMO';
   PlantillaImpresion? _plantillaActual;
   bool _cargando = true;
   bool _guardando = false;
@@ -186,23 +186,31 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
           else
             LayoutBuilder(
               builder: (context, constraints) {
-                final esAncho = constraints.maxWidth > 900;
+                final esAncho = constraints.maxWidth > 850;
+                if (!esAncho) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildFormularioConfig(context),
+                      const SizedBox(height: 28),
+                      _buildVistaPreviaTicket(context),
+                    ],
+                  );
+                }
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Columna 1: Controles de Configuración
                     Expanded(
-                      flex: esAncho ? 6 : 1,
+                      flex: 6,
                       child: _buildFormularioConfig(context),
                     ),
-                    if (esAncho) ...[
-                      const SizedBox(width: 24),
-                      // Columna 2: Vista Previa en Vivo (Simulador de Papel Térmico)
-                      Expanded(
-                        flex: 5,
-                        child: _buildVistaPreviaTicket(context),
-                      ),
-                    ],
+                    const SizedBox(width: 24),
+                    // Columna 2: Vista Previa en Vivo (Simulador de Papel Térmico)
+                    Expanded(
+                      flex: 5,
+                      child: _buildVistaPreviaTicket(context),
+                    ),
                   ],
                 );
               },
@@ -218,12 +226,40 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CampoTexto(
-          controller: _nombreCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Nombre de la Plantilla',
-            prefixIcon: Icon(LucideIcons.tag, size: 18),
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: CampoTexto(
+                controller: _nombreCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de la Plantilla',
+                  prefixIcon: Icon(LucideIcons.tag, size: 18),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: AppSelect<String>(
+                label: 'Lugar de Impresión',
+                value: (p.configExtra['lugar_impresion']?.toString() ?? (p.tipoDocumento == 'COMANDA_COCINA' ? 'cocina' : 'caja')),
+                items: const [
+                  AppSelectItem(value: 'caja', label: 'Caja (USB por defecto)'),
+                  AppSelectItem(value: 'cocina', label: 'Cocina (Red/LAN)'),
+                  AppSelectItem(value: 'barra', label: 'Barra / Bar'),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    final extra = Map<String, dynamic>.from(p.configExtra);
+                    extra['lugar_impresion'] = v;
+                    setState(() => _plantillaActual = p.copyWith(configExtra: extra));
+                  }
+                },
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
 
@@ -464,7 +500,7 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                     ? 'FACTURA ELECTRONICA'
                     : (p.tipoDocumento == 'BOLETA_ELECTRONICA'
                         ? 'BOLETA ELECTRONICA'
-                        : (p.tipoDocumento == 'CUENTA_CONSUMO' ? 'PRECUENTA' : 'TICKET DE VENTA'))),
+                        : (p.tipoDocumento == 'CUENTA_CONSUMO' ? 'CUENTA DE CONSUMO\nNo es comprobante de pago' : 'TICKET DE VENTA'))),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'monospace',

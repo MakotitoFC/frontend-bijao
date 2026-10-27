@@ -22,6 +22,7 @@ import '../widgets/medio_pago_dialog.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/pestanas_vista.dart';
 import '../widgets/impresoras_config.dart';
+import '../widgets/sede_fiscal_config.dart';
 import '../widgets/logo_tickets_editor.dart';
 import '../widgets/promociones_config.dart';
 import '../widgets/usuario_permisos_dialog.dart';
@@ -202,6 +203,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         etiqueta: 'Impresoras',
         seccion: 'Negocio',
         contenido: () => const ImpresorasConfig(),
+      ),
+    if (widget.usuario.esAdmin)
+      (
+        clave: 'sede_fiscal',
+        etiqueta: 'Sede y Facturación',
+        seccion: 'Negocio',
+        contenido: () => const SedeFiscalConfig(),
       ),
     (
       clave: 'negocio',

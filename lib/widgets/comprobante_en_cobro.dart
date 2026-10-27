@@ -53,6 +53,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   String tipo;
   bool conDni = false;
+  bool porConsumo = false;
   bool imprimir = true;
   final ruc = TextEditingController();
   final razon = TextEditingController();
@@ -62,6 +63,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   bool buscando = false;
   RucInfo? rucInfo;
+  DniInfo? dniInfo;
   String? error;
 
   bool get emite => tipo != 'ninguno';
@@ -102,6 +104,27 @@ class ComprobanteEnCobro extends ChangeNotifier {
   void alternarImprimir(bool v) {
     imprimir = v;
     notifyListeners();
+  }
+  void alternarPorConsumo(bool v) {
+    porConsumo = v;
+    notifyListeners();
+  }
+
+  Future<void> buscarDni() async {
+    if (!dniValido || buscando) return;
+    buscando = true;
+    error = null;
+    notifyListeners();
+    try {
+      final info = await FacturacionService.instance.consultarDni(dni.text);
+      dniInfo = info;
+      nombre.text = info.nombreCompleto;
+    } catch (e) {
+      error = _mensajeError(e);
+    } finally {
+      buscando = false;
+      notifyListeners();
+    }
   }
 
   Future<void> buscarRuc() async {
@@ -145,6 +168,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
       // `ComprobanteEmitidoDialog`), para que el papel lleve los datos
       // confirmados. El ticket interno no espera a SUNAT.
       imprimir: tipo == 'ticket_venta' && imprimir,
+      porConsumo: porConsumo,
       clienteTipoDoc: switch (tipo) {
         'factura' => '6',
         'boleta' => conDni ? '1' : '0',
@@ -266,13 +290,48 @@ class SelectorComprobante extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             if (control.conDni) ...[
-              _campo(
-                control.dni,
-                'DNI (8 dígitos)',
-                teclado: TextInputType.number,
-                formato: solo,
-                largo: 8,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: CampoTexto(
+                      controller: control.dni,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: solo,
+                      maxLength: 8,
+                      onChanged: (v) {
+                        control.cambio();
+                        if (v.trim().length == 8 && !control.buscando) {
+                          control.buscarDni();
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'DNI (8 dígitos)',
+                        counterText: '',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: AppSizes.boton,
+                    height: AppSizes.boton,
+                    child: IconButton.filled(
+                      tooltip: 'Buscar en RENIEC / SUNAT',
+                      onPressed: control.dniValido && !control.buscando
+                          ? control.buscarDni
+                          : null,
+                      icon: control.buscando
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(LucideIcons.search, size: 18),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
               _campo(control.nombre, 'Nombre del cliente'),
             ] else
               Text(
@@ -331,6 +390,32 @@ class SelectorComprobante extends StatelessWidget {
           if (control.emite) ...[
             const SizedBox(height: 14),
             _formulario(),
+            if (control.tipo == 'boleta' || control.tipo == 'factura') ...[
+              Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Emitir por consumo',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          'Agrupa todo el pedido en un solo concepto "Por consumo"',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AppSwitch(
+                    value: control.porConsumo,
+                    onChanged: control.alternarPorConsumo,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 const Expanded(

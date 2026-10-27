@@ -13,9 +13,9 @@ import 'dialogo_app.dart';
 import 'ticket_papel.dart';
 
 // Tickets del pedido, tal como salen en la ticketera (80 mm, blanco y negro):
-//  - Comanda de cocina: lo que se prepara, sin precios. Es la que el servidor
-//    manda a la impresora de cocina y la que se puede reimprimir desde aquí.
-//  - Cuenta: lo consumido con sus precios y el total.
+//  - Cuenta: lo consumido con sus precios y el total (impresora de caja / USB).
+//  - Comanda de cocina: lo que se prepara, sin precios (impresora de cocina / LAN).
+// Nota: Comprobantes de pago (Ticket de venta, Boleta y Factura) se emiten exclusivamente al cobrar.
 class BoletaPedidoDialog extends StatefulWidget {
   final Pedido pedido;
   final String mesero;
@@ -43,8 +43,8 @@ class BoletaPedidoDialog extends StatefulWidget {
 }
 
 class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
-  // 'comanda', 'cuenta', 'ticket_venta', 'boleta' o 'factura'.
-  String _tab = 'comanda';
+  // Solo se visualiza en este orden: 'cuenta' y luego 'comanda'.
+  String _tab = 'cuenta';
 
   @override
   void initState() {
@@ -66,21 +66,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
         lineas: lineas,
         mozo: widget.mesero,
       ),
-      'cuenta' => ticketBoleta(
-        pedido: pedido,
-        lineas: lineas,
-        mozo: widget.mesero,
-        sede: datosDeLaSede(),
-        pagos: pagosPorMedioDe(pedido.id),
-        metodoPago: metodo,
-        pagado: pagado > 0.001 ? pagado : 0,
-        recargo: recargoCobradoDePedido(pedido.id),
-        recibido: efectivo?.recibido ?? 0,
-        vuelto: efectivo?.vuelto ?? 0,
-      ),
-      // Ticket de venta, boleta o factura: vista previa de lo que se emitirá.
-      _ => ticketComprobante(
-        tipo: _tab,
+      _ => ticketBoleta(
         pedido: pedido,
         lineas: lineas,
         mozo: widget.mesero,
@@ -93,12 +79,18 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
         vuelto: efectivo?.vuelto ?? 0,
       ),
     };
-    final esComprobante = _tab != 'comanda' && _tab != 'cuenta';
     return DialogoApp(
       titulo: 'Ticket · Pedido #${pedido.numeroPedido}',
       ancho: 480,
       acciones: [
         OutlinedButton(onPressed: widget.onCerrar, child: const Text('Cerrar')),
+        if (_tab == 'cuenta' && widget.onImprimirCuenta != null)
+          FilledButton.icon(
+            onPressed: widget.onImprimirCuenta,
+            icon: const Icon(LucideIcons.printer, size: 16),
+            label: const Text('Imprimir cuenta'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
+          ),
         if (_tab == 'comanda')
           FilledButton.icon(
             onPressed: widget.onImprimir,
@@ -106,58 +98,29 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             label: const Text('Reimprimir comanda'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
           ),
-        if (_tab == 'cuenta' &&
-            !esComprobante &&
-            widget.onImprimirCuenta != null)
-          FilledButton.icon(
-            onPressed: widget.onImprimirCuenta,
-            icon: const Icon(LucideIcons.printer, size: 16),
-            label: const Text('Imprimir cuenta'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),
-          ),
       ],
       children: [
         Wrap(
-          spacing: 0,
+          spacing: 8,
           runSpacing: 8,
           children: [
-            AppTag(
-              etiqueta: 'Comanda de cocina',
-              activo: _tab == 'comanda',
-              onTap: () => setState(() => _tab = 'comanda'),
-            ),
             AppTag(
               etiqueta: 'Cuenta',
               activo: _tab == 'cuenta',
               onTap: () => setState(() => _tab = 'cuenta'),
             ),
             AppTag(
-              etiqueta: 'Ticket de venta',
-              activo: _tab == 'ticket_venta',
-              onTap: () => setState(() => _tab = 'ticket_venta'),
-            ),
-            AppTag(
-              etiqueta: 'Boleta',
-              activo: _tab == 'boleta',
-              onTap: () => setState(() => _tab = 'boleta'),
-            ),
-            AppTag(
-              etiqueta: 'Factura',
-              activo: _tab == 'factura',
-              onTap: () => setState(() => _tab = 'factura'),
+              etiqueta: 'Comanda de cocina',
+              activo: _tab == 'comanda',
+              onTap: () => setState(() => _tab = 'comanda'),
             ),
           ],
         ),
         const SizedBox(height: 12),
         Text(
-          _tab == 'comanda'
-              ? 'Así sale en la impresora de cocina (sin precios). Al '
-                    'reimprimirla, el papel lleva el rótulo REIMPRESION.'
-              : (_tab == 'cuenta'
-                    ? 'Detalle de lo consumido, sin validez tributaria.'
-                    : 'Vista previa de lo que se emitirá: la serie, el número y el '
-                          'código QR los asigna el sistema al emitir, y los datos '
-                          'del cliente se piden al cobrar.'),
+          _tab == 'cuenta'
+              ? 'Detalle de lo consumido, sin validez tributaria. Se imprime en la impresora de caja (USB).'
+              : 'Así sale en la impresora de cocina (sin precios). Al reimprimirla lleva el rótulo de REIMPRESIÓN.',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 12),
@@ -167,7 +130,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             color: const Color(0xFFE5E7EB),
             borderRadius: BorderRadius.circular(12),
           ),
-          // La boleta lleva logo; la comanda de cocina no.
+          // La cuenta lleva logo; la comanda de cocina no.
           child: TicketConLogo(lineas: ticket, conLogo: _tab != 'comanda'),
         ),
         const SizedBox(height: 12),
