@@ -568,7 +568,7 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   if (control.soloConsumo) ...[
                     _filaItem('1 NIU', 'Por consumo', totalCalc),
                   ] else ...[
-                    for (final l in lineas.where(esLineaDeProducto))
+                    for (final l in lineas.where((x) => esLineaDeProducto(x) || esLineaTupper(x) || esLineaTaper(x)))
                       _filaItem(
                         '${l.cantidad} NIU',
                         l.esLibre
@@ -587,8 +587,10 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   ],
 
                   const Divider(thickness: 1, height: 14),
-                  _filaTotal('OP. GRAVADA:', opGravada),
-                  _filaTotal('I.G.V. (18%):', igv),
+                  if (control.tipo != 'ticket_venta') ...[
+                    _filaTotal('OP. GRAVADA:', opGravada),
+                    _filaTotal('I.G.V. (18%):', igv),
+                  ],
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,

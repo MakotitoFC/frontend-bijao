@@ -81,7 +81,9 @@ class PedidoLine {
       nombrePlato:
           json['plato_nombre']?.toString() ??
           json['nombre_libre']?.toString() ??
-          'Plato',
+          (json['taper_nombre'] != null
+              ? 'Táper - ${json['taper_nombre']}'
+              : (json['taper_id'] != null ? 'Táper descartable' : 'Plato')),
       cantidad: cant,
       modificadores: const [],
       presentacion: null,

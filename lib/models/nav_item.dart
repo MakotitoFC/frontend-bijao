@@ -30,13 +30,19 @@ class NavItem {
   /// Determina si un usuario tiene acceso a este ítem (por permiso específico o por rol).
   bool tieneAcceso(Usuario usuario) {
     if (usuario.esAdmin) return true;
-    if (rolesOcultos.contains(usuario.rol)) return false;
-    if (permisoRequerido != null && usuario.tienePermiso(permisoRequerido)) {
-      return true;
+
+    // Si el ítem exige un permiso RBAC específico, ese permiso es la regla de oro:
+    // si el usuario lo tiene (asignado directamente o por su rol), entra; si se le revocó, no entra.
+    if (permisoRequerido != null) {
+      return usuario.tienePermiso(permisoRequerido);
     }
+
+    // Para ítems sin permiso RBAC específico (ej. Inicio):
+    if (rolesOcultos.contains(usuario.rol)) return false;
     if (rolesPermitidos.contains(usuario.rol)) {
       return true;
     }
+
     // Si es un grupo, tiene acceso si tiene acceso a al menos uno de sus hijos
     if (esGrupo) {
       return hijos.any((h) => h.tieneAcceso(usuario));

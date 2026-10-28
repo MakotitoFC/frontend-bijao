@@ -1,4 +1,5 @@
 import '../data/cliente_comprobante_store.dart';
+import '../data/mesas_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -144,9 +145,14 @@ String _lugarComanda(Pedido p) {
       return 'TIPO: >> PARA LLEVAR <<';
     default:
       final n = p.todasLasMesas.where((n) => n != 0);
+      final numMesa = n.isNotEmpty ? n.first : 0;
+      final mesaObj = mesas.where((m) => m.numero == numMesa).firstOrNull;
+      final zonaStr = (mesaObj != null && mesaObj.zona.trim().isNotEmpty)
+          ? mesaObj.zona.trim().toUpperCase()
+          : 'SALÓN';
       return n.isEmpty
-          ? 'MESA: SALON'
-          : 'MESA: ${n.map((x) => x.toString().padLeft(2, '0')).join(' + ')}  (SALON)';
+          ? 'MESA: $zonaStr'
+          : 'MESA: ${n.map((x) => x.toString().padLeft(2, '0')).join(' + ')}  ($zonaStr)';
   }
 }
 

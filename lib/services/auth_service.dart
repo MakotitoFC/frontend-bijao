@@ -43,9 +43,11 @@ class AuthService {
         // Validar token y verificar si el usuario sigue activo en la base de datos
         final me = await ApiClient.instance.get('/api/auth/me');
         if (me is Map<String, dynamic>) {
-          await cargarBorradorGuardado(user.id);
-          userNotifier.value = user;
-          return user;
+          final freshUser = Usuario.fromJson(me);
+          await cargarBorradorGuardado(freshUser.id);
+          userNotifier.value = freshUser;
+          await prefs.setString(_prefUserSession, jsonEncode(freshUser.toJson()));
+          return freshUser;
         }
       } catch (e) {
         debugPrint('[AUTH] Sesión no válida o usuario inactivo: $e');
@@ -54,6 +56,24 @@ class AuthService {
     }
     userNotifier.value = null;
     return null;
+  }
+
+  /// Recarga los datos y permisos frescos del usuario activo desde el backend
+  Future<Usuario?> recargarUsuarioActual() async {
+    if (!ApiClient.instance.hasToken) return null;
+    try {
+      final me = await ApiClient.instance.get('/api/auth/me');
+      if (me is Map<String, dynamic>) {
+        final freshUser = Usuario.fromJson(me);
+        userNotifier.value = freshUser;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_prefUserSession, jsonEncode(freshUser.toJson()));
+        return freshUser;
+      }
+    } catch (e) {
+      debugPrint('[AUTH] Error recargando usuario actual: $e');
+    }
+    return userNotifier.value;
   }
 
   /// Inicia sesión con usuario/email y password contra `POST /api/auth/login`
