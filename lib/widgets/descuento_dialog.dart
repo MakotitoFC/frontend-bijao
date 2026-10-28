@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/configuracion_store.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
 import 'pago_dialogs.dart';
@@ -71,13 +70,6 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
       esPorcentaje: true,
       monto: 15,
     ),
-    if (config.descuentoEmpleadoHabilitado)
-      _TipoDescuento(
-        icono: LucideIcons.users,
-        nombre: 'Empleado',
-        esPorcentaje: true,
-        monto: config.descuentoEmpleadoPorcentaje,
-      ),
     const _TipoDescuento(
       icono: LucideIcons.banknote,
       nombre: 'Descuento S/ 5',

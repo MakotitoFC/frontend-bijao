@@ -353,7 +353,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       // Se registra en el servidor; si lo rechaza, no queda nada cobrado.
       for (final c in cobros) {
         if (c.monto <= 0.005) continue;
-        final esEfectivo = c.medio.grupo == 'efectivo' || c.medio.medioPago.toLowerCase().contains('efectivo');
+        final esEfectivo =
+            c.medio.grupo == 'efectivo' ||
+            c.medio.medioPago.toLowerCase().contains('efectivo');
         await PagoService.instance.registrar(
           pedido: widget.pedido,
           medio: c.medio,
@@ -410,6 +412,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
+    final avisoPropina = PagoService.instance.avisoPropina;
+    if (avisoPropina != null) {
+      PagoService.instance.avisoPropina = null;
+      showAppToast(context, avisoPropina, type: ToastType.info);
+    }
     // El cobro ya está guardado: ahora se emite el comprobante elegido.
     final eleccion = _comprobante;
     if (eleccion != null) {

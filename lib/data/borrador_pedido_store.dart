@@ -26,7 +26,6 @@ class BorradorPedido {
   final int? mesaNumero;
   final String? mesaId;
   final List<PedidoLine> carrito;
-  final bool descEmpleado;
   final double propina;
   final TupperConfigurado tupper;
   final String nombre;
@@ -47,7 +46,6 @@ class BorradorPedido {
     required this.mesaNumero,
     required this.mesaId,
     required this.carrito,
-    required this.descEmpleado,
     required this.propina,
     required this.tupper,
     required this.nombre,
@@ -70,8 +68,7 @@ class BorradorPedido {
       direccion.trim().isNotEmpty ||
       referencia.trim().isNotEmpty ||
       notas.trim().isNotEmpty ||
-      propina > 0 ||
-      descEmpleado;
+      propina > 0;
 
   BorradorPedido conEnviando(bool valor) => BorradorPedido(
     usuarioId: usuarioId,
@@ -79,7 +76,6 @@ class BorradorPedido {
     mesaNumero: mesaNumero,
     mesaId: mesaId,
     carrito: carrito,
-    descEmpleado: descEmpleado,
     propina: propina,
     tupper: tupper,
     nombre: nombre,
@@ -98,7 +94,6 @@ class BorradorPedido {
     'mesa_numero': mesaNumero,
     'mesa_id': mesaId,
     'carrito': [for (final l in carrito) lineaAJsonLocal(l)],
-    'desc_empleado': descEmpleado,
     'propina': propina,
     'tupper': {
       'grande': tupper.grande,
@@ -127,7 +122,6 @@ class BorradorPedido {
         for (final l in (j['carrito'] as List? ?? const []))
           lineaDeJsonLocal(l as Map<String, dynamic>),
       ],
-      descEmpleado: j['desc_empleado'] == true,
       propina: (j['propina'] as num?)?.toDouble() ?? 0,
       tupper: (
         grande: (t['grande'] as num?)?.toInt() ?? 0,

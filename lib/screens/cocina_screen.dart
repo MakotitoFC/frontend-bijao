@@ -15,7 +15,6 @@ import '../data/inventario_store.dart';
 import '../data/insumos_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
-import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
 import '../utils/nota_pedido.dart';
 import '../models/pedido_line.dart';
@@ -124,12 +123,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
 
   String _titulo(Pedido p) => p.ubicacion;
 
-  String _mesero(Pedido p) {
-    for (final u in usuarios) {
-      if (u.id == p.usuarioId) return u.nombre;
-    }
-    return '—';
-  }
+  String _mesero(Pedido p) => nombreMeseroDe(p);
 
   // Insumos porcionados: la cantidad real se registra a mano al preparar.
   Future<void> _registrarInsumo(PedidoLine linea) async {

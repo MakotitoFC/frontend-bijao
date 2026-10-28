@@ -1,10 +1,14 @@
+import '../data/configuracion_store.dart';
+import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/medio_pago.dart';
+import '../models/movimiento_caja.dart';
 import '../models/pago.dart';
 import '../models/pedido.dart';
 import '../utils/uuid_helper.dart';
 import 'api_client.dart';
+import 'movimiento_caja_service.dart';
 
 // Pagos contra el servidor: `POST /api/pagos` para cobrar y
 // `GET /api/pedidos/:id/pagos` para leer lo ya cobrado. El servidor calcula el
@@ -15,6 +19,65 @@ class PagoService {
   static final PagoService instance = PagoService._();
 
   final ApiClient _api = ApiClient.instance;
+
+  // Aviso para quien cobra cuando la propina no pudo salir del efectivo de la
+  // caja (la pantalla lo muestra una vez y lo limpia).
+  String? avisoPropina;
+
+  // La propina pagada con Yape, tarjeta u otro medio que no es efectivo sale
+  // del efectivo de la caja para dársela al mozo: se registra como una salida.
+  // Si se pagó en efectivo, el dinero ya está en la caja y no hay salida.
+  Future<void> _salidaPorPropina(
+    Pedido pedido,
+    MedioPago medioDelPago,
+    double monto,
+  ) async {
+    if (monto <= 0.005) return;
+    final esEfectivo =
+        medioDelPago.grupo == 'efectivo' ||
+        medioDelPago.medioPago.toLowerCase().contains('efectivo');
+    if (esEfectivo) return;
+    try {
+      final efectivo = mediosPagoActivos
+          .where((m) => m.grupo == 'efectivo')
+          .firstOrNull;
+      if (efectivo == null) {
+        avisoPropina =
+            'No hay un método de pago en efectivo para registrar la salida de '
+            'la propina (S/ ${monto.toStringAsFixed(2)}). Regístrala en Caja.';
+        return;
+      }
+      if (categoriasMovimiento.isEmpty) {
+        await MovimientoCajaService.instance.cargarCategorias();
+      }
+      var categoria = categoriasMovimiento
+          .where(
+            (c) =>
+                c.activo &&
+                c.tipo == TipoMovimiento.egreso &&
+                c.nombre.toLowerCase().contains('propina'),
+          )
+          .firstOrNull;
+      categoria ??= await MovimientoCajaService.instance.crearCategoria(
+        nombre: 'Propinas',
+        tipo: TipoMovimiento.egreso,
+      );
+      final mozo = (pedido.mozoNombre ?? '').trim();
+      await MovimientoCajaService.instance.registrar(
+        categoria: categoria,
+        monto: monto,
+        medio: efectivo,
+        nota:
+            'Propina del pedido #${pedido.numeroPedido}'
+            '${mozo.isEmpty ? '' : ' para $mozo'} '
+            '(pagada con ${medioDelPago.medioPago})',
+      );
+    } catch (_) {
+      avisoPropina =
+          'No se pudo registrar la salida de la propina (S/ '
+          '${monto.toStringAsFixed(2)}). Regístrala en Caja como salida.';
+    }
+  }
 
   // Solo los pedidos y métodos que existen en el servidor (ids UUID) se cobran
   // ahí. Los datos de demostración locales siguen funcionando en memoria.
@@ -76,19 +139,20 @@ class PagoService {
           'categoria_movimiento_id': categoriaMovimientoId,
         if (montoRecibido != null && montoRecibido > 0)
           'monto_recibido': montoRecibido,
-        if (vuelto != null && vuelto > 0)
-          'vuelto': vuelto,
+        if (vuelto != null && vuelto > 0) 'vuelto': vuelto,
       },
     );
     if (res is! Map<String, dynamic>) {
       throw Exception('El servidor no devolvió el pago registrado');
     }
-    return aplicarPagoDelServidor(
+    final pago = aplicarPagoDelServidor(
       pedido: pedido,
       medio: medio,
       json: res,
       pagador: pagador,
     );
+    await _salidaPorPropina(pedido, medio, propinaAEnviar);
+    return pago;
   }
 
   // Trae los pagos del día (`GET /api/pagos?desde=&hasta=`) para las pantallas

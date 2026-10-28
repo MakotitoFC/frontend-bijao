@@ -1,3 +1,4 @@
+import '../data/cliente_comprobante_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -286,7 +287,9 @@ List<LineaTicket> ticketBoleta({
           l.cartaId == cartaIdAjuste && l.nombrePlato.startsWith('Descuento: '),
     ),
   );
-  final cargoLinea = suma(lineas.where((l) => l.cartaId == cartaIdCargoDelivery));
+  final cargoLinea = suma(
+    lineas.where((l) => l.cartaId == cartaIdCargoDelivery),
+  );
   final cargo = cargoLinea > 0.001 ? cargoLinea : pedido.costoDelivery;
   final deliverySuma = cargoLinea <= 0.001 ? cargo : 0.0;
   final propina = suma(lineas.where(esLineaPropina));
@@ -298,7 +301,11 @@ List<LineaTicket> ticketBoleta({
   // Lo que paga el cliente: la cuenta más el recargo.
   final totalCobrado = total + (conRecargo ? recargo : 0);
   final numero = pedido.numeroPedido;
-  final cliente = (pedido.clienteNombre ?? '').trim();
+  // El nombre del pedido o, si no tiene, el del cliente al que se emitió la
+  // boleta o la factura.
+  final cliente = (pedido.clienteNombre ?? '').trim().isNotEmpty
+      ? pedido.clienteNombre!.trim()
+      : (etiquetaClienteDeComprobante(pedido.id) ?? '');
 
   final salida = <LineaTicket>[
     ..._cabeceraBoleta(sede, numero),

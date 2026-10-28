@@ -1,3 +1,5 @@
+import '../data/cliente_comprobante_store.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -61,6 +63,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
     soloConsumo = v;
     notifyListeners();
   }
+
   void alternarPorConsumo(bool v) => alternarSoloConsumo(v);
   bool incluirRecargo = false;
   bool incluirDelivery = false;
@@ -68,10 +71,12 @@ class ComprobanteEnCobro extends ChangeNotifier {
     incluirRecargo = v;
     notifyListeners();
   }
+
   void alternarIncluirDelivery(bool v) {
     incluirDelivery = v;
     notifyListeners();
   }
+
   final ruc = TextEditingController();
   final razon = TextEditingController();
   final direccion = TextEditingController();
@@ -167,13 +172,13 @@ class ComprobanteEnCobro extends ChangeNotifier {
   // registrado: se vincula al primer pago del pedido.
   // [pagoId] fija el pago al que se vincula (en el pago compartido, el de cada
   // pagador); sin él se usa el primero del pedido.
-  Future<Comprobante> emitir(Pedido pedido, {String? pagoId}) {
+  Future<Comprobante> emitir(Pedido pedido, {String? pagoId}) async {
     pagoId ??= pagos
         .where((p) => p.pedidoId == pedido.id && !p.esReembolso)
         .map((p) => p.id)
         .where(UuidHelper.isValid)
         .firstOrNull;
-    return FacturacionService.instance.emitir(
+    final emitido = await FacturacionService.instance.emitir(
       pedidoId: pedido.id,
       tipoDocumento: tipo,
       pagoId: pagoId,
@@ -202,6 +207,14 @@ class ComprobanteEnCobro extends ChangeNotifier {
       },
       clienteDireccion: tipo == 'factura' ? direccion.text.trim() : null,
     );
+    // El ticket de la cuenta usa este nombre en lugar de "CLIENTES VARIOS".
+    recordarClienteDeComprobante(
+      pedido.id,
+      nombre: emitido.clienteDenominacion,
+      tipoDoc: emitido.clienteTipoDoc,
+      documento: emitido.clienteNumDoc,
+    );
+    return emitido;
   }
 
   @override
@@ -416,7 +429,10 @@ class SelectorComprobante extends StatelessWidget {
                       children: [
                         Text(
                           'Emitir por consumo',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         Text(
                           'Agrupa todo el pedido en un solo concepto "Por consumo"',
@@ -433,7 +449,8 @@ class SelectorComprobante extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               if (!control.soloConsumo) ...[
-                if (pedido != null && recargoCobradoDePedido(pedido!.id) > 0.001) ...[
+                if (pedido != null &&
+                    recargoCobradoDePedido(pedido!.id) > 0.001) ...[
                   Row(
                     children: [
                       Expanded(
@@ -442,11 +459,17 @@ class SelectorComprobante extends StatelessWidget {
                           children: [
                             Text(
                               'Incluir recargo por tarjeta (+S/ ${recargoCobradoDePedido(pedido!.id).toStringAsFixed(2)})',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const Text(
                               'Suma la comisión de la tarjeta al comprobante fiscal',
-                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
                             ),
                           ],
                         ),
@@ -459,7 +482,9 @@ class SelectorComprobante extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                 ],
-                if (pedido != null && (pedido!.tipoPedido == 'delivery' || pedido!.costoDelivery > 0)) ...[
+                if (pedido != null &&
+                    (pedido!.tipoPedido == 'delivery' ||
+                        pedido!.costoDelivery > 0)) ...[
                   Row(
                     children: [
                       Expanded(
@@ -468,11 +493,17 @@ class SelectorComprobante extends StatelessWidget {
                           children: [
                             Text(
                               'Incluir costo de delivery (+S/ ${pedido!.costoDelivery.toStringAsFixed(2)})',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const Text(
                               'Añade el flete de envío al comprobante fiscal',
-                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
                             ),
                           ],
                         ),

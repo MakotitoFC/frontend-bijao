@@ -186,11 +186,19 @@ class _CartaCabeceraState extends State<CartaCabecera> {
     }
   }
 
+  // El buscador llega hasta donde termina la pestaña "Cecinas y Chorizo".
   Widget _buscador() {
-    return AppSearchField(
-      controller: _busquedaController,
-      hint: 'Buscar en la carta...',
-      onChanged: (v) => widget.busqueda.value = v,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 470),
+        child: AppSearchField(
+          ajustarAlTexto: false,
+          controller: _busquedaController,
+          hint: 'Buscar en la carta...',
+          onChanged: (v) => widget.busqueda.value = v,
+        ),
+      ),
     );
   }
 

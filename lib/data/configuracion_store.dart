@@ -20,14 +20,6 @@ class Configuracion {
   double tupperGrande = 2.0;
   double tupperMediano = 1.5;
 
-  // Descuento de empleado (`pedidos.descuento`), en porcentaje.
-  bool descuentoEmpleadoHabilitado = false;
-  double descuentoEmpleadoPorcentaje = 20;
-
-  // Cobro adicional por delivery (`pedidos.cargo_servicio`), en soles.
-  bool cargoDeliveryHabilitado = false;
-  double cargoDeliveryMonto = 3;
-
   static const _prefijo = 'config_';
 
   // Lee lo guardado en este dispositivo (si no hay nada, quedan los valores
@@ -42,19 +34,6 @@ class Configuracion {
       propinaSugerida = n('propinaSugerida', propinaSugerida);
       tupperGrande = n('tupperGrande', tupperGrande);
       tupperMediano = n('tupperMediano', tupperMediano);
-      descuentoEmpleadoHabilitado = b(
-        'descuentoEmpleadoHabilitado',
-        descuentoEmpleadoHabilitado,
-      );
-      descuentoEmpleadoPorcentaje = n(
-        'descuentoEmpleadoPorcentaje',
-        descuentoEmpleadoPorcentaje,
-      );
-      cargoDeliveryHabilitado = b(
-        'cargoDeliveryHabilitado',
-        cargoDeliveryHabilitado,
-      );
-      cargoDeliveryMonto = n('cargoDeliveryMonto', cargoDeliveryMonto);
     } catch (_) {
       // Sin almacenamiento disponible: se usan los valores por defecto.
     }
@@ -69,19 +48,6 @@ class Configuracion {
       await p.setDouble('${_prefijo}propinaSugerida', propinaSugerida);
       await p.setDouble('${_prefijo}tupperGrande', tupperGrande);
       await p.setDouble('${_prefijo}tupperMediano', tupperMediano);
-      await p.setBool(
-        '${_prefijo}descuentoEmpleadoHabilitado',
-        descuentoEmpleadoHabilitado,
-      );
-      await p.setDouble(
-        '${_prefijo}descuentoEmpleadoPorcentaje',
-        descuentoEmpleadoPorcentaje,
-      );
-      await p.setBool(
-        '${_prefijo}cargoDeliveryHabilitado',
-        cargoDeliveryHabilitado,
-      );
-      await p.setDouble('${_prefijo}cargoDeliveryMonto', cargoDeliveryMonto);
     } catch (_) {
       // Si no se puede guardar, el ajuste vale solo mientras la app esté abierta.
     }

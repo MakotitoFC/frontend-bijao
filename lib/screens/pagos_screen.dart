@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/api_client.dart';
 
 import '../widgets/dialogo_app.dart';
@@ -14,7 +15,6 @@ import '../services/caja_service.dart';
 import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
-import '../data/usuarios_store.dart';
 import '../models/caja_servidor.dart';
 import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
@@ -41,19 +41,11 @@ import '../widgets/campo_texto.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
 
-String _nombreUsuario(String? id) {
-  for (final u in usuarios) {
-    if (u.id == id) return u.nombre;
-  }
-  return '—';
-}
-
-// Mozo que tomó el pedido: el nombre que manda el servidor o, si falta, el
-// del usuario del pedido.
+// Mozo que tomó el pedido, con el nombre que manda el servidor.
 String _mozoDe(Pedido p) =>
     (p.mozoNombre != null && p.mozoNombre!.trim().isNotEmpty)
     ? p.mozoNombre!
-    : _nombreUsuario(p.usuarioId);
+    : '—';
 
 String _fecha(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
@@ -99,17 +91,24 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     _cargarPagos();
   }
 
+  // Si no se pudieron leer los pagos del servidor, aquí va el motivo: sin ellos
+  // la tabla no puede mostrar la fecha ni el método de pago.
+  String? _errorPagos;
+
   // Los pagos viven en el servidor: se traen los del rango elegido.
   Future<void> _cargarPagos() async {
     final r = _rango;
+    String? error;
     try {
       if (r == null) {
         await PagoService.instance.cargarDelDia();
       } else {
         await PagoService.instance.cargarDelRango(r.start, r.end);
       }
-    } catch (_) {}
-    if (mounted) setState(() {});
+    } catch (e) {
+      error = e is ApiException ? e.message : e.toString();
+    }
+    if (mounted) setState(() => _errorPagos = error);
   }
 
   void _cambiarRango(DateTimeRange? r) {
@@ -164,11 +163,12 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 
   // Mozos que tomaron pedidos, para el filtro (id y nombre).
   List<({String id, String nombre})> get _mozos {
-    final ids = {
-      for (final p in pedidos)
-        if (p.usuarioId != null) p.usuarioId!,
-    };
-    return [for (final id in ids) (id: id, nombre: _nombreUsuario(id))]
+    final porId = <String, String>{};
+    for (final p in pedidos) {
+      final id = p.usuarioId;
+      if (id != null) porId.putIfAbsent(id, () => _mozoDe(p));
+    }
+    return [for (final e in porId.entries) (id: e.key, nombre: e.value)]
       ..sort((a, b) => a.nombre.compareTo(b.nombre));
   }
 
@@ -206,7 +206,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
       if (t.isEmpty) return true;
       return p.numeroPedido.contains(t) ||
           (p.clienteNombre?.toLowerCase().contains(t) ?? false) ||
-          _nombreUsuario(p.usuarioId).toLowerCase().contains(t);
+          _mozoDe(p).toLowerCase().contains(t);
     }).toList();
   }
 
@@ -356,6 +356,13 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                   );
                 },
               ),
+              if (_errorPagos != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'No se pudieron leer los pagos del servidor: $_errorPagos',
+                  style: const TextStyle(fontSize: 12, color: AppColors.error),
+                ),
+              ],
               const SizedBox(height: 12),
               Expanded(
                 child: filas.isEmpty
@@ -459,7 +466,14 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
           ordenarPor: (p) => _fechaPago(p) ?? DateTime(1970),
           celda: (p) {
             final f = _fechaPago(p);
-            return TablaApp.texto(f == null ? '— (sin pago)' : _fecha(f));
+            // Un pedido ya pagado sin pagos cargados no es "sin pago": falta leerlos.
+            return TablaApp.texto(
+              f != null
+                  ? _fecha(f)
+                  : (p.estado == 'pagado'
+                        ? 'Pagado · sin fecha'
+                        : '— (sin pago)'),
+            );
           },
         ),
         ColumnaTabla(
@@ -672,22 +686,30 @@ class _CajaScreenState extends State<CajaScreen> {
                 if (usuarios.isNotEmpty)
                   DropdownButtonFormField<String>(
                     value: nuevoUsuarioId,
-                    decoration: const InputDecoration(labelText: 'Nuevo responsable'),
+                    decoration: const InputDecoration(
+                      labelText: 'Nuevo responsable',
+                    ),
                     items: [
                       for (final u in usuarios)
                         DropdownMenuItem(
                           value: u['id']?.toString(),
-                          child: Text('${u['nombre'] ?? u['usuario']} (${u['rol']})'),
+                          child: Text(
+                            '${u['nombre'] ?? u['usuario']} (${u['rol']})',
+                          ),
                         ),
                     ],
                     onChanged: (val) => setDlgState(() => nuevoUsuarioId = val),
                   )
                 else
-                  const Text('No se encontraron otros usuarios cajeros o administradores activos.'),
+                  const Text(
+                    'No se encontraron otros usuarios cajeros o administradores activos.',
+                  ),
                 const SizedBox(height: 12),
                 CampoTexto(
                   controller: notasCtrl,
-                  decoration: const InputDecoration(labelText: 'Motivo / Observaciones (opcional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo / Observaciones (opcional)',
+                  ),
                 ),
               ],
             ),
@@ -698,8 +720,12 @@ class _CajaScreenState extends State<CajaScreen> {
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: nuevoUsuarioId == null ? null : () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+              onPressed: nuevoUsuarioId == null
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+              ),
               child: const Text('Efectuar Traspaso'),
             ),
           ],
@@ -715,7 +741,11 @@ class _CajaScreenState extends State<CajaScreen> {
         notas: notasCtrl.text.trim(),
       );
       if (mounted) {
-        showAppToast(context, 'Traspaso de caja efectuado con éxito.', type: ToastType.success);
+        showAppToast(
+          context,
+          'Traspaso de caja efectuado con éxito.',
+          type: ToastType.success,
+        );
         _cargar();
       }
     } catch (e) {
@@ -725,25 +755,43 @@ class _CajaScreenState extends State<CajaScreen> {
 
   Future<void> _imprimirReporteTurno() async {
     try {
-      showAppToast(context, 'Enviando resumen de turno a la impresora...', type: ToastType.info);
+      showAppToast(
+        context,
+        'Enviando resumen de turno a la impresora...',
+        type: ToastType.info,
+      );
       await CajaService.instance.imprimirReporteTurno();
       if (mounted) {
-        showAppToast(context, 'Resumen de turno impreso con éxito.', type: ToastType.success);
+        showAppToast(
+          context,
+          'Resumen de turno impreso con éxito.',
+          type: ToastType.success,
+        );
       }
     } catch (e) {
-      if (mounted) showAppToast(context, 'Error al imprimir: $e', type: ToastType.error);
+      if (mounted)
+        showAppToast(context, 'Error al imprimir: $e', type: ToastType.error);
     }
   }
 
   Future<void> _imprimirReporteDiaConsolidado() async {
     try {
-      showAppToast(context, 'Enviando consolidado del día a la impresora...', type: ToastType.info);
+      showAppToast(
+        context,
+        'Enviando consolidado del día a la impresora...',
+        type: ToastType.info,
+      );
       await CajaService.instance.imprimirReporteDiaConsolidado();
       if (mounted) {
-        showAppToast(context, 'Consolidado del día impreso con éxito.', type: ToastType.success);
+        showAppToast(
+          context,
+          'Consolidado del día impreso con éxito.',
+          type: ToastType.success,
+        );
       }
     } catch (e) {
-      if (mounted) showAppToast(context, 'Error al imprimir: $e', type: ToastType.error);
+      if (mounted)
+        showAppToast(context, 'Error al imprimir: $e', type: ToastType.error);
     }
   }
 
@@ -754,7 +802,12 @@ class _CajaScreenState extends State<CajaScreen> {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        if (mounted) showAppToast(context, 'No se pudo abrir el navegador: $url', type: ToastType.error);
+        if (mounted)
+          showAppToast(
+            context,
+            'No se pudo abrir el navegador: $url',
+            type: ToastType.error,
+          );
       }
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
@@ -1103,17 +1156,25 @@ class _CajaScreenState extends State<CajaScreen> {
                               tooltip: 'Reportes de Caja',
                               onSelected: (val) {
                                 if (val == 'turno') _imprimirReporteTurno();
-                                if (val == 'dia_print') _imprimirReporteDiaConsolidado();
-                                if (val == 'dia_pdf') _abrirReporteDiaDetallado();
+                                if (val == 'dia_print')
+                                  _imprimirReporteDiaConsolidado();
+                                if (val == 'dia_pdf')
+                                  _abrirReporteDiaDetallado();
                               },
                               itemBuilder: (context) => [
                                 const PopupMenuItem(
                                   value: 'turno',
                                   child: Row(
                                     children: [
-                                      Icon(LucideIcons.printer, size: 16, color: Colors.blue),
+                                      Icon(
+                                        LucideIcons.printer,
+                                        size: 16,
+                                        color: Colors.blue,
+                                      ),
                                       SizedBox(width: 8),
-                                      Text('1. Imprimir Resumen del Turno (Ticket)'),
+                                      Text(
+                                        '1. Imprimir Resumen del Turno (Ticket)',
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -1121,9 +1182,15 @@ class _CajaScreenState extends State<CajaScreen> {
                                   value: 'dia_print',
                                   child: Row(
                                     children: [
-                                      Icon(LucideIcons.receipt, size: 16, color: Colors.green),
+                                      Icon(
+                                        LucideIcons.receipt,
+                                        size: 16,
+                                        color: Colors.green,
+                                      ),
                                       SizedBox(width: 8),
-                                      Text('2. Imprimir Consolidado del Día (Ticket)'),
+                                      Text(
+                                        '2. Imprimir Consolidado del Día (Ticket)',
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -1131,9 +1198,15 @@ class _CajaScreenState extends State<CajaScreen> {
                                   value: 'dia_pdf',
                                   child: Row(
                                     children: [
-                                      Icon(LucideIcons.fileText, size: 16, color: Colors.purple),
+                                      Icon(
+                                        LucideIcons.fileText,
+                                        size: 16,
+                                        color: Colors.purple,
+                                      ),
                                       SizedBox(width: 8),
-                                      Text('3. Ver Detallado del Día (PDF/HTML)'),
+                                      Text(
+                                        '3. Ver Detallado del Día (PDF/HTML)',
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -1618,12 +1691,8 @@ class _CajaScreenState extends State<CajaScreen> {
         titulo: 'Cajero',
         anchoMin: 120,
         rol: RolTarjeta.titulo,
-        ordenarPor: (c) =>
-            (c.usuarioNombre ?? _nombreUsuario(c.usuarioId)).toLowerCase(),
-        celda: (c) => TablaApp.texto(
-          c.usuarioNombre ?? _nombreUsuario(c.usuarioId),
-          fuerte: true,
-        ),
+        ordenarPor: (c) => (c.usuarioNombre ?? '').toLowerCase(),
+        celda: (c) => TablaApp.texto(c.usuarioNombre ?? '—', fuerte: true),
       ),
       monto('Inicial', (c) => c.montoInicial),
       monto('Declarado', (c) => c.montoDeclarado),

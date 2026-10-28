@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
+import '../models/sede.dart';
 import '../models/app_role.dart';
 import '../models/horario.dart';
 import '../models/rbac.dart';
@@ -14,6 +15,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/cambiar_pin_dialog.dart';
 import '../data/disponibilidad_store.dart';
 import '../models/medio_pago.dart';
+import '../services/facturacion_service.dart';
 import '../services/api_client.dart';
 import '../widgets/campo_texto.dart';
 import '../widgets/config_widgets.dart';
@@ -22,6 +24,7 @@ import '../widgets/medio_pago_dialog.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/pestanas_vista.dart';
 import '../widgets/impresoras_config.dart';
+import '../widgets/reglas_cocina_config.dart';
 import '../widgets/sede_fiscal_config.dart';
 import '../widgets/logo_tickets_editor.dart';
 import '../widgets/promociones_config.dart';
@@ -42,6 +45,15 @@ class ConfiguracionScreen extends StatefulWidget {
 }
 
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
+  // Datos del negocio y de cada restaurante: se leen y, con "Editar", se
+  // cambian y se confirman con "Guardar" (o se descartan con "Cancelar").
+  bool _editNegocio = false;
+  int _vNegocio = 0;
+  List<String> _negocioCopia = const [];
+  final Set<String> _editSedes = {};
+  final Map<String, Sede> _sedesCopia = {};
+  int _vSedes = 0;
+
   List<RolModel> _rolesRBAC = [];
   List<PermisoModel> _permisosRBAC = [];
   List<UserRBACModel> _usuariosRBAC = [];
@@ -58,9 +70,43 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   void initState() {
     super.initState();
     _cargarRBAC();
+    _cargarSede();
     CatalogService.instance.cargarMediosPago().then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  // Id de la sede tal como la tiene el servidor (null mientras no se haya leído).
+  String? _sedeServidorId;
+
+  // Dirección y teléfono del restaurante salen del servidor: la lista `sedes`
+  // de la app trae un restaurante de demostración hasta que se lee el real.
+  Future<void> _cargarSede() async {
+    try {
+      final cfg = await FacturacionService.instance.obtenerSedeConfig();
+      if (!mounted) return;
+      setState(() {
+        _sedeServidorId = cfg.id.isNotEmpty ? cfg.id : widget.usuario.sedeId;
+        sedes
+          ..clear()
+          ..add(
+            Sede(
+              id: _sedeServidorId ?? '',
+              ruc: cfg.ruc,
+              razonSocial: cfg.razonSocial,
+              direccion: cfg.direccion,
+              celular: cfg.celular,
+              codigoSerie: cfg.codigoSerie,
+              igvPorcentaje: cfg.igvPorcentaje,
+              resolucionSunat: cfg.resolucionSunat,
+              consultaSunatUrl: cfg.consultaSunatUrl,
+              logoUrl: cfg.logoUrl,
+            ),
+          );
+      });
+    } catch (_) {
+      // Sin conexión o sin permiso: se queda con lo que había en la app.
+    }
   }
 
   Future<void> _cargarRBAC() async {
@@ -204,6 +250,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         etiqueta: 'Impresoras',
         seccion: 'Negocio',
         contenido: () => const ImpresorasConfig(),
+      ),
+    if (widget.usuario.esAdmin)
+      (
+        clave: 'impresion_cocina',
+        etiqueta: 'Impresión en cocina',
+        seccion: 'Negocio',
+        contenido: () => const ReglasCocinaConfig(),
       ),
     if (widget.usuario.esAdmin)
       (
@@ -359,18 +412,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             valor: '${config.propinaSugerida.toStringAsFixed(0)} %',
           ),
           FilaDato(
-            etiqueta: 'Descuento de empleado',
-            valor: config.descuentoEmpleadoHabilitado
-                ? '${config.descuentoEmpleadoPorcentaje.toStringAsFixed(0)} %'
-                : 'Desactivado',
-          ),
-          FilaDato(
-            etiqueta: 'Cobro por delivery',
-            valor: config.cargoDeliveryHabilitado
-                ? 'S/ ${config.cargoDeliveryMonto.toStringAsFixed(2)}'
-                : 'Desactivado',
-          ),
-          FilaDato(
             etiqueta: 'Métodos de pago activos',
             valor: pagos.isEmpty ? 'Ninguno' : pagos.join(', '),
           ),
@@ -459,29 +500,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           ),
         ],
       ),
-      SeccionConfig(
-        titulo: 'Descuento de empleado',
-        filas: [
-          FilaSwitch(
-            titulo: 'Permitir descuento de empleado',
-            descripcion: 'Aparece como opción al tomar el pedido',
-            valor: config.descuentoEmpleadoHabilitado,
-            onChanged: (v) {
-              setState(() => config.descuentoEmpleadoHabilitado = v);
-              config.guardar();
-            },
-            extra: CampoNumeroConfig(
-              etiqueta: 'Descuento',
-              valor: config.descuentoEmpleadoPorcentaje,
-              sufijo: '%',
-              onChanged: (n) {
-                config.descuentoEmpleadoPorcentaje = n;
-                config.guardar();
-              },
-            ),
-          ),
-        ],
-      ),
     ];
   }
 
@@ -501,44 +519,244 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     type: ToastType.info,
   );
 
+  Widget _botonesEdicion({
+    required bool editando,
+    required VoidCallback onEditar,
+    required VoidCallback onGuardar,
+    required VoidCallback onCancelar,
+  }) {
+    if (!editando) {
+      return OutlinedButton.icon(
+        onPressed: onEditar,
+        icon: const Icon(Icons.edit_outlined, size: 18),
+        label: const Text('Editar'),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextButton(onPressed: onCancelar, child: const Text('Cancelar')),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: onGuardar,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
+          icon: const Icon(Icons.check, size: 18),
+          label: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+
+  void _editarNegocio() => setState(() {
+    _negocioCopia = [
+      negocio.nombre,
+      negocio.telefono,
+      negocio.direccion,
+      negocio.emailContacto,
+      negocio.moneda,
+      negocio.idioma,
+      negocio.pais,
+      negocio.zonaHoraria,
+    ];
+    _editNegocio = true;
+  });
+
+  void _cancelarNegocio() => setState(() {
+    final v = _negocioCopia;
+    if (v.length == 8) {
+      negocio.nombre = v[0];
+      negocio.telefono = v[1];
+      negocio.direccion = v[2];
+      negocio.emailContacto = v[3];
+      negocio.moneda = v[4];
+      negocio.idioma = v[5];
+      negocio.pais = v[6];
+      negocio.zonaHoraria = v[7];
+    }
+    _editNegocio = false;
+    _vNegocio++;
+  });
+
+  void _guardarNegocio() {
+    setState(() => _editNegocio = false);
+    showAppToast(
+      context,
+      'Datos del negocio guardados.',
+      type: ToastType.success,
+    );
+  }
+
   // ---------------- Restaurantes ----------------
 
   List<Widget> _restaurantes() {
-    return [
-      for (var i = 0; i < sedes.length; i++)
-        SeccionConfig(
-          titulo: 'Restaurante ${i + 1}',
-          filas: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Column(
-                children: [
-                  CampoTextoConfig(
-                    etiqueta: 'Dirección',
-                    valor: sedes[i].direccion,
-                    onChanged: (v) =>
-                        sedes[i] = sedes[i].copyWith(direccion: v),
-                  ),
-                  const SizedBox(height: 12),
-                  CampoTextoConfig(
-                    etiqueta: 'Teléfono',
-                    valor: sedes[i].celular ?? '',
-                    teclado: TextInputType.phone,
-                    onChanged: (v) => sedes[i] = sedes[i].copyWith(celular: v),
-                  ),
-                ],
+    return [for (var i = 0; i < sedes.length; i++) _seccionRestaurante(i)];
+  }
+
+  // Los datos de la sede se guardan en el servidor (solo el administrador y de
+  // su propio local); si falla, se queda editando y se muestra el motivo.
+  Future<void> _guardarSede(int i) async {
+    final id = sedes[i].id;
+    final propia = id == _sedeServidorId || id == widget.usuario.sedeId;
+    final s = sedes[i];
+    final error = !RegExp(r'^\d{11}$').hasMatch(s.ruc.trim())
+        ? 'El RUC debe tener 11 dígitos.'
+        : s.razonSocial.trim().isEmpty
+        ? 'Escribe la razón social.'
+        : s.direccion.trim().isEmpty
+        ? 'Escribe la dirección.'
+        : (s.celular ?? '').trim().length > 9
+        ? 'El teléfono no puede pasar de 9 dígitos.'
+        : s.codigoSerie.trim().length != 1
+        ? 'El código de serie es una sola letra o número.'
+        : s.igvPorcentaje <= 0
+        ? 'El IGV debe ser mayor que 0.'
+        : null;
+    if (error != null) {
+      showAppToast(context, error, type: ToastType.error);
+      return;
+    }
+    try {
+      if (propia) {
+        await FacturacionService.instance.guardarDatosDeSede(s);
+      }
+      if (!mounted) return;
+      setState(() {
+        _sedesCopia.remove(id);
+        _editSedes.remove(id);
+      });
+      showAppToast(
+        context,
+        propia
+            ? 'Datos del restaurante ${i + 1} guardados.'
+            : 'Guardado en la app: solo se puede actualizar en el servidor el '
+                  'restaurante de tu sesión.',
+        type: propia ? ToastType.success : ToastType.info,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppToast(
+        context,
+        e is ApiException ? e.message : 'No se pudo guardar: $e',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  Widget _seccionRestaurante(int i) {
+    final id = sedes[i].id;
+    final editando = _editSedes.contains(id);
+    final s = sedes[i];
+    // Un campo de la tabla `sede`: se lee, y con "Editar" se cambia.
+    Widget campo(
+      String clave,
+      String etiqueta,
+      String valor,
+      Sede Function(String) cambiar, {
+      TextInputType? teclado,
+    }) => CampoTextoConfig(
+      key: ValueKey('sede-$id-$_vSedes-$clave'),
+      habilitado: editando,
+      etiqueta: etiqueta,
+      valor: valor,
+      teclado: teclado,
+      onChanged: (v) => sedes[i] = cambiar(v),
+    );
+    return SeccionConfig(
+      titulo: 'Restaurante ${i + 1}',
+      accion: _botonesEdicion(
+        editando: editando,
+        onEditar: () => setState(() {
+          _sedesCopia[id] = sedes[i];
+          _editSedes.add(id);
+        }),
+        onCancelar: () => setState(() {
+          final copia = _sedesCopia.remove(id);
+          if (copia != null) sedes[i] = copia;
+          _editSedes.remove(id);
+          _vSedes++;
+        }),
+        onGuardar: () => _guardarSede(i),
+      ),
+      filas: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            children: [
+              campo(
+                'ruc',
+                'RUC',
+                s.ruc,
+                (v) => s.copyWith(ruc: v),
+                teclado: TextInputType.number,
               ),
-            ),
-            FilaSwitch(
-              titulo: 'Activo',
-              descripcion: 'Si se apaga, el local deja de operar en el sistema',
-              valor: sedes[i].activo,
-              onChanged: (v) =>
-                  setState(() => sedes[i] = sedes[i].copyWith(activo: v)),
-            ),
-          ],
+              const SizedBox(height: 12),
+              campo(
+                'razon',
+                'Razón social',
+                s.razonSocial,
+                (v) => s.copyWith(razonSocial: v),
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'dir',
+                'Dirección',
+                s.direccion,
+                (v) => s.copyWith(direccion: v),
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'tel',
+                'Teléfono',
+                s.celular ?? '',
+                (v) => s.copyWith(celular: v),
+                teclado: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'serie',
+                'Código de serie (1 carácter)',
+                s.codigoSerie,
+                (v) => s.copyWith(codigoSerie: v),
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'igv',
+                'IGV (%)',
+                s.igvPorcentaje.toString(),
+                (v) => s.copyWith(
+                  igvPorcentaje:
+                      double.tryParse(v.trim().replaceAll(',', '.')) ?? 0,
+                ),
+                teclado: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'res',
+                'Resolución SUNAT',
+                s.resolucionSunat,
+                (v) => s.copyWith(resolucionSunat: v),
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'consulta',
+                'URL de consulta SUNAT',
+                s.consultaSunatUrl,
+                (v) => s.copyWith(consultaSunatUrl: v),
+              ),
+              const SizedBox(height: 12),
+              campo(
+                'logo',
+                'URL del logo',
+                s.logoUrl,
+                (v) => s.copyWith(logoUrl: v),
+              ),
+            ],
+          ),
         ),
-    ];
+      ],
+    );
   }
 
   // ---------------- Métodos de pago ----------------
@@ -729,29 +947,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             )
           else
             for (final m in mediosPago) _filaMedioPago(m),
-        ],
-      ),
-      SeccionConfig(
-        titulo: 'Cobro adicional por delivery',
-        filas: [
-          FilaSwitch(
-            titulo: 'Cobrar un monto extra en pedidos delivery',
-            descripcion: 'Se sugiere al tomar un pedido de delivery',
-            valor: config.cargoDeliveryHabilitado,
-            onChanged: (v) {
-              setState(() => config.cargoDeliveryHabilitado = v);
-              config.guardar();
-            },
-            extra: CampoNumeroConfig(
-              etiqueta: 'Monto',
-              valor: config.cargoDeliveryMonto,
-              prefijo: 'S/ ',
-              onChanged: (n) {
-                config.cargoDeliveryMonto = n;
-                config.guardar();
-              },
-            ),
-          ),
         ],
       ),
     ];
@@ -1452,12 +1647,20 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     return [
       SeccionConfig(
         titulo: 'Información del negocio',
+        accion: _botonesEdicion(
+          editando: _editNegocio,
+          onEditar: _editarNegocio,
+          onGuardar: _guardarNegocio,
+          onCancelar: _cancelarNegocio,
+        ),
         filas: [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Column(
               children: [
                 CampoTextoConfig(
+                  key: ValueKey('neg$_vNegocio-1'),
+                  habilitado: _editNegocio,
                   etiqueta: 'Nombre',
                   valor: negocio.nombre,
                   onChanged: (v) => negocio.nombre = v,
@@ -1465,12 +1668,16 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 const SizedBox(height: 12),
                 par(
                   CampoTextoConfig(
+                    key: ValueKey('neg$_vNegocio-2'),
+                    habilitado: _editNegocio,
                     etiqueta: 'Teléfono',
                     valor: negocio.telefono,
                     teclado: TextInputType.phone,
                     onChanged: (v) => negocio.telefono = v,
                   ),
                   CampoTextoConfig(
+                    key: ValueKey('neg$_vNegocio-3'),
+                    habilitado: _editNegocio,
                     etiqueta: 'Correo de contacto',
                     valor: negocio.emailContacto,
                     teclado: TextInputType.emailAddress,
@@ -1479,6 +1686,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 ),
                 const SizedBox(height: 12),
                 CampoTextoConfig(
+                  key: ValueKey('neg$_vNegocio-4'),
+                  habilitado: _editNegocio,
                   etiqueta: 'Dirección',
                   valor: negocio.direccion,
                   onChanged: (v) => negocio.direccion = v,
@@ -1486,11 +1695,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 const SizedBox(height: 12),
                 par(
                   CampoTextoConfig(
+                    key: ValueKey('neg$_vNegocio-5'),
+                    habilitado: _editNegocio,
                     etiqueta: 'Moneda',
                     valor: negocio.moneda,
                     onChanged: (v) => negocio.moneda = v,
                   ),
                   CampoTextoConfig(
+                    key: ValueKey('neg$_vNegocio-6'),
+                    habilitado: _editNegocio,
                     etiqueta: 'Idioma',
                     valor: negocio.idioma,
                     onChanged: (v) => negocio.idioma = v,
@@ -1499,11 +1712,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                 const SizedBox(height: 12),
                 par(
                   CampoTextoConfig(
+                    key: ValueKey('neg$_vNegocio-7'),
+                    habilitado: _editNegocio,
                     etiqueta: 'País',
                     valor: negocio.pais,
                     onChanged: (v) => negocio.pais = v,
                   ),
                   CampoTextoConfig(
+                    key: ValueKey('neg$_vNegocio-8'),
+                    habilitado: _editNegocio,
                     etiqueta: 'Zona horaria',
                     valor: negocio.zonaHoraria,
                     onChanged: (v) => negocio.zonaHoraria = v,

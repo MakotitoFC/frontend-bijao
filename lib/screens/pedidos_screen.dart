@@ -16,6 +16,10 @@ import '../services/catalog_service.dart';
 import '../services/eventos_service.dart';
 import '../services/pedido_mozo_service.dart';
 import '../services/pedido_service.dart';
+import '../services/traspaso_service.dart';
+import '../data/traspasos_store.dart';
+import '../services/auth_service.dart';
+import '../widgets/traspaso_dialogs.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
@@ -68,6 +72,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
       _tipoNuevoPedido = borrador.tipo;
     }
     mesasPorLiberarNotifier.addListener(_alCambiarEnVivo);
+    traspasosRevision.addListener(_alCambiarEnVivo);
     _cargar();
     EventosService.instance.revision.addListener(_alCambiarEnVivo);
     // Con la conexión en vivo activa, la consulta periódica es solo un respaldo
@@ -81,12 +86,37 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   int _ciclos = 0;
 
+  // Solicitudes que ya se mostraron en el modal: cada una se avisa una vez.
+  final Set<String> _traspasosAvisados = {};
+  bool _modalTraspasos = false;
+
+  // Al llegar un traspaso nuevo, se abre el modal para aceptarlo o rechazarlo.
+  Future<void> _avisarTraspasos() async {
+    if (_modalTraspasos || !mounted) return;
+    final nuevos = [
+      for (final t in traspasosPorResponder(
+        AuthService.instance.currentUser?.id ?? '',
+      ))
+        if (!_traspasosAvisados.contains(t.id)) t,
+    ];
+    if (nuevos.isEmpty) return;
+    _traspasosAvisados.addAll(nuevos.map((t) => t.id));
+    _modalTraspasos = true;
+    await showBlurDialog<void>(
+      context: context,
+      builder: (_) => const BandejaTraspasosDialog(),
+    );
+    _modalTraspasos = false;
+    if (mounted) _cargar();
+  }
+
   void _alCambiarEnVivo() {
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    traspasosRevision.removeListener(_alCambiarEnVivo);
     EventosService.instance.revision.removeListener(_alCambiarEnVivo);
     mesasPorLiberarNotifier.removeListener(_alCambiarEnVivo);
     _pollingTimer?.cancel();
@@ -103,11 +133,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
     }
     // Para saber qué mesas siguen ocupadas (franja "Mesas por liberar").
     if (PedidoMozoService.instance.activo) {
+      await TraspasoService.instance.cargar();
       await CatalogService.instance.cargarMesas();
       // Cobrar no dispara un evento: se consulta también en cada lectura.
       await recargarMesasPorLiberar();
     }
     if (mounted) setState(() {});
+    _avisarTraspasos();
   }
 
   Future<void> _liberarMesa(Mesa mesa) async {
@@ -426,6 +458,48 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
+  // Traspasos que otros mozos le ofrecen al usuario: aceptar o rechazar.
+  Widget _bannerTraspasos() {
+    final n = traspasosPorResponder(AuthService.instance.currentUser?.id ?? '')
+        .length;
+    if (n == 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.naranja.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.naranja, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.users, size: 22, color: AppColors.naranja),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              n == 1
+                  ? 'Tienes 1 pedido por aceptar de otro mozo'
+                  : 'Tienes $n pedidos por aceptar de otros mozos',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton(
+            onPressed: () async {
+              await showBlurDialog<void>(
+                context: context,
+                builder: (_) => const BandejaTraspasosDialog(),
+              );
+              _cargar();
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.naranja),
+            child: const Text('Ver'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _bannerCajaCerrada() {
     if (!CajaService.instance.enServidor) return const SizedBox.shrink();
     if (estadoCajaServidor?.abierta == true) return const SizedBox.shrink();
@@ -439,7 +513,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
       ),
       child: Row(
         children: [
-          Icon(LucideIcons.alertTriangle, size: 22, color: Colors.amber.shade900),
+          Icon(
+            LucideIcons.alertTriangle,
+            size: 22,
+            color: Colors.amber.shade900,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -455,10 +533,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                 ),
                 Text(
                   'No se podrán cobrar pedidos ni registrar pagos hasta que se abra la caja.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.amber.shade900,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
                 ),
               ],
             ),
@@ -471,7 +546,10 @@ class _PedidosScreenState extends State<PedidosScreen> {
               label: const Text('Abrir Caja Ahora'),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primaryGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
               ),
             ),
           ],
@@ -508,7 +586,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
                 const SizedBox(height: 14),
                 TextField(
                   controller: montoCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Monto inicial (S/)',
                     prefixText: 'S/ ',
@@ -523,7 +603,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
                       for (final t in turnos)
                         DropdownMenuItem(
                           value: t.id,
-                          child: Text('${t.nombre} (${t.horaInicio} - ${t.horaFin})'),
+                          child: Text(
+                            '${t.nombre} (${t.horaInicio} - ${t.horaFin})',
+                          ),
                         ),
                     ],
                     onChanged: (val) {
@@ -548,7 +630,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+              ),
               child: const Text('Abrir Caja'),
             ),
           ],
@@ -557,7 +641,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
 
     if (confirmado != true || !mounted) return;
-    final monto = double.tryParse(montoCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+    final monto =
+        double.tryParse(montoCtrl.text.trim().replaceAll(',', '.')) ?? 0;
     try {
       await CajaService.instance.abrir(
         montoInicial: monto,
@@ -565,7 +650,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
         notas: notasCtrl.text.trim(),
       );
       if (mounted) {
-        showAppToast(context, 'Caja abierta con éxito.', type: ToastType.success);
+        showAppToast(
+          context,
+          'Caja abierta con éxito.',
+          type: ToastType.success,
+        );
         setState(() {});
       }
     } catch (e) {
@@ -588,6 +677,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _bannerCajaCerrada(),
+          _bannerTraspasos(),
           _cabeceraCola(),
           const SizedBox(height: 12),
           _filtroEstado(),

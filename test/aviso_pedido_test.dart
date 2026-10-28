@@ -39,7 +39,6 @@ BorradorPedido _borrador(String usuarioId) => BorradorPedido(
   mesaNumero: null,
   mesaId: null,
   carrito: const [_linea],
-  descEmpleado: false,
   propina: 0,
   tupper: (grande: 0, precioGrande: 0, mediano: 0, precioMediano: 0),
   nombre: '',

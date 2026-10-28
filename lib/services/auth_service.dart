@@ -9,6 +9,7 @@ import '../data/pedidos_store.dart';
 import '../models/usuario.dart';
 import 'api_client.dart';
 import 'pedido_mozo_service.dart';
+import 'traspaso_service.dart';
 
 /// Servicio de Autenticación contra el backend de Go.
 /// Gestiona login, sesión activa, almacenamiento de credenciales y permisos RBAC.
@@ -129,6 +130,7 @@ class AuthService {
     // Sin copias: el pedido a medias se borra también del dispositivo.
     await borrarTodoBorradorDe(usuarioId);
     PedidoMozoService.instance.limpiarMarcas();
+    TraspasoService.instance.limpiar();
   }
 
   /// Obtiene el correo/usuario recordado

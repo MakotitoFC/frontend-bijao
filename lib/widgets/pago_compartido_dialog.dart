@@ -525,14 +525,18 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       for (var b = 0; b < boletas.length; b++) {
         final boleta = boletas[b];
         for (final pago in boleta.pagos) {
-          final esEfectivo = pago.medio.grupo == 'efectivo' || pago.medio.medioPago.toLowerCase().contains('efectivo');
+          final esEfectivo =
+              pago.medio.grupo == 'efectivo' ||
+              pago.medio.medioPago.toLowerCase().contains('efectivo');
           final registrado = await PagoService.instance.registrar(
             pedido: widget.pedido,
             medio: pago.medio,
             montoAbonado: pago.monto,
             pagador: boleta.nombre,
             categoriaMovimientoId: _categoriaSeleccionada?.id,
-            montoRecibido: esEfectivo && boleta.recibido > 0.005 ? boleta.recibido : null,
+            montoRecibido: esEfectivo && boleta.recibido > 0.005
+                ? boleta.recibido
+                : null,
             vuelto: esEfectivo && boleta.vuelto > 0.005 ? boleta.vuelto : null,
           );
           pagoDe.putIfAbsent(b, () => registrado.id);
@@ -577,6 +581,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       type: ToastType.success,
       titulo: 'Pago registrado',
     );
+    final avisoPropina = PagoService.instance.avisoPropina;
+    if (avisoPropina != null) {
+      PagoService.instance.avisoPropina = null;
+      showAppToast(context, avisoPropina, type: ToastType.info);
+    }
     // La cuenta quedó saldada: se emite el comprobante que pidió cada pagador
     // (uno puede no querer nada, otro boleta y otro factura).
     final conMonto = [

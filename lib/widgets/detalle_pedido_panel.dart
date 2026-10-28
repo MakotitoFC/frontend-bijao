@@ -10,7 +10,6 @@ import '../data/pagos_store.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/promociones_store.dart';
-import '../data/usuarios_store.dart';
 import '../models/incidencia.dart';
 import '../models/pedido.dart';
 import '../models/taper.dart';
@@ -32,6 +31,9 @@ import '../utils/uuid_helper.dart';
 import 'anulacion_dialog.dart';
 import 'app_toast.dart';
 import 'cambiar_entrega_dialog.dart';
+import 'traspaso_dialogs.dart';
+import '../data/traspasos_store.dart';
+import '../services/traspaso_service.dart';
 import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
 import 'boton_imprimir_whatsapp.dart';
@@ -121,9 +123,6 @@ void mostrarTicketDelPedido(BuildContext context, Pedido p) {
 String nombreMeseroDe(Pedido p) {
   final nombre = p.mozoNombre;
   if (nombre != null && nombre.isNotEmpty) return nombre;
-  for (final u in usuarios) {
-    if (u.id == p.usuarioId) return u.nombre;
-  }
   return '—';
 }
 
@@ -1279,6 +1278,115 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
+  // Traspaso a otro mozo: se ofrece a uno solo; mientras esté pendiente, este
+  // mismo botón permite cancelarlo.
+  Future<void> _traspasar(BuildContext context) async {
+    final pendiente = traspasoPendienteDe(pedido.id);
+    if (pendiente != null) {
+      final cancelar = await showBlurDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertaApp(
+          title: const Text('Traspaso pendiente'),
+          content: Text(
+            'El pedido espera que ${pendiente.destinoNombre} lo acepte. '
+            '¿Quieres cancelar la solicitud?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Seguir esperando'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Cancelar traspaso'),
+            ),
+          ],
+        ),
+      );
+      if (cancelar != true || !context.mounted) return;
+      await _ejecutar(
+        context,
+        () => TraspasoService.instance.cancelar(pendiente.id),
+        exito: 'Traspaso cancelado.',
+      );
+      return;
+    }
+    final destino = await showBlurDialog<String>(
+      context: context,
+      builder: (_) => TraspasarPedidoDialog(pedido: pedido),
+    );
+    if (destino == null || !context.mounted) return;
+    onCambio();
+    showAppToast(
+      context,
+      'Solicitud enviada a $destino. El pedido sigue siendo tuyo hasta que '
+      'acepte.',
+      type: ToastType.success,
+      titulo: 'Traspaso',
+    );
+  }
+
+  // Administrador: reasigna el pedido a otro mozo sin aceptación.
+  Future<void> _reasignar(BuildContext context) async {
+    final destino = await showBlurDialog<String>(
+      context: context,
+      builder: (_) => TraspasarPedidoDialog(pedido: pedido, directo: true),
+    );
+    if (destino == null || !context.mounted) return;
+    onCambio();
+    showAppToast(
+      context,
+      'El pedido #${pedido.numeroPedido} ahora es de $destino.',
+      type: ToastType.success,
+      titulo: 'Reasignado',
+    );
+  }
+
+  // Pedido de personal: pide el nuevo precio por unidad de un plato.
+  Future<void> _editarPrecioPersonal(BuildContext context, PedidoLine l) async {
+    if (!_puedeModificar(context)) return;
+    final controlador = TextEditingController(
+      text: l.precioUnitario.toStringAsFixed(2),
+    );
+    final precio = await showBlurDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: Text('Precio de ${l.nombrePlato}'),
+        content: TextField(
+          controller: controlador,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Precio al personal por unidad (S/)',
+            prefixText: 'S/ ',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(
+                controlador.text.trim().replaceAll(',', '.'),
+              );
+              if (v != null && v >= 0) Navigator.of(dialogContext).pop(v);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    controlador.dispose();
+    if (precio == null || !context.mounted) return;
+    await _ejecutar(
+      context,
+      () => PedidoMozoService.instance.precioPersonalFila(pedido.id, l, precio),
+      exito: 'Precio actualizado.',
+    );
+  }
+
   Future<void> _cambiarEntrega(BuildContext context) async {
     if (!_puedeModificar(context)) return;
     final c = await showBlurDialog<CambioEntrega>(
@@ -1288,6 +1396,8 @@ class DetallePedidoPanel extends StatelessWidget {
     if (c == null || !context.mounted) return;
     final s = PedidoMozoService.instance;
     final eraMesa = pedido.tipoPedido == 'mesa' && pedido.mesaNumero > 0;
+    final mesaAnterior = pedido.mesaNumero;
+    final mesaNueva = mesas.where((m) => m.id == c.mesaId).firstOrNull?.numero;
     final ok = await _ejecutar(context, () {
       if (c.tipo == 'mesa' && eraMesa) {
         return s.cambiarMesa(pedido.id, c.mesaId!);
@@ -1301,10 +1411,15 @@ class DetallePedidoPanel extends StatelessWidget {
       );
     });
     if (ok && context.mounted) {
+      final cambioDeMesa = c.tipo == 'mesa' && eraMesa && mesaNueva != null;
       showAppToast(
         context,
-        'El pedido #${pedido.numeroPedido} se actualizó.',
+        cambioDeMesa
+            ? 'Mesa $mesaAnterior liberada · Mesa $mesaNueva ocupada. El '
+                  'pedido #${pedido.numeroPedido} sigue con sus platos.'
+            : 'El pedido #${pedido.numeroPedido} se actualizó.',
         type: ToastType.success,
+        titulo: cambioDeMesa ? 'Cambio de mesa' : null,
       );
     }
   }
@@ -1588,6 +1703,17 @@ class DetallePedidoPanel extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
+                if (traspasoPendienteDe(pedido.id) case final t?)
+                  Text(
+                    'Traspaso pendiente a ${t.destinoNombre}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.naranja,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1610,6 +1736,59 @@ class DetallePedidoPanel extends StatelessWidget {
               );
             },
           ),
+          if (_api && pedido.abierto && esAdmin) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'Reasignar a otro mozo',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _reasignar(context),
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.grey.shade100,
+                  ),
+                  child: Icon(
+                    LucideIcons.users,
+                    size: 13,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ),
+            ),
+          ] else if (_api &&
+              pedido.abierto &&
+              PedidoMozoService.instance.puedeOperar(pedido)) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: traspasoPendienteDe(pedido.id) == null
+                  ? 'Traspasar a otro mozo'
+                  : 'Traspaso pendiente: ver o cancelar',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _traspasar(context),
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: traspasoPendienteDe(pedido.id) == null
+                        ? Colors.grey.shade100
+                        : AppColors.naranja.withValues(alpha: 0.18),
+                  ),
+                  child: Icon(
+                    LucideIcons.users,
+                    size: 13,
+                    color: traspasoPendienteDe(pedido.id) == null
+                        ? Colors.grey.shade700
+                        : AppColors.naranja,
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (_api) ...[
             const SizedBox(width: 6),
             Tooltip(
@@ -1869,13 +2048,33 @@ class DetallePedidoPanel extends StatelessWidget {
                     ),
                   )
                 else
-                  Text(
-                    '${l.precioTotalLinea < 0 ? '-' : ''}S/ ${l.precioTotalLinea.abs().toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryGreenDark,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${l.precioTotalLinea < 0 ? '-' : ''}S/ ${l.precioTotalLinea.abs().toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryGreenDark,
+                        ),
+                      ),
+                      // Pedido de personal: caja y administración corrigen el
+                      // precio por unidad de cada plato.
+                      if (_api &&
+                          _veCaja &&
+                          pedido.abierto &&
+                          esPedidoDeEmpleado(pedido) &&
+                          esLineaDeProducto(l))
+                        InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _editarPrecioPersonal(context, l),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(Icons.edit_outlined, size: 15),
+                          ),
+                        ),
+                    ],
                   ),
                 if (pagadoLinea > 0)
                   Padding(

@@ -1,4 +1,5 @@
 import '../models/comprobante.dart';
+import '../models/sede.dart';
 import 'api_client.dart';
 
 // Información devuelta por la consulta de DNI en RENIEC / SUNAT / APISUNAT
@@ -55,19 +56,19 @@ class SedeConfig {
   });
 
   factory SedeConfig.fromJson(Map<String, dynamic> json) => SedeConfig(
-        id: json['id']?.toString() ?? '',
-        ruc: json['ruc']?.toString() ?? '',
-        razonSocial: json['razon_social']?.toString() ?? '',
-        direccion: json['direccion']?.toString() ?? '',
-        celular: json['celular']?.toString() ?? '',
-        codigoSerie: json['codigo_serie']?.toString() ?? 'A',
-        igvPorcentaje: (json['igv_porcentaje'] is num)
-            ? (json['igv_porcentaje'] as num).toDouble()
-            : (double.tryParse(json['igv_porcentaje']?.toString() ?? '18') ?? 18.0),
-        resolucionSunat: json['resolucion_sunat']?.toString() ?? '',
-        consultaSunatUrl: json['consulta_sunat_url']?.toString() ?? '',
-        logoUrl: json['logo_url']?.toString() ?? '',
-      );
+    id: json['id']?.toString() ?? '',
+    ruc: json['ruc']?.toString() ?? '',
+    razonSocial: json['razon_social']?.toString() ?? '',
+    direccion: json['direccion']?.toString() ?? '',
+    celular: json['celular']?.toString() ?? '',
+    codigoSerie: json['codigo_serie']?.toString() ?? 'A',
+    igvPorcentaje: (json['igv_porcentaje'] is num)
+        ? (json['igv_porcentaje'] as num).toDouble()
+        : (double.tryParse(json['igv_porcentaje']?.toString() ?? '18') ?? 18.0),
+    resolucionSunat: json['resolucion_sunat']?.toString() ?? '',
+    consultaSunatUrl: json['consulta_sunat_url']?.toString() ?? '',
+    logoUrl: json['logo_url']?.toString() ?? '',
+  );
 }
 
 // Serie y número correlativo registrado
@@ -86,7 +87,8 @@ class SerieCorrelativo {
     this.updatedAt,
   });
 
-  factory SerieCorrelativo.fromJson(Map<String, dynamic> json) => SerieCorrelativo(
+  factory SerieCorrelativo.fromJson(Map<String, dynamic> json) =>
+      SerieCorrelativo(
         sedeId: json['sede_id']?.toString() ?? '',
         tipoDocumento: json['tipo_documento']?.toString() ?? '',
         serie: json['serie']?.toString() ?? '',
@@ -157,10 +159,7 @@ class FacturacionService {
         'imprimir': imprimir,
         'incluir_recargo': incluirRecargo,
         'incluir_delivery': incluirDelivery,
-        if (esConsumo) ...{
-          'solo_consumo': true,
-          'por_consumo': true,
-        },
+        if (esConsumo) ...{'solo_consumo': true, 'por_consumo': true},
       },
     );
     if (res is! Map<String, dynamic>) {
@@ -238,6 +237,19 @@ class FacturacionService {
     return SedeConfig.fromJson(res);
   }
 
+  // Guarda todos los datos de la sede (la tabla `sede`, sin id ni fechas).
+  Future<SedeConfig> guardarDatosDeSede(Sede s) => guardarSedeConfig({
+    'ruc': s.ruc.trim(),
+    'razon_social': s.razonSocial.trim(),
+    'direccion': s.direccion.trim(),
+    'celular': (s.celular ?? '').trim(),
+    'codigo_serie': s.codigoSerie.trim(),
+    'igv_porcentaje': s.igvPorcentaje,
+    'resolucion_sunat': s.resolucionSunat.trim(),
+    'consulta_sunat_url': s.consultaSunatUrl.trim(),
+    'logo_url': s.logoUrl.trim(),
+  });
+
   Future<List<SerieCorrelativo>> obtenerSeriesCorrelativos() async {
     final res = await _api.get('/api/v1/caja/series');
     if (res is! List) return const [];
@@ -247,7 +259,11 @@ class FacturacionService {
         .toList();
   }
 
-  Future<void> actualizarSerieCorrelativo(String serie, int ultimoNumero, {String? tipoDocumento}) async {
+  Future<void> actualizarSerieCorrelativo(
+    String serie,
+    int ultimoNumero, {
+    String? tipoDocumento,
+  }) async {
     await _api.post(
       '/api/v1/caja/series',
       body: {

@@ -45,9 +45,8 @@ class PedidoService {
     double precioTaper = 0.0,
     String tipoEntrega = 'mesa',
     String? comentarios,
-    double descuentoPorcentaje = 0,
-    void Function(String mensaje)? onAdvertencia,
-    Future<String?> Function()? pedirAutorizacion,
+    // Pedido de personal (empleado): el precio de cada plato se escribe a mano.
+    bool esPersonal = false,
   }) async {
     final user = AuthService.instance.currentUser;
     if (AppConfig.usarApiPedidosMozo &&
@@ -59,9 +58,7 @@ class PedidoService {
         mesaNumero: mesaNumero,
         tipoEntrega: tipoEntrega,
         comentarios: comentarios,
-        descuentoPorcentaje: descuentoPorcentaje,
-        onAdvertencia: onAdvertencia,
-        pedirAutorizacion: pedirAutorizacion,
+        esPersonal: esPersonal,
       );
     }
     final now = DateTime.now();
@@ -191,9 +188,7 @@ class PedidoService {
     int? mesaNumero,
     String tipoEntrega = 'mesa',
     String? comentarios,
-    double descuentoPorcentaje = 0,
-    void Function(String mensaje)? onAdvertencia,
-    Future<String?> Function()? pedirAutorizacion,
+    bool esPersonal = false,
   }) async {
     var idMesa = mesaId;
     if ((idMesa == null || idMesa.isEmpty) &&
@@ -231,71 +226,14 @@ class PedidoService {
       comentarios: comentarios,
       tipoEntrega: tipoEntrega,
       nombreCliente: pedido.clienteNombre,
-      // Con descuento de empleado el pedido se registra como de empleado.
-      tipo: descuentoPorcentaje > 0 ? 'empleado' : 'normal',
+      tipo: esPersonal ? 'empleado' : 'normal',
       delivery: delivery,
       base: pedido,
     );
     if (mesaNumero != null && mesaNumero > 0) {
       actualizarEstadoMesa(mesaNumero, 'ocupada');
     }
-
-    if (descuentoPorcentaje > 0) {
-      await _aplicarDescuentoEmpleado(
-        creado.id,
-        descuentoPorcentaje,
-        onAdvertencia,
-        pedirAutorizacion,
-      );
-    }
     return pedidos.firstWhere((p) => p.id == creado.id);
-  }
-
-  // El descuento de empleado exige el permiso de otorgar descuentos: se intenta
-  // con el usuario y, si no lo tiene, con el PIN de un supervisor.
-  Future<void> _aplicarDescuentoEmpleado(
-    String pedidoId,
-    double porcentaje,
-    void Function(String mensaje)? onAdvertencia,
-    Future<String?> Function()? pedirAutorizacion,
-  ) async {
-    final servicio = PedidoMozoService.instance;
-    Future<void> aplicar(String? autorizoId) async {
-      await servicio.aplicarDescuento(
-        pedidoId,
-        motivo: 'Descuento de empleado',
-        porcentaje: true,
-        valor: porcentaje,
-        autorizoId: autorizoId,
-      );
-    }
-
-    try {
-      await aplicar(null);
-    } on ApiException catch (e) {
-      if (e.statusCode != 403) {
-        onAdvertencia?.call(
-          'Pedido creado, pero no se aplicó el descuento: ${e.message}',
-        );
-        return;
-      }
-      final autorizo = await pedirAutorizacion?.call();
-      if (autorizo == null) {
-        onAdvertencia?.call(
-          'Pedido creado sin descuento: falta la autorización de un supervisor.',
-        );
-        return;
-      }
-      try {
-        await aplicar(autorizo);
-      } catch (e2) {
-        onAdvertencia?.call(
-          'Pedido creado, pero no se aplicó el descuento: $e2',
-        );
-      }
-    } catch (e) {
-      onAdvertencia?.call('Pedido creado, pero no se aplicó el descuento: $e');
-    }
   }
 
   /// Carga los pedidos persistidos desde PostgreSQL, sincronizando pedidos activos y del día

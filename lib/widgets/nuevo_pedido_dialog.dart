@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'dialogo_app.dart';
+import 'app_switch.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
-import '../data/configuracion_store.dart';
 import '../data/disponibilidad_store.dart';
 import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
@@ -39,7 +40,6 @@ import 'app_search_field.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'dotted_divider.dart';
-import 'pin_supervisor_dialog.dart';
 import 'imagen_plato.dart';
 import 'plato_libre_dialog.dart';
 import 'producto_opciones_dialog.dart';
@@ -47,7 +47,6 @@ import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'taper_catalogo_dialog.dart';
 import 'tupper_dialog.dart';
-import 'app_switch.dart';
 import 'campo_texto.dart';
 
 // Arma un pedido nuevo (tipo ya elegido en ElegirTipoPedidoDialog): mesa
@@ -95,7 +94,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   CategoriaComida? _categoria;
   final _busquedaController = TextEditingController();
   final List<PedidoLine> _carrito = [];
-  bool _descEmpleado = false;
   double _propina = 0; // propina para el mesero (0 = sin propina)
   static const TupperConfigurado _sinTupper = (
     grande: 0,
@@ -170,7 +168,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     final b = borradorDe(widget.usuario.id);
     if (b == null || b.tipo != widget.tipo) return;
     _carrito.addAll(b.carrito);
-    _descEmpleado = b.descEmpleado;
     _propina = b.propina;
     _tupper = b.tupper;
     _nombreController.text = b.nombre;
@@ -195,7 +192,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     mesaNumero: _mesaNumero,
     mesaId: _mesaId,
     carrito: List.of(_carrito),
-    descEmpleado: _descEmpleado,
     propina: _propina,
     tupper: _tupper,
     nombre: _nombreController.text,
@@ -251,14 +247,21 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     }).toList();
   }
 
-  double get _subtotal => _carrito.fold(0.0, (s, l) => s + l.precioTotalLinea);
+  // Pedido de personal (solo administrador y caja): el precio de cada plato se
+  // escribe a mano y es distinto cada vez. Mientras no se escribe, vale 0.
+  bool _esPersonal = false;
+  final Map<String, double> _preciosPersonal = {};
 
-  double get _porcentajeDescuento =>
-      _descEmpleado && config.descuentoEmpleadoHabilitado
-      ? config.descuentoEmpleadoPorcentaje
-      : 0;
+  bool get _puedePersonal =>
+      widget.usuario.rol == AppRole.administrador ||
+      widget.usuario.rol == AppRole.cajero;
 
-  double get _descuento => _subtotal * _porcentajeDescuento / 100;
+  // Las líneas con el precio que de verdad se cobra.
+  List<PedidoLine> get _lineas => _esPersonal
+      ? [for (final l in _carrito) l.conPrecio(_preciosPersonal[l.id] ?? 0)]
+      : _carrito;
+
+  double get _subtotal => _lineas.fold(0.0, (s, l) => s + l.precioTotalLinea);
 
   double get _cargoDelivery {
     if (widget.tipo != 'delivery') return 0;
@@ -268,30 +271,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     return (v == null || v < 0) ? 0 : v;
   }
 
-  double get _total =>
-      _subtotal - _descuento + _cargoDelivery + _propina + _tupperTotal;
-
-  PedidoLine _conDescuento(PedidoLine l) {
-    final pct = _porcentajeDescuento;
-    if (pct <= 0) return l;
-    final bruto = l.precioUnitario * l.cantidad;
-    final d = bruto * pct / 100;
-    return PedidoLine(
-      id: l.id,
-      cartaId: l.cartaId,
-      nombrePlato: l.nombrePlato,
-      cantidad: l.cantidad,
-      modificadores: l.modificadores,
-      presentacion: l.presentacion,
-      variante: l.variante,
-      componentes: l.componentes,
-      promocion: l.promocion,
-      comentario: l.comentario,
-      precioUnitario: l.precioUnitario,
-      descuentoAplicado: d,
-      precioTotalLinea: bruto - d,
-    );
-  }
+  double get _total => _subtotal + _cargoDelivery + _propina + _tupperTotal;
 
   // ---------- acciones ----------
 
@@ -492,6 +472,32 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       return;
     }
 
+    if (_esPersonal) {
+      final sinPrecio = [
+        for (final l in _carrito)
+          if (!_preciosPersonal.containsKey(l.id)) l.nombrePlato,
+      ];
+      if (sinPrecio.isNotEmpty) {
+        await showBlurDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertaApp(
+            title: const Text('FALTAN PRECIOS DEL PERSONAL'),
+            content: Text(
+              'Escribe el precio de cada plato antes de confirmar:\n\n'
+              '${sinPrecio.map((n) => '• $n').join('\n')}',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Entendido'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _confirmando = true);
 
     final mesaNumero = esMesa ? _mesaNumero! : 0;
@@ -522,7 +528,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       usuarioId: widget.usuario.id,
     );
     final lineas = <PedidoLine>[
-      for (final l in _carrito) _conDescuento(l),
+      ..._lineas,
       if (_cargoDelivery > 0)
         PedidoLine(
           id: UuidHelper.v7(),
@@ -557,14 +563,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         comentarios: _notasController.text.trim().isNotEmpty
             ? _notasController.text.trim()
             : null,
-        descuentoPorcentaje: _porcentajeDescuento,
-        onAdvertencia: (m) {
-          if (mounted) showAppToast(context, m, type: ToastType.info);
-        },
-        pedirAutorizacion: () => pedirAutorizacionSupervisor(
-          context,
-          motivo: 'El descuento de empleado necesita la autorización de un supervisor.',
-        ),
+        esPersonal: _esPersonal,
       );
 
       // El pedido ya está en el servidor: el borrador se borra de inmediato del
@@ -979,6 +978,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                       _filaCarrito(i, compacta: true),
                   ],
                 ),
+              ),
+            if (_puedePersonal)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+                child: _interruptorPersonal(),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
@@ -1460,28 +1464,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           )
         else
           for (var i = 0; i < _carrito.length; i++) _filaCarrito(i),
-        if (config.descuentoEmpleadoHabilitado) ...[
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Descuento de empleado (${config.descuentoEmpleadoPorcentaje.toStringAsFixed(0)}%)',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              AppSwitch(
-                value: _descEmpleado,
-                onChanged: (v) => setState(() => _descEmpleado = v),
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.primaryGreen,
-              ),
-            ],
-          ),
-        ],
+        if (_puedePersonal) _interruptorPersonal(),
         const SizedBox(height: 14),
         Divider(height: 1, color: Colors.grey.shade200),
         const SizedBox(height: 12),
@@ -1543,10 +1526,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           child: Column(
             children: [
               _filaTotal('Subtotal', _subtotal, fuerte: false),
-              if (_descuento > 0) ...[
-                const SizedBox(height: 6),
-                _filaTotal('Descuento', -_descuento, fuerte: false),
-              ],
               if (_cargoDelivery > 0) ...[
                 const SizedBox(height: 6),
                 _filaTotal('Cargo por delivery', _cargoDelivery, fuerte: false),
@@ -1755,7 +1734,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   Widget _filaCarritoCompacta(int index) {
     final linea = _carrito[index];
     final detalle = [
-      'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
+      if (!_esPersonal) 'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
       if (linea.variante != null) linea.variante!.nombre,
       if (linea.presentacion != null)
         '${linea.presentacion!.unidad.unidadPresentacion} ${linea.presentacion!.volumenMl}ml',
@@ -1795,6 +1774,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                     color: AppColors.primaryGreen,
                   ),
                 ),
+                if (_esPersonal) _campoPrecioPersonal(linea),
               ],
             ),
           ),
@@ -1821,6 +1801,59 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             tooltip: 'Quitar del pedido',
           ),
         ],
+      ),
+    );
+  }
+
+  // Pedido de personal: cada plato lleva su precio, escrito a mano.
+  Widget _interruptorPersonal() {
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'Pedido de personal (precio a medida por plato)',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ),
+        AppSwitch(
+          value: _esPersonal,
+          onChanged: (v) => setState(() => _esPersonal = v),
+          activeThumbColor: Colors.white,
+          activeTrackColor: AppColors.primaryGreen,
+        ),
+      ],
+    );
+  }
+
+  Widget _campoPrecioPersonal(PedidoLine linea) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, right: 6),
+      child: SizedBox(
+        width: 150,
+        height: 34,
+        child: TextFormField(
+          key: ValueKey('precio-personal-${linea.id}'),
+          initialValue: _preciosPersonal[linea.id]?.toStringAsFixed(2) ?? '',
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+          ],
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+          decoration: const InputDecoration(
+            isDense: true,
+            hintText: 'Precio (S/)',
+            prefixText: 'S/ ',
+            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          ),
+          onChanged: (texto) => setState(() {
+            final v = double.tryParse(texto.trim().replaceAll(',', '.'));
+            if (v == null || v < 0) {
+              _preciosPersonal.remove(linea.id);
+            } else {
+              _preciosPersonal[linea.id] = v;
+            }
+          }),
+        ),
       ),
     );
   }
@@ -1922,14 +1955,17 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                       color: Colors.grey.shade500,
                     ),
                   ),
-                Text(
-                  'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryGreen,
+                if (_esPersonal)
+                  _campoPrecioPersonal(linea)
+                else
+                  Text(
+                    'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryGreen,
+                    ),
                   ),
-                ),
               ],
             ),
           ),

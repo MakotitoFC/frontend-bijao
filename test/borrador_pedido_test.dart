@@ -214,7 +214,6 @@ void main() {
       mesaNumero: null,
       mesaId: null,
       carrito: [],
-      descEmpleado: false,
       propina: 0,
       tupper: (grande: 0, precioGrande: 0, mediano: 0, precioMediano: 0),
       nombre: '',
@@ -317,7 +316,6 @@ void main() {
           mesaNumero: null,
           mesaId: null,
           carrito: const [linea],
-          descEmpleado: true,
           propina: 2,
           tupper: (grande: 1, precioGrande: 1.5, mediano: 0, precioMediano: 1),
           nombre: 'Carlos',
@@ -347,7 +345,6 @@ void main() {
       expect(b.nombre, 'Carlos');
       expect(b.envio, '3.00');
       expect(b.propina, 2);
-      expect(b.descEmpleado, true);
       expect(b.tupper.grande, 1);
       final l = b.carrito.single;
       expect(l.cantidad, 2);

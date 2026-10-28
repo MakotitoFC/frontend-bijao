@@ -269,6 +269,8 @@ class CampoTextoConfig extends StatelessWidget {
   final String valor;
   final ValueChanged<String> onChanged;
   final TextInputType? teclado;
+  // false: solo se lee (hasta que se pulse "Editar").
+  final bool habilitado;
 
   const CampoTextoConfig({
     super.key,
@@ -276,12 +278,14 @@ class CampoTextoConfig extends StatelessWidget {
     required this.valor,
     required this.onChanged,
     this.teclado,
+    this.habilitado = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return CampoTexto(
       initialValue: valor,
+      enabled: habilitado,
       keyboardType: teclado,
       style: const TextStyle(fontSize: 13),
       decoration: InputDecoration(

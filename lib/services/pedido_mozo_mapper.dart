@@ -67,6 +67,8 @@ Map<String, dynamic> armarPedidoMozo({
           l,
           tipoEntrega: tipoEntrega,
           conDelivery: delivery != null,
+          // En un pedido de personal el precio de cada plato se escribe a mano.
+          precioPersonal: tipo == 'empleado',
         ),
     ],
   };
@@ -80,6 +82,7 @@ List<Map<String, dynamic>> itemsDeLinea(
   PedidoLine l, {
   String tipoEntrega = 'mesa',
   bool conDelivery = false,
+  bool precioPersonal = false,
 }) {
   // En un pedido de delivery todas las filas salen por delivery.
   final entrega = (tipoEntrega == 'delivery' || tipoEntrega == 'llevar')
@@ -155,6 +158,7 @@ List<Map<String, dynamic>> itemsDeLinea(
         'carta_variante_id': l.variante!.id,
       if (l.presentacion != null && _esUuid(l.presentacion!.id))
         'carta_presentacion_id': l.presentacion!.id,
+      if (precioPersonal) 'precio_personal': l.precioUnitario,
       'cantidad': l.cantidad,
       'tipo_entrega': entrega,
       'comentario': ?comentario,

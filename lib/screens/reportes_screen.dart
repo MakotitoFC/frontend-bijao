@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
-import '../data/usuarios_store.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import '../widgets/tabla_app.dart';
@@ -590,9 +589,6 @@ class ReportesScreen extends StatelessWidget {
     for (final p in pedidos) {
       final n = p.mozoNombre;
       if (n != null && n.trim().isNotEmpty) return n;
-    }
-    for (final u in usuarios) {
-      if (u.id == id) return u.nombre;
     }
     return 'Sin asignar';
   }

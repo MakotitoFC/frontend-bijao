@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../data/configuracion_store.dart';
 import '../data/mesas_store.dart';
 import '../models/pedido.dart';
 import '../services/pedido_mozo_mapper.dart';
@@ -43,11 +42,7 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
   bool _aplicaTaper = false;
   final _direccion = TextEditingController();
   final _telefono = TextEditingController();
-  late final _envio = TextEditingController(
-    text: config.cargoDeliveryHabilitado
-        ? config.cargoDeliveryMonto.toStringAsFixed(2)
-        : '',
-  );
+  final _envio = TextEditingController();
   String? _error;
 
   @override

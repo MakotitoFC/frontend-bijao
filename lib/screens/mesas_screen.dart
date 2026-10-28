@@ -9,7 +9,6 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
-import '../data/usuarios_store.dart';
 import '../models/app_role.dart';
 import '../models/mesa.dart';
 import '../models/pedido.dart';
@@ -49,11 +48,8 @@ String _horaDe(DateTime fecha) =>
 // Mesero que tomó el pedido (pedidos.usuario_id): así se ve, mesa por mesa,
 // cuántas está atendiendo cada uno.
 String? _meseroDe(Pedido? pedido) {
-  if (pedido?.usuarioId == null) return null;
-  for (final u in usuarios) {
-    if (u.id == pedido!.usuarioId) return u.nombre;
-  }
-  return null;
+  final nombre = pedido?.mozoNombre;
+  return (nombre != null && nombre.trim().isNotEmpty) ? nombre : null;
 }
 
 // Plano de mesas (tabla `mesa`): visualización y gestión según RBAC.

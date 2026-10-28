@@ -30,12 +30,13 @@ class EmitirComprobanteDialog extends StatefulWidget {
 }
 
 class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
-  late final ComprobanteEnCobro _eleccion = ComprobanteEnCobro(
-    totalDePedido(widget.pedido.id),
-    tipoInicial: 'ticket_venta',
-  )..addListener(() {
-      if (mounted) setState(() {});
-    });
+  late final ComprobanteEnCobro _eleccion =
+      ComprobanteEnCobro(
+        totalDePedido(widget.pedido.id),
+        tipoInicial: 'ticket_venta',
+      )..addListener(() {
+        if (mounted) setState(() {});
+      });
 
   bool _emitiendo = false;
   String? _error;
@@ -72,7 +73,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       .firstOrNull;
 
   Comprobante? get _ticketVentaActivo => _comprobantes
-      .where((c) => c.tipoDocumento == 'ticket_venta' && c.estadoSunat != 'ANULADO')
+      .where(
+        (c) => c.tipoDocumento == 'ticket_venta' && c.estadoSunat != 'ANULADO',
+      )
       .firstOrNull;
 
   @override
@@ -516,7 +519,9 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     textAlign: TextAlign.center,
                   ),
                   Text(
-                    sede.direccion.isNotEmpty ? sede.direccion : 'CAL. LOS BRILLANTES 421B',
+                    sede.direccion.isNotEmpty
+                        ? sede.direccion
+                        : 'CAL. LOS BRILLANTES 421B',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 6),
@@ -531,16 +536,30 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const Divider(thickness: 1, height: 14),
-                  Text('Fecha/Hora: ${DateTime.now().toString().substring(0, 19)}'),
+                  Text(
+                    'Fecha/Hora: ${DateTime.now().toString().substring(0, 19)}',
+                  ),
                   if (control.tipo == 'factura') ...[
-                    Text('RUC: ${control.ruc.text.isEmpty ? "—" : control.ruc.text}'),
-                    Text('Razón Social: ${control.razon.text.isEmpty ? "—" : control.razon.text}'),
-                    Text('Dirección: ${control.direccion.text.isEmpty ? "—" : control.direccion.text}'),
+                    Text(
+                      'RUC: ${control.ruc.text.isEmpty ? "—" : control.ruc.text}',
+                    ),
+                    Text(
+                      'Razón Social: ${control.razon.text.isEmpty ? "—" : control.razon.text}',
+                    ),
+                    Text(
+                      'Dirección: ${control.direccion.text.isEmpty ? "—" : control.direccion.text}',
+                    ),
                   ] else if (control.tipo == 'boleta') ...[
-                    Text('DNI: ${control.conDni && control.dni.text.isNotEmpty ? control.dni.text : "—"}'),
-                    Text('Cliente: ${control.conDni && control.nombre.text.isNotEmpty ? control.nombre.text : "CLIENTES VARIOS"}'),
+                    Text(
+                      'DNI: ${control.conDni && control.dni.text.isNotEmpty ? control.dni.text : "—"}',
+                    ),
+                    Text(
+                      'Cliente: ${control.conDni ? (control.nombre.text.trim().isNotEmpty ? control.nombre.text : (control.dni.text.trim().isEmpty ? "CLIENTES VARIOS" : (control.buscando ? "buscando en RENIEC…" : "(falta el nombre del cliente)"))) : "CLIENTES VARIOS"}',
+                    ),
                   ] else ...[
-                    Text('Cliente: ${pedido.clienteNombre ?? "CLIENTES VARIOS"}'),
+                    Text(
+                      'Cliente: ${pedido.clienteNombre ?? "CLIENTES VARIOS"}',
+                    ),
                   ],
                   Text('Moneda: SOLES (S/)'),
                   const Divider(thickness: 1, height: 14),
@@ -552,11 +571,17 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     for (final l in lineas.where(esLineaDeProducto))
                       _filaItem(
                         '${l.cantidad} NIU',
-                        l.esLibre ? (l.nombreLibre ?? l.nombrePlato) : l.nombrePlato,
+                        l.esLibre
+                            ? (l.nombreLibre ?? l.nombrePlato)
+                            : l.nombrePlato,
                         l.precioTotalLinea,
                       ),
                     if (control.incluirRecargo && recargo > 0)
-                      _filaItem('1 NIU', 'Recargo por pago con tarjeta', recargo),
+                      _filaItem(
+                        '1 NIU',
+                        'Recargo por pago con tarjeta',
+                        recargo,
+                      ),
                     if (control.incluirDelivery && delivery > 0)
                       _filaItem('1 NIU', 'Servicio de Delivery', delivery),
                   ],
@@ -570,18 +595,27 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     children: [
                       const Text(
                         'IMPORTE TOTAL:',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                       Text(
                         'S/ ${totalCalc.toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'SON: ${montoEnLetras(totalCalc)}',
-                    style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                   const Divider(thickness: 1, height: 14),
                   const Text(
@@ -619,10 +653,7 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 1),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label),
-        Text('S/ ${val.toStringAsFixed(2)}'),
-      ],
+      children: [Text(label), Text('S/ ${val.toStringAsFixed(2)}')],
     ),
   );
 }
@@ -701,7 +732,8 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton.icon(
-          onPressed: (_confirmadoDobleFactor &&
+          onPressed:
+              (_confirmadoDobleFactor &&
                   _motivoController.text.trim().isNotEmpty &&
                   !_anulando)
               ? _anular
@@ -717,9 +749,7 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
                 )
               : const Icon(LucideIcons.ban, size: 16),
           label: const Text('Confirmar anulación ante SUNAT'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.error,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.error),
         ),
       ],
       children: [
@@ -818,7 +848,8 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
             children: [
               Checkbox(
                 value: _confirmadoDobleFactor,
-                onChanged: (v) => setState(() => _confirmadoDobleFactor = v ?? false),
+                onChanged: (v) =>
+                    setState(() => _confirmadoDobleFactor = v ?? false),
               ),
               const Expanded(
                 child: Text(

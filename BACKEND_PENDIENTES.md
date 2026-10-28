@@ -1,46 +1,33 @@
 # Pendientes del backend
 
-Estado revisado contra el commit `69838c4` del backend.
+Estado revisado contra el commit `6a28e71` del backend (28-oct-2026). Solo quedan los ítems **sin resolver**.
 
-1. **Error urgente:** el rol CAJERO no puede leer los pedidos (le falta `LEER.PEDIDO`).
-2. **Error:** `GET /api/carta` devuelve repetidos los platos con variantes o presentaciones.
-3. El seed no trae métodos de pago ni categorías de movimiento.
-4. El rol MOZO conserva el permiso `CREAR.PAGO`.
-5. Caja: tres puntos del cálculo del efectivo esperado a revisar.
-6. Solicitud: varios tápers por plato (hoy es uno solo). La app ya los envía.
-7. Vender un táper sin stock suficiente: el servidor hoy lo rechaza.
-8. Aviso: los pedidos en mesa ya no llevan nombre de cliente.
-9. Menor: `uploads/` no está completo en `.gitignore`.
-10. Comprobantes: imprimir con los datos de Lucode y manejar la espera de SUNAT (3 a 4 segundos).
+**Ya resueltos por el backend (quitados de este archivo):** lectura de pedidos por el cajero (1), semillas de medios de pago y categorías (3), `uploads/` en `.gitignore` (9), series de comprobantes por caja (12), número de orden y detalle para el cajero (18), grupo de medios de pago (19), efectivo recibido y vuelto (22), columna `apertura_caja.caja_id` (23) y comprobante "Solo Consumo".
 
----
+**Sin volver a comprobar en el código:** los ítems 2, 4 a 8, 10, 13 y 15 vienen de revisiones anteriores; que el backend confirme cuáles siguen abiertos.
 
-# 1. El rol CAJERO no puede leer los pedidos
+## Ítems
 
-## Síntoma
-
-El cajero tiene pedidos por cobrar pero **no le aparece ninguno**: ni en su vista de Pedidos (comandas) ni en el Historial de pedidos. La app no muestra error, solo la lista vacía.
-
-## Causa
-
-`GET /api/pedidos`, `GET /api/pedidos/:id` y `GET /api/pedidos/anulaciones` exigen el permiso **`LEER.PEDIDO`** (`cmd/api/main.go`, líneas ~399 a 403). En el seed (`00002_seed_initial_data.sql`), el rol CAJERO tiene solo `LEER.PEDIDOS` (con S), `LEER.DETALLES_PEDIDO` y `LEER.MESA_PEDIDO`, pero **no** `LEER.PEDIDO`. El servidor responde 403 y la app, al fallar la consulta, deja la lista vacía.
-
-## Qué se pide
-
-- Agregar `LEER.PEDIDO` (id `d10de7fc-dca4-48c3-9cfa-3061303fb051`) al rol CAJERO (`22222222-2222-2222-2222-222222222222`) en el seed.
-- Aplicarlo también a las bases ya creadas (local y nube), por ejemplo con:
-
-```sql
-INSERT INTO rol_permiso VALUES
-  ('22222222-2222-2222-2222-222222222222', 'd10de7fc-dca4-48c3-9cfa-3061303fb051')
-ON CONFLICT DO NOTHING;
-```
-
-- Revisar el resto de lo que hace el cajero: con la vista nueva paga, imprime la cuenta (`POST /api/v1/impresion/pedidos/:id/reimprimir`) y emite comprobantes (`/api/v1/facturacion/comprobantes`); esas rutas no piden un permiso del seed, pero conviene confirmar que el rol CAJERO las alcanza.
-
-## Cómo probarlo
-
-Iniciar sesión (de nuevo, para que se carguen los permisos) con un usuario CAJERO: debe ver los pedidos abiertos en Pedidos y todos los del rango en Ventas › Historial.
+2. `GET /api/carta` repite los platos con variantes o presentaciones
+4. El rol MOZO conserva `CREAR.PAGO`
+5. Caja: efectivo esperado, tres puntos a revisar
+6. Solicitud: varios tápers por plato
+7. Vender un táper sin stock suficiente
+8. Aviso: los pedidos en mesa ya no llevan nombre de cliente
+10. Comprobantes: imprimir con los datos de Lucode y espera de SUNAT
+11. Turnos de los mozos (mañana y tarde-noche)
+13. DNI en boletas (aviso)
+14. Reportes: rutas que necesita la vista (habilitada para el administrador)
+15. Pago compartido con un comprobante distinto por pagador
+17. (Confirmar si el commit 0552d58 ya lo resolvió) Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
+20. Mesas unidas: el pedido solo toma la primera mesa
+21. Delivery lo registran caja y administración; caja abierta para todos; cambio de mesa
+24. Delivery al imprimir, reimpresión de la cuenta y fecha de pago
+25. Guardar los datos del negocio y del restaurante
+26. Traspaso de pedidos entre mozos (con aceptación)
+27. Qué categorías y platos se imprimen en la comanda de cocina
+28. El administrador debe poder operar los pedidos de cualquier usuario
+29. Pedido de personal: el precio de cada plato se escribe a mano
 
 ---
 
@@ -83,23 +70,6 @@ La app deja un solo plato por `id` y, si hay repetidos, prefiere el que no está
 ## Cómo probarlo
 
 Crear un plato con 2 variantes, abrir el día con cantidades para ambas y llamar a `GET /api/carta?con_disponibilidad=true`: el plato debe venir **una sola vez**.
-
----
-
-# 3. El seed no trae `medio_pago` ni `categoria_movimiento`
-
-`migrations/00002_seed_initial_data.sql` no inserta métodos de pago ni categorías de movimiento de caja. En una base creada desde cero la app no tiene con qué cobrar ni cómo registrar ingresos y salidas: no hay métodos de pago en el servidor y hay que cargarlos a mano.
-
-## Qué se pide
-
-Incluir en el seed, con `ON CONFLICT DO NOTHING`:
-
-- Métodos de pago como mínimo: Efectivo, Yape y Tarjeta (con su porcentaje de comisión).
-- Categorías de movimiento básicas de caja (por ejemplo, las de ingreso por venta y las de salidas más comunes).
-
-## Cómo probarlo
-
-Crear una base nueva con `go run ./cmd/migrate`, iniciar sesión en la app y cobrar un pedido sin haber cargado nada a mano.
 
 ---
 
@@ -165,7 +135,6 @@ Permitir registrar el pedido aunque el stock del táper no alcance: no devolver 
 
 ---
 
-
 # 8. Aviso: los pedidos en mesa ya no llevan nombre de cliente
 
 El nombre del cliente no es importante en un pedido **en mesa**, así que la app ya no lo pide ni lo envía cuando el tipo de pedido es `mesa`: `nombre_cliente` llega vacío o ausente.
@@ -175,12 +144,6 @@ Para el backend:
 - No debe exigir `nombre_cliente` en pedidos de tipo `mesa` (en `Para llevar` sí se sigue enviando y es obligatorio en la app).
 - Si el backend agrega a los comentarios el texto `Cliente: …` cuando recibe un nombre, en mesa simplemente no se agregará.
 - Revisar que no haya validaciones, reportes ni tickets del lado del servidor que den por hecho que una mesa siempre trae cliente.
-
----
-
-# 9. Menor: `uploads/` en `.gitignore`
-
-El `.gitignore` solo ignora `uploads/carta` y `uploads/evidencias`. Las carpetas `uploads/comprobantes` y `uploads/anulaciones` (PDF y fotos que genera el servidor) aparecen como archivos nuevos en Git y pueden subirse por error. Se pide ignorar `uploads/` completo.
 
 ---
 
@@ -210,7 +173,7 @@ Para **boleta y factura**:
 
 El negocio trabaja con **2 turnos para los mozos**: **mañana-tarde** y **tarde-noche**. Cada mozo tiene un turno y **solo puede entrar a la app dentro de su turno**. El administrador define los turnos y asigna el turno a cada mozo desde **Configuración**.
 
-Hoy no existe nada de esto en el servidor, y el frontend no lo implementa hasta que el backend lo defina (no se inventan datos).
+El backend ya tiene turnos de caja (`/configuracion/turnos`), pero **no hay turno por mozo ni límite de acceso** al iniciar sesión. El frontend no lo implementa hasta que exista.
 
 ## Qué se pide
 
@@ -224,36 +187,6 @@ Hoy no existe nada de esto en el servidor, y el frontend no lo implementa hasta 
 Una vez definido, la app agrega en Configuración una vista de turnos, un selector de turno en el usuario mozo y el mensaje de "fuera de turno" al iniciar sesión.
 
 ---
-
-# 12. Series de comprobantes por sede y por caja
-
-Cada caja debe emitir con su propia **serie**, armada con el tipo de comprobante, la sede y el número de caja. La serie SUNAT tiene **4 caracteres**:
-
-`[tipo][sede][caja de 2 dígitos]` → ejemplos de formato: `BA01` (boleta, sede A, caja 01) o `F101` (factura, sede 1, caja 01). Cada negocio decide qué carácter usa por sede.
-
-- Tipo: `B` boleta, `F` factura.
-- Sede: **un carácter, letra o número**, que el negocio asigna a cada sede (por ejemplo `A`, `B` o `1`, `2`). Lo define el administrador; no hay valores fijos.
-- Caja: número de la caja dentro de la sede (01, 02…).
-
-## Hoy
-
-`facturacion_service.go` usa series fijas por defecto (`B001`, `F001`, `T001`) cuando la app no manda `serie`, y la tabla `sede` no tiene código de serie. No existe dónde guardar la caja a la que pertenece cada serie.
-
-## Qué se pide
-
-- **`sede`:** columna para el código de la sede (1 carácter, letra o número, único por negocio), con lectura y edición para el administrador.
-- **Cajas:** que cada caja tenga su número dentro de la sede (01, 02…) y que el backend entregue, por caja, su serie de boleta y de factura (por ejemplo `serie_boleta: "BA01"`, `serie_factura: "FA01"`) en el estado/listado de cajas.
-- **Emisión:** que `POST /comprobantes` use la serie de la caja que emite (y siga aceptando `serie` si la app la manda), con el correlativo propio de esa serie (`uq_comprobante_sede_serie_numero`).
-- **Validación:** rechazar series que no tengan 4 caracteres alfanuméricos o que no empiecen con `B`/`F`.
-- **Permisos:** `LEER`/`ACTUALIZAR` para el administrador sobre la letra de sede y el número de caja.
-
-## Lado del frontend (pendiente hasta que el backend lo entregue)
-
-- En **Configuración > Negocio**, definir el código (letra o número) de cada sede.
-- En la vista **Caja**, una columna "Serie" por caja (boleta y factura).
-- Al emitir un comprobante, mostrar la serie que se usará antes de confirmar.
-
-No se muestran ni se inventan series en la app mientras el servidor no las envíe.
 
 # 13. DNI en boletas (aviso)
 
@@ -298,7 +231,7 @@ Para el backend, confirmar o ajustar:
 
 ---
 
-# 17. Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
+# 17. (Confirmar si el commit 0552d58 ya lo resolvió) Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
 
 Síntoma (mesa y para llevar, solo en pago compartido): al emitir boleta o factura, SUNAT/Lucode rechaza con `El campo total 94 no coincide con la sumatoria de los ítems 55 (diferencia: 39)`.
 
@@ -317,60 +250,6 @@ Síntoma (mesa y para llevar, solo en pago compartido): al emitir boleta o factu
 - Validar antes de llamar a Lucode que `Σ(valor_unitario × cantidad × 1.18) == total` y devolver un error claro del servidor en vez del rechazo del PSE.
 
 Mientras no se corrija, los comprobantes por pagador de un pago compartido dividido en partes pueden ser rechazados; el pago de una sola persona (pago único) no se ve afectado.
-
----
-
-# 18. El cajero no recibe el número de orden ni el detalle completo de los pedidos (bloquea la comanda del cajero)
-
-## Síntoma
-
-- El mozo ve el pedido como `#0004` y el cajero como `#ed09` (el prefijo del id): **no es el mismo número**.
-- En la comanda del cajero no aparecen las **presentaciones** (jarra, vaso, volumen) ni las **variantes** ni los **agregados** de cada plato.
-
-## Causa (revisado en el backend)
-
-- El número de orden del día (`codigo_orden`, `#0004`) solo lo entrega `GET /api/v1/mozo/pedidos/:id` (`pedido_mozo_repository.go`). Esas rutas están limitadas a los roles `MOZO` y `ADMINISTRADOR` (`main.go`: `RequireRole("MOZO", "ADMINISTRADOR")`), así que el **cajero recibe 403** y solo puede usar `GET /api/pedidos`.
-- `GET /api/pedidos` no trae `codigo_orden` y sus `detalles` no traen los nombres de la presentación, de la variante ni los agregados.
-
-## Qué se pide (cualquiera de las dos)
-
-1. **Permitir el rol `CAJERO` en lectura** de `GET /api/v1/mozo/pedidos` y `GET /api/v1/mozo/pedidos/:id` (solo esas dos rutas, sin crear ni modificar). La app ya sabe leer ese detalle completo (número, presentaciones, variantes, agregados, táper).
-2. **O completar `GET /api/pedidos`** con `codigo_orden` en cada pedido y, en cada fila de `detalles`: `carta_presentacion_id` y `presentacion_nombre`/`volumen_ml`, `carta_variante_id` y `variante_nombre`, y los agregados/modificadores elegidos.
-
-## Lado del frontend
-
-Lista para mostrar lo que llegue: toma `codigo_orden` si viene, y busca presentación y variante por id en la carta cargada. Mientras el servidor no lo envíe, el cajero seguirá viendo el prefijo del id y sin presentaciones. La app no inventa el número ni los detalles.
-
-## Actualización del ítem 18: la ruta ya está abierta al cajero, pero filtra por usuario
-
-`GET /api/v1/mozo/pedidos` y `GET /api/v1/mozo/pedidos/:id` ya aceptan el rol `CAJERO` (`mozoLectura`), pero el repositorio sigue filtrando por el usuario que consulta (`pedido_mozo_repository.go`: lista en la consulta de ~línea 157 con `AND p.usuario_id = $2`, y detalle en ~línea 281 con `AND p.usuario_id = $3`). El cajero solo recibe sus propios pedidos (ninguno), así que su comanda sigue mostrando el listado antiguo: otro número (`#1047` en vez de `#0008`), el táper como "Plato" y sin la cantidad de tápers.
-
-**Se pide:** en esas dos consultas de **lectura**, no filtrar por usuario cuando el rol es `CAJERO` o `ADMINISTRADOR` (mismo patrón que ya se usa en otra consulta: `AND ($2::uuid IS NULL OR p.usuario_id = $2)`, pasando `NULL` para esos roles). Las rutas que modifican pedidos siguen restringidas al mozo dueño.
-
----
-
-# 19. Medios de pago: grupo para sumar bien los totales de Caja (varios Yape)
-
-> **Atendido por el backend** (commit `1d8a769`, migración `00004`): `medio_pago.grupo` y los totales de caja por grupo ya existen. El frontend ya lo usa (selector de grupo en Configuración, tarjetas de Caja y elección por tipo en el cobro). **Falta confirmar:** filtrar y ordenar el listado de pedidos y los reportes por `fecha_pago`.
-
-## Síntoma
-
-Con varios medios de Yape ("Yape Joel", "Yape local"…), las tarjetas de Caja no suman los ingresos de Yape y el cuadre falla.
-
-## Causa
-
-`caja_repository.go` clasifica el medio **por nombre exacto** (`nombreLower == "yape"`, `"plin"`, `"efectivo"`); cualquier otro nombre cae en tarjeta. Los totales por medio, el efectivo esperado y el cierre usan esa clasificación.
-
-## Qué se pide
-
-- Una columna **`grupo`** en `medio_pago` con los valores `efectivo`, `tarjeta` o `digital`, obligatoria, que el administrador elige al crear o editar el medio. Asignar el grupo a los medios ya existentes (Efectivo → `efectivo`, Yape y Plin → `digital`, el resto → `tarjeta`).
-- Calcular los totales de caja, el efectivo esperado y el cierre por **grupo**, no por nombre.
-- Devolver el `grupo` en los listados de medios de pago y en el resumen por medio.
-- Filtrar y ordenar el listado de pedidos y los reportes por la **fecha del pago** (`fecha_pago`).
-
-## Lado del frontend
-
-Elige el grupo al crear o editar un medio, y usa el grupo en las tarjetas, la tabla por medio y el efectivo esperado. Mientras el servidor no lo devuelva, sigue usando el nombre.
 
 ---
 
@@ -401,12 +280,12 @@ Enviar todas las mesas de la unión al crear el pedido y mostrar la unión que d
 
 ## Delivery: el cajero debe poder crear pedidos de delivery
 
-Decisión: los pedidos de **delivery** los registran **caja (cajero) y administración**; el **mozo no**. El monto del delivery es **obligatorio** (varía por pedido) y se escribe al crear el pedido. La app ya oculta el delivery al mozo y agrega un botón "Nuevo delivery" en las comandas del cajero.
+Decisión: los pedidos de **delivery** los registran **mozo, caja (cajero) y administración**. El monto del delivery es **obligatorio** (varía por pedido) y se escribe al crear el pedido, junto con el nombre, el celular y la dirección. La app muestra Delivery como tipo de pedido a todos los roles y agrega un botón "Nuevo delivery" en las comandas del cajero.
 
 Hoy `POST /api/v1/mozo/pedidos` está limitado a `MOZO` y `ADMINISTRADOR` (`main.go`), así que el cajero recibiría 403. Se pide:
 
 - Permitir al rol `CAJERO` crear pedidos **solo de tipo delivery** (y sus productos, `POST /:id/items`), con `CREAR.PEDIDO` y `CREAR.PEDIDO_DETALLE`.
-- Rechazar en el servidor un delivery sin `costo_envio` (campo obligatorio, se acepta 0) y un delivery creado por un mozo, con un error claro.
+- Rechazar en el servidor un delivery sin `costo_envio` (campo obligatorio, se acepta 0), con un error claro. **Ya no** se debe rechazar un delivery creado por un mozo.
 - Opcional: ruta para que caja y administración cambien el costo de envío de un delivery ya creado.
 
 ## Estado de la caja para todos los roles
@@ -415,54 +294,28 @@ Hoy `POST /api/v1/mozo/pedidos` está limitado a `MOZO` y `ADMINISTRADOR` (`main
 
 ## Cambio de mesa
 
-`PATCH /:id/cambiar-mesa` rechaza una mesa destino ocupada ("ya tiene un pedido en curso"), aunque el comentario del código dice que soporta el traspaso. Definir si se permite traspasar a una mesa ocupada (y entonces implementarlo) o solo a mesas libres. Además, la ruta está limitada a `MOZO` y `ADMINISTRADOR`; el administrador debe poder cambiar la mesa de pedidos de otros mozos.
+**Caso real:** el cliente de la mesa 24, con su pedido ya hecho, se pasó a la mesa 1 y el sistema no lo reflejó. Se debe poder mover el pedido a la mesa 1: la mesa 24 queda **libre** y la mesa 1 **ocupada**, lo hace el mozo del pedido.
 
----
+## Lo que ya hace `PATCH /api/v1/mozo/pedidos/:id/cambiar-mesa`
 
-# 22. Pago en efectivo: guardar y devolver el efectivo recibido y el vuelto
-
-Cuando el cliente paga en efectivo, caja escribe con cuánto paga y la app calcula el vuelto. Eso debe verse en el ticket y en el detalle del pedido. Hoy el servidor no tiene dónde guardarlo: la app lo conserva solo en el dispositivo donde se cobró, así que no aparece en otros dispositivos, se pierde al reiniciar y no sale en el ticket que imprime el servidor.
+Revisado en el código: valida que el pedido no esté pagado ni anulado y que la mesa destino sea de la sede y esté disponible; cierra el vínculo con la mesa de origen (`mesa_pedido.hora_fin`), la deja `disponible` si no tiene otros pedidos, ocupa la destino, crea el nuevo `mesa_pedido`, agrega una nota de auditoría al `comentarios` del pedido y emite el evento `CAMBIO_MESA`. **No crea trabajos de impresión.**
 
 ## Qué se pide
 
-- En `POST /api/pagos`, dos campos opcionales: **`monto_recibido`** (efectivo que entregó el cliente) y **`vuelto`** (lo que se le devolvió). Guardarlos en el pago.
-- Devolverlos en las rutas que listan pagos y en el detalle del pedido (`GET /api/pagos`, `GET /api/pedidos/:id`), para que la app los muestre en cualquier dispositivo.
-- En el ticket y comprobante que imprime el servidor, agregar las líneas **EFECTIVO RECIBIDO** y **VUELTO** después del total. El **total no cambia**: el vuelto no es un descuento.
-- El vuelto **no suma a las ventas ni al efectivo esperado de Caja**: lo que entra a caja es el monto cobrado, no lo recibido.
+1. **Cocina no debe reimprimir:** confirmar (con una prueba) que al cambiar de mesa **no se imprime** de nuevo la comanda ya impresa, porque parecería un pedido nuevo. Los platos que se agreguen después sí se imprimen, pero con el **número de la mesa nueva** (que el trabajo de impresión lea la mesa vigente de `mesa_pedido`, la de `hora_fin IS NULL`).
+2. **Historial real:** hoy el cambio solo queda como texto dentro de `comentarios` ("[Traspasado de Mesa 24 a Mesa 1 por X el …]"). Se pide un registro propio (por ejemplo `pedido_historial`: pedido, tipo de evento `cambio_mesa`, mesa origen, mesa destino, usuario, fecha) y una ruta para leerlo (`GET /api/v1/mozo/pedidos/:id/historial`). El mismo registro serviría para los traspasos entre mozos (ítem 26).
+3. **Quién puede hacerlo:** el mozo dueño del pedido. Decidir si la ruta deja pasar al administrador en pedidos de otros mozos (hoy la consulta no filtra por dueño; la restricción está solo en la app).
+4. **Mesa destino ocupada:** hoy se rechaza ("ya tiene un pedido en curso. Debe liberarse primero"). Para este caso (mesa libre) no hace falta cambiarlo.
 
 ## Lado del frontend
 
-Ya calcula el vuelto en el cobro y lo muestra en el ticket (cuenta y vista previa de ticket de venta, boleta y factura) y en el detalle del pedido. Cuando el servidor lo devuelva, la app dejará de depender del dato local y enviará los campos nuevos en el pago.
+El botón "Cambiar mesa o entrega" del detalle llama a esa ruta y recarga las mesas; el aviso dice qué mesa quedó libre y cuál ocupada. No imprime nada al cambiar de mesa. Cuando exista la ruta del historial, se agrega la pestaña "Historial" en el detalle del pedido.
 
 ---
 
-# 23. Error al leer la caja: "no existe la columna a.caja_id"
+# 24. Delivery al imprimir, reimpresión de la cuenta y fecha de pago
 
-`GET /api/v1/caja/estado-actual` falla con `pq: no existe la columna a.caja_id at position 9:30 (42703)`. La consulta de `caja_repository.go` (alrededor de la línea 1223) lee `a.caja_id` de `apertura_caja`, y `migrations/00001_initial_schema.sql` sí define esa columna (y la tabla `caja`). Ninguna migración posterior la agrega.
-
-## Causa probable
-
-La base donde corre el servidor se creó con una versión anterior de la `00001`, sin `apertura_caja.caja_id`. Como las migraciones ya aplicadas no se vuelven a ejecutar, la base quedó distinta del código.
-
-## Qué se pide
-
-- Alinear la base con el código: recrearla desde la `00001` vigente, o agregar una migración que cree la tabla `caja` (con sus series) y la columna `apertura_caja.caja_id` con su relación.
-- Revisar `facturacion_service.go` (`JOIN caja c ON c.id = ac.caja_id`), que depende de lo mismo.
-- Comprobar en cada ambiente (local, pruebas, producción) con: `SELECT column_name FROM information_schema.columns WHERE table_name = 'apertura_caja';`
-
-## Efecto en el frontend
-
-Sin leer el estado de la caja, la app no puede avisar "Caja cerrada" ni bloquear pedidos, y muestra el error en la vista de Caja. Mientras no se corrija, el aviso de caja cerrada no se puede probar.
-
----
-
-# 24. Comprobante "solo Consumo", delivery al imprimir y reimpresión de la cuenta
-
-## Boleta o factura con "Consumo"
-
-Algunos clientes no quieren el detalle de platos en la boleta o factura, sino una sola línea "Consumo". La app ya manda **`solo_consumo: true`** en `POST /api/v1/facturacion/comprobantes` (o la ruta de emisión vigente) cuando el cajero lo elige al cobrar. Se pide: con ese campo, emitir el comprobante con **una sola línea "CONSUMO"** por el total (con su IGV), sin los ítems; y que el ticket impreso lo respete. Sin el campo, todo igual que hoy.
-
-## El monto del delivery no sale al imprimir ni se suma
+## El monto del delivery no sale al imprimir ni se suma (confirmar: el comprobante ya tiene `incluir_delivery`; falta la cuenta y el ticket)
 
 En pantalla el cargo por delivery se ve y se suma al total, pero lo que **imprime el servidor** (cuenta, ticket de venta y comprobante) no lo trae. Se pide agregar la línea **CARGO POR DELIVERY** y que el total impreso y el del comprobante lo incluyan (el monto sale de `costo_envio` del pedido).
 
@@ -476,5 +329,143 @@ No encontré en el backend ninguna regla de 12 horas ni cierre automático (`Cer
 
 ## Historial de ventas por fecha de pago
 
-El historial de ventas ahora muestra la **fecha y hora del pago** (no la del pedido) y filtra el día por esa fecha. Se pide que `GET /api/pagos` (por rango de fechas) filtre por **`fecha_pago`**, y que el pedido de un pago hecho en el rango venga en la lista de pedidos aunque se haya tomado otro día (por ejemplo, tomado a las 23:50 y cobrado a las 00:10). Es lo mismo que pide el ítem 19 para los totales de Caja.
+El historial de ventas ahora muestra la **fecha y hora del pago** (no la del pedido) y filtra el día por esa fecha. Se pide que `GET /api/pagos` (por rango de fechas) filtre por **`fecha_pago`**, y que el pedido de un pago hecho en el rango venga en la lista de pedidos aunque se haya tomado otro día (por ejemplo, tomado a las 23:50 y cobrado a las 00:10). Los totales de Caja por grupo de medio de pago deben filtrarse igual, por `fecha_pago`.
 
+---
+
+# 25. Guardar los datos del negocio y del restaurante
+
+En Configuración, "Información del negocio" y "Restaurante" ahora tienen Editar / Guardar. Hoy solo se puede guardar en el servidor la **dirección y el teléfono de la sede de la sesión**, con `PUT /api/v1/sede/config` (solo ADMINISTRADOR; la app lee la configuración y reenvía los datos fiscales para no borrarlos).
+
+## Qué falta
+
+- **Información del negocio:** nombre comercial, correo de contacto, moneda, idioma, país y zona horaria no tienen dónde guardarse. Se pide una ruta (por ejemplo `GET/PUT /api/v1/negocio`) y sus columnas.
+- **Restaurante activo / inactivo:** el interruptor "Activo" de cada restaurante no se guarda en el servidor.
+- **Varios restaurantes:** la ruta actual solo edita la sede del usuario. Para editar otro restaurante haría falta `PUT /api/v1/sedes/:id`.
+
+## Lado del frontend
+
+Dirección y teléfono se guardan en el servidor; el resto queda en la app mientras esté abierta. Al existir las rutas, solo se conecta el botón Guardar.
+
+---
+
+# 26. Traspaso de pedidos entre mozos (con aceptación)
+
+## El pedido
+
+Cuando un mozo termina su turno y deja pedidos pendientes, el cliente a veces quiere agregar platos y solo el mozo dueño puede modificar su pedido. Se pide que el mozo que se va pueda **traspasar** sus pedidos a otro mozo, y que el otro mozo **acepte o rechace**.
+
+## Reglas
+
+- El traspaso lo pide el mozo dueño del pedido.
+- Se envía a **un solo mozo a la vez**: mientras haya una solicitud pendiente, no puede pedir otra para ese pedido.
+- El mozo destino **acepta** (el pedido pasa a ser suyo y desde ese momento solo él lo modifica) o **rechaza** (el pedido sigue con el mozo anterior, que ya puede enviar la solicitud a otro mozo).
+- Hasta que se acepte, el pedido sigue siendo del mozo anterior.
+
+## Rutas que la app ya llama
+
+Todas bajo `RequireRole("MOZO", "ADMINISTRADOR")`, salvo que se indique otra cosa. Si una ruta no existe, la app no muestra el aviso ni la bandeja y, al intentar traspasar, muestra el error del servidor.
+
+| Método y ruta | Quién | Qué hace |
+|---|---|---|
+| `POST /api/v1/mozo/pedidos/:id/traspaso` con `{"mozo_destino_id": "<uuid>"}` | el mozo dueño del pedido | Crea la solicitud en estado `pendiente`. Rechazar con `409` si el pedido ya tiene una pendiente, si no está abierto, si el destino no es un MOZO activo de la sede o si es el mismo mozo. |
+| `GET /api/v1/mozo/mozos` | cualquier mozo | Lista los **mozos activos de la sede** (`id`, `nombre`) para elegir a quién traspasar. Hoy el mozo no puede leer `GET /api/usuarios` (pide `LEER.USUARIO`). Sin esta ruta la lista queda vacía. |
+| `GET /api/v1/mozo/traspasos?estado=pendiente` | cualquier mozo | Solicitudes pendientes **enviadas y recibidas** por el usuario. |
+| `POST /api/v1/mozo/traspasos/:id/aceptar` | solo el mozo destino | Cambia `usuario_id` del pedido al destino (en una transacción) y marca `aceptado`. |
+| `POST /api/v1/mozo/traspasos/:id/rechazar` | solo el mozo destino | Marca `rechazado`; el pedido sigue con el origen. |
+| `POST /api/v1/mozo/traspasos/:id/cancelar` | solo el mozo origen | Marca `cancelado`. |
+| `POST /api/v1/mozo/pedidos/:id/reasignar` con `{"mozo_destino_id": "<uuid>"}` | solo ADMINISTRADOR | Pasa el pedido al mozo destino **sin aceptación** (por ejemplo, si el mozo dueño ya se fue). Cancela cualquier solicitud pendiente de ese pedido y deja auditoría. |
+
+Cada solicitud que devuelve el `GET` (y las respuestas) trae: `id`, `pedido_id`, `pedido_numero` (el `codigo_orden`), `ubicacion` ("Mesa 3", "Delivery"…), `mozo_origen_id`, `mozo_origen_nombre`, `mozo_destino_id`, `mozo_destino_nombre`, `estado` (`pendiente | aceptado | rechazado | cancelado`) y `created_at`.
+
+## Reglas en el servidor
+
+- Un solo traspaso pendiente por pedido (índice único parcial sobre `pedido_id` donde `estado = 'pendiente'`): así el mozo que se va ofrece el pedido a un mozo a la vez y solo envía otra solicitud cuando el destino rechaza o él cancela.
+- Hasta que se acepte, el pedido sigue siendo del mozo anterior y solo él puede modificarlo.
+- Al aceptar, dejar constancia (auditoría): quién, a quién, cuándo.
+- Si el pedido se cobra, se anula o se cierra mientras hay una solicitud pendiente, pasarla a `cancelado`.
+- **Sin vencimiento:** una solicitud pendiente se queda así hasta que el destino la acepte o rechace, o el origen la cancele (o el administrador reasigne).
+- Aplica a pedidos de **mesa, para llevar y delivery**.
+
+## Para después (opcional)
+
+- Un evento en tiempo real (`TRASPASO_SOLICITADO` al destino y `TRASPASO_RESUELTO` al origen). Hoy la app consulta cada 4 a 32 segundos y abre un modal al detectar una solicitud nueva.
+
+## Lado del frontend (ya hecho)
+
+- El mozo dueño ve en el detalle de su pedido abierto un botón con el ícono de personas, "Traspasar a otro mozo", que abre la lista de mozos activos. Con una solicitud pendiente, el mismo botón (en naranja) permite cancelarla, y bajo el título dice "Traspaso pendiente a X".
+- En Pedidos, al llegar una solicitud nueva se abre un **modal** con Aceptar y Rechazar (se avisa una vez por solicitud). Además queda un aviso naranja "Tienes N pedidos por aceptar" con el botón "Ver" para reabrirlo.
+- El administrador ve en el detalle de cualquier pedido abierto el botón "Reasignar a otro mozo" (sin aceptación).
+- Se consulta junto con los pedidos (cada 4 a 32 segundos).
+
+---
+
+# 27. Qué categorías y platos se imprimen en la comanda de cocina
+
+## Problema
+
+Hoy el pedido se imprime **completo** en cocina, aunque lleve un táper, una bebida o una paleta, que no se preparan allí.
+
+## Lo que se quiere
+
+El administrador elige **qué categorías van a cocina**. Dentro de una categoría que no va (por ejemplo Bebidas) hay platos que **sí** deben salir (limonada, aguaje y otros que se preparan en cocina); y al revés, en una categoría que sí va puede haber platos que no. Por defecto sale todo.
+
+## Qué se pide
+
+- Guardar las reglas por sede: una por categoría (`imprime` sí/no) y excepciones por plato (`imprime` sí/no; sin excepción, el plato sigue a su categoría).
+- **Ruta que la app ya llama** (solo ADMINISTRADOR para escribir):
+  - `GET /api/v1/impresion/reglas-cocina`
+  - `PUT /api/v1/impresion/reglas-cocina`
+  - Cuerpo y respuesta (reemplazo completo):
+```json
+{
+  "categorias": [{ "categoria_id": "<uuid>", "imprime": false }],
+  "platos": [{ "carta_id": "<uuid>", "imprime": true }]
+}
+```
+  Solo viajan las categorías apagadas y las excepciones; una categoría que no aparece se imprime.
+- **Al imprimir la comanda de cocina** (al crear el pedido y al agregar platos), dejar fuera las líneas que según estas reglas no van: plato con excepción → su valor; si no, la regla de su categoría. Si **no queda ninguna línea**, no crear el trabajo de impresión.
+- Los **tápers** no van a la comanda de cocina.
+- La **cuenta**, el ticket de venta y los comprobantes siguen llevando todo: la regla es solo de la comanda de cocina.
+- Una **reimpresión** de la comanda aplica las mismas reglas.
+
+## Lado del frontend (ya hecho)
+
+Configuración → Negocio → **Impresión en cocina** (solo administrador): lista de categorías con un interruptor "Va a cocina"; al abrir una, cada plato tiene "Como la categoría / Sí sale / No sale". Un botón Guardar envía las reglas. Mientras el servidor no tenga la ruta, la pantalla avisa que todavía no se aplican.
+
+---
+
+# 28. El administrador debe poder operar los pedidos de cualquier usuario
+
+## Problema
+
+Las rutas de `/api/v1/mozo/pedidos` filtran por dueño: agregar o cambiar platos, cantidades, comentarios, tipo de entrega, anular, descuentos, promociones y demás usan `WHERE ... usuario_id = $dueño` (por ejemplo, en `pedido_mozo_repository.go` las consultas de las líneas ~757, 819, 1014, 1056, 1102, 1171, 1248, 1310, 1461 y 1630). Para el administrador esas operaciones sobre pedidos de otros usuarios devuelven "pedido no encontrado".
+
+## Qué se pide
+
+El **administrador no tiene límites**: puede crear y modificar pedidos, promociones, descuentos, tipo de entrega, mesa, etc. de **cualquier usuario** de su sede. Aplicar la excepción de rol ADMINISTRADOR en esas consultas (el filtro por dueño queda solo para el mozo) y conservar el dueño original del pedido; la auditoría debe registrar quién hizo el cambio.
+
+## Lado del frontend (ya hecho)
+
+La app ya deja al administrador operar cualquier pedido (antes solo los suyos). Mientras el servidor no lo permita, verá el error que devuelva.
+
+---
+
+# 29. Pedido de personal: el precio de cada plato se escribe a mano
+
+## Cómo funciona
+
+Solo **administración y caja** crean pedidos de personal (empleado). El precio **no es fijo**: se escribe plato por plato en el detalle del pedido, también para las variantes y presentaciones. Ya no se usa un porcentaje de descuento de empleado ni `carta.precio_personal` como valor fijo.
+
+## Qué se pide
+
+- **Crear:** en `POST /api/v1/mozo/pedidos` con `tipo: "empleado"`, cada ítem de plato trae **`precio_personal`** (por unidad, junto con `carta_id`, `carta_variante_id` o `carta_presentacion_id` y `cantidad`). Usarlo como precio de la línea en lugar del de la carta, y guardarlo para los reportes. Rechazar un ítem de un pedido de empleado sin `precio_personal` (con `0` permitido).
+- **Quién:** el rol `CAJERO` hoy no puede crear pedidos por esta ruta (ver ítem 21). Permitir también `CAJERO` y `ADMINISTRADOR` para `tipo: "empleado"`; el mozo no.
+- **Editar el precio después:** ruta nueva **`PATCH /api/v1/mozo/pedidos/:id/items/:detalle_id/precio-personal`** con `{ "precio_personal": 8.5, "version": n }`, solo ADMINISTRADOR y CAJERO, solo en pedidos de empleado abiertos. Devuelve el pedido completo, como las demás rutas de ítems.
+- Si se agregan platos a un pedido de empleado ya creado, el ítem también lleva `precio_personal`.
+
+## Lado del frontend (ya hecho)
+
+- Nuevo pedido (solo administrador y caja): interruptor "Pedido de personal"; con él, cada plato muestra un campo "Precio (S/)" en blanco y no se puede confirmar sin escribirlos todos. El total sale con esos precios.
+- Detalle de un pedido de empleado abierto: un lápiz junto al precio de cada plato para corregirlo.
+- Se quitó el ticket "Empleado" del Descuento extra y el interruptor "Permitir descuento de empleado" de Configuración.

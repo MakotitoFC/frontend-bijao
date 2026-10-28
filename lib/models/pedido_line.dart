@@ -132,6 +132,33 @@ class PedidoLine {
     );
   }
 
+  // Precio por unidad a medida (pedido de personal): sin descuento, el total es
+  // el precio por la cantidad.
+  PedidoLine conPrecio(double precio) => PedidoLine(
+    id: id,
+    cartaId: cartaId,
+    nombrePlato: nombrePlato,
+    cantidad: cantidad,
+    modificadores: modificadores,
+    presentacion: presentacion,
+    variante: variante,
+    componentes: componentes,
+    promocion: promocion,
+    comentario: comentario,
+    precioUnitario: precio,
+    descuentoAplicado: 0,
+    precioTotalLinea: precio * cantidad,
+    tipoEntrega: tipoEntrega,
+    aplicaTaper: aplicaTaper,
+    taperId: taperId,
+    precioTaper: precioTaper,
+    esLibre: esLibre,
+    nombreLibre: nombreLibre,
+    descripcionLibre: descripcionLibre,
+    precioBase: precioBase,
+    estado: estado,
+  );
+
   PedidoLine conComentario(String? nuevo) => PedidoLine(
     id: id,
     cartaId: cartaId,

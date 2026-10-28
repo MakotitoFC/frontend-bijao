@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
 // Modal de "Nuevo Pedido": elige tipo (Mesa, Para llevar o Delivery) y retorna
@@ -17,10 +16,6 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
   String? _tipoSeleccion;
 
   bool _esMobile = false;
-
-  // El delivery lo registran caja y administración; el mozo no.
-  bool get _puedeDelivery =>
-      !(AuthService.instance.currentUser?.esMozo ?? false);
 
   @override
   Widget build(BuildContext context) {
@@ -102,20 +97,17 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       seleccionado: _tipoSeleccion == 'llevar',
                       onTap: () => setState(() => _tipoSeleccion = 'llevar'),
                     ),
-                    if (_puedeDelivery) ...[
-                      SizedBox(
-                        width: esMobile ? 0 : 14,
-                        height: esMobile ? 16 : 0,
-                      ),
-                      _tarjetaTipo(
-                        icono: LucideIcons.bike,
-                        titulo: 'Delivery',
-                        descripcion: 'Pedido para entregar a domicilio.',
-                        seleccionado: _tipoSeleccion == 'delivery',
-                        onTap: () =>
-                            setState(() => _tipoSeleccion = 'delivery'),
-                      ),
-                    ],
+                    SizedBox(
+                      width: esMobile ? 0 : 14,
+                      height: esMobile ? 16 : 0,
+                    ),
+                    _tarjetaTipo(
+                      icono: LucideIcons.bike,
+                      titulo: 'Delivery',
+                      descripcion: 'Pedido para entregar a domicilio.',
+                      seleccionado: _tipoSeleccion == 'delivery',
+                      onTap: () => setState(() => _tipoSeleccion = 'delivery'),
+                    ),
                   ],
                 ),
               ),

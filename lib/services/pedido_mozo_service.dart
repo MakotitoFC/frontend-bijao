@@ -61,13 +61,13 @@ class PedidoMozoService {
     return rol == AppRole.mesero || rol == AppRole.administrador;
   }
 
-  // La API solo deja operar los pedidos propios.
+  // El mozo opera solo sus pedidos; el administrador, cualquiera.
   bool puedeOperar(Pedido p) {
     final u = AuthService.instance.currentUser;
     return u != null &&
         activo &&
         UuidHelper.isValid(p.id) &&
-        p.usuarioId == u.id;
+        (u.esAdmin || p.usuarioId == u.id);
   }
 
   // ---------------------------------------------------------------- lectura
@@ -185,6 +185,19 @@ class PedidoMozoService {
     () => _api.patch(
       '$_base/$pedidoId/items/${linea.id}/cantidad',
       body: {'cantidad': cantidad, 'version': linea.version},
+    ),
+  );
+
+  // Pedido de personal: cambia el precio por unidad de un plato.
+  Future<PedidoMozoDetalle> precioPersonalFila(
+    String pedidoId,
+    PedidoLine linea,
+    double precio,
+  ) => _enviar(
+    pedidoId,
+    () => _api.patch(
+      '$_base/$pedidoId/items/${linea.id}/precio-personal',
+      body: {'precio_personal': precio, 'version': linea.version},
     ),
   );
 
