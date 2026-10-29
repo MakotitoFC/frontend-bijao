@@ -168,16 +168,10 @@ class ComprobanteEnCobro extends ChangeNotifier {
     }
   }
 
-  // Emite el comprobante elegido para [pedido]. Se llama con el cobro ya
-  // registrado: se vincula al primer pago del pedido.
-  // [pagoId] fija el pago al que se vincula (en el pago compartido, el de cada
-  // pagador); sin él se usa el primero del pedido.
+  // Emite el comprobante elegido para [pedido].
+  // [pagoId] solo se especifica si se desea facturar un pago individual específico (pago compartido).
+  // Si no se especifica [pagoId], se emite por la totalidad del pedido (todos los platos y pagos).
   Future<Comprobante> emitir(Pedido pedido, {String? pagoId}) async {
-    pagoId ??= pagos
-        .where((p) => p.pedidoId == pedido.id && !p.esReembolso)
-        .map((p) => p.id)
-        .where(UuidHelper.isValid)
-        .firstOrNull;
     final emitido = await FacturacionService.instance.emitir(
       pedidoId: pedido.id,
       tipoDocumento: tipo,
