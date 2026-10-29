@@ -306,14 +306,24 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             .where((c) => c.nombre.toLowerCase().contains('venta'))
             .firstOrNull ??
         _categoriasIngreso.firstOrNull;
-    if (mediosPago.isEmpty) {
-      CatalogService.instance
-          .cargarMediosPago()
-          .then((_) {
-            if (mounted) setState(() => _medio = mediosPagoActivos.first);
-          })
-          .catchError((_) {});
-    }
+    // Los métodos se vuelven a leer cada vez que se abre el cobro: si el
+    // administrador cambió el recargo de la tarjeta, aquí se ve el vigente (el
+    // servidor siempre cobra con el que tiene guardado).
+    CatalogService.instance
+        .cargarMediosPago()
+        .then((_) {
+          if (!mounted || mediosPagoActivos.isEmpty) return;
+          MedioPago vigente(MedioPago m) =>
+              mediosPagoActivos.where((x) => x.id == m.id).firstOrNull ??
+              mediosPagoActivos.first;
+          setState(() {
+            _medio = vigente(_medio);
+            for (final f in _filas) {
+              f.medio = vigente(f.medio);
+            }
+          });
+        })
+        .catchError((_) {});
     if (categoriasMovimiento.isEmpty) {
       MovimientoCajaService.instance
           .cargarCategorias()
@@ -727,10 +737,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ],
           if (_comprobante != null) ...[
             const SizedBox(height: 18),
-            SelectorComprobante(
-              control: _comprobante!,
-              pedido: widget.pedido,
-            ),
+            SelectorComprobante(control: _comprobante!, pedido: widget.pedido),
           ],
           if (_recargo > 0 || propina > 0 || taper > 0)
             Container(

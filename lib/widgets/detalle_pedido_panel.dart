@@ -422,29 +422,29 @@ class DetallePedidoPanel extends StatelessWidget {
         // Caja y administración reimprimen la cuenta las veces que quieran, esté
         // o no pagado; el mozo solo la de sus pedidos.
         onImprimirCuenta: () {
-                ImpresionService.instance
-                    .reimprimirPedido(pedido.id, tipo: 'cuenta')
-                    .then((_) {
-                      if (context.mounted) {
-                        showAppToast(
-                          context,
-                          'Cuenta del pedido #${pedido.numeroPedido} enviada a '
-                          'la impresora de caja.',
-                          type: ToastType.success,
-                        );
-                      }
-                    })
-                    .catchError((Object e) {
-                      if (context.mounted) {
-                        showAppToast(
-                          context,
-                          'No se pudo imprimir la cuenta: ${_textoError(e)}',
-                          type: ToastType.error,
-                        );
-                      }
-                    });
-                Navigator.of(dialogContext).pop();
-              },
+          ImpresionService.instance
+              .reimprimirPedido(pedido.id, tipo: 'cuenta')
+              .then((_) {
+                if (context.mounted) {
+                  showAppToast(
+                    context,
+                    'Cuenta del pedido #${pedido.numeroPedido} enviada a '
+                    'la impresora de caja.',
+                    type: ToastType.success,
+                  );
+                }
+              })
+              .catchError((Object e) {
+                if (context.mounted) {
+                  showAppToast(
+                    context,
+                    'No se pudo imprimir la cuenta: ${_textoError(e)}',
+                    type: ToastType.error,
+                  );
+                }
+              });
+          Navigator.of(dialogContext).pop();
+        },
         onCerrar: () => Navigator.of(dialogContext).pop(),
       ),
     );
@@ -1595,6 +1595,13 @@ class DetallePedidoPanel extends StatelessWidget {
                   )
                 else
                   for (final l in detalles) _filaLinea(context, l),
+                // Solo el administrador ve las líneas anuladas: deshabilitadas,
+                // con su etiqueta, y sin sumar en ningún total.
+                if (esAdmin)
+                  for (final l
+                      in lineasAnuladasPorPedido[pedido.id] ??
+                          const <PedidoLine>[])
+                    _filaAnulada(l),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Align(
@@ -1850,6 +1857,66 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // Línea del pedido: checklist al extremo izquierdo, datos y acciones.
+  // Línea anulada o devuelta (solo la ve el administrador): no se puede tocar y
+  // no suma en la cuenta ni en el pago.
+  Widget _filaAnulada(PedidoLine l) {
+    final etiqueta = l.estado == 'devuelto' ? 'Devuelto' : 'Anulado';
+    final nombre = l.esLibre ? (l.nombreLibre ?? l.nombrePlato) : l.nombrePlato;
+    return Opacity(
+      opacity: 0.6,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${l.cantidad}x $nombre',
+                    softWrap: true,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                  Text(
+                    'S/ ${l.precioUnitario.toStringAsFixed(2)} × ${l.cantidad} · '
+                    'no suma en la cuenta',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppRadii.tag),
+              ),
+              child: Text(
+                etiqueta,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _filaLinea(BuildContext context, PedidoLine l) {
     final esProducto = esLineaDeProducto(l);
     final esCargo = l.cartaId == cartaIdCargoDelivery;

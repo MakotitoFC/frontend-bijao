@@ -1,6 +1,6 @@
 import 'package:url_launcher/url_launcher.dart';
 
-import '../data/configuracion_store.dart';
+import 'datos_sede.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -98,7 +98,9 @@ String textoCuentaWhatsapp({
   final s = StringBuffer()
     ..writeln('🚀 *PEDIDO: #${pedido.numeroPedido}* 🚀')
     ..writeln(_separadorWhatsapp)
-    ..writeln('🏪 *${negocio.nombre}*')
+    ..writeln(
+      '🏪 *${nombreDelNegocio().isEmpty ? 'Restaurante' : nombreDelNegocio()}*',
+    )
     ..writeln('📅 ${_fechaHoraWhatsapp(pedido.fechaPedido)}');
   if (!esDelivery) s.writeln('🪑 *Atención:* ${pedido.ubicacion}');
 

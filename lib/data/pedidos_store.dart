@@ -8,6 +8,15 @@ import '../models/pedido_line.dart';
 final List<Pedido> pedidos = [];
 final Map<String, List<PedidoLine>> detallesPorPedido = {};
 
+// Líneas anuladas o devueltas de cada pedido. No son parte de la cuenta (no
+// suman en ningún total ni en el pago): solo se guardan para que el
+// administrador las vea, deshabilitadas y marcadas.
+final Map<String, List<PedidoLine>> lineasAnuladasPorPedido = {};
+
+// ¿Es una línea anulada o devuelta?
+bool lineaAnulada(PedidoLine l) =>
+    l.estado == 'anulado' || l.estado == 'devuelto';
+
 // pedidos.numero_pedido: código correlativo simple, útil para identificar
 // pedidos de delivery en cocina cuando no hay número de mesa.
 int _correlativoPedido = 0;

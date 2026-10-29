@@ -13,7 +13,9 @@ void recordarClienteDeComprobante(
   required String documento,
 }) {
   final n = nombre.trim();
-  if (pedidoId.isEmpty || n.isEmpty || n.toUpperCase() == 'CLIENTES VARIOS') {
+  // Los nombres genéricos (ticket de venta o boleta sin DNI) no cuentan.
+  const genericos = {'CLIENTES VARIOS', 'CLIENTE VARIOS', 'CLIENTE GENERAL'};
+  if (pedidoId.isEmpty || n.isEmpty || genericos.contains(n.toUpperCase())) {
     return;
   }
   clienteDeComprobantePorPedido[pedidoId] = (

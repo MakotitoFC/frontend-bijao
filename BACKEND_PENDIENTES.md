@@ -23,6 +23,7 @@ Estado revisado contra el commit `6a28e71` del backend (28-oct-2026).
 28. El administrador debe poder operar los pedidos de cualquier usuario
 29. Pedido de personal: el precio de cada plato se escribe a mano
 30. El cajero es el rol invitado: sus accesos los define el administrador
+31. `GET /api/pedidos` devuelve también las líneas anuladas
 
 ---
 
@@ -468,3 +469,23 @@ No hay un rol nuevo de "administrador invitado": el **rol invitado es el CAJERO*
 ## Lado del frontend (pendiente)
 
 Hoy la barra de vistas oculta por rol varias vistas al cajero (Mesas, Carta, Cocina, Reportes y Configuración). Para que mande lo que define el administrador, la app debe mostrar o esconder cada vista **solo por permiso** para el cajero. Se hace al confirmar este ítem.
+
+---
+
+# 31. `GET /api/pedidos` devuelve también las líneas anuladas
+
+## Problema
+
+La lista general de pedidos (`GET /api/pedidos`, la que usan el administrador y el cajero) trae **todas** las filas de `pedidos_detalle` del pedido, incluidas las **anuladas o devueltas** (`estado = 'anulado'` o `'devuelto'`) y las borradas (`deleted_at`). La consulta de detalles (`pedido_repository.go`) solo filtra por `pd.pedidos_id`.
+
+Efecto: si se corrige el precio de un plato y se quita la línea vieja para agregar la nueva, la vieja **sigue saliendo** en la cuenta y en la vista previa del comprobante, y se suma al total. En `GET /api/v1/mozo/pedidos` (el del mozo) no pasa, porque esa ruta ya las deja fuera.
+
+## Qué se pide
+
+- Que `GET /api/pedidos` y `GET /api/pedidos/:id` excluyan de `detalles` las filas con `estado IN ('anulado', 'devuelto')` o `deleted_at IS NOT NULL`, igual que la ruta del mozo. (Quedan guardadas en la base para la auditoría; solo no se devuelven como parte de la cuenta.)
+- Revisar que los totales del pedido y de la caja no cuenten esas filas.
+
+## Lado del frontend (ya hecho)
+
+La app ya descarta esas líneas al leer la lista general. Con este ajuste del servidor deja de depender de ese filtro.
+

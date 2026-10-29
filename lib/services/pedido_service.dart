@@ -278,13 +278,26 @@ class PedidoService {
 
             final detList = item['detalles'];
             final lineas = <PedidoLine>[];
+            final anuladas = <PedidoLine>[];
             if (detList is List) {
-              lineas.addAll(
-                detList
-                    .whereType<Map<String, dynamic>>()
-                    .map(_lineaConOpciones),
-              );
+              // Las líneas anuladas o devueltas quedan guardadas en el servidor,
+              // pero no son parte de la cuenta: se apartan (el administrador
+              // las ve deshabilitadas y nada las suma).
+              for (final d in detList.whereType<Map<String, dynamic>>()) {
+                final estado = d['estado']?.toString();
+                final fuera =
+                    estado == 'anulado' ||
+                    estado == 'devuelto' ||
+                    d['deleted_at'] != null;
+                final linea = _lineaConOpciones(d);
+                (fuera ? anuladas : lineas).add(
+                  fuera && !lineaAnulada(linea)
+                      ? linea.conEstado('anulado')
+                      : linea,
+                );
+              }
             }
+            lineasAnuladasPorPedido[p.id] = anuladas;
             if (p.costoDelivery > 0 &&
                 !lineas.any((l) => l.cartaId == cartaIdCargoDelivery)) {
               lineas.add(

@@ -519,6 +519,7 @@ class PedidoMozoService {
       pedidos[i] = nuevo;
     }
     detallesPorPedido[d.id] = [...d.lineas, ...propias];
+    lineasAnuladasPorPedido[d.id] = d.anuladas;
     return d;
   }
 

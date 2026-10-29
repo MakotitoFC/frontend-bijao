@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/configuracion_store.dart';
+import '../utils/datos_sede.dart';
 import '../data/pagos_store.dart';
 import '../models/comprobante.dart';
 import '../models/pedido.dart';
@@ -744,7 +744,7 @@ class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
     if (numero == null || !mounted) return;
     final texto =
         'Hola, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} '
-        '${c.numeroComprobante} de ${negocio.nombre}. '
+        '${c.numeroComprobante} de ${nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio()}. '
         'Total: S/ ${c.total.toStringAsFixed(2)}. Descárgala aquí: $url';
     final abierto = await abrirWhatsapp(numero, texto);
     if (!abierto && mounted) {

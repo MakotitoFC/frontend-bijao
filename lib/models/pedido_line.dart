@@ -161,6 +161,33 @@ class PedidoLine {
     estado: estado,
   );
 
+  // La misma línea con otro estado (por ejemplo, 'anulado').
+  PedidoLine conEstado(String? nuevo) => PedidoLine(
+    id: id,
+    cartaId: cartaId,
+    nombrePlato: nombrePlato,
+    cantidad: cantidad,
+    modificadores: modificadores,
+    presentacion: presentacion,
+    variante: variante,
+    componentes: componentes,
+    promocion: promocion,
+    comentario: comentario,
+    precioUnitario: precioUnitario,
+    descuentoAplicado: descuentoAplicado,
+    precioTotalLinea: precioTotalLinea,
+    tipoEntrega: tipoEntrega,
+    aplicaTaper: aplicaTaper,
+    taperId: taperId,
+    precioTaper: precioTaper,
+    esLibre: esLibre,
+    nombreLibre: nombreLibre,
+    descripcionLibre: descripcionLibre,
+    precioBase: precioBase,
+    estado: nuevo,
+    version: version,
+  );
+
   PedidoLine conComentario(String? nuevo) => PedidoLine(
     id: id,
     cartaId: cartaId,
