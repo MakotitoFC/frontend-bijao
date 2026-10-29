@@ -5,10 +5,12 @@ import '../data/logo_ticket_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
+import '../services/impresion_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/datos_sede.dart';
 import '../utils/ticket_texto.dart';
 import 'app_tag.dart';
+import 'app_toast.dart';
 import 'dialogo_app.dart';
 import 'ticket_papel.dart';
 
@@ -84,9 +86,34 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
       ancho: 480,
       acciones: [
         OutlinedButton(onPressed: widget.onCerrar, child: const Text('Cerrar')),
-        if (_tab == 'cuenta' && widget.onImprimirCuenta != null)
+        if (_tab == 'cuenta')
           FilledButton.icon(
-            onPressed: widget.onImprimirCuenta,
+            onPressed: () {
+              if (widget.onImprimirCuenta != null) {
+                widget.onImprimirCuenta!();
+              } else {
+                ImpresionService.instance
+                    .reimprimirPedido(pedido.id, tipo: 'cuenta')
+                    .then((_) {
+                  if (context.mounted) {
+                    showAppToast(
+                      context,
+                      'Cuenta del pedido #${pedido.numeroPedido} enviada a la impresora de caja.',
+                      type: ToastType.success,
+                    );
+                  }
+                }).catchError((e) {
+                  if (context.mounted) {
+                    showAppToast(
+                      context,
+                      'No se pudo imprimir la cuenta: $e',
+                      type: ToastType.error,
+                    );
+                  }
+                });
+                Navigator.of(context).pop();
+              }
+            },
             icon: const Icon(LucideIcons.printer, size: 16),
             label: const Text('Imprimir cuenta'),
             style: FilledButton.styleFrom(backgroundColor: AppColors.navbar),

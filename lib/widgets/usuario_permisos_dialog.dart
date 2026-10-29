@@ -4,6 +4,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../models/app_role.dart';
 import '../models/rbac.dart';
 import '../models/usuario.dart';
+import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
@@ -93,6 +94,7 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
           type: ToastType.info,
         );
       }
+      await AuthService.instance.recargarUsuarioActual();
       await _cargarDetalles();
     } catch (e) {
       if (mounted) showAppToast(context, 'Error: $e', type: ToastType.error);
@@ -119,6 +121,7 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
           type: ToastType.info,
         );
       }
+      await AuthService.instance.recargarUsuarioActual();
       await _cargarDetalles();
     } catch (e) {
       if (mounted) showAppToast(context, 'Error: $e', type: ToastType.error);
@@ -368,31 +371,73 @@ class _UsuarioPermisosDialogState extends State<UsuarioPermisosDialog> {
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                p.permiso,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    p.permiso,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  if (esHeredado) ...[
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.primaryGreen.withValues(alpha: 0.12),
+                                                        borderRadius: BorderRadius.circular(6),
+                                                      ),
+                                                      child: const Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            LucideIcons.shieldCheck,
+                                                            size: 12,
+                                                            color: AppColors.primaryGreen,
+                                                          ),
+                                                          SizedBox(width: 4),
+                                                          Text(
+                                                            'Heredado de rol',
+                                                            style: TextStyle(
+                                                              fontSize: 10.5,
+                                                              fontWeight: FontWeight.w700,
+                                                              color: AppColors.primaryGreen,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
                                               ),
                                               if (esHeredado)
-                                                const Text(
-                                                  'Heredado de rol (Activo)',
+                                                Text(
+                                                  'Activo mediante el rol del usuario (no revocable individualmente)',
                                                   style: TextStyle(
                                                     fontSize: 11,
-                                                    color:
-                                                        AppColors.primaryGreen,
-                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.grey.shade600,
                                                   ),
                                                 ),
                                             ],
                                           ),
                                         ),
-                                        AppCheck(
-                                          value: esDirecto || esHeredado,
-                                          onChanged: (v) =>
-                                              _togglePermisoDirecto(p, v),
-                                        ),
+                                        if (esHeredado)
+                                          Tooltip(
+                                            message: 'Este permiso se hereda del rol del usuario. Para modificarlo, edítelo en Permisos por Rol.',
+                                            child: AppCheck(
+                                              value: true,
+                                              onChanged: null,
+                                            ),
+                                          )
+                                        else
+                                          AppCheck(
+                                            value: esDirecto,
+                                            onChanged: (v) => _togglePermisoDirecto(p, v),
+                                          ),
                                       ],
                                     ),
                                   );

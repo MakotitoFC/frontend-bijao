@@ -80,7 +80,15 @@ class Pedido {
       mesaNumero: (json['mesa_numero'] as num?)?.toInt() ?? 0,
       mesasUnidas: const [],
       estado: estadoNormalizado,
-      tipoPedido: json['tipo']?.toString() ?? 'mesa',
+      tipoPedido: json['tipo_entrega']?.toString() ??
+          (json['tipo']?.toString() == 'delivery' ||
+                  json['direccion_delivery'] != null ||
+                  ((json['costo_delivery'] as num?)?.toDouble() ?? 0) > 0 ||
+                  (json['delivery'] != null)
+              ? 'delivery'
+              : (json['tipo']?.toString() == 'llevar'
+                  ? 'llevar'
+                  : (json['tipo']?.toString() ?? 'mesa'))),
       fechaPedido: fecha,
       notas: json['comentarios']?.toString(),
       // El mozo no es el cliente: va aparte en `mozoNombre`.

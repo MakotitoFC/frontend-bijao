@@ -277,13 +277,33 @@ class PedidoService {
             listaPedidos.add(p);
 
             final detList = item['detalles'];
+            final lineas = <PedidoLine>[];
             if (detList is List) {
-              final lineas = detList
-                  .whereType<Map<String, dynamic>>()
-                  .map(_lineaConOpciones)
-                  .toList();
-              mapDetalles[p.id] = lineas;
+              lineas.addAll(
+                detList
+                    .whereType<Map<String, dynamic>>()
+                    .map(_lineaConOpciones),
+              );
             }
+            if (p.costoDelivery > 0 &&
+                !lineas.any((l) => l.cartaId == cartaIdCargoDelivery)) {
+              lineas.add(
+                PedidoLine(
+                  id: 'delivery-${p.id}',
+                  cartaId: cartaIdCargoDelivery,
+                  nombrePlato: 'Cargo por delivery',
+                  cantidad: 1,
+                  modificadores: const [],
+                  presentacion: null,
+                  promocion: null,
+                  comentario: null,
+                  precioUnitario: p.costoDelivery,
+                  descuentoAplicado: 0,
+                  precioTotalLinea: p.costoDelivery,
+                ),
+              );
+            }
+            mapDetalles[p.id] = lineas;
           }
         }
 

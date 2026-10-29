@@ -32,6 +32,7 @@ import '../widgets/usuario_permisos_dialog.dart';
 import '../widgets/stock_diario_config.dart';
 import '../widgets/turnos_config_widget.dart';
 import '../widgets/app_switch.dart';
+import '../services/auth_service.dart';
 
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
 // Usuarios y roles, y Negocio.
@@ -154,6 +155,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         );
       }
       await _cargarRBAC();
+      await AuthService.instance.recargarUsuarioActual();
     } catch (e) {
       if (mounted) {
         showAppToast(
@@ -184,6 +186,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       ),
     );
     await _cargarRBAC();
+    await AuthService.instance.recargarUsuarioActual();
   }
 
   // Páginas de Configuración, agrupadas por sección en el submenú.
