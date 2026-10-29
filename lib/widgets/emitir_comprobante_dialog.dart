@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/configuracion_store.dart';
 import '../utils/datos_sede.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
@@ -510,7 +509,9 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    negocio.nombre.toUpperCase(),
+                    (nombreDelNegocio().isEmpty
+                        ? 'RESTAURANTE'
+                        : nombreDelNegocio().toUpperCase()),
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),

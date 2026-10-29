@@ -1,10 +1,6 @@
 # Pendientes del backend
 
-Estado revisado contra el commit `6a28e71` del backend (28-oct-2026). Solo quedan los ítems **sin resolver**.
-
-**Ya resueltos por el backend (quitados de este archivo):** lectura de pedidos por el cajero (1), semillas de medios de pago y categorías (3), `uploads/` en `.gitignore` (9), series de comprobantes por caja (12), número de orden y detalle para el cajero (18), grupo de medios de pago (19), efectivo recibido y vuelto (22), columna `apertura_caja.caja_id` (23) y comprobante "Solo Consumo".
-
-**Sin volver a comprobar en el código:** los ítems 2, 4 a 8, 10, 13 y 15 vienen de revisiones anteriores; que el backend confirme cuáles siguen abiertos.
+Estado revisado contra el commit `6a28e71` del backend (28-oct-2026).
 
 ## Ítems
 
@@ -13,21 +9,20 @@ Estado revisado contra el commit `6a28e71` del backend (28-oct-2026). Solo queda
 5. Caja: efectivo esperado, tres puntos a revisar
 6. Solicitud: varios tápers por plato
 7. Vender un táper sin stock suficiente
-8. Aviso: los pedidos en mesa ya no llevan nombre de cliente
 10. Comprobantes: imprimir con los datos de Lucode y espera de SUNAT
 11. Turnos de los mozos (mañana y tarde-noche)
 13. DNI en boletas (aviso)
 14. Reportes: rutas que necesita la vista (habilitada para el administrador)
 15. Pago compartido con un comprobante distinto por pagador
-17. (Confirmar si el commit 0552d58 ya lo resolvió) Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
+17. Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
 20. Mesas unidas: el pedido solo toma la primera mesa
 21. Delivery lo registran caja y administración; caja abierta para todos; cambio de mesa
 24. Delivery al imprimir, reimpresión de la cuenta y fecha de pago
-25. Guardar los datos del negocio y del restaurante
 26. Traspaso de pedidos entre mozos (con aceptación)
 27. Qué categorías y platos se imprimen en la comanda de cocina
 28. El administrador debe poder operar los pedidos de cualquier usuario
 29. Pedido de personal: el precio de cada plato se escribe a mano
+30. El cajero es el rol invitado: sus accesos los define el administrador
 
 ---
 
@@ -135,18 +130,6 @@ Permitir registrar el pedido aunque el stock del táper no alcance: no devolver 
 
 ---
 
-# 8. Aviso: los pedidos en mesa ya no llevan nombre de cliente
-
-El nombre del cliente no es importante en un pedido **en mesa**, así que la app ya no lo pide ni lo envía cuando el tipo de pedido es `mesa`: `nombre_cliente` llega vacío o ausente.
-
-Para el backend:
-
-- No debe exigir `nombre_cliente` en pedidos de tipo `mesa` (en `Para llevar` sí se sigue enviando y es obligatorio en la app).
-- Si el backend agrega a los comentarios el texto `Cliente: …` cuando recibe un nombre, en mesa simplemente no se agregará.
-- Revisar que no haya validaciones, reportes ni tickets del lado del servidor que den por hecho que una mesa siempre trae cliente.
-
----
-
 # 10. Comprobantes: imprimir con los datos de Lucode y espera de SUNAT
 
 Consultar a SUNAT (Lucode) tarda **3 a 4 segundos**. Mientras responde, el comprobante ya está guardado, pero la app lo mostraba como "sin respuesta", y si se imprimía en ese momento el papel salía sin los datos que devuelve Lucode.
@@ -231,7 +214,7 @@ Para el backend, confirmar o ajustar:
 
 ---
 
-# 17. (Confirmar si el commit 0552d58 ya lo resolvió) Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
+# 17. Error al emitir comprobantes en pagos compartidos: "el campo total no coincide con la sumatoria de los ítems"
 
 Síntoma (mesa y para llevar, solo en pago compartido): al emitir boleta o factura, SUNAT/Lucode rechaza con `El campo total 94 no coincide con la sumatoria de los ítems 55 (diferencia: 39)`.
 
@@ -330,22 +313,6 @@ No encontré en el backend ninguna regla de 12 horas ni cierre automático (`Cer
 ## Historial de ventas por fecha de pago
 
 El historial de ventas ahora muestra la **fecha y hora del pago** (no la del pedido) y filtra el día por esa fecha. Se pide que `GET /api/pagos` (por rango de fechas) filtre por **`fecha_pago`**, y que el pedido de un pago hecho en el rango venga en la lista de pedidos aunque se haya tomado otro día (por ejemplo, tomado a las 23:50 y cobrado a las 00:10). Los totales de Caja por grupo de medio de pago deben filtrarse igual, por `fecha_pago`.
-
----
-
-# 25. Guardar los datos del negocio y del restaurante
-
-En Configuración, "Información del negocio" y "Restaurante" ahora tienen Editar / Guardar. Hoy solo se puede guardar en el servidor la **dirección y el teléfono de la sede de la sesión**, con `PUT /api/v1/sede/config` (solo ADMINISTRADOR; la app lee la configuración y reenvía los datos fiscales para no borrarlos).
-
-## Qué falta
-
-- **Información del negocio:** nombre comercial, correo de contacto, moneda, idioma, país y zona horaria no tienen dónde guardarse. Se pide una ruta (por ejemplo `GET/PUT /api/v1/negocio`) y sus columnas.
-- **Restaurante activo / inactivo:** el interruptor "Activo" de cada restaurante no se guarda en el servidor.
-- **Varios restaurantes:** la ruta actual solo edita la sede del usuario. Para editar otro restaurante haría falta `PUT /api/v1/sedes/:id`.
-
-## Lado del frontend
-
-Dirección y teléfono se guardan en el servidor; el resto queda en la app mientras esté abierta. Al existir las rutas, solo se conecta el botón Guardar.
 
 ---
 
@@ -469,3 +436,35 @@ Solo **administración y caja** crean pedidos de personal (empleado). El precio 
 - Nuevo pedido (solo administrador y caja): interruptor "Pedido de personal"; con él, cada plato muestra un campo "Precio (S/)" en blanco y no se puede confirmar sin escribirlos todos. El total sale con esos precios.
 - Detalle de un pedido de empleado abierto: un lápiz junto al precio de cada plato para corregirlo.
 - Se quitó el ticket "Empleado" del Descuento extra y el interruptor "Permitir descuento de empleado" de Configuración.
+
+---
+
+# 30. El cajero es el rol invitado: sus accesos los define el administrador
+
+## Cómo se entiende
+
+No hay un rol nuevo de "administrador invitado": el **rol invitado es el CAJERO**. Lo que el cajero puede ver y hacer lo decide el **administrador** desde Usuarios y roles (permisos por vista y por acción), y el cajero **no** tiene el acceso total del administrador.
+
+## Qué se pide al backend
+
+- **Que el acceso del cajero dependa de sus permisos, no del nombre del rol.** Hoy varias rutas se limitan con `RequireRole(...)` fijo (por ejemplo `/caja/traspaso`, las lecturas de `/mozo/pedidos`, y las de impresión) o dejan fuera a `CAJERO` (como `POST /api/v1/mozo/pedidos`). Pasarlas a `RequirePermission(...)` para que lo que el administrador marque en `rol_permiso` y `permiso_usuario` se cumpla de verdad. Las que deben seguir siendo solo del administrador (configuración, usuarios y roles) se quedan con `RequireRole("ADMINISTRADOR")`.
+- **Permisos por defecto del cajero en el seed**, iguales a lo que hace hoy (pedidos, ventas, caja, cobros), para que no se rompa nada al migrar.
+- **Permisos de lectura por vista** (los que la app ya usa para mostrar u ocultar cada vista):
+
+| Vista | Permiso |
+|---|---|
+| Pedidos | `LEER.PEDIDO` |
+| Ventas | `LEER.PEDIDOS` |
+| Caja | `LEER.PAGO` |
+| Reportes | `LEER.MOVIMIENTO` |
+| Inventario | `VER.VISTA_INVENTARIO` |
+| Carta | `LEER.CARTA` |
+| Mesas | `LEER.MESA` |
+| Configuración | `LEER.SEDE` |
+
+- **Permisos por acción** que el administrador pueda dar o quitar al cajero: abrir y cerrar caja, registrar ingresos y salidas, anular, dar descuentos, devolver, crear pedidos (mesa, para llevar y delivery) y crear pedidos de personal. Cada uno con su permiso propio, comprobado en el servidor.
+- El login ya devuelve los permisos efectivos del usuario; que incluya los del rol y los directos (`permiso_usuario`).
+
+## Lado del frontend (pendiente)
+
+Hoy la barra de vistas oculta por rol varias vistas al cajero (Mesas, Carta, Cocina, Reportes y Configuración). Para que mande lo que define el administrador, la app debe mostrar o esconder cada vista **solo por permiso** para el cajero. Se hace al confirmar este ítem.
