@@ -310,6 +310,7 @@ Pago pagoDeServidor(
     pagador: json['pagador']?.toString() ?? pagador,
     montoRecibido: jsonDouble(json['monto_recibido']),
     vuelto: jsonDouble(json['vuelto']),
+    estado: json['estado']?.toString() ?? 'activo',
   );
   final rec = jsonDouble(json['monto_recibido']) ?? 0;
   final vue = jsonDouble(json['vuelto']) ?? 0;

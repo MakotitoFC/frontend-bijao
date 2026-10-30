@@ -21,6 +21,7 @@ import '../models/cierre_caja.dart';
 import '../models/movimiento_caja.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
+import '../models/turno.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
@@ -539,6 +540,10 @@ class _CajaScreenState extends State<CajaScreen> {
   // Rango de fechas de los cierres mostrados (null = todos).
   DateTimeRange? _rangoCierres;
 
+  // Filtros de movimientos de caja
+  TipoMovimiento? _filtroTipoMovimiento;
+  String? _filtroCategoriaId;
+
   // Si no se pudieron traer los movimientos del servidor, aquí va el motivo.
   String? _errorMovimientos;
   // Si no se pudo leer la caja del servidor, aquí va el motivo.
@@ -592,50 +597,21 @@ class _CajaScreenState extends State<CajaScreen> {
       estadoCajaServidor != null && !estadoCajaServidor!.abierta;
 
   Future<void> _abrirCaja() async {
-    final monto = TextEditingController(text: '0');
-    final notas = TextEditingController();
+    List<Turno> turnos = [];
+    try {
+      turnos = await CajaService.instance.cargarTurnos();
+    } catch (_) {}
 
-    final confirmar = await showBlurDialog<bool>(
+    final r = await showBlurDialog<({double montoInicial, String? turnoId, String? notas})>(
       context: context,
-      builder: (dialogContext) => AlertaApp(
-        title: const Text('Abrir caja'),
-        content: SizedBox(
-          width: double.infinity,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Escribe el efectivo con el que empieza el turno (el sencillo).',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 14),
-              _campoDialogo(monto, 'Monto inicial (S/)'),
-              CampoTexto(
-                controller: notas,
-                decoration: const InputDecoration(labelText: 'Notas'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Abrir caja'),
-          ),
-        ],
-      ),
+      builder: (dialogContext) => _AbrirCajaDialog(turnos: turnos),
     );
-    if (confirmar != true || !mounted) return;
+    if (r == null || !mounted) return;
     try {
       await CajaService.instance.abrir(
-        montoInicial:
-            double.tryParse(monto.text.trim().replaceAll(',', '.')) ?? 0,
-        notas: notas.text,
+        montoInicial: r.montoInicial,
+        turnoId: r.turnoId,
+        notas: r.notas,
       );
       if (!mounted) return;
       setState(() {});
@@ -814,70 +790,29 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  // Cierre con el servidor: el monto inicial sale de la apertura y el servidor
-  // calcula lo que debería haber (ventas, ingresos y salidas).
+  // Cierre con el servidor: solo se declara el efectivo contado en caja y se valida cuadre exacto.
   Future<void> _cerrarCajaServidor() async {
-    final efectivo = TextEditingController();
-    final tarjeta = TextEditingController();
-    final digital = TextEditingController();
-    final notas = TextEditingController();
-
-    double n(TextEditingController c) =>
-        double.tryParse(c.text.trim().replaceAll(',', '.')) ?? 0;
-    final confirmar = await showBlurDialog<bool>(
+    final srvTotales = estadoCajaServidor?.totales;
+    final r = await showBlurDialog<({double declaradoEfectivo, String? notas})>(
       context: context,
-      builder: (dialogContext) => AlertaApp(
-        title: const Text('Cerrar caja'),
-        content: SizedBox(
-          width: double.infinity,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Lo que "debería haber" es interno: el cajero cuenta y declara
-                // sin verlo, y el sistema calcula la diferencia.
-                Text(
-                  'Cuenta el dinero de la caja y escribe lo que hay.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                ),
-                const SizedBox(height: 14),
-                _campoDialogo(efectivo, 'Efectivo declarado (S/)'),
-                _campoDialogo(tarjeta, 'Tarjeta declarada (S/)'),
-                _campoDialogo(digital, 'Digital declarado (S/)'),
-                CampoTexto(
-                  controller: notas,
-                  decoration: const InputDecoration(labelText: 'Notas'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Cerrar caja'),
-          ),
-        ],
+      builder: (dialogContext) => _CerrarCajaDialog(
+        efectivoEsperado: srvTotales?.efectivoEsperado ?? 0,
+        turnoNombre: estadoCajaServidor?.apertura?.turnoNombre,
       ),
     );
-    if (confirmar != true || !mounted) return;
+    if (r == null || !mounted) return;
     try {
       await CajaService.instance.cerrar(
-        declaradoEfectivo: n(efectivo),
-        declaradoTarjeta: n(tarjeta),
-        declaradoDigital: n(digital),
-        notas: notas.text,
+        declaradoEfectivo: r.declaradoEfectivo,
+        declaradoTarjeta: srvTotales?.tarjeta ?? 0,
+        declaradoDigital: srvTotales?.digital ?? 0,
+        notas: r.notas,
       );
       if (!mounted) return;
       setState(() {});
       showAppToast(
         context,
-        'La caja se cerró. Para el siguiente turno, ábrela de nuevo.',
+        'La caja se cerró exitosamente. Para el siguiente turno, ábrela de nuevo.',
         type: ToastType.success,
         titulo: 'Caja cerrada',
       );
@@ -1049,13 +984,12 @@ class _CajaScreenState extends State<CajaScreen> {
     final resumen = resumenPorMedio(desde);
     final extra = totalesMovimientos(desde);
     final srv = estadoCajaServidor?.totales;
-    final filas = srv?.porMedio ?? resumen;
-    final ventas =
-        srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas);
-    final ingresos = srv?.ingresos ?? extra.ingresos;
-    final salidas = srv?.salidas ?? extra.egresos;
-    final numPedidos = srv?.numPedidos ?? t.pedidos;
-    final movimientos = movimientosDesde(desde);
+    final filas = _cajaCerrada ? <FilaResumenMedio>[] : (srv?.porMedio ?? resumen);
+    final ventas = _cajaCerrada ? 0.0 : (srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas));
+    final ingresos = _cajaCerrada ? 0.0 : (srv?.ingresos ?? extra.ingresos);
+    final salidas = _cajaCerrada ? 0.0 : (srv?.salidas ?? extra.egresos);
+    final numPedidos = _cajaCerrada ? 0 : (srv?.numPedidos ?? t.pedidos);
+    final movimientos = _cajaCerrada ? <MovimientoCaja>[] : movimientosDesde(desde);
     final rangoCierres = _rangoCierres;
     final cierres = rangoCierres == null
         ? cierresCaja
@@ -1131,7 +1065,9 @@ class _CajaScreenState extends State<CajaScreen> {
                               ),
                             ),
                             Text(
-                              'Desde ${_fecha(desde)} · $numPedidos pedido(s) cobrado(s)',
+                              _cajaCerrada
+                                  ? 'No hay turno activo actualmente'
+                                  : '${estadoCajaServidor?.apertura?.turnoNombre ?? 'Turno'} · Desde ${_fecha(desde)} · $numPedidos pedido(s) cobrado(s)',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,
@@ -1247,43 +1183,11 @@ class _CajaScreenState extends State<CajaScreen> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    'Por medio de pago',
+                    'Por medio de pago (desglosado por grupo y variante)',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
-                  TablaApp<FilaResumenMedio>(
-                    porPagina: 10,
-                    filas: filas,
-                    columnas: [
-                      ColumnaTabla(
-                        titulo: 'Medio',
-                        flex: 1.4,
-                        ordenarPor: (f) => f.medio.toLowerCase(),
-                        celda: (f) => TablaApp.texto(f.medio, fuerte: true),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Ventas',
-                        ordenarPor: (f) => f.ventas,
-                        celda: (f) => TablaApp.texto(_soles(f.ventas)),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Ingresos',
-                        ordenarPor: (f) => f.ingresos,
-                        celda: (f) => TablaApp.texto(_soles(f.ingresos)),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Salidas',
-                        ordenarPor: (f) => f.egresos,
-                        celda: (f) => TablaApp.texto(_soles(f.egresos)),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Neto',
-                        ordenarPor: (f) => f.neto,
-                        celda: (f) =>
-                            TablaApp.texto(_soles(f.neto), fuerte: true),
-                      ),
-                    ],
-                  ),
+                  _tablaMediosAgrupados(filas),
                 ],
               ),
             ),
@@ -1371,16 +1275,162 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
-  // Ingresos y salidas de la caja actual, con los botones para registrarlos.
+  Widget _tablaMediosAgrupados(List<FilaResumenMedio> filas) {
+    if (filas.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        alignment: Alignment.center,
+        child: Text(
+          _cajaCerrada
+              ? 'Caja cerrada · No hay movimientos en este turno'
+              : 'Sin métodos de pago registrados',
+          style: TextStyle(color: Colors.grey.shade500),
+        ),
+      );
+    }
+
+    final grupos = <String, List<FilaResumenMedio>>{
+      'efectivo': [],
+      'tarjeta': [],
+      'digital': [],
+    };
+
+    for (final f in filas) {
+      final g = f.grupo.toLowerCase();
+      final m = f.medio.toLowerCase();
+      if (g == 'efectivo' || m.contains('efectivo')) {
+        grupos['efectivo']!.add(f);
+      } else if (g == 'digital' || m.contains('yape') || m.contains('plin')) {
+        grupos['digital']!.add(f);
+      } else {
+        grupos['tarjeta']!.add(f);
+      }
+    }
+
+    final titulosGrupos = {
+      'efectivo': (
+        'EFECTIVO',
+        LucideIcons.dollarSign,
+        const Color(0xFF16A34A),
+        const Color(0xFFEFFBEF),
+      ),
+      'tarjeta': (
+        'TARJETAS / POS',
+        LucideIcons.creditCard,
+        const Color(0xFF3B82F6),
+        const Color(0xFFEFF6FF),
+      ),
+      'digital': (
+        'YAPE / PLIN / BILLETERAS',
+        LucideIcons.smartphone,
+        const Color(0xFFD946EF),
+        const Color(0xFFFCEBFD),
+      ),
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final entry in grupos.entries)
+          if (entry.value.isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: titulosGrupos[entry.key]!.$4,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: titulosGrupos[entry.key]!.$3.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    titulosGrupos[entry.key]!.$2,
+                    size: 16,
+                    color: titulosGrupos[entry.key]!.$3,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    titulosGrupos[entry.key]!.$1,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: titulosGrupos[entry.key]!.$3,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Subtotal Ventas: ${_soles(entry.value.fold(0.0, (s, it) => s + it.ventas))} | Neto: ${_soles(entry.value.fold(0.0, (s, it) => s + it.neto))}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: titulosGrupos[entry.key]!.$3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TablaApp<FilaResumenMedio>(
+              porPagina: 10,
+              filas: entry.value,
+              columnas: [
+                ColumnaTabla(
+                  titulo: 'Variante / Medio',
+                  flex: 1.5,
+                  ordenarPor: (f) => f.medio.toLowerCase(),
+                  celda: (f) => TablaApp.texto(f.medio, fuerte: true),
+                ),
+                ColumnaTabla(
+                  titulo: 'Ventas',
+                  ordenarPor: (f) => f.ventas,
+                  celda: (f) => TablaApp.texto(_soles(f.ventas)),
+                ),
+                ColumnaTabla(
+                  titulo: 'Ingresos',
+                  ordenarPor: (f) => f.ingresos,
+                  celda: (f) => TablaApp.texto(_soles(f.ingresos)),
+                ),
+                ColumnaTabla(
+                  titulo: 'Salidas',
+                  ordenarPor: (f) => f.egresos,
+                  celda: (f) => TablaApp.texto(_soles(f.egresos)),
+                ),
+                ColumnaTabla(
+                  titulo: 'Neto',
+                  ordenarPor: (f) => f.neto,
+                  celda: (f) => TablaApp.texto(_soles(f.neto), fuerte: true),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+      ],
+    );
+  }
+
+  // Ingresos y salidas de la caja actual, con los botones para registrarlos y filtros por tipo/categoría.
   Widget _panelMovimientos(List<MovimientoCaja> movimientos) {
+    final catActivas = _filtroTipoMovimiento == null
+        ? categoriasMovimiento
+        : categoriasDeTipo(_filtroTipoMovimiento!);
+
+    final movimientosFiltrados = movimientos.where((m) {
+      if (_filtroTipoMovimiento != null && m.tipo != _filtroTipoMovimiento) {
+        return false;
+      }
+      if (_filtroCategoriaId != null && m.categoriaId != _filtroCategoriaId) {
+        return false;
+      }
+      return true;
+    }).toList();
+
     return Container(
       decoration: _panel,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // El título a la izquierda y los botones en el otro extremo; en un
-          // ancho chico los botones bajan debajo del título.
           LayoutBuilder(
             builder: (context, c) {
               const titulo = Text(
@@ -1394,7 +1444,9 @@ class _CajaScreenState extends State<CajaScreen> {
                 runSpacing: 10,
                 children: [
                   FilledButton.icon(
-                    onPressed: () => _registrar(TipoMovimiento.ingreso),
+                    onPressed: _cajaCerrada
+                        ? null
+                        : () => _registrar(TipoMovimiento.ingreso),
                     icon: const Icon(LucideIcons.plus, size: 16),
                     label: const Text('Ingreso'),
                     style: FilledButton.styleFrom(
@@ -1402,7 +1454,9 @@ class _CajaScreenState extends State<CajaScreen> {
                     ),
                   ),
                   FilledButton.icon(
-                    onPressed: () => _registrar(TipoMovimiento.egreso),
+                    onPressed: _cajaCerrada
+                        ? null
+                        : () => _registrar(TipoMovimiento.egreso),
                     icon: const Icon(LucideIcons.minus, size: 16),
                     label: const Text('Salida'),
                     style: FilledButton.styleFrom(
@@ -1431,6 +1485,81 @@ class _CajaScreenState extends State<CajaScreen> {
               );
             },
           ),
+          const SizedBox(height: 12),
+          // FILTROS: Tipo y Categoría
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Filtrar:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              ChoiceChip(
+                label: const Text('Todos', style: TextStyle(fontSize: 11)),
+                selected: _filtroTipoMovimiento == null,
+                onSelected: (s) => setState(() {
+                  _filtroTipoMovimiento = null;
+                  _filtroCategoriaId = null;
+                }),
+              ),
+              ChoiceChip(
+                label: const Text('Ingresos', style: TextStyle(fontSize: 11)),
+                selected: _filtroTipoMovimiento == TipoMovimiento.ingreso,
+                onSelected: (s) => setState(() {
+                  _filtroTipoMovimiento = TipoMovimiento.ingreso;
+                  _filtroCategoriaId = null;
+                }),
+              ),
+              ChoiceChip(
+                label: const Text('Salidas / Egresos', style: TextStyle(fontSize: 11)),
+                selected: _filtroTipoMovimiento == TipoMovimiento.egreso,
+                onSelected: (s) => setState(() {
+                  _filtroTipoMovimiento = TipoMovimiento.egreso;
+                  _filtroCategoriaId = null;
+                }),
+              ),
+              if (catActivas.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      value: _filtroCategoriaId,
+                      hint: const Text(
+                        'Todas las categorías',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                      style: const TextStyle(fontSize: 11, color: Colors.black87),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Todas las categorías'),
+                        ),
+                        ...catActivas.map(
+                          (c) => DropdownMenuItem<String?>(
+                            value: c.id,
+                            child: Text(c.nombre),
+                          ),
+                        ),
+                      ],
+                      onChanged: (val) =>
+                          setState(() => _filtroCategoriaId = val),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           if (_errorMovimientos != null) ...[
             const SizedBox(height: 10),
             Row(
@@ -1449,13 +1578,25 @@ class _CajaScreenState extends State<CajaScreen> {
               ],
             ),
           ],
-          const SizedBox(height: 8),
-          if (movimientos.isEmpty)
+          const SizedBox(height: 12),
+          if (_cajaCerrada)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: Text(
-                  'Aún no hay ingresos ni salidas en esta caja',
+                  'Caja cerrada · Abre la caja para registrar y ver movimientos',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          else if (movimientosFiltrados.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  movimientos.isEmpty
+                      ? 'Aún no hay ingresos ni salidas en esta caja'
+                      : 'No hay movimientos con los filtros seleccionados',
                   style: TextStyle(color: Colors.grey.shade500),
                 ),
               ),
@@ -1463,11 +1604,11 @@ class _CajaScreenState extends State<CajaScreen> {
           else
             // Se ven 4 registros; el resto se desplaza.
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 300),
+              constraints: const BoxConstraints(maxHeight: 320),
               child: Scrollbar(
                 child: ListView(
                   shrinkWrap: true,
-                  children: [for (final m in movimientos) _filaMovimiento(m)],
+                  children: [for (final m in movimientosFiltrados) _filaMovimiento(m)],
                 ),
               ),
             ),
@@ -1523,18 +1664,46 @@ class _CajaScreenState extends State<CajaScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${m.categoriaNombre} · ${m.medioPagoNombre}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: m.anulado
-                            ? Colors.grey.shade500
-                            : Colors.black87,
-                        decoration: m.anulado
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${m.categoriaNombre} · ${m.medioPagoNombre}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: m.anulado
+                                  ? Colors.grey.shade500
+                                  : Colors.black87,
+                              decoration: m.anulado
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        if (m.anulado) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Text(
+                              'ANULADO',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     Text(
                       detalle,
@@ -1715,8 +1884,8 @@ class _CajaScreenState extends State<CajaScreen> {
     ];
   }
 
-  // Tarjetas del resumen de la caja actual, con lo que el servidor calcula:
-  // ventas, delivery, y lo cobrado en efectivo, tarjeta y digital.
+  // Tarjetas del resumen de la caja actual (7 métricas clave solicitadas):
+  // 1. Monto apertura, 2. Ingresos, 3. Egresos, 4. Neto, 5. Efectivo, 6. Tarjetas/POS, 7. Yape/Plin
   Widget _tarjetasCaja({
     AperturaCaja? apertura,
     required List<FilaResumenMedio> filas,
@@ -1726,89 +1895,87 @@ class _CajaScreenState extends State<CajaScreen> {
     required double ingresos,
     required double salidas,
   }) {
-    double ventasDe(String grupo) =>
-        filas.where((f) => f.grupo == grupo).fold(0.0, (s, f) => s + f.ventas);
+    final montoApertura = apertura?.montoInicial ?? 0.0;
+    final totalIngresos = ventas + ingresos;
+    final totalEgresos = salidas;
+
+    final totalEfectivo = filas
+        .where((f) => f.grupo.toLowerCase() == 'efectivo' || f.medio.toLowerCase().contains('efectivo'))
+        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+    final totalTarjeta = filas
+        .where((f) => f.grupo.toLowerCase() == 'tarjeta' || (!f.medio.toLowerCase().contains('efectivo') && !f.medio.toLowerCase().contains('yape') && !f.medio.toLowerCase().contains('plin') && f.grupo.toLowerCase() != 'digital'))
+        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+    final totalDigital = filas
+        .where((f) => f.grupo.toLowerCase() == 'digital' || f.medio.toLowerCase().contains('yape') || f.medio.toLowerCase().contains('plin'))
+        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+    
+    final neto = montoApertura + totalEfectivo - totalEgresos;
+
     // Menos que una tablet: tarjetas en miniatura, 2 columnas por 2 filas, con
     // desplazamiento hacia el lado para ver el resto.
     final mini = AppBreakpoints.esMenorATablet(context);
     final tarjetas = [
-      // Con cuánto efectivo abrió el turno (lo escribe quien abre la caja).
-      if (apertura != null)
-        _tarjetaCaja(
-          LucideIcons.lockOpen,
-          const Color(0xFF0EA5E9),
-          const Color(0xFFE6F6FD),
-          'Monto de apertura',
-          apertura.montoInicial,
-          [
-            if ((apertura.usuarioNombre ?? '').isNotEmpty)
-              'Abrió ${apertura.usuarioNombre}',
-            _hora(apertura.fechaApertura),
-          ].join(' · '),
-        ),
       _tarjetaCaja(
-        LucideIcons.trendingUp,
-        const Color(0xFF3B82F6),
-        const Color(0xFFEFF6FF),
-        'Ingresos Brutos',
-        ventas,
-        '$numPedidos pedidos totales',
+        LucideIcons.lockOpen,
+        const Color(0xFF0EA5E9),
+        const Color(0xFFE6F6FD),
+        'Monto de apertura',
+        montoApertura,
+        apertura != null
+            ? [
+                if ((apertura.usuarioNombre ?? '').isNotEmpty)
+                  'Abrió ${apertura.usuarioNombre}',
+                _hora(apertura.fechaApertura),
+              ].join(' · ')
+            : 'Caja cerrada',
       ),
       _tarjetaCaja(
         LucideIcons.trendingUp,
         const Color(0xFF10B981),
         const Color(0xFFE8F7F1),
-        'Ventas de Comida',
-        ventas - delivery,
-        'Libre de delivery',
+        'Ingresos',
+        totalIngresos,
+        'Ventas + ingresos extra',
       ),
       _tarjetaCaja(
-        LucideIcons.user,
-        const Color(0xFFF59E0B),
-        const Color(0xFFFFF4E0),
-        'Ventas Delivery',
-        delivery,
-        'Cobrado en pedidos de delivery',
+        LucideIcons.arrowUpRight,
+        AppColors.error,
+        const Color(0xFFFDECEC),
+        'Egresos',
+        totalEgresos,
+        'Salidas de caja',
+      ),
+      _tarjetaCaja(
+        LucideIcons.wallet,
+        const Color(0xFF8B5CF6),
+        const Color(0xFFF3EEFF),
+        'Neto',
+        neto,
+        'Apertura + Ingresos - Egresos',
       ),
       _tarjetaCaja(
         LucideIcons.dollarSign,
-        const Color(0xFF10B981),
-        const Color(0xFFE8F7F1),
-        'Ventas Efectivo',
-        ventasDe('efectivo'),
-        'Cobrado en efectivo',
+        const Color(0xFF16A34A),
+        const Color(0xFFEFFBEF),
+        'Ingresos Efectivo',
+        totalEfectivo,
+        'Total cobrado en efectivo',
       ),
       _tarjetaCaja(
         LucideIcons.creditCard,
-        const Color(0xFF8B5CF6),
-        const Color(0xFFF3EEFF),
+        const Color(0xFF3B82F6),
+        const Color(0xFFEFF6FF),
         'Tarjetas / POS',
-        ventasDe('tarjeta'),
-        null,
+        totalTarjeta,
+        'Total cobrado con tarjeta',
       ),
       _tarjetaCaja(
         LucideIcons.smartphone,
         const Color(0xFFD946EF),
         const Color(0xFFFCEBFD),
         'Yape / Plin',
-        ventasDe('digital'),
-        null,
-      ),
-      _tarjetaCaja(
-        LucideIcons.arrowDownLeft,
-        const Color(0xFF16A34A),
-        const Color(0xFFE8F7F1),
-        'Ingresos',
-        ingresos,
-        null,
-      ),
-      _tarjetaCaja(
-        LucideIcons.arrowUpRight,
-        AppColors.error,
-        const Color(0xFFFDECEC),
-        'Salidas',
-        salidas,
-        null,
+        totalDigital,
+        'Total cobrado por billeteras',
       ),
     ];
     if (mini) {
@@ -1939,6 +2106,325 @@ class _CajaScreenState extends State<CajaScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Diálogo para abrir caja seleccionando turno y monto inicial
+class _AbrirCajaDialog extends StatefulWidget {
+  final List<Turno> turnos;
+  const _AbrirCajaDialog({required this.turnos});
+
+  @override
+  State<_AbrirCajaDialog> createState() => _AbrirCajaDialogState();
+}
+
+class _AbrirCajaDialogState extends State<_AbrirCajaDialog> {
+  final _monto = TextEditingController(text: '0');
+  final _notas = TextEditingController();
+  Turno? _turnoSeleccionado;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.turnos.isNotEmpty) {
+      final now = TimeOfDay.now();
+      final nowMinutes = now.hour * 60 + now.minute;
+      for (final t in widget.turnos) {
+        final partesI = t.horaInicio.split(':');
+        final partesF = t.horaFin.split(':');
+        if (partesI.length >= 2 && partesF.length >= 2) {
+          final ini = int.tryParse(partesI[0]) ?? 0;
+          final fin = int.tryParse(partesF[0]) ?? 23;
+          final iniMin = ini * 60 + (int.tryParse(partesI[1]) ?? 0);
+          final finMin = fin * 60 + (int.tryParse(partesF[1]) ?? 0);
+          if (iniMin <= finMin) {
+            if (nowMinutes >= iniMin && nowMinutes <= finMin) {
+              _turnoSeleccionado = t;
+              break;
+            }
+          } else {
+            if (nowMinutes >= iniMin || nowMinutes <= finMin) {
+              _turnoSeleccionado = t;
+              break;
+            }
+          }
+        }
+      }
+      _turnoSeleccionado ??= widget.turnos.first;
+    }
+  }
+
+  @override
+  void dispose() {
+    _monto.dispose();
+    _notas.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DialogoApp(
+      titulo: 'Abrir caja',
+      ancho: 440,
+      acciones: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final m = double.tryParse(_monto.text.trim().replaceAll(',', '.')) ?? 0;
+            Navigator.of(context).pop((
+              montoInicial: m,
+              turnoId: _turnoSeleccionado?.id,
+              notas: _notas.text.trim(),
+            ));
+          },
+          child: const Text('Abrir caja'),
+        ),
+      ],
+      children: [
+        Text(
+          'Configura el turno y el monto en efectivo con el que se inicia la caja.',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 14),
+        if (widget.turnos.isNotEmpty) ...[
+          Text(
+            'Turno operativo',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<Turno>(
+                isExpanded: true,
+                value: _turnoSeleccionado,
+                items: widget.turnos.map((t) {
+                  return DropdownMenuItem<Turno>(
+                    value: t,
+                    child: Text('${t.nombre} (${t.horaInicio} - ${t.horaFin})'),
+                  );
+                }).toList(),
+                onChanged: (t) => setState(() => _turnoSeleccionado = t),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        CampoTexto(
+          controller: _monto,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Monto inicial en efectivo (S/)'),
+        ),
+        const SizedBox(height: 12),
+        CampoTexto(
+          controller: _notas,
+          decoration: const InputDecoration(labelText: 'Notas (opcional)'),
+        ),
+      ],
+    );
+  }
+}
+
+// Diálogo para cerrar caja con validación estricta de efectivo contado vs esperado
+class _CerrarCajaDialog extends StatefulWidget {
+  final double efectivoEsperado;
+  final String? turnoNombre;
+
+  const _CerrarCajaDialog({
+    required this.efectivoEsperado,
+    this.turnoNombre,
+  });
+
+  @override
+  State<_CerrarCajaDialog> createState() => _CerrarCajaDialogState();
+}
+
+class _CerrarCajaDialogState extends State<_CerrarCajaDialog> {
+  final _efectivo = TextEditingController();
+  final _notas = TextEditingController();
+
+  @override
+  void dispose() {
+    _efectivo.dispose();
+    _notas.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double? declarado = double.tryParse(_efectivo.text.trim().replaceAll(',', '.'));
+    final double dif = (declarado ?? 0) - widget.efectivoEsperado;
+    final bool cuadra = declarado != null && dif.abs() <= 0.05;
+    final bool tieneTexto = _efectivo.text.trim().isNotEmpty;
+
+    return DialogoApp(
+      titulo: 'Cerrar caja ${widget.turnoNombre != null ? '· ${widget.turnoNombre}' : ''}',
+      ancho: 440,
+      acciones: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: cuadra
+              ? () => Navigator.of(context).pop((
+                    declaradoEfectivo: declarado,
+                    notas: _notas.text.trim(),
+                  ))
+              : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: cuadra ? AppColors.primaryGreen : Colors.grey.shade400,
+          ),
+          child: const Text('Cerrar caja'),
+        ),
+      ],
+      children: [
+        Text(
+          'Ingresa el efectivo contado físicamente en caja. Los cobros por tarjeta o transferencias (Yape/Plin) quedan en las cuentas del banco.',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.blue.shade200),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Efectivo esperado en caja:',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E3A8A),
+                ),
+              ),
+              Text(
+                'S/ ${widget.efectivoEsperado.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1E3A8A),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        CampoTexto(
+          controller: _efectivo,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Efectivo contado / declarado (S/)',
+            hintText: 'Ej. 250.00',
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        if (tieneTexto) ...[
+          const SizedBox(height: 12),
+          if (cuadra)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F7F1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.primaryGreen.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    LucideIcons.checkCircle,
+                    color: AppColors.primaryGreen,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '✔ Cuadre perfecto: El monto coincide exactamente con el efectivo esperado (S/ ${widget.efectivoEsperado.toStringAsFixed(2)}).',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    LucideIcons.alertTriangle,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          dif < 0
+                              ? '❌ No se puede cerrar caja: Falta efectivo'
+                              : '❌ No se puede cerrar caja: Sobra efectivo',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          dif < 0
+                              ? 'Esperado: S/ ${widget.efectivoEsperado.toStringAsFixed(2)} | Ingresado: S/ ${(declarado ?? 0).toStringAsFixed(2)}\nFaltan: S/ ${dif.abs().toStringAsFixed(2)}'
+                              : 'Esperado: S/ ${widget.efectivoEsperado.toStringAsFixed(2)} | Ingresado: S/ ${(declarado ?? 0).toStringAsFixed(2)}\nSobran: S/ ${dif.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        const SizedBox(height: 12),
+        CampoTexto(
+          controller: _notas,
+          decoration: const InputDecoration(
+            labelText: 'Notas / Observaciones (opcional)',
+          ),
+        ),
+      ],
     );
   }
 }
