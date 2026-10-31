@@ -247,6 +247,8 @@ class CajaService {
 
   Future<Map<String, dynamic>> obtenerReporteDiaDetallado({
     String? fechaOperativa,
+    String? aperturaId,
+    String? cierreId,
   }) async {
     final sedeId = AuthService.instance.currentUser?.sedeId;
     final res = await _api.get(
@@ -254,15 +256,25 @@ class CajaService {
       queryParams: {
         'sede_id': sedeId ?? '',
         if (fechaOperativa != null) 'fecha_operativa': fechaOperativa,
+        if (aperturaId != null) 'apertura_id': aperturaId,
+        if (cierreId != null) 'cierre_id': cierreId,
       },
     );
     return res is Map<String, dynamic> ? res : {};
   }
 
-  String urlReporteDiaDetalladoHTML({String? fechaOperativa}) {
+  String urlReporteDiaDetalladoHTML({
+    String? fechaOperativa,
+    String? aperturaId,
+    String? cierreId,
+  }) {
     final base = _api.baseUrl;
     final sedeId = AuthService.instance.currentUser?.sedeId ?? '';
+    final token = _api.accessToken ?? '';
     final f = fechaOperativa != null ? '&fecha_operativa=$fechaOperativa' : '';
-    return '$base/api/v1/caja/reportes/dia-detallado/html?sede_id=$sedeId$f';
+    final ap = aperturaId != null ? '&apertura_id=$aperturaId' : '';
+    final cj = cierreId != null ? '&cierre_id=$cierreId' : '';
+    final t = token.isNotEmpty ? '&token=$token' : '';
+    return '$base/api/v1/caja/reportes/dia-detallado/html?sede_id=$sedeId$f$ap$cj$t';
   }
 }

@@ -25,6 +25,19 @@ final List<PagoDetalle> pagoDetalles = [];
 double totalDePedido(String pedidoId) => (detallesPorPedido[pedidoId] ?? [])
     .fold(0.0, (sum, l) => sum + l.precioTotalLinea);
 
+// Total cobrado final al cliente, incluyendo recargos por comisión (ej. tarjeta).
+// Si el pedido tiene pagos activos, suma el montoCobrado real de dichos pagos.
+// Si aún no tiene pagos o no cubre todo, toma el valor de la carta/cuenta más los recargos aplicados.
+double totalCobradoDePedido(String pedidoId) {
+  final pagosActivos = pagos
+      .where((p) => p.pedidoId == pedidoId && !p.esReembolso && p.estado != 'anulado')
+      .toList();
+  if (pagosActivos.isNotEmpty) {
+    return pagosActivos.fold(0.0, (sum, p) => sum + p.montoCobrado);
+  }
+  return totalDePedido(pedidoId);
+}
+
 double montoPagadoDeLinea(String pedidoDetalleId) => pagoDetalles
     .where((d) => d.pedidoDetalleId == pedidoDetalleId)
     .fold(0.0, (sum, d) => sum + d.montoAplicado);

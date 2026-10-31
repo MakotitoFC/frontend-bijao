@@ -56,6 +56,8 @@ class MovimientoCaja {
   final bool anulado;
   final String? motivoAnulacion;
   final bool editado;
+  final String? pedidosId;
+  final String? pagoId;
 
   const MovimientoCaja({
     required this.id,
@@ -71,11 +73,18 @@ class MovimientoCaja {
     this.anulado = false,
     this.motivoAnulacion,
     this.editado = false,
+    this.pedidosId,
+    this.pagoId,
   });
 
   // Lo que suma (ingreso) o resta (salida) a la caja; 0 si está anulado.
   double get efecto =>
       anulado ? 0 : (tipo == TipoMovimiento.ingreso ? monto : -monto);
+
+  // Dice si este movimiento proviene del cobro de un pedido.
+  bool get esCobroPedido =>
+      (pedidosId != null && pedidosId!.isNotEmpty) ||
+      (pagoId != null && pagoId!.isNotEmpty);
 
   // Lee lo que responde `/api/movimientos`. [notaLocal] es la nota escrita en
   // este equipo, para cuando el servidor no la devuelve.
@@ -85,6 +94,8 @@ class MovimientoCaja {
   }) {
     final nota = json['nota']?.toString();
     final motivo = json['motivo_anulacion']?.toString();
+    final pedId = json['pedidos_id']?.toString();
+    final pId = json['pago_id']?.toString();
     return MovimientoCaja(
       id: json['id']?.toString() ?? '',
       tipo: TipoMovimiento.deCodigo(json['tipo']?.toString()),
@@ -102,6 +113,8 @@ class MovimientoCaja {
       anulado: json['estado']?.toString() == 'anulado',
       motivoAnulacion: (motivo != null && motivo.isNotEmpty) ? motivo : null,
       editado: json['editado'] == true || json['update_at'] != null,
+      pedidosId: (pedId != null && pedId.isNotEmpty) ? pedId : null,
+      pagoId: (pId != null && pId.isNotEmpty) ? pId : null,
     );
   }
 
@@ -116,6 +129,8 @@ class MovimientoCaja {
     bool? anulado,
     String? motivoAnulacion,
     bool? editado,
+    String? pedidosId,
+    String? pagoId,
   }) => MovimientoCaja(
     id: id,
     tipo: tipo ?? this.tipo,
@@ -130,5 +145,7 @@ class MovimientoCaja {
     anulado: anulado ?? this.anulado,
     motivoAnulacion: motivoAnulacion ?? this.motivoAnulacion,
     editado: editado ?? this.editado,
+    pedidosId: pedidosId ?? this.pedidosId,
+    pagoId: pagoId ?? this.pagoId,
   );
 }

@@ -39,6 +39,7 @@ import '../widgets/selector_rango_fechas.dart';
 import '../widgets/tabla_app.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
 import '../widgets/campo_texto.dart';
+import '../widgets/descargo_pago_dialog.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
 
@@ -174,11 +175,21 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   }
 
   String _metodos(Pedido p) {
-    final m = <String>{
-      for (final x in pagos.where((x) => x.pedidoId == p.id))
-        x.medioPago.medioPago,
-    };
-    return m.isEmpty ? '—' : m.join(', ');
+    final pagosPedido = pagos
+        .where((x) => x.pedidoId == p.id && !x.esReembolso && x.estado != 'anulado')
+        .toList();
+    if (pagosPedido.isEmpty) return '—';
+
+    // Agrupar por medio de pago y sumar montos cobrados
+    final mapa = <String, double>{};
+    for (final x in pagosPedido) {
+      final nombre = x.medioPago.medioPago;
+      mapa[nombre] = (mapa[nombre] ?? 0.0) + x.montoCobrado;
+    }
+
+    return mapa.entries
+        .map((e) => '${e.key}: S/ ${e.value.toStringAsFixed(2)}')
+        .join(', ');
   }
 
   List<Pedido> get _filas {
@@ -496,8 +507,8 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
         ColumnaTabla(
           titulo: 'Total',
           ancho: 100,
-          ordenarPor: (p) => totalDePedido(p.id),
-          celda: (p) => TablaApp.texto(_soles(totalDePedido(p.id))),
+          ordenarPor: (p) => totalCobradoDePedido(p.id),
+          celda: (p) => TablaApp.texto(_soles(totalCobradoDePedido(p.id))),
         ),
         ColumnaTabla(
           titulo: 'Método de pago',
@@ -729,14 +740,14 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  Future<void> _imprimirReporteTurno() async {
+  Future<void> _imprimirReporteTurno({String? cierreId}) async {
     try {
       showAppToast(
         context,
         'Enviando resumen de turno a la impresora...',
         type: ToastType.info,
       );
-      await CajaService.instance.imprimirReporteTurno();
+      await CajaService.instance.imprimirReporteTurno(cierreId: cierreId);
       if (mounted) {
         showAppToast(
           context,
@@ -750,14 +761,16 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  Future<void> _imprimirReporteDiaConsolidado() async {
+  Future<void> _imprimirReporteDiaConsolidado({String? fechaOperativa}) async {
     try {
       showAppToast(
         context,
         'Enviando consolidado del día a la impresora...',
         type: ToastType.info,
       );
-      await CajaService.instance.imprimirReporteDiaConsolidado();
+      await CajaService.instance.imprimirReporteDiaConsolidado(
+        fechaOperativa: fechaOperativa,
+      );
       if (mounted) {
         showAppToast(
           context,
@@ -771,8 +784,14 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  Future<void> _abrirReporteDiaDetallado() async {
-    final url = CajaService.instance.urlReporteDiaDetalladoHTML();
+  Future<void> _abrirReporteDiaDetallado({
+    String? fechaOperativa,
+    String? cierreId,
+  }) async {
+    final url = CajaService.instance.urlReporteDiaDetalladoHTML(
+      fechaOperativa: fechaOperativa,
+      cierreId: cierreId,
+    );
     try {
       final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
@@ -788,6 +807,58 @@ class _CajaScreenState extends State<CajaScreen> {
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
+  }
+
+  Future<void> _reportesDeOtraFecha() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (picked == null || !mounted) return;
+    final fStr = picked.toIso8601String().split('T')[0];
+
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Reportes del día: $fStr',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(LucideIcons.printer, color: Colors.green),
+              title: const Text('Imprimir Consolidado del Día (Ticket)'),
+              subtitle: const Text('Desglose de turnos y métodos de pago'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _imprimirReporteDiaConsolidado(fechaOperativa: fStr);
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.fileText, color: Colors.purple),
+              title: const Text('Ver / Descargar Súper Reporte Detallado (PDF/HTML)'),
+              subtitle: const Text('Pedidos, mesas, mozos, anulaciones y rectificaciones'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _abrirReporteDiaDetallado(fechaOperativa: fStr);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Cierre con el servidor: solo se declara el efectivo contado en caja y se valida cuadre exacto.
@@ -845,6 +916,21 @@ class _CajaScreenState extends State<CajaScreen> {
       _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
+  Future<void> _descargo(MovimientoCaja m) async {
+    final r = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => DescargoPagoDialog(movimiento: m),
+    );
+    if (r == true && mounted) {
+      showAppToast(
+        context,
+        'Descargo aplicado correctamente. Movimiento de caja y pago actualizados.',
+        type: ToastType.success,
+      );
+      _refrescarCaja();
     }
   }
 
@@ -1090,12 +1176,18 @@ class _CajaScreenState extends State<CajaScreen> {
                           if (CajaService.instance.enServidor)
                             PopupMenuButton<String>(
                               tooltip: 'Reportes de Caja',
+                              constraints: const BoxConstraints(
+                                minWidth: 220,
+                                maxWidth: 260,
+                              ),
                               onSelected: (val) {
                                 if (val == 'turno') _imprimirReporteTurno();
                                 if (val == 'dia_print')
                                   _imprimirReporteDiaConsolidado();
                                 if (val == 'dia_pdf')
                                   _abrirReporteDiaDetallado();
+                                if (val == 'otra_fecha')
+                                  _reportesDeOtraFecha();
                               },
                               itemBuilder: (context) => [
                                 const PopupMenuItem(
@@ -1108,8 +1200,11 @@ class _CajaScreenState extends State<CajaScreen> {
                                         color: Colors.blue,
                                       ),
                                       SizedBox(width: 8),
-                                      Text(
-                                        '1. Imprimir Resumen del Turno (Ticket)',
+                                      Expanded(
+                                        child: Text(
+                                          '1. Resumen Turno (Ticket)',
+                                          style: TextStyle(fontSize: 12.5),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -1124,8 +1219,11 @@ class _CajaScreenState extends State<CajaScreen> {
                                         color: Colors.green,
                                       ),
                                       SizedBox(width: 8),
-                                      Text(
-                                        '2. Imprimir Consolidado del Día (Ticket)',
+                                      Expanded(
+                                        child: Text(
+                                          '2. Consolidado Día (Ticket)',
+                                          style: TextStyle(fontSize: 12.5),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -1140,21 +1238,65 @@ class _CajaScreenState extends State<CajaScreen> {
                                         color: Colors.purple,
                                       ),
                                       SizedBox(width: 8),
-                                      Text(
-                                        '3. Ver Detallado del Día (PDF/HTML)',
+                                      Expanded(
+                                        child: Text(
+                                          '3. Detallado Día (PDF/HTML)',
+                                          style: TextStyle(fontSize: 12.5),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuDivider(),
+                                const PopupMenuItem(
+                                  value: 'otra_fecha',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        LucideIcons.calendar,
+                                        size: 16,
+                                        color: Colors.orange,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          '4. Reportes de otra fecha...',
+                                          style: TextStyle(fontSize: 12.5),
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ],
-                              child: const OutlinedButton(
-                                onPressed: null,
-                                child: Row(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: Colors.white,
+                                ),
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(LucideIcons.barChart2, size: 16),
+                                    Icon(
+                                      LucideIcons.barChart2,
+                                      size: 16,
+                                      color: AppColors.primaryGreen,
+                                    ),
                                     SizedBox(width: 6),
-                                    Text('Reportes ▾'),
+                                    Text(
+                                      'Reportes ▾',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primaryGreen,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1752,14 +1894,28 @@ class _CajaScreenState extends State<CajaScreen> {
             child: Wrap(
               spacing: 4,
               children: [
-                Tooltip(
-                  message: puedeCambiar ? '' : tooltipBloqueado,
-                  child: TextButton.icon(
-                    onPressed: puedeCambiar ? () => _editar(m) : null,
-                    icon: const Icon(LucideIcons.pencil, size: 14),
-                    label: const Text('Editar'),
+                if (m.esCobroPedido) ...[
+                  Tooltip(
+                    message: puedeCambiar ? 'Rectificar medio de pago (descargo)' : tooltipBloqueado,
+                    child: TextButton.icon(
+                      onPressed: puedeCambiar ? () => _descargo(m) : null,
+                      icon: const Icon(LucideIcons.arrowLeftRight, size: 14),
+                      label: const Text('Descargo'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryGreen,
+                      ),
+                    ),
                   ),
-                ),
+                ] else ...[
+                  Tooltip(
+                    message: puedeCambiar ? '' : tooltipBloqueado,
+                    child: TextButton.icon(
+                      onPressed: puedeCambiar ? () => _editar(m) : null,
+                      icon: const Icon(LucideIcons.pencil, size: 14),
+                      label: const Text('Editar'),
+                    ),
+                  ),
+                ],
                 Tooltip(
                   message: puedeCambiar ? '' : tooltipBloqueado,
                   child: TextButton.icon(
@@ -1880,6 +2036,30 @@ class _CajaScreenState extends State<CajaScreen> {
                 : (dif < 0 ? AppColors.error : const Color(0xFFEF6C00)),
           );
         },
+      ),
+      ColumnaTabla(
+        titulo: 'Reportes',
+        anchoMin: 110,
+        rol: RolTarjeta.acciones,
+        celda: (c) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: 'Imprimir Ticket de este Turno',
+              child: IconButton(
+                icon: const Icon(LucideIcons.printer, size: 16, color: Colors.blue),
+                onPressed: () => _imprimirReporteTurno(cierreId: c.id),
+              ),
+            ),
+            Tooltip(
+              message: 'Ver Detalle del Turno (PDF/HTML)',
+              child: IconButton(
+                icon: const Icon(LucideIcons.fileText, size: 16, color: Colors.purple),
+                onPressed: () => _abrirReporteDiaDetallado(cierreId: c.id),
+              ),
+            ),
+          ],
+        ),
       ),
     ];
   }
