@@ -128,6 +128,7 @@ class FacturacionService {
   // Emite un comprobante del pedido. Con [imprimir] el servidor lo manda a la
   // ticketera de caja. Si SUNAT lo rechaza, lanza el error (el servidor deja
   // el motivo en el mensaje). Con [porConsumo] emite en un solo concepto "Por consumo".
+  // Con [items] envía la lista de ítems editados directamente desde los inputs en pantalla.
   Future<Comprobante> emitir({
     required String pedidoId,
     required String tipoDocumento,
@@ -142,6 +143,8 @@ class FacturacionService {
     bool porConsumo = false,
     bool incluirRecargo = false,
     bool incluirDelivery = false,
+    double? otrosExtras,
+    List<Map<String, dynamic>>? items,
   }) async {
     final esConsumo = soloConsumo || porConsumo;
     final res = await _api.post(
@@ -159,11 +162,40 @@ class FacturacionService {
         'imprimir': imprimir,
         'incluir_recargo': incluirRecargo,
         'incluir_delivery': incluirDelivery,
+        if (otrosExtras != null && otrosExtras > 0) 'otros_extras': otrosExtras,
+        if (items != null && items.isNotEmpty) 'items': items,
         if (esConsumo) ...{'solo_consumo': true, 'por_consumo': true},
       },
     );
     if (res is! Map<String, dynamic>) {
       throw Exception('El servidor no devolvió el comprobante');
+    }
+    return Comprobante.fromJson(res);
+  }
+
+  // Obtiene los datos del pedido (platos, recargo tarjeta, delivery, etc.) para cargarlos en inputs editables
+  Future<Map<String, dynamic>> obtenerDatosFacturacion(String pedidoId, {String? pagoId}) async {
+    final res = await _api.get(
+      '$_base/pedidos/$pedidoId/datos-facturacion',
+      queryParams: {
+        if (pagoId != null && pagoId.isNotEmpty) 'pago_id': pagoId,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('No se pudieron obtener los datos de facturación del pedido');
+    }
+    return res;
+  }
+
+  // Reintenta el envío a Lucode/SUNAT de un comprobante que quedó en ERROR_CONEXION sin alterar su correlativo
+  Future<Comprobante> reintentar(String id) async {
+    final res = await _api.post(
+      '$_base/comprobantes/$id/reintentar',
+      timeout: const Duration(seconds: 45),
+      body: {},
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió respuesta al reintentar');
     }
     return Comprobante.fromJson(res);
   }

@@ -8,6 +8,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/configuracion_store.dart';
 import '../data/pagos_store.dart';
+import '../data/pedidos_store.dart';
 import '../models/comprobante.dart';
 import '../models/pedido.dart';
 import '../services/api_client.dart';
@@ -42,6 +43,40 @@ bool puedeElegirComprobante(Pedido pedido) {
       (u.esAdmin || u.esCajero);
 }
 
+// Ítem editable para reportar a SUNAT (permite modificar nombre, cantidad y precio)
+class ItemFacturacionEditable {
+  final TextEditingController nombre;
+  final TextEditingController cantidad;
+  final TextEditingController precioUnitario;
+
+  ItemFacturacionEditable({
+    required String nombreInicial,
+    required int cantidadInicial,
+    required double precioUnitarioInicial,
+  })  : nombre = TextEditingController(text: nombreInicial),
+        cantidad = TextEditingController(text: cantidadInicial.toString()),
+        precioUnitario = TextEditingController(
+          text: precioUnitarioInicial.toStringAsFixed(2),
+        );
+
+  int get cant => int.tryParse(cantidad.text.trim()) ?? 1;
+  double get pu => double.tryParse(precioUnitario.text.trim()) ?? 0.0;
+  double get subtotal => cant * pu;
+
+  Map<String, dynamic> toMap() => {
+    'nombre': nombre.text.trim(),
+    'cantidad': cant,
+    'precio_unitario': pu,
+    'subtotal': subtotal,
+  };
+
+  void dispose() {
+    nombre.dispose();
+    cantidad.dispose();
+    precioUnitario.dispose();
+  }
+}
+
 // Lo que el cajero eligió en el cobro: ticket de venta (interno, sin
 // SUNAT), boleta (con o sin DNI) o factura (con RUC). El comprobante se emite
 // después de registrar el cobro, porque el servidor no factura sin un pago.
@@ -61,6 +96,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
   bool get porConsumo => soloConsumo;
   void alternarSoloConsumo(bool v) {
     soloConsumo = v;
+    recalcularItemsInflados();
     notifyListeners();
   }
 
@@ -69,11 +105,13 @@ class ComprobanteEnCobro extends ChangeNotifier {
   bool incluirDelivery = false;
   void alternarIncluirRecargo(bool v) {
     incluirRecargo = v;
+    recalcularItemsInflados();
     notifyListeners();
   }
 
   void alternarIncluirDelivery(bool v) {
     incluirDelivery = v;
+    recalcularItemsInflados();
     notifyListeners();
   }
 
@@ -82,6 +120,156 @@ class ComprobanteEnCobro extends ChangeNotifier {
   final direccion = TextEditingController();
   final dni = TextEditingController();
   final nombre = TextEditingController();
+
+  // Ítems editables para reportar a SUNAT
+  final List<ItemFacturacionEditable> itemsEditables = [];
+  List<Map<String, dynamic>> itemsOriginales = [];
+  double recargoTarjeta = 0.0;
+  double costoDelivery = 0.0;
+  final TextEditingController otrosExtrasCtrl = TextEditingController(text: '0.00');
+
+  double get otrosExtrasVal => double.tryParse(otrosExtrasCtrl.text.trim()) ?? 0.0;
+  double get igvPorcentaje => FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
+  double get totalIgv => (total * (igvPorcentaje / (100.0 + igvPorcentaje)));
+  double get totalOpGravada => total - totalIgv;
+
+  bool _inicializado = false;
+  String? _pedidoIdInicializado;
+
+  void asegurarInicializado(Pedido pedido, {double recargoActual = 0.0}) {
+    if (_inicializado && _pedidoIdInicializado == pedido.id && (recargoActual - recargoTarjeta).abs() < 0.001) {
+      return;
+    }
+    _pedidoIdInicializado = pedido.id;
+    _inicializado = true;
+
+    final lineas = detallesPorPedido[pedido.id] ?? const [];
+    final deliveryLinea = lineas.where((l) => l.cartaId == cartaIdCargoDelivery).firstOrNull;
+    costoDelivery = (deliveryLinea != null && deliveryLinea.precioTotalLinea > 0)
+        ? deliveryLinea.precioTotalLinea
+        : pedido.costoDelivery;
+
+    recargoTarjeta = recargoActual > 0 ? recargoActual : recargoCobradoDePedido(pedido.id);
+
+    final productos = lineas.where((l) {
+      if (l.cartaId == cartaIdCargoDelivery) return false;
+      if (esLineaPropina(l)) return false;
+      if (l.cartaId == cartaIdAjuste && l.nombrePlato.startsWith('Descuento: ')) return false;
+      return true;
+    }).toList();
+
+    itemsOriginales = productos.map((p) => {
+      'nombre': p.esLibre ? (p.nombreLibre ?? p.nombrePlato) : p.nombrePlato,
+      'cantidad': p.cantidad,
+      'precio_unitario': p.precioUnitario,
+      'subtotal': p.precioTotalLinea,
+    }).toList();
+
+    recalcularItemsInflados();
+  }
+
+  void actualizarRecargo(double nuevo) {
+    if ((nuevo - recargoTarjeta).abs() > 0.001) {
+      recargoTarjeta = nuevo;
+      recalcularItemsInflados();
+    }
+  }
+
+  void recalcularItemsInflados() {
+    if (itemsOriginales.isEmpty) return;
+
+    double baseTotal = 0.0;
+    for (final it in itemsOriginales) {
+      final double sub = (it['subtotal'] is num) ? (it['subtotal'] as num).toDouble() : 0.0;
+      baseTotal += sub;
+    }
+
+    final double extraTarjeta = incluirRecargo ? recargoTarjeta : 0.0;
+    final double extraDelivery = incluirDelivery ? costoDelivery : 0.0;
+    final double extras = otrosExtrasVal;
+    final double targetTotal = baseTotal + extraTarjeta + extraDelivery + extras;
+
+    for (final it in itemsEditables) {
+      it.dispose();
+    }
+    itemsEditables.clear();
+
+    if (soloConsumo) {
+      itemsEditables.add(ItemFacturacionEditable(
+        nombreInicial: 'Por consumo',
+        cantidadInicial: 1,
+        precioUnitarioInicial: targetTotal,
+      ));
+    } else {
+      if (targetTotal > 0 && baseTotal > 0 && (extraTarjeta > 0 || extraDelivery > 0 || extras > 0)) {
+        final factor = targetTotal / baseTotal;
+        double sumaCalculada = 0.0;
+        for (final it in itemsOriginales) {
+          final String n = it['nombre']?.toString() ?? 'Plato';
+          final int c = (it['cantidad'] is num) ? (it['cantidad'] as num).toInt() : 1;
+          final double subOriginal = (it['subtotal'] is num) ? (it['subtotal'] as num).toDouble() : 0.0;
+          final double subNuevo = double.parse((subOriginal * factor).toStringAsFixed(2));
+          final double puNuevo = c > 0 ? double.parse((subNuevo / c).toStringAsFixed(2)) : subNuevo;
+          sumaCalculada += subNuevo;
+          itemsEditables.add(ItemFacturacionEditable(
+            nombreInicial: n,
+            cantidadInicial: c,
+            precioUnitarioInicial: puNuevo,
+          ));
+        }
+        final double dif = double.parse((targetTotal - sumaCalculada).toStringAsFixed(2));
+        if (dif != 0.0 && itemsEditables.isNotEmpty) {
+          final last = itemsEditables.last;
+          final nuevoSub = last.subtotal + dif;
+          final nuevoPU = last.cant > 0 ? (nuevoSub / last.cant) : nuevoSub;
+          last.precioUnitario.text = nuevoPU.toStringAsFixed(2);
+        }
+      } else {
+        for (final it in itemsOriginales) {
+          final String n = it['nombre']?.toString() ?? 'Plato';
+          final int c = (it['cantidad'] is num) ? (it['cantidad'] as num).toInt() : 1;
+          final double pu = (it['precio_unitario'] is num) ? (it['precio_unitario'] as num).toDouble() : 0.0;
+          itemsEditables.add(ItemFacturacionEditable(
+            nombreInicial: n,
+            cantidadInicial: c,
+            precioUnitarioInicial: pu,
+          ));
+        }
+      }
+    }
+    actualizarTotalReportado();
+  }
+
+  void actualizarTotalReportado() {
+    double t = 0.0;
+    for (final it in itemsEditables) {
+      t += it.subtotal;
+    }
+    total = t;
+    notifyListeners();
+  }
+
+  void agregarItemLibre() {
+    itemsEditables.add(ItemFacturacionEditable(
+      nombreInicial: 'Ítem adicional',
+      cantidadInicial: 1,
+      precioUnitarioInicial: 0.0,
+    ));
+    actualizarTotalReportado();
+  }
+
+  void quitarItem(int index) {
+    if (itemsEditables.length > 1) {
+      final removed = itemsEditables.removeAt(index);
+      removed.dispose();
+      actualizarTotalReportado();
+    }
+  }
+
+  void restablecerOriginales() {
+    otrosExtrasCtrl.text = '0.00';
+    recalcularItemsInflados();
+  }
 
   bool buscando = false;
   RucInfo? rucInfo;
@@ -171,19 +359,27 @@ class ComprobanteEnCobro extends ChangeNotifier {
   // Emite el comprobante elegido para [pedido].
   // [pagoId] solo se especifica si se desea facturar un pago individual específico (pago compartido).
   // Si no se especifica [pagoId], se emite por la totalidad del pedido (todos los platos y pagos).
-  Future<Comprobante> emitir(Pedido pedido, {String? pagoId}) async {
+  // Con [items] se envían los platos, cantidades y precios personalizados editados por el cajero.
+  Future<Comprobante> emitir(Pedido pedido, {String? pagoId, List<Map<String, dynamic>>? items, double? otrosExtras}) async {
+    final List<Map<String, dynamic>> itemsParaEnviar = (items != null && items.isNotEmpty)
+        ? items
+        : (tipo != 'ticket_venta' && itemsEditables.isNotEmpty
+            ? itemsEditables.map((e) => e.toMap()).toList()
+            : []);
+
+    final double? extrasParaEnviar = otrosExtras ?? (otrosExtrasVal > 0 ? otrosExtrasVal : null);
+
     final emitido = await FacturacionService.instance.emitir(
       pedidoId: pedido.id,
       tipoDocumento: tipo,
       pagoId: pagoId,
-      // Boleta y factura se imprimen cuando SUNAT ya respondió (ver
-      // `ComprobanteEmitidoDialog`), para que el papel lleve los datos
-      // confirmados. El ticket interno no espera a SUNAT.
       imprimir: tipo == 'ticket_venta' && imprimir,
       soloConsumo: soloConsumo && tipo != 'ticket_venta',
       porConsumo: soloConsumo && tipo != 'ticket_venta',
       incluirRecargo: incluirRecargo && tipo != 'ticket_venta',
       incluirDelivery: incluirDelivery && tipo != 'ticket_venta',
+      otrosExtras: extrasParaEnviar,
+      items: itemsParaEnviar.isNotEmpty ? itemsParaEnviar : null,
       clienteTipoDoc: switch (tipo) {
         'factura' => '6',
         'boleta' => conDni ? '1' : '0',
@@ -213,6 +409,10 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   @override
   void dispose() {
+    for (final it in itemsEditables) {
+      it.dispose();
+    }
+    otrosExtrasCtrl.dispose();
     for (final c in [ruc, razon, direccion, dni, nombre]) {
       c.dispose();
     }
@@ -224,8 +424,14 @@ class ComprobanteEnCobro extends ChangeNotifier {
 class SelectorComprobante extends StatelessWidget {
   final ComprobanteEnCobro control;
   final Pedido? pedido;
+  final double? recargoActual;
 
-  const SelectorComprobante({super.key, required this.control, this.pedido});
+  const SelectorComprobante({
+    super.key,
+    required this.control,
+    this.pedido,
+    this.recargoActual,
+  });
 
   Widget _campo(
     TextEditingController c,
@@ -383,8 +589,252 @@ class SelectorComprobante extends StatelessWidget {
     }
   }
 
+  Widget _construirSeccionItems(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.receiptText, size: 16, color: AppColors.primaryGreen),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'DETALLE A REPORTAR A SUNAT',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              if (!control.soloConsumo) ...[
+                TextButton.icon(
+                  onPressed: control.agregarItemLibre,
+                  icon: const Icon(LucideIcons.plus, size: 14),
+                  label: const Text('Agregar plato', style: TextStyle(fontSize: 11)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                ),
+                IconButton(
+                  tooltip: 'Restablecer platos originales',
+                  icon: const Icon(LucideIcons.rotateCcw, size: 15),
+                  onPressed: control.restablecerOriginales,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ],
+          ),
+          if (!control.soloConsumo) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: CampoTexto(
+                    controller: control.otrosExtrasCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Otros extras a absorber (ej. mantel, rotura vasos)',
+                      prefixText: 'S/ ',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    onChanged: (_) => control.recalcularItemsInflados(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: control.recalcularItemsInflados,
+                  icon: const Icon(LucideIcons.calculator, size: 14),
+                  label: const Text('Distribuir', style: TextStyle(fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Row(
+                children: [
+                  SizedBox(width: 48, child: Text('Cant.', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 6),
+                  Expanded(child: Text('Descripción / Plato', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 6),
+                  SizedBox(width: 70, child: Text('P. Unit.', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+                  SizedBox(width: 6),
+                  SizedBox(width: 65, child: Text('Subtotal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+                  SizedBox(width: 28),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: control.itemsEditables.length,
+                separatorBuilder: (_, _) => const Divider(height: 4, thickness: 0.5),
+                itemBuilder: (context, idx) {
+                  final it = control.itemsEditables[idx];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 48,
+                          child: CampoTexto(
+                            controller: it.cantidad,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                            ),
+                            onChanged: (_) => control.actualizarTotalReportado(),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: CampoTexto(
+                            controller: it.nombre,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            ),
+                            onChanged: (_) => control.cambio(),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 70,
+                          child: CampoTexto(
+                            controller: it.precioUnitario,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              prefixText: 'S/ ',
+                              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                            ),
+                            onChanged: (_) => control.actualizarTotalReportado(),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 65,
+                          child: Text(
+                            'S/ ${it.subtotal.toStringAsFixed(2)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 28,
+                          child: IconButton(
+                            icon: const Icon(LucideIcons.trash2, size: 14, color: AppColors.error),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            onPressed: control.itemsEditables.length > 1
+                                ? () => control.quitarItem(idx)
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('1 x Por consumo', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(
+                    'S/ ${control.total.toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _construirDesgloseFiscal() {
+    final igvPorc = control.igvPorcentaje;
+    final igvLabel = (igvPorc % 1 == 0) ? '${igvPorc.toInt()}%' : '$igvPorc%';
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.primaryGreen.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('OP. GRAVADA:', style: TextStyle(fontSize: 12)),
+              Text('S/ ${control.totalOpGravada.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('I.G.V. ($igvLabel Sede):', style: const TextStyle(fontSize: 12)),
+              Text('S/ ${control.totalIgv.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const Divider(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'TOTAL A REPORTAR A SUNAT:',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+              ),
+              Text(
+                'S/ ${control.total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primaryGreenDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Nota: SUNAT no acepta conceptos como recargos o delivery en comida; los extras se absorben distribuyéndose en el precio de los platos.',
+            style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (pedido != null) {
+      control.asegurarInicializado(pedido!, recargoActual: recargoActual ?? 0.0);
+    }
     return ListenableBuilder(
       listenable: control,
       builder: (context, _) => Column(
@@ -442,75 +892,76 @@ class SelectorComprobante extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              if (!control.soloConsumo) ...[
-                if (pedido != null &&
-                    recargoCobradoDePedido(pedido!.id) > 0.001) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Incluir recargo por tarjeta (+S/ ${recargoCobradoDePedido(pedido!.id).toStringAsFixed(2)})',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
+              if (control.recargoTarjeta > 0.001) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Incluir recargo del medio de pago (+S/ ${control.recargoTarjeta.toStringAsFixed(2)})',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
-                            const Text(
-                              'Suma la comisión de la tarjeta al comprobante fiscal',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
+                          ),
+                          const Text(
+                            'Absorbe la comisión financiera prorrateándola en los platos',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      AppSwitch(
-                        value: control.incluirRecargo,
-                        onChanged: control.alternarIncluirRecargo,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                if (pedido != null &&
-                    (pedido!.tipoPedido == 'delivery' ||
-                        pedido!.costoDelivery > 0)) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Incluir costo de delivery (+S/ ${pedido!.costoDelivery.toStringAsFixed(2)})',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const Text(
-                              'Añade el flete de envío al comprobante fiscal',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      AppSwitch(
-                        value: control.incluirDelivery,
-                        onChanged: control.alternarIncluirDelivery,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                ],
+                    ),
+                    AppSwitch(
+                      value: control.incluirRecargo,
+                      onChanged: control.alternarIncluirRecargo,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
               ],
+              if (control.costoDelivery > 0.001) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Incluir costo de delivery (+S/ ${control.costoDelivery.toStringAsFixed(2)})',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Text(
+                            'Añade el flete de envío prorrateándolo en los platos',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AppSwitch(
+                      value: control.incluirDelivery,
+                      onChanged: control.alternarIncluirDelivery,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              // Sección de Ítems Editables
+              _construirSeccionItems(context),
+              const SizedBox(height: 12),
+              // Desglose fiscal (IGV de Sede y Op. Gravada)
+              _construirDesgloseFiscal(),
+              const SizedBox(height: 12),
             ],
             Row(
               children: [

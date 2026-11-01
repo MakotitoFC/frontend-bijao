@@ -300,6 +300,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         ..addListener(() {
           if (mounted) setState(() {});
         });
+      _comprobante!.asegurarInicializado(widget.pedido, recargoActual: _recargo);
     }
     _categoriaSeleccionada =
         _categoriasIngreso
@@ -466,7 +467,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       width: ancho,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => setState(() => _medio = m),
+        onTap: () {
+          setState(() {
+            _medio = m;
+            _comprobante?.actualizarRecargo(_recargo);
+          });
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
@@ -626,6 +632,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     return ModalPago(
       titulo: 'Pago único',
       subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
+      anchoEscritorio: _comprobante != null && _comprobante!.tipo != 'ticket_venta' ? 560 : 440,
       onVolver: widget.permiteVolver ? _volver : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -730,6 +737,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             SelectorComprobante(
               control: _comprobante!,
               pedido: widget.pedido,
+              recargoActual: _recargo,
             ),
           ],
           if (_recargo > 0 || propina > 0 || taper > 0)

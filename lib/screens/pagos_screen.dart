@@ -595,13 +595,9 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  // Vuelve a pedir al servidor los totales de la caja (tras un movimiento).
+  // Vuelve a pedir al servidor los totales de la caja, cobros y movimientos en tiempo real.
   Future<void> _refrescarCaja() async {
-    if (!CajaService.instance.enServidor) return;
-    try {
-      await CajaService.instance.cargarEstado();
-    } catch (_) {}
-    if (mounted) setState(() {});
+    await _cargar();
   }
 
   bool get _cajaCerrada =>
@@ -913,7 +909,7 @@ class _CajaScreenState extends State<CajaScreen> {
         '${tipo.etiqueta} de ${_soles(r.monto)} registrado en ${r.medio.medioPago}.',
         type: ToastType.success,
       );
-      _refrescarCaja();
+      await _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
@@ -930,7 +926,7 @@ class _CajaScreenState extends State<CajaScreen> {
         'Descargo aplicado correctamente. Movimiento de caja y pago actualizados.',
         type: ToastType.success,
       );
-      _refrescarCaja();
+      await _refrescarCaja();
     }
   }
 
@@ -949,9 +945,8 @@ class _CajaScreenState extends State<CajaScreen> {
         nota: r.nota,
       );
       if (!mounted) return;
-      setState(() {});
       showAppToast(context, 'Movimiento corregido.', type: ToastType.success);
-      _refrescarCaja();
+      await _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }
@@ -974,9 +969,8 @@ class _CajaScreenState extends State<CajaScreen> {
     try {
       await MovimientoCajaService.instance.anular(m, motivo: motivo);
       if (!mounted) return;
-      setState(() {});
       showAppToast(context, 'Movimiento anulado.', type: ToastType.success);
-      _refrescarCaja();
+      await _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
     }

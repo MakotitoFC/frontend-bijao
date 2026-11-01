@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/configuracion_store.dart';
 import '../data/mesas_store.dart';
 import '../utils/datos_sede.dart';
 import '../data/pagos_store.dart';
@@ -31,17 +30,14 @@ class EmitirComprobanteDialog extends StatefulWidget {
 }
 
 class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
-  late final ComprobanteEnCobro _eleccion =
-      ComprobanteEnCobro(
-        totalDePedido(widget.pedido.id),
-        tipoInicial: 'ticket_venta',
-      )..addListener(() {
-        if (mounted) setState(() {});
-      });
+  late final ComprobanteEnCobro _eleccion = ComprobanteEnCobro(
+    totalDePedido(widget.pedido.id),
+    tipoInicial: 'ticket_venta',
+  );
 
   bool _emitiendo = false;
   String? _error;
-  int _tabIndex = 0; // 0: Formulario, 1: Vista Previa Fiscal en Vivo
+  int _tabIndex = 0; // 0: Formulario e Ítems, 1: Vista Previa Fiscal en Vivo
 
   List<Comprobante> _comprobantes = [];
   bool _cargandoComprobantes = true;
@@ -49,7 +45,11 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   @override
   void initState() {
     super.initState();
+    _eleccion.addListener(() {
+      if (mounted) setState(() {});
+    });
     _cargarComprobantes();
+    _eleccion.asegurarInicializado(widget.pedido);
   }
 
   Future<void> _cargarComprobantes() async {
@@ -91,7 +91,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       _eleccion.tipo != 'ticket_venta' && !_tieneCobro;
 
   bool get _bloqueadoPorFiscalExistente =>
-      _eleccion.tipo != 'ticket_venta' && _comprobanteFiscalActivo != null;
+      _eleccion.tipo != 'ticket_venta' &&
+      _comprobanteFiscalActivo != null &&
+      _comprobanteFiscalActivo!.estadoSunat != 'ERROR_CONEXION';
 
   bool get _puedeEmitir =>
       !_emitiendo &&
@@ -121,6 +123,56 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
             ? e.message
             : e.toString().replaceFirst('Exception: ', '');
       });
+    }
+  }
+
+  Future<void> _reintentarEnvio(Comprobante c) async {
+    setState(() {
+      _emitiendo = true;
+      _error = null;
+    });
+    try {
+      final res = await FacturacionService.instance.reintentar(c.id);
+      if (mounted) {
+        showAppToast(
+          context,
+          'Comprobante ${res.numeroComprobante} reintentado exitosamente (${res.estadoSunat})',
+          type: ToastType.success,
+        );
+        await _cargarComprobantes();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _emitiendo = false);
+    }
+  }
+
+  Future<void> _consultarEstado(Comprobante c) async {
+    setState(() {
+      _emitiendo = true;
+      _error = null;
+    });
+    try {
+      final res = await FacturacionService.instance.consultarEstado(c.id);
+      if (mounted) {
+        showAppToast(
+          context,
+          'Estado SUNAT: ${res.estadoSunat} - ${res.mensaje ?? ""}',
+          type: ToastType.info,
+        );
+        await _cargarComprobantes();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _emitiendo = false);
     }
   }
 
@@ -162,7 +214,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
 
     return DialogoApp(
       titulo: 'Emitir comprobante · Pedido #${widget.pedido.numeroPedido}',
-      ancho: 520,
+      ancho: 680,
       acciones: [
         OutlinedButton(
           onPressed: _emitiendo ? null : () => Navigator.of(context).pop(),
@@ -196,9 +248,15 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.amber.shade50,
+              color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                  ? Colors.red.shade50
+                  : Colors.amber.shade50,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amber.shade300),
+              border: Border.all(
+                color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                    ? Colors.red.shade300
+                    : Colors.amber.shade300,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,9 +264,13 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                 Row(
                   children: [
                     Icon(
-                      LucideIcons.fileCheck2,
+                      fiscal.estadoSunat == 'ERROR_CONEXION'
+                          ? LucideIcons.alertTriangle
+                          : LucideIcons.fileCheck2,
                       size: 18,
-                      color: Colors.amber.shade900,
+                      color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                          ? Colors.red.shade900
+                          : Colors.amber.shade900,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -217,7 +279,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: Colors.amber.shade900,
+                          color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                              ? Colors.red.shade900
+                              : Colors.amber.shade900,
                         ),
                       ),
                     ),
@@ -229,7 +293,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                       decoration: BoxDecoration(
                         color: fiscal.estadoSunat == 'ACEPTADO'
                             ? Colors.green.shade100
-                            : Colors.orange.shade100,
+                            : (fiscal.estadoSunat == 'ERROR_CONEXION'
+                                ? Colors.red.shade100
+                                : Colors.orange.shade100),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -239,13 +305,27 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                           fontWeight: FontWeight.w700,
                           color: fiscal.estadoSunat == 'ACEPTADO'
                               ? Colors.green.shade800
-                              : Colors.orange.shade900,
+                              : (fiscal.estadoSunat == 'ERROR_CONEXION'
+                                  ? Colors.red.shade900
+                                  : Colors.orange.shade900),
                         ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
+                if (fiscal.estadoSunat == 'ERROR_CONEXION') ...[
+                  Text(
+                    '⚠️ Hubo un corte de red o timeout esperando respuesta de SUNAT. '
+                    'Para evitar saltos de correlativo, consulta el estado o reintenta el envío con el mismo número.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade800,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Text(
                   'Cliente: ${fiscal.clienteDenominacion.isEmpty ? "CLIENTES VARIOS" : fiscal.clienteDenominacion} · Total: S/ ${fiscal.total.toStringAsFixed(2)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
@@ -255,6 +335,31 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    if (fiscal.estadoSunat == 'ERROR_CONEXION') ...[
+                      FilledButton.icon(
+                        onPressed: _emitiendo ? null : () => _reintentarEnvio(fiscal),
+                        icon: const Icon(LucideIcons.refreshCw, size: 15),
+                        label: const Text('Reintentar Envío a SUNAT'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red.shade800,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _emitiendo ? null : () => _consultarEstado(fiscal),
+                        icon: const Icon(LucideIcons.search, size: 15),
+                        label: const Text('Consultar Estado'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    ],
                     FilledButton.icon(
                       onPressed: () => _reimprimir(fiscal),
                       icon: const Icon(LucideIcons.printer, size: 15),
@@ -397,6 +502,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           _VistaPreviaComprobanteFiscal(
             pedido: widget.pedido,
             control: _eleccion,
+            itemsEditables: _eleccion.itemsEditables,
           ),
         ],
         const SizedBox(height: 8),
@@ -411,10 +517,12 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
 class _VistaPreviaComprobanteFiscal extends StatelessWidget {
   final Pedido pedido;
   final ComprobanteEnCobro control;
+  final List<ItemFacturacionEditable>? itemsEditables;
 
   const _VistaPreviaComprobanteFiscal({
     required this.pedido,
     required this.control,
+    this.itemsEditables,
   });
 
   @override
@@ -439,13 +547,24 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
     final conDelivery = (control.tipo == 'ticket_venta' || control.incluirDelivery) && cargoDelivery > 0;
     final conRecargo = (control.tipo == 'ticket_venta' || control.incluirRecargo) && recargo > 0;
 
-    double totalCalc = control.soloConsumo ? (subtotalProductos + (conDelivery ? cargoDelivery : 0) + (conRecargo ? recargo : 0)) : subtotalProductos;
-    if (!control.soloConsumo) {
-      if (conDelivery) totalCalc += cargoDelivery;
-      if (conRecargo) totalCalc += recargo;
+    final igvPorc = FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
+    final igvLabel = (igvPorc % 1 == 0) ? '${igvPorc.toInt()}%' : '$igvPorc%';
+    final serieCodigo = FacturacionService.instance.cachedConfig?.codigoSerie ?? '001';
+    final serieSufijo = serieCodigo.padLeft(3, '0');
+    final bool usaEditables = itemsEditables != null && itemsEditables!.isNotEmpty;
+
+    double totalCalc;
+    if (usaEditables) {
+      totalCalc = itemsEditables!.fold(0.0, (s, it) => s + it.subtotal);
+    } else {
+      totalCalc = control.soloConsumo ? (subtotalProductos + (conDelivery ? cargoDelivery : 0) + (conRecargo ? recargo : 0)) : subtotalProductos;
+      if (!control.soloConsumo) {
+        if (conDelivery) totalCalc += cargoDelivery;
+        if (conRecargo) totalCalc += recargo;
+      }
     }
 
-    final igv = (totalCalc * (18.0 / 118.0));
+    final igv = (totalCalc * (igvPorc / (100.0 + igvPorc)));
     final opGravada = totalCalc - igv;
 
     final tituloDoc = switch (control.tipo) {
@@ -455,9 +574,9 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
     };
 
     final serieEstimada = switch (control.tipo) {
-      'factura' => 'FA01-0000000X',
-      'boleta' => 'BA01-0000000X',
-      _ => 'T001-0000000X',
+      'factura' => 'F$serieSufijo-0000000X',
+      'boleta' => 'B$serieSufijo-0000000X',
+      _ => 'T$serieSufijo-0000000X',
     };
 
     return Container(
@@ -602,7 +721,14 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     ],
                   ),
                   const Divider(thickness: 1, height: 10),
-                  if (control.soloConsumo) ...[
+                  if (usaEditables) ...[
+                    for (final it in itemsEditables!)
+                      _filaItem(
+                        '${it.cant} NIU',
+                        it.nombre.text.trim().isEmpty ? 'Plato' : it.nombre.text.trim(),
+                        it.subtotal,
+                      ),
+                  ] else if (control.soloConsumo) ...[
                     _filaItem('1 NIU', 'Por consumo', totalCalc),
                   ] else ...[
                     for (final l in productos)
@@ -626,7 +752,7 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   const Divider(thickness: 1, height: 14),
                   if (control.tipo != 'ticket_venta') ...[
                     _filaTotal('OP. GRAVADA:', opGravada),
-                    _filaTotal('I.G.V. (18%):', igv),
+                    _filaTotal('I.G.V. ($igvLabel):', igv),
                   ],
                   const SizedBox(height: 4),
                   Row(
@@ -708,12 +834,12 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     const Text(
                       'Consulte su documento en: https://apisunat.pe',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                     const Text(
                       'Autorizado con Resolución N° 034-005-0005315/SUNAT',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                   ],
                 ],

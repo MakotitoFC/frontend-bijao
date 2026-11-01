@@ -25,6 +25,7 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
   final _razon = TextEditingController();
   final _direccion = TextEditingController();
   final _celular = TextEditingController();
+  final _codigoSerie = TextEditingController(text: '001');
   final _igv = TextEditingController();
   final _resolucion = TextEditingController();
   final _consultaUrl = TextEditingController();
@@ -48,6 +49,7 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
     _razon.dispose();
     _direccion.dispose();
     _celular.dispose();
+    _codigoSerie.dispose();
     _igv.dispose();
     _resolucion.dispose();
     _consultaUrl.dispose();
@@ -57,6 +59,14 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
   String _mensaje(Object e) => e is ApiException
       ? e.message
       : e.toString().replaceFirst('Exception: ', '');
+
+  String _formatearCodigoSerie(String raw) {
+    final c = raw.trim().toUpperCase();
+    if (c.isEmpty) return '001';
+    if (c.length == 1) return '${c}01';
+    if (c.length == 2) return '0$c';
+    return c.substring(0, c.length > 3 ? 3 : c.length);
+  }
 
   Future<void> _cargarTodo() async {
     setState(() {
@@ -86,6 +96,7 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
       _razon.text = cfg.razonSocial;
       _direccion.text = cfg.direccion;
       _celular.text = cfg.celular;
+      _codigoSerie.text = _formatearCodigoSerie(cfg.codigoSerie);
       _igv.text = cfg.igvPorcentaje.toStringAsFixed(2);
       _resolucion.text = cfg.resolucionSunat;
       _consultaUrl.text = cfg.consultaSunatUrl;
@@ -102,6 +113,7 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
       return;
     }
 
+    final codSerieFormateado = _formatearCodigoSerie(_codigoSerie.text);
     final igvVal = double.tryParse(_igv.text.trim()) ?? 18.0;
 
     setState(() => _guardando = true);
@@ -111,16 +123,148 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
         'razon_social': _razon.text.trim(),
         'direccion': _direccion.text.trim(),
         'celular': _celular.text.trim(),
+        'codigo_serie': codSerieFormateado,
         'igv_porcentaje': igvVal,
         'resolucion_sunat': _resolucion.text.trim(),
         'consulta_sunat_url': _consultaUrl.text.trim(),
       });
+      _codigoSerie.text = codSerieFormateado;
       if (mounted) {
         showAppToast(context, 'Configuración fiscal actualizada correctamente', type: ToastType.success);
       }
     } catch (e) {
       if (mounted) {
         showAppToast(context, 'Error al guardar: ${_mensaje(e)}', type: ToastType.error);
+      }
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
+  void _abrirDialogoNuevaSerie() {
+    String tipoSeleccionado = 'boleta';
+    final codSerie = _formatearCodigoSerie(_codigoSerie.text);
+    final serieCtrl = TextEditingController(text: 'B$codSerie');
+    final numCtrl = TextEditingController(text: '0');
+
+    void recalcularSeriePorTipo(String tipo, StateSetter setModalState) {
+      final prefijo = tipo == 'factura' ? 'F' : (tipo == 'boleta' ? 'B' : 'T');
+      final sufijo = serieCtrl.text.length >= 4 ? serieCtrl.text.substring(1) : codSerie;
+      setModalState(() {
+        tipoSeleccionado = tipo;
+        serieCtrl.text = '$prefijo$sufijo'.toUpperCase();
+      });
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(LucideIcons.filePlus, size: 20),
+              SizedBox(width: 8),
+              Text('Registrar Serie para Sede'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Seleccione el tipo de comprobante. El 1° caracter se define por SUNAT '
+                '(B: Boleta, F: Factura, T: Ticket) y los siguientes 3 caracteres corresponden a la sede.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 14),
+              const Text('Tipo de Comprobante:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'boleta', label: Text('Boleta (B)')),
+                  ButtonSegment(value: 'factura', label: Text('Factura (F)')),
+                  ButtonSegment(value: 'ticket', label: Text('Ticket (T)')),
+                ],
+                selected: {tipoSeleccionado},
+                onSelectionChanged: (val) {
+                  if (val.isNotEmpty) {
+                    recalcularSeriePorTipo(val.first, setModalState);
+                  }
+                },
+              ),
+              const SizedBox(height: 14),
+              CampoTexto(
+                controller: serieCtrl,
+                maxLength: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Serie Fiscal (4 caracteres)',
+                  helperText: 'Ejemplos: B001, F001, T001, BA01, FA01',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 12),
+              CampoTexto(
+                controller: numCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Último Correlativo Emitido',
+                  helperText: '0 si es una nueva serie que iniciará en el número 1',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final serie = serieCtrl.text.trim().toUpperCase();
+                final val = int.tryParse(numCtrl.text.trim());
+                if (serie.length != 4) {
+                  showAppToast(context, 'La serie debe tener exactamente 4 caracteres', type: ToastType.error);
+                  return;
+                }
+                if (val == null || val < 0) {
+                  showAppToast(context, 'Ingrese un correlativo válido mayor o igual a 0', type: ToastType.error);
+                  return;
+                }
+                Navigator.pop(ctx);
+                try {
+                  await _servicio.actualizarSerieCorrelativo(serie, val, tipoDocumento: tipoSeleccionado);
+                  if (mounted) {
+                    showAppToast(context, 'Serie $serie registrada exitosamente', type: ToastType.success);
+                  }
+                  _cargarTodo();
+                } catch (e) {
+                  if (mounted) {
+                    showAppToast(context, _mensaje(e), type: ToastType.error);
+                  }
+                }
+              },
+              child: const Text('Guardar Serie'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generarSeriesEstandar() async {
+    final codSerie = _formatearCodigoSerie(_codigoSerie.text);
+    setState(() => _guardando = true);
+    try {
+      await _servicio.actualizarSerieCorrelativo('B$codSerie', 0, tipoDocumento: 'boleta');
+      await _servicio.actualizarSerieCorrelativo('F$codSerie', 0, tipoDocumento: 'factura');
+      await _servicio.actualizarSerieCorrelativo('T$codSerie', 0, tipoDocumento: 'ticket');
+      if (mounted) {
+        showAppToast(context, 'Series estándar generadas: B$codSerie, F$codSerie, T$codSerie', type: ToastType.success);
+      }
+      await _cargarTodo();
+    } catch (e) {
+      if (mounted) {
+        showAppToast(context, 'Error al generar series: ${_mensaje(e)}', type: ToastType.error);
       }
     } finally {
       if (mounted) setState(() => _guardando = false);
@@ -240,6 +384,63 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
                       ],
                     ),
                     const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: CampoTextoConfig(
+                            etiqueta: 'Código Serie Sede (3 carácteres)',
+                            valor: _codigoSerie.text,
+                            onChanged: (v) {
+                              setState(() {
+                                _codigoSerie.text = v.toUpperCase();
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Series generadas para SUNAT (4 caracteres):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Chip(
+                                      label: Text('Boleta: B${_formatearCodigoSerie(_codigoSerie.text)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor: Colors.green.shade50,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Chip(
+                                      label: Text('Factura: F${_formatearCodigoSerie(_codigoSerie.text)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor: Colors.blue.shade50,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Chip(
+                                      label: Text('Ticket: T${_formatearCodigoSerie(_codigoSerie.text)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor: Colors.orange.shade50,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     CampoTextoConfig(
                       etiqueta: 'Razón Social Fiscal',
                       valor: _razon.text,
@@ -303,6 +504,26 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
             titulo: 'Series y Correlativos de Comprobantes',
             descripcion: 'Control y sincronización de numeraciones atómicas para Boletas, Facturas y Tickets.',
             filas: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _abrirDialogoNuevaSerie,
+                      icon: const Icon(LucideIcons.plus, size: 16),
+                      label: const Text('Registrar Nueva Serie'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _guardando ? null : _generarSeriesEstandar,
+                      icon: const Icon(LucideIcons.wand2, size: 16),
+                      label: const Text('Generar Series de Sede (B/F/T)'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
               if (_series.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(12),

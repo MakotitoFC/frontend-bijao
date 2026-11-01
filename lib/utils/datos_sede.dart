@@ -8,19 +8,19 @@ DatosSede datosDeLaSede() {
   final cfg = FacturacionService.instance.cachedConfig;
   if (cfg != null) {
     return (
-      nombre: cfg.razonSocial.isNotEmpty ? cfg.razonSocial : 'RESTAURANTE BIJAO',
-      direccion: cfg.direccion.isNotEmpty ? cfg.direccion : 'CAL. Los Brillantes 421B',
-      telefono: cfg.celular.isNotEmpty ? cfg.celular : '999999999',
-      ruc: cfg.ruc.isNotEmpty ? cfg.ruc : '20608543211',
+      nombre: cfg.razonSocial.isNotEmpty ? cfg.razonSocial : 'SERVICIOS MULTIPLES EL BIJAO E.I.R.L.',
+      direccion: cfg.direccion.isNotEmpty ? cfg.direccion : 'CAL.LOS BRILLANTES NRO. 421 URB. SANTA INES LA LIBERTAD - TRUJILLO - TRUJILLO',
+      telefono: cfg.celular.isNotEmpty ? cfg.celular : '-',
+      ruc: cfg.ruc.isNotEmpty ? cfg.ruc : '20540005371',
     );
   }
   final sedeId = AuthService.instance.currentUser?.sedeId;
   final sede = sedes.where((s) => s.id == sedeId).firstOrNull ?? sedes.first;
   final celular = (sede.celular ?? '').trim();
   return (
-    nombre: negocio.nombre.isNotEmpty && negocio.nombre != 'El Bijao Restaurant' ? negocio.nombre : 'RESTAURANTE BIJAO',
-    direccion: sede.direccion.isNotEmpty && sede.direccion != 'Av. Principal 123, San Isidro' ? sede.direccion : 'CAL. Los Brillantes 421B',
-    telefono: celular.isNotEmpty && celular != '987654321' ? celular : '999999999',
-    ruc: sede.ruc.isNotEmpty && sede.ruc != '20123456789' ? sede.ruc : '20608543211',
+    nombre: negocio.nombre.isNotEmpty && negocio.nombre != 'SERVICIOS MULTIPLES EL BIJAO E.I.R.L.' ? negocio.nombre : 'SERVICIOS MULTIPLES EL BIJAO E.I.R.L.',
+    direccion: sede.direccion.isNotEmpty && sede.direccion != 'CAL.LOS BRILLANTES NRO. 421 URB. SANTA INES LA LIBERTAD - TRUJILLO - TRUJILLO' ? sede.direccion : 'CAL.LOS BRILLANTES NRO. 421 URB. SANTA INES LA LIBERTAD - TRUJILLO - TRUJILLO',
+    telefono: celular.isNotEmpty && celular != '-' ? celular : '-',
+    ruc: sede.ruc.isNotEmpty && sede.ruc != '20540005371' ? sede.ruc : '20540005371',
   );
 }
