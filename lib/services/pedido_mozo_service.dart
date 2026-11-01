@@ -85,7 +85,9 @@ class PedidoMozoService {
       if (raw is! Map<String, dynamic>) continue;
       final id = raw['id']?.toString() ?? '';
       if (id.isEmpty) continue;
-      vigentes.add(id);
+      // Un pedido que cambió de mesa llega una vez por cada mesa: su detalle se
+      // pide una sola vez.
+      if (!vigentes.add(id)) continue;
       final marca = '${raw['version']}|${raw['updated_at']}|${raw['total']}';
       final previo = pedidos.where((p) => p.id == id).firstOrNull;
       final total = (raw['total'] as num?)?.toDouble();
@@ -519,6 +521,7 @@ class PedidoMozoService {
       pedidos[i] = nuevo;
     }
     detallesPorPedido[d.id] = [...d.lineas, ...propias];
+    lineasAnuladasPorPedido[d.id] = d.anuladas;
     return d;
   }
 

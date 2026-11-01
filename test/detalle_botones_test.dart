@@ -69,19 +69,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets(
-    'hay un solo botón Pagar y el detalle trae Promoción, Propina y Táper',
-    (tester) async {
-      await abrir(tester, _pedido());
-      expect(find.text('Pagar'), findsOneWidget);
-      expect(find.text('Pago compartido'), findsNothing);
-      // Un cliente puede pedir solo un táper: también se agrega desde el detalle.
-      expect(find.text('Táper'), findsOneWidget);
-      expect(find.text('Promoción'), findsOneWidget);
-      expect(find.text('Propina'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+  testWidgets('hay un solo botón Pagar y el detalle trae Promoción y Táper', (
+    tester,
+  ) async {
+    await abrir(tester, _pedido());
+    expect(find.text('Pagar'), findsOneWidget);
+    expect(find.text('Pago compartido'), findsNothing);
+    // Un cliente puede pedir solo un táper: también se agrega desde el detalle.
+    expect(find.text('Táper'), findsOneWidget);
+    expect(find.text('Promoción'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('Táper en el detalle abre el diálogo de tápers', (tester) async {
     await abrir(tester, _pedido());
@@ -92,7 +90,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('Pagar deja elegir entre pago único y compartido', (
+  testWidgets('Pagar abre directo el modal con vuelto, por montos y extras', (
     tester,
   ) async {
     await abrir(tester, _pedido());
@@ -100,8 +98,15 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 200));
     }
-    expect(find.text('Pago único'), findsOneWidget);
-    expect(find.text('Pago compartido'), findsOneWidget);
+    expect(find.text('Total a pagar'), findsOneWidget);
+    expect(find.text('Método de pago'), findsOneWidget);
+    expect(find.text('Vuelto'), findsOneWidget);
+    expect(find.text('Por montos'), findsOneWidget);
+    expect(find.text('Extras'), findsOneWidget);
+    expect(find.text('Propina'), findsOneWidget);
+    expect(find.text('Roturas / alquiler'), findsOneWidget);
+    // Ya no hay elección previa ni pago compartido.
+    expect(find.text('Pago compartido'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -149,43 +154,6 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('desde cada forma de pago se puede regresar a la elección', (
-    tester,
-  ) async {
-    await abrir(tester, _pedido());
-
-    Future<void> esperar() async {
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(milliseconds: 200));
-      }
-    }
-
-    // Pago único → Regresar → vuelve a la elección.
-    await tester.tap(find.text('Pagar'));
-    await esperar();
-    await tester.tap(find.text('Pago único'));
-    await esperar();
-    expect(find.text('Regresar'), findsOneWidget);
-    expect(find.textContaining('Pagar · S/'), findsOneWidget);
-    await tester.tap(find.text('Regresar'));
-    await esperar();
-    expect(find.text('Pago compartido'), findsOneWidget);
-
-    // Pago compartido → Regresar → vuelve a la elección.
-    await tester.tap(find.text('Pago compartido'));
-    await esperar();
-    expect(find.text('Regresar'), findsOneWidget);
-    expect(find.textContaining('Cobrar · S/'), findsOneWidget);
-    // El formulario es largo: se desplaza hasta el botón.
-    await tester.ensureVisible(find.text('Regresar'));
-    await tester.pump();
-    await tester.tap(find.text('Regresar'));
-    await esperar();
-    expect(find.text('Pago único'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
-
   testWidgets('en delivery Pagar va directo al pago (sin compartido)', (
     tester,
   ) async {
@@ -194,7 +162,7 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 200));
     }
-    expect(find.text('Pago único'), findsOneWidget); // es el título del pago
+    expect(find.text('Total a pagar'), findsOneWidget); // el modal de pago
     expect(find.text('Pago compartido'), findsNothing);
     // En delivery no hay elección previa, así que tampoco "Regresar".
     expect(find.text('Regresar'), findsNothing);

@@ -46,11 +46,8 @@ class ConfiguracionScreen extends StatefulWidget {
 }
 
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
-  // Datos del negocio y de cada restaurante: se leen y, con "Editar", se
-  // cambian y se confirman con "Guardar" (o se descartan con "Cancelar").
-  bool _editNegocio = false;
-  int _vNegocio = 0;
-  List<String> _negocioCopia = const [];
+  // Datos de cada restaurante: se leen y, con "Editar", se cambian y se
+  // confirman con "Guardar" (o se descartan con "Cancelar").
   final Set<String> _editSedes = {};
   final Map<String, Sede> _sedesCopia = {};
   int _vSedes = 0;
@@ -377,21 +374,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     return [
       SeccionConfig(
         titulo: 'Resumen del negocio',
-        descripcion: 'Datos del local. Se editan en Restaurantes y Negocio.',
+        descripcion: 'Datos del local. Se editan en Restaurantes.',
         filas: [
-          FilaDato(etiqueta: 'Negocio', valor: negocio.nombre),
+          FilaDato(etiqueta: 'Razón social', valor: sede.razonSocial),
           FilaDato(etiqueta: 'Dirección', valor: sede.direccion),
           FilaDato(etiqueta: 'RUC', valor: sede.ruc),
-          FilaDato(
-            etiqueta: 'Teléfono',
-            valor: (sede.celular ?? '').isEmpty
-                ? negocio.telefono
-                : sede.celular!,
-          ),
-          FilaDato(
-            etiqueta: 'Moneda y zona horaria',
-            valor: '${negocio.moneda} · ${negocio.zonaHoraria}',
-          ),
+          FilaDato(etiqueta: 'Teléfono', valor: sede.celular ?? ''),
         ],
       ),
       SeccionConfig(
@@ -549,45 +537,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           label: const Text('Guardar'),
         ),
       ],
-    );
-  }
-
-  void _editarNegocio() => setState(() {
-    _negocioCopia = [
-      negocio.nombre,
-      negocio.telefono,
-      negocio.direccion,
-      negocio.emailContacto,
-      negocio.moneda,
-      negocio.idioma,
-      negocio.pais,
-      negocio.zonaHoraria,
-    ];
-    _editNegocio = true;
-  });
-
-  void _cancelarNegocio() => setState(() {
-    final v = _negocioCopia;
-    if (v.length == 8) {
-      negocio.nombre = v[0];
-      negocio.telefono = v[1];
-      negocio.direccion = v[2];
-      negocio.emailContacto = v[3];
-      negocio.moneda = v[4];
-      negocio.idioma = v[5];
-      negocio.pais = v[6];
-      negocio.zonaHoraria = v[7];
-    }
-    _editNegocio = false;
-    _vNegocio++;
-  });
-
-  void _guardarNegocio() {
-    setState(() => _editNegocio = false);
-    showAppToast(
-      context,
-      'Datos del negocio guardados.',
-      type: ToastType.success,
     );
   }
 
@@ -1639,101 +1588,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   // ---------------- Negocio ----------------
 
   List<Widget> _negocio() {
-    Widget par(Widget a, Widget b) => Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: a),
-        const SizedBox(width: 12),
-        Expanded(child: b),
-      ],
-    );
     return [
-      SeccionConfig(
-        titulo: 'Información del negocio',
-        accion: _botonesEdicion(
-          editando: _editNegocio,
-          onEditar: _editarNegocio,
-          onGuardar: _guardarNegocio,
-          onCancelar: _cancelarNegocio,
-        ),
-        filas: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              children: [
-                CampoTextoConfig(
-                  key: ValueKey('neg$_vNegocio-1'),
-                  habilitado: _editNegocio,
-                  etiqueta: 'Nombre',
-                  valor: negocio.nombre,
-                  onChanged: (v) => negocio.nombre = v,
-                ),
-                const SizedBox(height: 12),
-                par(
-                  CampoTextoConfig(
-                    key: ValueKey('neg$_vNegocio-2'),
-                    habilitado: _editNegocio,
-                    etiqueta: 'Teléfono',
-                    valor: negocio.telefono,
-                    teclado: TextInputType.phone,
-                    onChanged: (v) => negocio.telefono = v,
-                  ),
-                  CampoTextoConfig(
-                    key: ValueKey('neg$_vNegocio-3'),
-                    habilitado: _editNegocio,
-                    etiqueta: 'Correo de contacto',
-                    valor: negocio.emailContacto,
-                    teclado: TextInputType.emailAddress,
-                    onChanged: (v) => negocio.emailContacto = v,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                CampoTextoConfig(
-                  key: ValueKey('neg$_vNegocio-4'),
-                  habilitado: _editNegocio,
-                  etiqueta: 'Dirección',
-                  valor: negocio.direccion,
-                  onChanged: (v) => negocio.direccion = v,
-                ),
-                const SizedBox(height: 12),
-                par(
-                  CampoTextoConfig(
-                    key: ValueKey('neg$_vNegocio-5'),
-                    habilitado: _editNegocio,
-                    etiqueta: 'Moneda',
-                    valor: negocio.moneda,
-                    onChanged: (v) => negocio.moneda = v,
-                  ),
-                  CampoTextoConfig(
-                    key: ValueKey('neg$_vNegocio-6'),
-                    habilitado: _editNegocio,
-                    etiqueta: 'Idioma',
-                    valor: negocio.idioma,
-                    onChanged: (v) => negocio.idioma = v,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                par(
-                  CampoTextoConfig(
-                    key: ValueKey('neg$_vNegocio-7'),
-                    habilitado: _editNegocio,
-                    etiqueta: 'País',
-                    valor: negocio.pais,
-                    onChanged: (v) => negocio.pais = v,
-                  ),
-                  CampoTextoConfig(
-                    key: ValueKey('neg$_vNegocio-8'),
-                    habilitado: _editNegocio,
-                    etiqueta: 'Zona horaria',
-                    valor: negocio.zonaHoraria,
-                    onChanged: (v) => negocio.zonaHoraria = v,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
       _seccionHorario(),
       // El logo que sale en los tickets de caja (lo cambia el administrador).
       if (widget.usuario.esAdmin)

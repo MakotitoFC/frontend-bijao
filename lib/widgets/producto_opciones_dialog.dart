@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/cartas_store.dart';
 import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
@@ -9,16 +10,13 @@ import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
 import '../models/modificador.dart';
 import '../models/pedido_line.dart';
-import '../models/taper.dart';
-import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
+import 'app_select.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
-import 'selector_taper.dart';
 import 'taper_catalogo_dialog.dart' show TaperElegido;
 import '../utils/agregados_utils.dart';
-import 'app_switch.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
 
@@ -40,6 +38,10 @@ typedef ProductoConfigurado = ({
   // Los demás tápers elegidos (el primero va en la línea del plato): cada uno
   // se agrega como una fila propia con su cantidad.
   List<TaperElegido> tapersAdicionales,
+  // El precio se escribió a mano para este pedido; [precioOriginal] es el de la
+  // carta antes del cambio.
+  bool precioManual,
+  double precioOriginal,
 });
 
 // Modal "Agregar al pedido": presentación, extras opcionales y nota.
@@ -54,6 +56,8 @@ class ProductoOpcionesDialog extends StatefulWidget {
   // Tipo del pedido en curso ('mesa', 'llevar' o 'delivery'): el producto
   // arranca con esa entrega, que se puede cambiar producto por producto.
   final String tipoEntregaInicial;
+  // Deja cambiar el precio (con su motivo) solo para este pedido.
+  final bool permitePrecioManual;
 
   const ProductoOpcionesDialog({
     super.key,
@@ -62,6 +66,7 @@ class ProductoOpcionesDialog extends StatefulWidget {
     this.acento,
     this.enCarrito = const [],
     this.tipoEntregaInicial = 'mesa',
+    this.permitePrecioManual = false,
   });
 
   @override
@@ -87,45 +92,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   int _cantidad = 1;
 
   String _tipoEntrega = 'mesa'; // 'mesa', 'llevar', 'delivery'
-  bool _llevaTaper = false;
-  // Tápers elegidos, en el orden en que se marcaron (el primero va en la línea).
-  final Set<String> _tapersIds = {};
-  // Cantidad de tápers elegida a mano; 0 = igual a la cantidad del plato.
-  // Cantidad de cada táper puesta a mano (por id); sin ella, igual a la
-  // cantidad del plato.
-  final Map<String, int> _tapersManual = {};
-  int _cantTaper(String id) => _tapersManual[id] ?? _cantidad;
-
-  List<Taper> get _tapersCatalogo =>
-      CatalogService.instance.tapers.where((t) => t.estado).toList();
-
-  // Los tápers elegidos, en el orden en que se marcaron.
-  List<Taper> get _tapersElegidos {
-    final porId = {for (final t in _tapersCatalogo) t.id: t};
-    return [
-      for (final id in _tapersIds)
-        if (porId[id] != null) porId[id]!,
-    ];
-  }
-
-  // Los que trae el plato en la carta (todos los elegidos por el admin).
-  void _preelegirTapersDelPlato() {
-    final ids = widget.item.taperIds.isNotEmpty
-        ? widget.item.taperIds
-        : [
-            if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty)
-              widget.item.taperId!,
-          ];
-    final validos = {for (final t in _tapersCatalogo) t.id};
-    _tapersIds.addAll(ids.where(validos.contains));
-  }
-
-  void _alternarTaper(Taper t) {
-    setState(() {
-      if (!_tapersIds.remove(t.id)) _tapersIds.add(t.id);
-    });
-  }
-
   late final List<Map<String, dynamic>> _extrasSimples = agregadosSimples(
     widget.item.agregados,
   );
@@ -141,25 +107,32 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     } else if (_presentaciones.isNotEmpty) {
       _presentacion = _presentaciones.first;
     }
-    // Solo se marcan por defecto los tápers que el plato trae en la carta; si
-    // no tiene ninguno, queda a decisión del mozo.
-    _preelegirTapersDelPlato();
-
     // Entrega según el pedido en curso (lo mismo que hace tocar el chip).
     final inicial = widget.tipoEntregaInicial;
     if (inicial == 'llevar' || inicial == 'delivery') {
       _tipoEntrega = inicial;
-      if (_tapersIds.isNotEmpty) _llevaTaper = true;
     }
   }
 
   @override
   void dispose() {
     _comentarioController.dispose();
+    _precioCtrl.dispose();
+    _motivoCtrl.dispose();
+    _adicionalCtrl.dispose();
     super.dispose();
   }
 
-  double get _precioUnitario {
+  // Precio escrito a mano para este pedido y su motivo (null = el de la carta).
+  double? _precioManual;
+  String? _motivoPrecio;
+
+  double get _precioUnitario => _precioManual ?? _precioCalculado;
+
+  bool get _esFamiliar =>
+      (widget.item.categoriaNombre ?? '').toLowerCase().contains('familiar');
+
+  double get _precioCalculado {
     final base =
         _variante?.precioCliente ??
         _presentacion?.precioCliente ??
@@ -178,12 +151,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     return base + extrasSimples + extrasGrupos;
   }
 
-  // Precio de los tápers elegidos: cada uno, tantas veces como tápers se lleven.
-  double get _totalTaper => _llevaTaper
-      ? _tapersElegidos.fold(0.0, (s, t) => s + t.precio * _cantTaper(t.id))
-      : 0.0;
-
-  double get _total => _precioUnitario * _cantidad + _totalTaper;
+  double get _total => _precioUnitario * _cantidad;
 
   // Porciones que aún se pueden agregar de lo elegido (null = sin tope).
   int? get _tope {
@@ -242,14 +210,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       );
       return;
     }
-    if (_llevaTaper && _tapersIds.isEmpty) {
-      showAppToast(
-        context,
-        'Selecciona el táper a utilizar para "${widget.item.nombrePlato}".',
-        type: ToastType.error,
-      );
-      return;
-    }
     final modificadores = [
       for (final a in _extrasSimples)
         if (_agregadosElegidos.contains('${a['nombre']}'))
@@ -273,37 +233,175 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               precioAjuste: precioDeAgregado(it) ?? 0,
             ),
     ];
-    final elegidos = _llevaTaper ? _tapersElegidos : const <Taper>[];
-    final primero = elegidos.firstOrNull;
-    // En la línea del plato va solo el primer táper; los demás son filas
-    // propias, con su propio total.
-    final totalLinea =
-        _precioUnitario * _cantidad +
-        (primero == null ? 0.0 : primero.precio * _cantTaper(primero.id));
+    final totalLinea = _precioUnitario * _cantidad;
     Navigator.of(context).pop<ProductoConfigurado>((
       cantidad: _cantidad,
       presentacion: _presentacion,
       variante: _variante,
       modificadores: modificadores,
-      comentario: _comentarioController.text.trim().isEmpty
-          ? null
-          : _comentarioController.text.trim(),
-      // Precio por unidad con el táper repartido: el total exacto va en
-      // [totalLinea].
+      comentario: _comentarioFinal,
       precioUnitario: totalLinea / _cantidad,
       tipoEntrega: _tipoEntrega,
-      llevaTaper: _llevaTaper,
-      taperId: primero?.id,
-      precioTaper: primero?.precio ?? 0.0,
-      cantidadTaper: (primero != null && _tapersManual.containsKey(primero.id))
-          ? _tapersManual[primero.id]
-          : null,
+      // El táper se agrega después, desde el detalle del pedido.
+      llevaTaper: false,
+      taperId: null,
+      precioTaper: 0.0,
+      cantidadTaper: null,
       totalLinea: totalLinea,
-      tapersAdicionales: [
-        for (final t in elegidos.skip(1))
-          (taper: t, cantidad: _cantTaper(t.id)),
-      ],
+      tapersAdicionales: const [],
+      precioManual: _precioManual != null,
+      precioOriginal: _precioCalculado,
     ));
+  }
+
+  // La nota del producto, más el motivo del precio si se cambió.
+  String? get _comentarioFinal {
+    final nota = _comentarioController.text.trim();
+    final motivo = _motivoPrecio == null ? '' : 'Precio manual: $_motivoPrecio';
+    final partes = [nota, motivo].where((x) => x.isNotEmpty).join('\n');
+    return partes.isEmpty ? null : partes;
+  }
+
+  // ---- Precio a mano y cambio de plato, en el mismo modal (sin otros modales) ----
+
+  bool _editandoPrecio = false;
+  final _precioCtrl = TextEditingController();
+  final _motivoCtrl = TextEditingController();
+  String? _platoCambio;
+  final _adicionalCtrl = TextEditingController();
+
+  double _leer(String s) =>
+      double.tryParse(s.trim().replaceAll(',', '.')) ?? -1;
+
+  // Platos entre los que se puede cambiar un plato familiar: sus variantes y,
+  // si no tiene, los demás platos de la carta.
+  List<String> get _opcionesDeCambio => _variantes.isNotEmpty
+      ? [for (final v in _variantes) v.nombre]
+      : [
+          for (final c in cartasNotifier.value)
+            if (c.id != widget.item.id) c.nombrePlato,
+        ];
+
+  // Vuelve a calcular el precio manual con lo escrito: el precio con su motivo
+  // o, si no, el cambio de plato con su adicional.
+  void _recalcularManual() {
+    final p = _leer(_precioCtrl.text);
+    final motivo = _motivoCtrl.text.trim();
+    final extra = _leer(_adicionalCtrl.text);
+    setState(() {
+      if (_editandoPrecio && p >= 0 && motivo.isNotEmpty) {
+        _precioManual = p;
+        _motivoPrecio = motivo;
+      } else if (_platoCambio != null && extra >= 0) {
+        _precioManual = _precioCalculado + extra;
+        _motivoPrecio =
+            'Cambio por $_platoCambio (+S/ ${extra.toStringAsFixed(2)})';
+      } else {
+        _precioManual = null;
+        _motivoPrecio = null;
+      }
+    });
+  }
+
+  void _alternarEdicionPrecio() {
+    setState(() {
+      _editandoPrecio = !_editandoPrecio;
+      if (_editandoPrecio) {
+        _precioCtrl.text = _precioUnitario.toStringAsFixed(2);
+      } else {
+        _precioCtrl.clear();
+        _motivoCtrl.clear();
+      }
+    });
+    _recalcularManual();
+  }
+
+  // Campo de texto de una sola línea del modal.
+  Widget _campoLinea(
+    TextEditingController ctrl,
+    String hint, {
+    bool numero = false,
+    String? prefijo,
+  }) => SizedBox(
+    height: AppSizes.boton,
+    child: CampoTexto(
+      controller: ctrl,
+      expands: true,
+      maxLines: null,
+      keyboardType: numero
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : null,
+      onChanged: (_) => _recalcularManual(),
+      decoration: InputDecoration(hintText: hint, prefixText: prefijo),
+    ),
+  );
+
+  Widget _precioEnLinea() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_editandoPrecio) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _campoLinea(
+                  _precioCtrl,
+                  'Precio',
+                  numero: true,
+                  prefijo: 'S/ ',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 4,
+                child: _campoLinea(_motivoCtrl, 'Motivo del cambio'),
+              ),
+            ],
+          ),
+        ],
+        if (_esFamiliar) ...[
+          const SizedBox(height: 14),
+          const Text(
+            'Cambio de plato',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: AppSelect<String>(
+                  compacto: true,
+                  buscable: true,
+                  value: _platoCambio,
+                  hint: 'Plato que se cambia',
+                  items: [
+                    for (final n in _opcionesDeCambio)
+                      AppSelectItem(value: n, label: n),
+                  ],
+                  onChanged: (v) {
+                    _platoCambio = v;
+                    _recalcularManual();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: _campoLinea(
+                  _adicionalCtrl,
+                  'Adicional',
+                  numero: true,
+                  prefijo: 'S/ ',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -381,21 +479,69 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    Text(
-                      'S/ ${_precioUnitario.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          'S/ ${_precioUnitario.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (widget.permitePrecioManual) ...[
+                          const SizedBox(width: 8),
+                          Tooltip(
+                            message: 'Cambiar el precio',
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _alternarEdicionPrecio,
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(
+                                  LucideIcons.pencil,
+                                  size: 16,
+                                  color: _precioManual != null
+                                      ? AppColors.naranja
+                                      : Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_precioManual != null)
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _editandoPrecio = false;
+                                  _platoCambio = null;
+                                  _precioCtrl.clear();
+                                  _motivoCtrl.clear();
+                                  _adicionalCtrl.clear();
+                                });
+                                _recalcularManual();
+                              },
+                              child: const Text('Quitar cambio'),
+                            ),
+                        ],
+                      ],
                     ),
-                    if (_variantes.isNotEmpty) ...[
+                    if (_motivoPrecio != null)
+                      Text(
+                        'Precio manual: $_motivoPrecio',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.naranja,
+                        ),
+                      ),
+                    if (widget.permitePrecioManual) _precioEnLinea(),
+                    // Las variantes ya no se muestran: si el plato aún tiene,
+                    // se usa la primera (su precio) sin preguntar.
+                    if (_variantes.isEmpty && _presentaciones.isNotEmpty) ...[
                       const SizedBox(height: 18),
-                      _tituloSeccion('Elige la variante', obligatorio: true),
-                      const SizedBox(height: 6),
-                      for (final v in _variantes) _filaVariante(v),
-                    ] else if (_presentaciones.isNotEmpty) ...[
-                      const SizedBox(height: 18),
-                      _tituloSeccion('Elige la variante', obligatorio: true),
+                      _tituloSeccion(
+                        'Elige la presentación',
+                        obligatorio: true,
+                      ),
                       const SizedBox(height: 6),
                       for (final p in _presentaciones) _filaRadio(p),
                     ],
@@ -435,8 +581,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     ],
                     const SizedBox(height: 18),
                     _selectorTipoEntrega(),
-                    const SizedBox(height: 16),
-                    _selectorTaper(),
                     const SizedBox(height: 18),
                     _tituloSeccion('Notas (opcional)'),
                     const SizedBox(height: 6),
@@ -539,12 +683,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() {
-            _tipoEntrega = tipo;
-            if (tipo == 'llevar' || tipo == 'delivery') {
-              _llevaTaper = true;
-            }
-          });
+          setState(() => _tipoEntrega = tipo);
         },
         borderRadius: BorderRadius.circular(10),
         child: Container(
@@ -591,83 +730,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     );
   }
 
-  Widget _selectorTaper() {
-    final tapers = CatalogService.instance.tapers
-        .where((t) => t.estado)
-        .toList();
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _llevaTaper ? const Color(0xFFF0FDF4) : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _llevaTaper
-              ? AppColors.primaryGreen.withValues(alpha: 0.4)
-              : Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.package,
-                size: 18,
-                color: _llevaTaper
-                    ? AppColors.primaryGreenDark
-                    : Colors.grey.shade600,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '¿Llevar en táper descartable?',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _llevaTaper
-                        ? AppColors.primaryGreenDark
-                        : Colors.black87,
-                  ),
-                ),
-              ),
-              AppSwitch(
-                value: _llevaTaper,
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.primaryGreen,
-                onChanged: (val) {
-                  setState(() {
-                    _llevaTaper = val;
-                    if (_llevaTaper && _tapersIds.isEmpty) {
-                      _preelegirTapersDelPlato();
-                    }
-                  });
-                },
-              ),
-            ],
-          ),
-          if (_llevaTaper) ...[
-            const SizedBox(height: 8),
-            if (tapers.isEmpty)
-              Text(
-                'No hay táperes registrados en inventario.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              )
-            else
-              SelectorTaper(
-                tapers: tapers,
-                seleccionados: _tapersIds,
-                cantidadNecesaria: _cantidad,
-                cantidades: {for (final id in _tapersIds) id: _cantTaper(id)},
-                onAlternar: _alternarTaper,
-                onCantidad: (t, c) => setState(() => _tapersManual[t.id] = c),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _tituloSeccion(
     String texto, {
     String? subtitulo,
@@ -707,37 +769,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             ),
           ),
       ],
-    );
-  }
-
-  Widget _filaVariante(CartaVariante v) {
-    final activo = _variante?.id == v.id;
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => setState(() => _variante = v),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Icon(
-                activo ? Icons.radio_button_checked : Icons.radio_button_off,
-                size: 20,
-                color: activo ? AppColors.primaryGreen : Colors.grey.shade400,
-              ),
-            ),
-            Expanded(child: Text(v.nombre)),
-            Text(
-              'S/ ${v.precioCliente.toStringAsFixed(2)}',
-              style: TextStyle(
-                fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                color: activo ? AppColors.primaryGreenDark : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

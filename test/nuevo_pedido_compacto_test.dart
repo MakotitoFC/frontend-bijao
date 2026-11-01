@@ -74,7 +74,7 @@ void main() {
     await tester.tap(find.byTooltip('Ver detalle completo'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Detalle del pedido'), findsOneWidget);
-    expect(find.text('Nota del pedido (opcional)'), findsOneWidget);
+    expect(find.text('Nota'), findsOneWidget);
     await tester.tap(find.text('Seguir agregando'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Detalle del pedido'), findsNothing);
@@ -89,8 +89,8 @@ void main() {
     await tester.pumpWidget(app(const Size(1400, 900)));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byTooltip('Ver detalle completo'), findsNothing);
-    expect(find.text('Nota del pedido (opcional)'), findsOneWidget);
-    expect(find.text('Plato rápido'), findsOneWidget); // solo el del detalle
+    expect(find.text('Nota'), findsOneWidget);
+    expect(find.byTooltip('Plato rápido'), findsOneWidget); // junto al buscador
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

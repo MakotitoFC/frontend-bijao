@@ -107,7 +107,12 @@ void main() {
   });
 
   test('la vista previa del ticket de venta, la boleta y la factura', () {
-    const sede = (direccion: 'Av. Principal 123', telefono: '', ruc: '2012');
+    const sede = (
+      nombre: 'RESTAURANTE BIJAO',
+      direccion: 'Av. Principal 123',
+      telefono: '',
+      ruc: '2012',
+    );
     String vista(String tipo, {String? doc, String? nombre}) => _texto(
       ticketComprobante(
         tipo: tipo,
@@ -148,7 +153,12 @@ void main() {
   });
 
   test('la boleta lista cada medio de pago con su nombre y su monto', () {
-    const sede = (direccion: 'Av. Principal 123', telefono: '', ruc: '2012');
+    const sede = (
+      nombre: 'RESTAURANTE BIJAO',
+      direccion: 'Av. Principal 123',
+      telefono: '',
+      ruc: '2012',
+    );
     final texto = _texto(
       ticketBoleta(
         pedido: _pedido(),
@@ -169,7 +179,12 @@ void main() {
   });
 
   test('la boleta muestra el recargo y el total a pagar', () {
-    const sede = (direccion: 'Av. Principal 123', telefono: '', ruc: '2012');
+    const sede = (
+      nombre: 'RESTAURANTE BIJAO',
+      direccion: 'Av. Principal 123',
+      telefono: '',
+      ruc: '2012',
+    );
     final texto = _texto(
       ticketBoleta(
         pedido: _pedido(),
@@ -203,7 +218,12 @@ void main() {
   });
 
   test('la boleta muestra el efectivo recibido y el vuelto', () {
-    const sede = (direccion: 'Av. Principal 123', telefono: '', ruc: '2012');
+    const sede = (
+      nombre: 'RESTAURANTE BIJAO',
+      direccion: 'Av. Principal 123',
+      telefono: '',
+      ruc: '2012',
+    );
     final texto = _texto(
       ticketBoleta(
         pedido: _pedido(),

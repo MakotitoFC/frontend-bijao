@@ -71,17 +71,15 @@ void main() {
     tester,
   ) async {
     await pintar(tester, _pedido());
-    expect(find.text('Nota del pedido'), findsOneWidget);
-    expect(find.textContaining('Sin nota'), findsOneWidget);
-
-    await tester.tap(find.text('Nota del pedido'));
-    for (var i = 0; i < 4; i++) {
-      await tester.pump(const Duration(milliseconds: 250));
-    }
-    // El diálogo trae el campo y el botón de guardar.
-    expect(find.text('Guardar nota'), findsOneWidget);
-    await tester.enterText(find.byType(TextField).last, 'cliente alérgico');
-    await tester.tap(find.text('Guardar nota'));
+    // Botón "Nota": el campo aparece ahí mismo, sin modal.
+    expect(find.text('Nota'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.text('Nota'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'cliente alérgico');
+    await tester.pump();
+    await tester.tap(find.text('Guardar'));
     for (var i = 0; i < 4; i++) {
       await tester.pump(const Duration(milliseconds: 250));
     }
@@ -106,7 +104,7 @@ void main() {
     'un pedido ya cobrado no se puede editar ni muestra el aviso vacío',
     (tester) async {
       await pintar(tester, _pedido(estado: 'pagado'));
-      expect(find.text('Nota del pedido'), findsNothing);
+      expect(find.text('Nota'), findsNothing);
       pedidos.clear();
       detallesPorPedido.clear();
       await tester.pumpWidget(const SizedBox());

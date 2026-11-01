@@ -159,6 +159,8 @@ List<Map<String, dynamic>> itemsDeLinea(
       if (l.presentacion != null && _esUuid(l.presentacion!.id))
         'carta_presentacion_id': l.presentacion!.id,
       if (precioPersonal) 'precio_personal': l.precioUnitario,
+      // Precio escrito a mano para este pedido (el motivo va en el comentario).
+      if (l.precioManual && !precioPersonal) 'precio_manual': l.precioUnitario,
       'cantidad': l.cantidad,
       'tipo_entrega': entrega,
       'comentario': ?comentario,
@@ -238,6 +240,8 @@ class PedidoMozoDetalle {
   // Filas del pedido (más cargo de delivery y descuentos del pedido como líneas
   // de ajuste, para que los totales de la app coincidan con los del backend).
   final List<PedidoLine> lineas;
+  // Filas anuladas o devueltas: no cuentan para ningún total.
+  final List<PedidoLine> anuladas;
   // Filas que el backend marca como servidas.
   final Set<String> servidas;
 
@@ -263,6 +267,7 @@ class PedidoMozoDetalle {
     required this.total,
     required this.descuentos,
     required this.lineas,
+    this.anuladas = const [],
     required this.servidas,
   });
 }
@@ -303,6 +308,7 @@ void _lineasDeItem(
   Map<String, dynamic> it,
   List<PedidoLine> destino,
   Set<String> servidas,
+  List<PedidoLine> anuladas,
 ) {
   final estado = it['estado']?.toString();
   final id = it['id']?.toString() ?? '';
@@ -314,7 +320,7 @@ void _lineasDeItem(
   final total = jsonDouble(it['total_fila']) ?? unitario * cantidad;
   final tipo = it['tipo_item']?.toString();
 
-  if (estado != 'anulado' && estado != 'devuelto') {
+  {
     final presentacionId = _texto(it['carta_presentacion_id']);
     final varianteId = _texto(it['carta_variante_id']);
     final promocionId = _texto(it['promocion_id']);
@@ -336,7 +342,8 @@ void _lineasDeItem(
         ),
     ];
 
-    destino.add(
+    final anulada = estado == 'anulado' || estado == 'devuelto';
+    (anulada ? anuladas : destino).add(
       PedidoLine(
         id: id,
         cartaId: esTaper
@@ -370,7 +377,7 @@ void _lineasDeItem(
   }
 
   for (final h in (it['hijos'] as List? ?? const [])) {
-    _lineasDeItem(h as Map<String, dynamic>, destino, servidas);
+    _lineasDeItem(h as Map<String, dynamic>, destino, servidas, anuladas);
   }
 }
 
@@ -388,9 +395,10 @@ DeliveryServidor? _delivery(Object? raw) {
 PedidoMozoDetalle parsearDetalleMozo(Map<String, dynamic> json) {
   final id = json['id']?.toString() ?? '';
   final lineas = <PedidoLine>[];
+  final anuladas = <PedidoLine>[];
   final servidas = <String>{};
   for (final raw in (json['items'] as List? ?? const [])) {
-    _lineasDeItem(raw as Map<String, dynamic>, lineas, servidas);
+    _lineasDeItem(raw as Map<String, dynamic>, lineas, servidas, anuladas);
   }
 
   final descuentos = <DescuentoServidor>[
@@ -475,6 +483,7 @@ PedidoMozoDetalle parsearDetalleMozo(Map<String, dynamic> json) {
     total: jsonDouble(json['total']) ?? 0,
     descuentos: descuentos,
     lineas: lineas,
+    anuladas: anuladas,
     servidas: servidas,
   );
 }

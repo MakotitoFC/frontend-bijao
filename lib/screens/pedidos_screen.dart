@@ -22,6 +22,7 @@ import '../services/auth_service.dart';
 import '../widgets/traspaso_dialogs.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/nota_pedido.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_select.dart';
@@ -32,6 +33,7 @@ import '../services/caja_service.dart';
 import '../widgets/dialogo_app.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/indicador_abajo.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/elegir_tipo_pedido_dialog.dart';
@@ -52,10 +54,118 @@ class PedidosScreen extends StatefulWidget {
 }
 
 class _PedidosScreenState extends State<PedidosScreen> {
-  static const _anchoDetalle = 390.0;
+  static const _anchoDetalle = 420.0;
   static const _anchoMinDosSecciones = 900.0;
 
   String? _tipoFiltro; // null = Todos; 'mesa' | 'delivery' | 'llevar'
+
+  // Vistas de la cola: Clientes y Empleados, como pestañas en cadena.
+  static const _vistas = <_VistaCola>[
+    _VistaCola(id: 'clientes', nombre: 'Clientes', filtro: 'clientes'),
+    _VistaCola(id: 'empleados', nombre: 'Empleados', filtro: 'empleados'),
+  ];
+  String _vistaId = 'clientes';
+
+  _VistaCola get _vistaActual =>
+      _vistas.firstWhere((v) => v.id == _vistaId, orElse: () => _vistas.first);
+
+  bool _enVista(Pedido p) => _enVistaDe(_vistaActual, p);
+
+  bool _enVistaDe(_VistaCola v, Pedido p) => switch (v.filtro) {
+    'clientes' => !esPedidoDeEmpleado(p),
+    'empleados' => esPedidoDeEmpleado(p),
+    _ => true,
+  };
+
+  // Pedidos abiertos que tiene cada vista.
+  int _cantidadDeVista(_VistaCola v) =>
+      pedidos.where((p) => _esActivo(p) && _enVistaDe(v, p)).length;
+
+  // Pestañas de la cola, tipo carpeta: la vista abierta va en verde.
+  Widget _pestanasVistas() {
+    // Cada pestaña es una flecha ">" con la punta como pieza de rompecabezas:
+    // la siguiente encaja en la muesca de la anterior.
+    Widget pestana(_VistaCola v, int i) {
+      final activa = v.id == _vistaId;
+      const punta = 14.0;
+      return Padding(
+        padding: EdgeInsets.zero,
+        child: Transform.translate(
+          offset: Offset(i == 0 ? 0 : -punta, 0),
+          child: InkWell(
+            customBorder: const _FormaFlecha(punta),
+            onTap: () => setState(() => _vistaId = v.id),
+            child: Container(
+              height: 38,
+              padding: EdgeInsets.fromLTRB(
+                i == 0 ? 16 : punta + 10,
+                0,
+                punta + 12,
+                0,
+              ),
+              decoration: ShapeDecoration(
+                color: activa ? AppColors.primaryGreen : Colors.white,
+                shape: _FormaFlecha(
+                  punta,
+                  lado: BorderSide(
+                    color: activa
+                        ? AppColors.primaryGreen
+                        : Colors.grey.shade400,
+                  ),
+                  plana: i == 0,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    v.nombre,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: activa ? Colors.white : Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 18),
+                    height: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: activa ? Colors.white : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${_cantidadDeVista(v)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: activa
+                            ? AppColors.primaryGreen
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < _vistas.length; i++) pestana(_vistas[i], i),
+        ],
+      ),
+    );
+  }
+
   final _busqueda = TextEditingController();
   String? _seleccionId; // pedido mostrado en el detalle
   bool _armandoPedido = false; // true = la vista muestra "Nuevo pedido"
@@ -67,9 +177,14 @@ class _PedidosScreenState extends State<PedidosScreen> {
     super.initState();
     // Se salió de aquí con un pedido a medias: se vuelve a él.
     final borrador = borradorDe(widget.usuario.id);
-    if (borrador != null) {
+    // Un borrador con un tipo que ya no existe (por ejemplo, uno de una versión
+    // anterior) se descarta en vez de abrirse.
+    if (borrador != null &&
+        const ['mesa', 'llevar', 'delivery'].contains(borrador.tipo)) {
       _armandoPedido = true;
       _tipoNuevoPedido = borrador.tipo;
+    } else if (borrador != null) {
+      descartarBorradorYEsperar();
     }
     mesasPorLiberarNotifier.addListener(_alCambiarEnVivo);
     traspasosRevision.addListener(_alCambiarEnVivo);
@@ -295,10 +410,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
     // los pedidos abiertos, para que lo cobrado no estorbe.
     if (_tipoFiltro == 'pagados') {
       return pedidos
-          .where((p) => p.estado == 'pagado' && _conMedio(p) && _coincide(p))
+          .where(
+            (p) =>
+                p.estado == 'pagado' &&
+                _enVista(p) &&
+                _conMedio(p) &&
+                _coincide(p),
+          )
           .toList();
     }
-    final base = pedidos.where((p) => _esActivo(p) && _coincide(p));
+    final base = pedidos.where(
+      (p) => _esActivo(p) && _enVista(p) && _coincide(p),
+    );
     if (_tipoFiltro == null) return base.toList();
     return base.where((p) => p.tipoPedido == _tipoFiltro).toList();
   }
@@ -317,9 +440,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   int _contarTipo(String? tipo) {
     if (tipo == 'pagados') {
-      return pedidos.where((p) => p.estado == 'pagado').length;
+      return pedidos.where((p) => p.estado == 'pagado' && _enVista(p)).length;
     }
-    final base = pedidos.where(_esActivo);
+    final base = pedidos.where((p) => _esActivo(p) && _enVista(p));
     if (tipo == null) return base.length;
     return base.where((p) => p.tipoPedido == tipo).length;
   }
@@ -371,15 +494,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: _armandoPedido
             ? Padding(
-                // En pantallas angostas el armado ocupa todo el ancho, con su
-                // barra de título fija.
-                padding: EdgeInsets.all(
-                  MediaQuery.sizeOf(context).width < 900 ? 0 : _margen(context),
-                ),
+                // El armado del pedido ocupa toda la vista, pegado a los
+                // bordes, con su barra verde arriba.
+                padding: EdgeInsets.zero,
                 child: NuevoPedidoDialog(
                   usuario: widget.usuario,
                   tipo: _tipoNuevoPedido!,
@@ -404,7 +525,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: _colaPedidos()),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
+          VerticalDivider(width: 1, color: Colors.grey.shade200),
+          const SizedBox(width: 12),
           SizedBox(
             width: _anchoDetalle,
             child: seleccionado == null
@@ -433,11 +556,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   Widget _detalleVacio() {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
+      color: Colors.white,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -667,18 +786,14 @@ class _PedidosScreenState extends State<PedidosScreen> {
   Widget _colaPedidos() {
     final cola = _cola;
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _bannerCajaCerrada(),
           _bannerTraspasos(),
-          _cabeceraCola(),
+          _pestanasVistas(),
           const SizedBox(height: 12),
           _filtroEstado(),
           const SizedBox(height: 10),
@@ -704,15 +819,24 @@ class _PedidosScreenState extends State<PedidosScreen> {
                               .floor()
                               .clamp(1, 4);
                       final ancho =
-                          (c.maxWidth - espacio * (columnas - 1)) / columnas;
-                      return SingleChildScrollView(
-                        child: Wrap(
-                          spacing: espacio,
-                          runSpacing: espacio,
-                          children: [
-                            for (final p in cola)
-                              SizedBox(width: ancho, child: _tarjetaPedido(p)),
-                          ],
+                          (c.maxWidth - 14 - espacio * (columnas - 1)) /
+                          columnas;
+                      return IndicadorAbajo(
+                        builder: (ctl) => SingleChildScrollView(
+                          controller: ctl,
+                          padding: const EdgeInsets.only(right: 14, bottom: 8),
+                          child: Wrap(
+                            spacing: espacio,
+                            runSpacing: espacio,
+                            crossAxisAlignment: WrapCrossAlignment.start,
+                            children: [
+                              for (final p in cola)
+                                SizedBox(
+                                  width: ancho,
+                                  child: _tarjetaPedido(p),
+                                ),
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -720,27 +844,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  // Título + cantidad y "Nuevo Pedido".
-  Widget _cabeceraCola() {
-    return Row(
-      children: [
-        const Flexible(
-          child: Text(
-            'Cola de pedidos',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '${_cola.length}',
-          style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-        ),
-      ],
     );
   }
 
@@ -854,20 +957,30 @@ class _PedidosScreenState extends State<PedidosScreen> {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => setState(() => _seleccionId = p.id),
-      child: Container(
-        height: 280,
+      // La tarjeta elegida sobresale como una tecla: sin trazo ni fondo de
+      // color, solo se levanta con una sombra gris leve.
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        transform: Matrix4.translationValues(0, seleccionado ? -2 : 0, 0),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: seleccionado
-              ? AppColors.primaryGreen.withValues(alpha: 0.05)
-              : Colors.white,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: seleccionado ? AppColors.primaryGreen : Colors.grey.shade200,
-            width: seleccionado ? 1.6 : 1,
+            color: seleccionado ? Colors.transparent : Colors.grey.shade200,
           ),
+          boxShadow: seleccionado
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.16),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -914,10 +1027,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
               children: [
                 // El tipo de pedido (Mesa, Para llevar, Delivery) con su color.
                 Flexible(child: _tipoDePedido(p)),
-                if (esPedidoDeEmpleado(p)) ...[
-                  const SizedBox(width: 6),
-                  const TagEmpleado(),
-                ],
               ],
             ),
             const SizedBox(height: 2),
@@ -945,10 +1054,21 @@ class _PedidosScreenState extends State<PedidosScreen> {
                 ),
               ],
             ),
-            if (p.notas != null) ...[
+            // La etiqueta del empleado va debajo del mozo.
+            if (esPedidoDeEmpleado(p)) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TagEmpleado(nombre: nombreClienteDe(p)),
+              ),
+            ],
+            // En un pedido de empleado el nombre ya va en la etiqueta: aquí solo
+            // queda la nota, sin la línea "Cliente: ...".
+            if ((esPedidoDeEmpleado(p) ? notaGeneralDe(p.notas) : p.notas) !=
+                null) ...[
               const SizedBox(height: 4),
               Text(
-                p.notas!,
+                (esPedidoDeEmpleado(p) ? notaGeneralDe(p.notas) : p.notas)!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1018,7 +1138,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   ),
                 ),
               ),
-            const Spacer(),
+            const SizedBox(height: 10),
             Divider(height: 1, color: Colors.grey.shade200),
             const SizedBox(height: 8),
             Row(
@@ -1092,4 +1212,66 @@ class _TagPagado extends StatelessWidget {
       ),
     );
   }
+}
+
+// Vista de la cola de pedidos (una pestaña): qué pedidos muestra.
+class _VistaCola {
+  final String id;
+  final String nombre;
+  // 'clientes' | 'empleados' | 'todos'
+  final String filtro;
+
+  const _VistaCola({
+    required this.id,
+    required this.nombre,
+    required this.filtro,
+  });
+}
+
+// Pestaña en forma de flecha: punta a la derecha y, salvo la primera, una
+// muesca a la izquierda donde encaja la punta de la anterior.
+class _FormaFlecha extends ShapeBorder {
+  final double punta;
+  final BorderSide lado;
+  final bool plana;
+
+  const _FormaFlecha(
+    this.punta, {
+    this.lado = BorderSide.none,
+    this.plana = false,
+  });
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(lado.width);
+
+  Path _camino(Rect r) {
+    final m = r.center.dy;
+    return Path()
+      ..moveTo(r.left, r.top)
+      ..lineTo(r.right - punta, r.top)
+      ..lineTo(r.right, m)
+      ..lineTo(r.right - punta, r.bottom)
+      ..lineTo(r.left, r.bottom)
+      ..lineTo(plana ? r.left : r.left + punta, m)
+      ..close();
+  }
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      _camino(rect.deflate(lado.width));
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) => _camino(rect);
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (lado.style == BorderStyle.none) return;
+    canvas.drawPath(
+      _camino(rect.deflate(lado.width / 2)),
+      lado.toPaint()..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  ShapeBorder scale(double t) => this;
 }

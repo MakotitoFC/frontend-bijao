@@ -90,9 +90,9 @@ void main() {
   ) async {
     await abrir(tester);
     // La tarjeta avisa su recargo en la propia opción.
-    expect(find.text('+4.0% recargo'), findsOneWidget);
+    expect(find.text('Tarjeta (+4.0%)'), findsOneWidget);
 
-    await tester.tap(find.text('Tarjeta'));
+    await tester.tap(find.text('Tarjeta (+4.0%)'));
     await tester.pump();
     expect(find.text('Recargo tarjeta (4.0%)'), findsOneWidget);
     expect(find.text('+S/ 4.00'), findsOneWidget);
@@ -106,7 +106,7 @@ void main() {
     tester,
   ) async {
     await abrir(tester);
-    await tester.tap(find.text('Tarjeta'));
+    await tester.tap(find.text('Tarjeta (+4.0%)'));
     await tester.pump();
     await tester.tap(find.text('Pagar · S/ 104.00'));
     await tester.pump();

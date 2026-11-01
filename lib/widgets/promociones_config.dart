@@ -532,9 +532,20 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
                   borderRadius: BorderRadius.circular(AppRadii.sheet),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(12),
-                  child: _tarjeta(actual),
+                child: Stack(
+                  children: [
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 52, 12, 12),
+                      child: _tarjeta(actual),
+                    ),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: BotonCerrarCircular(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -64,12 +64,25 @@ class SelectorRangoFechas extends StatefulWidget {
   final DateTimeRange? valor;
   final ValueChanged<DateTimeRange?> onChanged;
   final bool permiteTodas;
+  // Texto del botón cuando no hay fechas.
+  final String textoVacio;
+  // Texto de la opción que quita las fechas.
+  final String textoTodas;
+  // Con false no salen los accesos rápidos (Hoy, Ayer…): solo el calendario.
+  final bool conAtajos;
+  // Con true se pueden elegir fechas futuras (por ejemplo, la vigencia de una
+  // promoción).
+  final bool permiteFuturo;
 
   const SelectorRangoFechas({
     super.key,
     required this.valor,
     required this.onChanged,
     this.permiteTodas = false,
+    this.textoVacio = 'Todas las fechas',
+    this.textoTodas = 'Todas',
+    this.conAtajos = true,
+    this.permiteFuturo = false,
   });
 
   @override
@@ -141,6 +154,9 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
                     ancho: ancho,
                     inicial: widget.valor,
                     permiteTodas: widget.permiteTodas,
+                    textoTodas: widget.textoTodas,
+                    conAtajos: widget.conAtajos,
+                    permiteFuturo: widget.permiteFuturo,
                     onAplicar: (r) {
                       widget.onChanged(r);
                       _cerrar();
@@ -165,7 +181,7 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
         onPressed: _abierto ? _cerrar : _abrir,
         icon: const Icon(LucideIcons.calendarDays, size: 16),
         label: Text(
-          etiquetaRangoFechas(widget.valor),
+          etiquetaRangoFechas(widget.valor, vacio: widget.textoVacio),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
         style: OutlinedButton.styleFrom(
@@ -185,12 +201,18 @@ class _TarjetaRango extends StatefulWidget {
   final double ancho;
   final DateTimeRange? inicial;
   final bool permiteTodas;
+  final String textoTodas;
+  final bool conAtajos;
+  final bool permiteFuturo;
   final ValueChanged<DateTimeRange?> onAplicar;
 
   const _TarjetaRango({
     required this.ancho,
     required this.inicial,
     required this.permiteTodas,
+    required this.textoTodas,
+    required this.conAtajos,
+    required this.permiteFuturo,
     required this.onAplicar,
   });
 
@@ -198,8 +220,13 @@ class _TarjetaRango extends StatefulWidget {
   State<_TarjetaRango> createState() => _TarjetaRangoState();
 }
 
+enum _VistaCalendario { dias, meses, anios }
+
 class _TarjetaRangoState extends State<_TarjetaRango> {
   late DateTime _mes;
+  _VistaCalendario _vista = _VistaCalendario.dias;
+  // Primer año de la página de años que se muestra (12 por página).
+  int _paginaAnios = 0;
   DateTime? _inicio;
   DateTime? _fin;
 
@@ -251,7 +278,7 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
   );
 
   Widget _celdaDia(DateTime d) {
-    final deshabilitado = d.isAfter(_hoy);
+    final deshabilitado = !widget.permiteFuturo && d.isAfter(_hoy);
     final esInicio = _inicio != null && d == _inicio;
     final esFin = _fin != null && d == _fin;
     final dentro =
@@ -302,7 +329,14 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
     );
   }
 
-  Widget _calendario() {
+  // Día, mes y año: el título abre la elección de mes y de año.
+  Widget _calendario() => switch (_vista) {
+    _VistaCalendario.dias => _vistaDias(),
+    _VistaCalendario.meses => _vistaMeses(),
+    _VistaCalendario.anios => _vistaAnios(),
+  };
+
+  Widget _vistaDias() {
     final primero = DateTime(_mes.year, _mes.month);
     final huecos = primero.weekday - 1; // la semana empieza en lunes
     final dias = DateUtils.getDaysInMonth(_mes.year, _mes.month);
@@ -314,7 +348,10 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
     while (celdas.length % 7 != 0) {
       celdas.add(const SizedBox(height: 36));
     }
-    final esMesActual = _mes.year == _hoy.year && _mes.month == _hoy.month;
+    final esMesActual =
+        !widget.permiteFuturo &&
+        _mes.year == _hoy.year &&
+        _mes.month == _hoy.month;
     return Column(
       children: [
         Row(
@@ -326,12 +363,24 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
               icon: const Icon(Icons.chevron_left, size: 22),
             ),
             Expanded(
-              child: Text(
-                '${_mesesLargos[_mes.month - 1]} ${_mes.year}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setState(() => _vista = _VistaCalendario.meses),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${_mesesLargos[_mes.month - 1]} ${_mes.year}',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, size: 20),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -374,6 +423,179 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
     );
   }
 
+  // Cuadrícula de 4 filas × 3 columnas con una opción elegible por celda.
+  Widget _cuadricula(List<Widget> celdas) => Column(
+    children: [
+      for (var i = 0; i < celdas.length; i += 3)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: [
+              for (var j = i; j < i + 3; j++)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: celdas[j],
+                  ),
+                ),
+            ],
+          ),
+        ),
+    ],
+  );
+
+  Widget _opcionCuadricula(
+    String texto, {
+    required bool elegida,
+    required bool deshabilitada,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: deshabilitada ? null : onTap,
+      child: Container(
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: elegida ? AppColors.primaryGreen : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: elegida ? AppColors.primaryGreen : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          texto,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: elegida ? FontWeight.w800 : FontWeight.w600,
+            color: elegida
+                ? Colors.white
+                : (deshabilitada ? Colors.grey.shade400 : Colors.black87),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Elegir el mes (y, con el título, el año).
+  Widget _vistaMeses() {
+    final anio = _mes.year;
+    final puedeSiguiente = widget.permiteFuturo || anio < _hoy.year;
+    return Column(
+      children: [
+        Row(
+          children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () =>
+                  setState(() => _mes = DateTime(anio - 1, _mes.month)),
+              icon: const Icon(Icons.chevron_left, size: 22),
+            ),
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setState(() {
+                  _paginaAnios = anio - 5;
+                  _vista = _VistaCalendario.anios;
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '$anio',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: puedeSiguiente
+                  ? () => setState(() => _mes = DateTime(anio + 1, _mes.month))
+                  : null,
+              icon: const Icon(Icons.chevron_right, size: 22),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        _cuadricula([
+          for (var m = 1; m <= 12; m++)
+            _opcionCuadricula(
+              _mesesCortos[m - 1],
+              elegida: m == _mes.month,
+              deshabilitada:
+                  !widget.permiteFuturo &&
+                  DateTime(anio, m).isAfter(DateTime(_hoy.year, _hoy.month)),
+              onTap: () => setState(() {
+                _mes = DateTime(anio, m);
+                _vista = _VistaCalendario.dias;
+              }),
+            ),
+        ]),
+        TextButton(
+          onPressed: () => setState(() => _vista = _VistaCalendario.dias),
+          child: const Text('Volver a los días'),
+        ),
+      ],
+    );
+  }
+
+  // Elegir el año (12 por página).
+  Widget _vistaAnios() {
+    final fin = _paginaAnios + 11;
+    return Column(
+      children: [
+        Row(
+          children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _paginaAnios -= 12),
+              icon: const Icon(Icons.chevron_left, size: 22),
+            ),
+            Expanded(
+              child: Text(
+                '$_paginaAnios – $fin',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: (widget.permiteFuturo || fin < _hoy.year)
+                  ? () => setState(() => _paginaAnios += 12)
+                  : null,
+              icon: const Icon(Icons.chevron_right, size: 22),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        _cuadricula([
+          for (var y = _paginaAnios; y <= fin; y++)
+            _opcionCuadricula(
+              '$y',
+              elegida: y == _mes.year,
+              deshabilitada: !widget.permiteFuturo && y > _hoy.year,
+              onTap: () => setState(() {
+                _mes = DateTime(y, _mes.month);
+                _vista = _VistaCalendario.meses;
+              }),
+            ),
+        ]),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hoy = _hoy;
@@ -403,28 +625,30 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
               spacing: 6,
               runSpacing: 6,
               children: [
-                _rapido('Hoy', () => _aplicarRapido(hoy, hoy)),
-                _rapido('Ayer', () => _aplicarRapido(ayer, ayer)),
-                _rapido(
-                  'Últimos 7 días',
-                  () => _aplicarRapido(
-                    hoy.subtract(const Duration(days: 6)),
-                    hoy,
+                if (widget.conAtajos) ...[
+                  _rapido('Hoy', () => _aplicarRapido(hoy, hoy)),
+                  _rapido('Ayer', () => _aplicarRapido(ayer, ayer)),
+                  _rapido(
+                    'Últimos 7 días',
+                    () => _aplicarRapido(
+                      hoy.subtract(const Duration(days: 6)),
+                      hoy,
+                    ),
                   ),
-                ),
-                _rapido(
-                  'Este mes',
-                  () => _aplicarRapido(DateTime(hoy.year, hoy.month), hoy),
-                ),
-                _rapido(
-                  'Mes pasado',
-                  () => _aplicarRapido(
-                    DateTime(hoy.year, hoy.month - 1),
-                    DateTime(hoy.year, hoy.month, 0),
+                  _rapido(
+                    'Este mes',
+                    () => _aplicarRapido(DateTime(hoy.year, hoy.month), hoy),
                   ),
-                ),
+                  _rapido(
+                    'Mes pasado',
+                    () => _aplicarRapido(
+                      DateTime(hoy.year, hoy.month - 1),
+                      DateTime(hoy.year, hoy.month, 0),
+                    ),
+                  ),
+                ],
                 if (widget.permiteTodas)
-                  _rapido('Todas', () => widget.onAplicar(null)),
+                  _rapido(widget.textoTodas, () => widget.onAplicar(null)),
               ],
             ),
             const SizedBox(height: 10),

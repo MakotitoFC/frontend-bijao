@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'dialogo_app.dart';
-import 'app_switch.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
 
@@ -48,6 +47,8 @@ import 'propina_dialog.dart';
 import 'taper_catalogo_dialog.dart';
 import 'tupper_dialog.dart';
 import 'campo_texto.dart';
+import 'indicador_abajo.dart';
+import 'pago_dialogs.dart' show ModalPago;
 
 // Arma un pedido nuevo (tipo ya elegido en ElegirTipoPedidoDialog): mesa
 // (si aplica), galería de productos y resumen (`pedidos` + `pedidos_detalle`).
@@ -221,6 +222,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   @override
   void dispose() {
+    _scrollGrilla.dispose();
+    _scrollResumen.dispose();
     cartasNotifier.removeListener(_alCambiarCarta);
     _autoguardado?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -248,7 +251,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   }
 
   // Pedido de personal (solo administrador y caja): el precio de cada plato se
-  // escribe a mano y es distinto cada vez. Mientras no se escribe, vale 0.
+  // escribe a mano en el cuadro del botón Empleado y es distinto cada vez.
   bool _esPersonal = false;
   final Map<String, double> _preciosPersonal = {};
 
@@ -256,9 +259,15 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       widget.usuario.rol == AppRole.administrador ||
       widget.usuario.rol == AppRole.cajero;
 
-  // Las líneas con el precio que de verdad se cobra.
+  // Las líneas con el precio que de verdad se cobra: en un pedido de empleado,
+  // el que se escribió para cada producto (sin cambio, el de la carta).
   List<PedidoLine> get _lineas => _esPersonal
-      ? [for (final l in _carrito) l.conPrecio(_preciosPersonal[l.id] ?? 0)]
+      ? [
+          for (final l in _carrito)
+            _preciosPersonal.containsKey(l.id)
+                ? l.conPrecio(_preciosPersonal[l.id]!)
+                : l,
+        ]
       : _carrito;
 
   double get _subtotal => _lineas.fold(0.0, (s, l) => s + l.precioTotalLinea);
@@ -284,13 +293,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         acento: acento,
         enCarrito: _carrito,
         tipoEntregaInicial: widget.tipo,
+        permitePrecioManual: true,
       ),
     );
     if (resultado == null || !mounted) return;
     setState(() {
+      final idLinea = UuidHelper.v7();
+      if (resultado.precioManual) {
+        _precioCarta[idLinea] = resultado.precioOriginal;
+      }
       _carrito.add(
         PedidoLine(
-          id: UuidHelper.v7(),
+          id: idLinea,
           cartaId: item.id,
           nombrePlato: item.nombrePlato,
           cantidad: resultado.cantidad,
@@ -310,6 +324,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           esLibre: false,
           precioBase:
               resultado.variante?.precioCliente ?? item.precioCliente ?? 0.0,
+          precioManual: resultado.precioManual,
         ),
       );
       // Los demás tápers elegidos van como filas propias.
@@ -417,6 +432,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           precioUnitario: linea.precioUnitario,
           descuentoAplicado: 0,
           precioTotalLinea: linea.precioUnitario * nueva,
+          precioManual: linea.precioManual,
         );
       }
     });
@@ -470,32 +486,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         ),
       );
       return;
-    }
-
-    if (_esPersonal) {
-      final sinPrecio = [
-        for (final l in _carrito)
-          if (!_preciosPersonal.containsKey(l.id)) l.nombrePlato,
-      ];
-      if (sinPrecio.isNotEmpty) {
-        await showBlurDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertaApp(
-            title: const Text('FALTAN PRECIOS DEL PERSONAL'),
-            content: Text(
-              'Escribe el precio de cada plato antes de confirmar:\n\n'
-              '${sinPrecio.map((n) => '• $n').join('\n')}',
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Entendido'),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
     }
 
     setState(() => _confirmando = true);
@@ -730,50 +720,51 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     return LayoutBuilder(
       builder: (context, c) {
         final compacto = c.maxWidth < _anchoDosColumnas;
-        final cabecera = Row(
-          children: [
-            Expanded(
-              child: Text(
-                titulo,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+        // Elegir mesa: el título va a la izquierda. Armando el pedido no hay
+        // título: una barra verde, pegada a los bordes de la vista, lleva el
+        // buscador junto a "volver" y "x".
+        // En dos columnas no hay cabecera: el buscador va arriba de la galería y
+        // "volver" y "x" en el título del resumen, que sube hasta arriba.
+        final cabecera = (!compacto && !enPasoMesa)
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Row(
+                  children: [
+                    if (enPasoMesa)
+                      Expanded(
+                        child: Text(
+                          titulo,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(child: _buscador()),
+                    if (!enPasoMesa) const Spacer(),
+                    const SizedBox(width: 12),
+                    _botonVolver(),
+                    const SizedBox(width: 8),
+                    _botonCerrar(),
+                  ],
                 ),
-              ),
-            ),
-            _botonVolver(),
-            const SizedBox(width: 8),
-            _botonCerrar(),
-          ],
-        );
+              );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Escritorio: el título va suelto sobre el fondo. Tablet y mobile:
-            // barra fija de ancho completo.
-            if (compacto)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade200),
-                  ),
-                ),
-                child: cabecera,
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 4, 12, 12),
-                child: cabecera,
-              ),
+            cabecera,
             Expanded(
               child: enPasoMesa
-                  ? MesasPlano(
-                      onSeleccionarMesa: _elegirMesa,
-                      usuario: widget.usuario,
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: MesasPlano(
+                        onSeleccionarMesa: _elegirMesa,
+                        usuario: widget.usuario,
+                      ),
                     )
                   : _armarPedido(compacto, c.maxHeight),
             ),
@@ -782,6 +773,57 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       },
     );
   }
+
+  // El buscador de productos, con "Plato rápido" al lado.
+  Widget _buscador() => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 560),
+    child: Row(
+      children: [
+        Expanded(
+          child: AppSearchField(
+            controller: _busquedaController,
+            hint: 'Buscar producto...',
+            onChanged: (_) => setState(() {}),
+            ajustarAlTexto: false,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Tooltip(
+          message: 'Plato rápido',
+          child: OutlinedButton(
+            onPressed: _abrirPlatoLibre,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryGreenDark,
+              side: const BorderSide(color: AppColors.primaryGreen),
+              // Mismo alto que el buscador.
+              fixedSize: const Size(46, 46),
+              minimumSize: const Size(46, 46),
+              maximumSize: const Size(46, 46),
+              // Sin el margen de toque de 48 px: mide lo mismo que el buscador.
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            // Un plato con un rayo: plato rápido.
+            child: const Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Icon(LucideIcons.utensils, size: 20),
+                Positioned(
+                  right: -7,
+                  bottom: -6,
+                  child: Icon(LucideIcons.zap, size: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   // Vuelve a la vista anterior: del armado a la elección de mesa (si aplica) o
   // de ahí a la elección del tipo de pedido.
@@ -797,7 +839,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     }
   }
 
-  Widget _botonVolver() {
+  // Círculo de la barra de arriba: sobre la barra verde va blanco.
+  BoxDecoration _circuloBoton(bool enBarra) => BoxDecoration(
+    shape: BoxShape.circle,
+    color: enBarra ? Colors.white : null,
+    border: enBarra ? null : Border.all(color: Colors.grey.shade300),
+  );
+
+  Widget _botonVolver({bool enBarra = false}) {
     return Tooltip(
       message: 'Volver',
       child: InkWell(
@@ -807,18 +856,19 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           width: 34,
           height: 34,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.grey.shade300),
+          decoration: _circuloBoton(enBarra),
+          child: Icon(
+            LucideIcons.undo2,
+            size: 16,
+            color: enBarra ? AppColors.primaryGreenDark : Colors.grey.shade700,
           ),
-          child: Icon(LucideIcons.undo2, size: 16, color: Colors.grey.shade700),
         ),
       ),
     );
   }
 
   // "X" para salir y volver a la cola de pedidos.
-  Widget _botonCerrar() {
+  Widget _botonCerrar({bool enBarra = false}) {
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: () {
@@ -829,11 +879,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         width: 34,
         height: 34,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.grey.shade300),
+        decoration: _circuloBoton(enBarra),
+        child: Icon(
+          Icons.close,
+          size: 18,
+          color: enBarra ? AppColors.primaryGreenDark : Colors.grey.shade700,
         ),
-        child: Icon(Icons.close, size: 18, color: Colors.grey.shade700),
       ),
     );
   }
@@ -853,7 +904,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: _galeria(buscadorCompleto: true, todoEnScroll: true),
+              child: _galeria(todoEnScroll: true),
             ),
           ),
           _hojaPedido(altoTotal),
@@ -861,13 +912,25 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       );
     }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: _galeria()),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(alignment: Alignment.centerLeft, child: _buscador()),
+                const SizedBox(height: 16),
+                Expanded(child: _galeria()),
+              ],
+            ),
+          ),
           const SizedBox(width: 16),
-          SizedBox(width: 320, child: _resumen(fixedFooter: true)),
+          SizedBox(
+            width: 380,
+            child: _resumen(fixedFooter: true, botonesSalida: true),
+          ),
         ],
       ),
     );
@@ -979,11 +1042,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                   ],
                 ),
               ),
-            if (_puedePersonal)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-                child: _interruptorPersonal(),
-              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
               child: _botonesDeAccion(),
@@ -1027,26 +1085,9 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   // [todoEnScroll] (celular): el buscador, las categorías y los productos se
   // desplazan juntos, para que los productos tengan toda la pantalla.
-  Widget _galeria({bool buscadorCompleto = false, bool todoEnScroll = false}) {
+  Widget _galeria({bool todoEnScroll = false}) {
     final productos = _productos;
-    // Escritorio: el buscador ocupa solo lo que pide su placeholder.
-    final buscador = buscadorCompleto
-        ? AppSearchField(
-            controller: _busquedaController,
-            hint: 'Buscar producto...',
-            onChanged: (_) => setState(() {}),
-            ajustarAlTexto: false,
-          )
-        : Align(
-            alignment: Alignment.centerLeft,
-            child: AppSearchField(
-              controller: _busquedaController,
-              hint: 'Buscar producto...',
-              onChanged: (_) => setState(() {}),
-            ),
-          );
-    final categoriasFila = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    final categoriasFila = _FilaDesplazable(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1077,8 +1118,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               : Center(child: vacio);
         }
         const espacio = 12.0;
-        final columnas = c.maxWidth >= 620 ? 3 : (c.maxWidth >= 400 ? 2 : 1);
-        final ancho = (c.maxWidth - espacio * (columnas - 1)) / columnas;
+        final columnas = c.maxWidth >= 620
+            ? 4
+            : (c.maxWidth >= 520 ? 3 : (c.maxWidth >= 400 ? 2 : 1));
+        final util = todoEnScroll ? c.maxWidth : c.maxWidth - 14;
+        final ancho = (util - espacio * (columnas - 1)) / columnas;
         final tarjetas = Wrap(
           spacing: espacio,
           runSpacing: espacio,
@@ -1090,7 +1134,16 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               ),
           ],
         );
-        return todoEnScroll ? tarjetas : SingleChildScrollView(child: tarjetas);
+        if (todoEnScroll) return tarjetas;
+        return IndicadorAbajo(
+          controller: _scrollGrilla,
+          conFlecha: false,
+          builder: (ctl) => SingleChildScrollView(
+            controller: ctl,
+            padding: const EdgeInsets.only(right: 14, bottom: 8),
+            child: tarjetas,
+          ),
+        );
       },
     );
 
@@ -1098,21 +1151,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       return SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            buscador,
-            const SizedBox(height: 12),
-            categoriasFila,
-            const SizedBox(height: 12),
-            grilla(),
-          ],
+          children: [categoriasFila, const SizedBox(height: 12), grilla()],
         ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buscador,
-        const SizedBox(height: 12),
         categoriasFila,
         const SizedBox(height: 12),
         Expanded(
@@ -1349,7 +1394,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
-  Widget _resumen({required bool fixedFooter}) {
+  Widget _resumen({required bool fixedFooter, bool botonesSalida = false}) {
     final esDelivery = widget.tipo == 'delivery';
     final tituloTipo = switch (widget.tipo) {
       'delivery' => 'Delivery',
@@ -1361,7 +1406,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       'llevar' => LucideIcons.packageCheck,
       _ => LucideIcons.utensils,
     };
-    final contenido = Column(
+    final cabeza = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1369,13 +1414,46 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           children: [
             Icon(iconoTipo, size: 16, color: AppColors.primaryGreenDark),
             const SizedBox(width: 6),
-            Text(
-              tituloTipo,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            Expanded(
+              child: Text(
+                tituloTipo.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
             ),
+            _botonNota(),
+            if (_carrito.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              _BotonLimpiar(onTap: () => setState(_carrito.clear)),
+            ],
+            if (botonesSalida) ...[
+              const SizedBox(width: 8),
+              _botonVolver(),
+              const SizedBox(width: 6),
+              _botonCerrar(),
+            ],
           ],
         ),
-        const SizedBox(height: 16),
+        if (_notaVisible) ...[
+          const SizedBox(height: 10),
+          _campoTexto(
+            controller: _notasController,
+            hint: 'Ej. Sin ají, para compartir…',
+            icono: Icons.edit_note,
+            onChanged: (_) => setState(() {}),
+            contentPaddingVertical: 14,
+          ),
+        ],
+      ],
+    );
+    final contenido = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
         // En una mesa el nombre del cliente no se pide.
         if (widget.tipo != 'mesa')
           _campoTexto(
@@ -1417,41 +1495,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             contentPaddingVertical: 16,
           ),
         ],
-        const SizedBox(height: 10),
-        _campoTexto(
-          controller: _notasController,
-          hint: 'Nota del pedido (opcional)',
-          icono: Icons.notes_outlined,
-          maxLines: 3,
-        ),
-        const SizedBox(height: 14),
-        Divider(height: 1, color: Colors.grey.shade200),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Productos del pedido',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-            ),
-            if (_carrito.isNotEmpty)
-              InkWell(
-                onTap: () => setState(_carrito.clear),
-                child: Text(
-                  'Limpiar',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
+        if (widget.tipo != 'mesa') const SizedBox(height: 14),
         if (_carrito.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1464,59 +1508,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           )
         else
           for (var i = 0; i < _carrito.length; i++) _filaCarrito(i),
-        if (_puedePersonal) _interruptorPersonal(),
-        const SizedBox(height: 14),
-        Divider(height: 1, color: Colors.grey.shade200),
-        const SizedBox(height: 12),
-        Text(
-          'Agregar al pedido',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey.shade700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 8,
-          children: [
-            AppTag(
-              etiqueta: 'Promoción',
-              icono: LucideIcons.tag,
-              activo: false,
-              color: AppColors.naranja,
-              onTap: _abrirPromocion,
-            ),
-            AppTag(
-              etiqueta: 'Plato rápido',
-              icono: LucideIcons.sparkles,
-              activo: false,
-              color: AppColors.primaryGreen,
-              onTap: _abrirPlatoLibre,
-            ),
-            AppTag(
-              etiqueta: 'Propina',
-              icono: LucideIcons.handCoins,
-              activo: false,
-              color: AppColors.naranja,
-              onTap: _abrirPropina,
-            ),
-            AppTag(
-              etiqueta: 'Táper',
-              icono: LucideIcons.package,
-              activo: false,
-              color: Colors.black87,
-              colorBorde: Colors.grey.shade300,
-              onTap: _abrirTupper,
-            ),
-          ],
-        ),
       ],
     );
     final pie = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const DottedDivider(),
+        const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1540,9 +1538,57 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             ],
           ),
         ),
-        const SizedBox(height: 10),
-        const DottedDivider(),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
+        Text(
+          'Agregar al pedido',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Una sola fila a tamaño normal: si no caben, salen los botones < y >.
+        _FilaDesplazable(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pedido de personal: el precio de cada plato se escribe a mano.
+              if (_puedePersonal && _esPersonal)
+                AppTag(
+                  etiqueta: 'Empleado',
+                  icono: LucideIcons.users,
+                  activo: _esPersonal,
+                  color: const Color(0xFF2563EB),
+                  onTap: _abrirEmpleado,
+                ),
+              AppTag(
+                etiqueta: 'Promoción',
+                icono: LucideIcons.tag,
+                activo: false,
+                color: AppColors.naranja,
+                onTap: _abrirPromocion,
+              ),
+              AppTag(
+                etiqueta: 'Táper',
+                icono: LucideIcons.package,
+                activo: false,
+                color: Colors.black87,
+                colorBorde: Colors.grey.shade300,
+                onTap: _abrirTupper,
+              ),
+              if (_puedePersonal && !_esPersonal)
+                AppTag(
+                  etiqueta: 'Empleado',
+                  icono: LucideIcons.users,
+                  activo: _esPersonal,
+                  color: const Color(0xFF2563EB),
+                  onTap: _abrirEmpleado,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         _botonesDeAccion(),
       ],
     );
@@ -1558,7 +1604,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
-          children: [contenido, const SizedBox(height: 14), pie],
+          children: [
+            cabeza,
+            const SizedBox(height: 16),
+            contenido,
+            const SizedBox(height: 14),
+            pie,
+          ],
         ),
       );
     }
@@ -1567,10 +1619,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: cabeza,
+          ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: contenido,
+            child: IndicadorAbajo(
+              controller: _scrollResumen,
+              builder: (ctl) => SingleChildScrollView(
+                controller: ctl,
+                padding: const EdgeInsets.fromLTRB(16, 0, 22, 8),
+                child: contenido,
+              ),
             ),
           ),
           Padding(
@@ -1734,7 +1794,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   Widget _filaCarritoCompacta(int index) {
     final linea = _carrito[index];
     final detalle = [
-      if (!_esPersonal) 'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
+      'S/ ${_lineas[index].precioUnitario.toStringAsFixed(2)}',
       if (linea.variante != null) linea.variante!.nombre,
       if (linea.presentacion != null)
         '${linea.presentacion!.unidad.unidadPresentacion} ${linea.presentacion!.volumenMl}ml',
@@ -1774,7 +1834,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                     color: AppColors.primaryGreen,
                   ),
                 ),
-                if (_esPersonal) _campoPrecioPersonal(linea),
               ],
             ),
           ),
@@ -1805,59 +1864,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
-  // Pedido de personal: cada plato lleva su precio, escrito a mano.
-  Widget _interruptorPersonal() {
-    return Row(
-      children: [
-        const Expanded(
-          child: Text(
-            'Pedido de personal (precio a medida por plato)',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-        ),
-        AppSwitch(
-          value: _esPersonal,
-          onChanged: (v) => setState(() => _esPersonal = v),
-          activeThumbColor: Colors.white,
-          activeTrackColor: AppColors.primaryGreen,
-        ),
-      ],
-    );
-  }
-
-  Widget _campoPrecioPersonal(PedidoLine linea) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, right: 6),
-      child: SizedBox(
-        width: 150,
-        height: 34,
-        child: TextFormField(
-          key: ValueKey('precio-personal-${linea.id}'),
-          initialValue: _preciosPersonal[linea.id]?.toStringAsFixed(2) ?? '',
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-          ],
-          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'Precio (S/)',
-            prefixText: 'S/ ',
-            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          ),
-          onChanged: (texto) => setState(() {
-            final v = double.tryParse(texto.trim().replaceAll(',', '.'));
-            if (v == null || v < 0) {
-              _preciosPersonal.remove(linea.id);
-            } else {
-              _preciosPersonal[linea.id] = v;
-            }
-          }),
-        ),
-      ),
-    );
-  }
-
   Widget _filaCarrito(int index, {bool compacta = false}) {
     if (compacta) return _filaCarritoCompacta(index);
     final linea = _carrito[index];
@@ -1873,7 +1879,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (item != null)
             SizedBox(
@@ -1955,15 +1961,26 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                       color: Colors.grey.shade500,
                     ),
                   ),
-                if (_esPersonal)
-                  _campoPrecioPersonal(linea)
-                else
-                  Text(
-                    'S/ ${linea.precioUnitario.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primaryGreen,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'S/ ${_lineas[index].precioUnitario.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+                if (linea.precioManual)
+                  const Text(
+                    'Precio manual',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.naranja,
                     ),
                   ),
               ],
@@ -1996,6 +2013,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
+  // Botones de la fila del producto: − y + en un cuadro de esquinas suaves; la
+  // "x" en un círculo rojo que se rellena al pasar o tocar.
   Widget _iconoCantidad(
     IconData icono,
     VoidCallback onTap, {
@@ -2003,19 +2022,107 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     Color color = AppColors.primaryGreen,
     String? tooltip,
   }) {
-    final boton = InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icono,
-          size: 16,
-          color: habilitado ? color : Colors.grey.shade400,
+    if (icono == Icons.close) {
+      return _BotonQuitar(onTap: onTap, tooltip: tooltip);
+    }
+    const lado = 26.0;
+    final esMas = icono == Icons.add;
+    final colorTrazo = esMas ? AppColors.primaryGreen : Colors.grey.shade500;
+    final boton = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(lado * 0.1),
+        onTap: habilitado ? onTap : null,
+        child: Container(
+          width: lado,
+          height: lado,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(lado * 0.1),
+            // "+" relleno de verde con el signo blanco; "−" solo con trazo gris.
+            color: esMas
+                ? (habilitado ? AppColors.primaryGreen : Colors.grey.shade300)
+                : null,
+            border: Border.all(
+              color: habilitado ? colorTrazo : Colors.grey.shade300,
+            ),
+          ),
+          child: Icon(
+            icono,
+            size: 16,
+            color: esMas
+                ? Colors.white
+                : (habilitado ? colorTrazo : Colors.grey.shade400),
+          ),
         ),
       ),
     );
     return tooltip == null ? boton : Tooltip(message: tooltip, child: boton);
+  }
+
+  // ---- Precio escrito a mano para este pedido (no cambia la carta) ----
+  // Se escribe en el modal de cada producto; aquí solo se guarda el precio de la
+  // carta de cada línea.
+
+  // Precio de carta de cada línea antes de cambiarlo (por id de línea).
+  final Map<String, double> _precioCarta = {};
+
+  // Empleado: cuadro con los productos, su precio y su cantidad, y un campo para
+  // escribir el precio que se cobra por cada uno.
+  Future<void> _abrirEmpleado() async {
+    if (_carrito.isEmpty) {
+      showAppToast(
+        context,
+        'Agrega primero los productos del pedido.',
+        type: ToastType.info,
+      );
+      return;
+    }
+    final r = await showBlurDialog<_PreciosEmpleado>(
+      context: context,
+      builder: (_) => _EmpleadoPreciosDialog(
+        lineas: List.of(_carrito),
+        precios: Map.of(_preciosPersonal),
+        activo: _esPersonal,
+      ),
+    );
+    if (r == null || !mounted) return;
+    setState(() {
+      _esPersonal = r.activar;
+      _preciosPersonal
+        ..clear()
+        ..addAll(r.activar ? r.precios : const {});
+    });
+  }
+
+  // Nota del pedido: el botón "+ Nota" habilita el campo ahí mismo.
+  bool _notaAbierta = false;
+
+  // Barra de desplazamiento visible de la galería de productos.
+  final ScrollController _scrollGrilla = ScrollController();
+  final ScrollController _scrollResumen = ScrollController();
+
+  bool get _notaVisible =>
+      _notaAbierta || _notasController.text.trim().isNotEmpty;
+
+  Widget _botonNota() {
+    final visible = _notaVisible;
+    return OutlinedButton.icon(
+      onPressed: () => setState(() {
+        if (visible) _notasController.clear();
+        _notaAbierta = !visible;
+      }),
+      icon: Icon(visible ? Icons.close : Icons.add, size: 15),
+      label: const Text('Nota'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.black87,
+        side: BorderSide(color: Colors.grey.shade600, width: 1.3),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 
   Widget _filaTotal(String etiqueta, double valor, {required bool fuerte}) {
@@ -2100,3 +2207,394 @@ extension _FirstOrNull<T> on Iterable<T> {
 }
 
 // Descuento del pedido: por porcentaje (sobre el subtotal) o monto fijo.
+
+// "Borrar": trazo gris de bordes redondeados; al pasar el cursor o tocarlo se
+// vuelve rojo con el texto blanco.
+class _BotonLimpiar extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _BotonLimpiar({required this.onTap});
+
+  @override
+  State<_BotonLimpiar> createState() => _BotonLimpiarState();
+}
+
+class _BotonLimpiarState extends State<_BotonLimpiar> {
+  bool _hover = false;
+  bool _presionado = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final activo = _hover || _presionado;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _presionado = true),
+        onTapUp: (_) => setState(() => _presionado = false),
+        onTapCancel: () => setState(() => _presionado = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            color: activo ? AppColors.error : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: activo ? AppColors.error : Colors.grey.shade400,
+            ),
+          ),
+          child: Text(
+            'Borrar',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: activo ? Colors.white : Colors.grey.shade700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// "x" de quitar un producto: círculo con trazo rojo; al pasar el cursor o
+// tocarlo se rellena de rojo y la "x" se vuelve blanca.
+class _BotonQuitar extends StatefulWidget {
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  const _BotonQuitar({required this.onTap, this.tooltip});
+
+  @override
+  State<_BotonQuitar> createState() => _BotonQuitarState();
+}
+
+class _BotonQuitarState extends State<_BotonQuitar> {
+  bool _hover = false;
+  bool _presionado = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final activo = _hover || _presionado;
+    final boton = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _presionado = true),
+        onTapUp: (_) => setState(() => _presionado = false),
+        onTapCancel: () => setState(() => _presionado = false),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: activo ? AppColors.error : Colors.transparent,
+              border: Border.all(color: AppColors.error),
+            ),
+            child: Icon(
+              Icons.close,
+              size: 14,
+              color: activo ? Colors.white : AppColors.error,
+            ),
+          ),
+        ),
+      ),
+    );
+    return widget.tooltip == null
+        ? boton
+        : Tooltip(message: widget.tooltip!, child: boton);
+  }
+}
+
+// Resultado del cuadro de Empleado: si el pedido queda como de empleado y los
+// precios escritos (id de la línea -> precio por unidad).
+typedef _PreciosEmpleado = ({bool activar, Map<String, double> precios});
+
+// Cuadro del botón Empleado: lista los productos del pedido con su precio y su
+// cantidad, y un campo para escribir el precio que se cobra por cada uno. Los
+// que se dejan en blanco quedan al precio de la carta.
+class _EmpleadoPreciosDialog extends StatefulWidget {
+  final List<PedidoLine> lineas;
+  final Map<String, double> precios;
+  final bool activo;
+
+  const _EmpleadoPreciosDialog({
+    required this.lineas,
+    required this.precios,
+    required this.activo,
+  });
+
+  @override
+  State<_EmpleadoPreciosDialog> createState() => _EmpleadoPreciosDialogState();
+}
+
+class _EmpleadoPreciosDialogState extends State<_EmpleadoPreciosDialog> {
+  late final Map<String, TextEditingController> _campos = {
+    for (final l in widget.lineas)
+      l.id: TextEditingController(
+        text: widget.precios[l.id]?.toStringAsFixed(2) ?? '',
+      ),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _campos.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _guardar() {
+    final precios = <String, double>{};
+    _campos.forEach((id, campo) {
+      final v = double.tryParse(campo.text.trim().replaceAll(',', '.'));
+      if (v != null && v >= 0) precios[id] = v;
+    });
+    Navigator.of(context)
+        .pop<_PreciosEmpleado>((activar: true, precios: precios));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ModalPago(
+      titulo: 'Pedido de empleado',
+      subtitulo: 'Escribe el precio que se cobra por cada producto',
+      anchoEscritorio: 520,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final l in widget.lineas)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8FA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l.nombrePlato,
+                            softWrap: true,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            'Precio S/ ${l.precioUnitario.toStringAsFixed(2)} · '
+                            'Cantidad ${l.cantidad}',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 110,
+                      child: CampoTexto(
+                        controller: _campos[l.id],
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                        ],
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: 'S/.',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (widget.activo)
+                  TextButton(
+                    onPressed: () => Navigator.of(context)
+                        .pop<_PreciosEmpleado>((activar: false, precios: {})),
+                    child: const Text('Quitar precio de empleado'),
+                  ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: _guardar,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Fila que se desplaza en horizontal con botones circulares < y > a los lados;
+// cada botón solo aparece si hay más contenido hacia ese lado.
+class _FilaDesplazable extends StatefulWidget {
+  final Widget child;
+
+  const _FilaDesplazable({required this.child});
+
+  @override
+  State<_FilaDesplazable> createState() => _FilaDesplazableState();
+}
+
+class _FilaDesplazableState extends State<_FilaDesplazable> {
+  final _scroll = ScrollController();
+  bool _izq = false;
+  bool _der = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_medir);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _medir());
+  }
+
+  @override
+  void didUpdateWidget(covariant _FilaDesplazable old) {
+    super.didUpdateWidget(old);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _medir());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _medir() {
+    if (!mounted || !_scroll.hasClients) return;
+    final m = _scroll.position;
+    final izq = m.pixels > 1;
+    final der = m.pixels < m.maxScrollExtent - 1;
+    if (izq != _izq || der != _der) {
+      setState(() {
+        _izq = izq;
+        _der = der;
+      });
+    }
+  }
+
+  void _mover(double signo) {
+    final destino = (_scroll.offset + signo * 240).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
+    _scroll.animateTo(
+      destino,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
+
+  // Franja que difumina lo que hay debajo de la flecha.
+  Widget _conDifuminado(Widget flecha, {required bool izquierda}) {
+    const fondo = AppColors.background;
+    return Positioned(
+      left: izquierda ? 0 : null,
+      right: izquierda ? null : 0,
+      top: 0,
+      bottom: 0,
+      child: Container(
+        width: 56,
+        alignment: izquierda ? Alignment.centerLeft : Alignment.centerRight,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: izquierda ? Alignment.centerLeft : Alignment.centerRight,
+            end: izquierda ? Alignment.centerRight : Alignment.centerLeft,
+            colors: [
+              fondo,
+              fondo.withValues(alpha: 0.9),
+              fondo.withValues(alpha: 0),
+            ],
+            stops: const [0, 0.55, 1],
+          ),
+        ),
+        child: flecha,
+      ),
+    );
+  }
+
+  Widget _flecha(IconData icono, String tip, VoidCallback onTap) => Tooltip(
+    message: tip,
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade300),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 4,
+            ),
+          ],
+        ),
+        child: Icon(icono, size: 18, color: Colors.grey.shade800),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _medir());
+        return false;
+      },
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SingleChildScrollView(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            child: widget.child,
+          ),
+          if (_izq)
+            _conDifuminado(
+              _flecha(Icons.chevron_left, 'Anterior', () => _mover(-1)),
+              izquierda: true,
+            ),
+          if (_der)
+            _conDifuminado(
+              _flecha(Icons.chevron_right, 'Siguiente', () => _mover(1)),
+              izquierda: false,
+            ),
+        ],
+      ),
+    );
+  }
+}

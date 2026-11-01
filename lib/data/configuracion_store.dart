@@ -56,20 +56,6 @@ class Configuracion {
 
 final Configuracion config = Configuracion();
 
-// Información del negocio (`restaurantes`).
-class ConfigNegocio {
-  String nombre = 'El Bijao Restaurant';
-  String telefono = '987654321';
-  String direccion = 'Av. Principal 123, San Isidro';
-  String emailContacto = 'contacto@elbijao.com';
-  String moneda = 'PEN';
-  String idioma = 'es';
-  String pais = 'PE';
-  String zonaHoraria = 'America/Lima';
-}
-
-final ConfigNegocio negocio = ConfigNegocio();
-
 // Horario de atención (`horarios`), de lunes a domingo.
 final List<Horario> horarios = [
   for (final dia in [

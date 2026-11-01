@@ -169,14 +169,25 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             .where((c) => c.nombre.toLowerCase().contains('venta'))
             .firstOrNull ??
         categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
-    if (mediosPago.isEmpty) {
-      CatalogService.instance
-          .cargarMediosPago()
-          .then((_) {
-            if (mounted) setState(() {});
-          })
-          .catchError((_) {});
-    }
+    // Se vuelven a leer los métodos al abrir el cobro, para usar el recargo
+    // vigente de cada uno.
+    CatalogService.instance
+        .cargarMediosPago()
+        .then((_) {
+          if (!mounted) return;
+          setState(() {
+            for (final p in _pagadores) {
+              for (final f in p.pagos) {
+                f.medio =
+                    mediosPagoActivos
+                        .where((x) => x.id == f.medio.id)
+                        .firstOrNull ??
+                    f.medio;
+              }
+            }
+          });
+        })
+        .catchError((_) {});
     if (categoriasMovimiento.isEmpty) {
       MovimientoCajaService.instance
           .cargarCategorias()

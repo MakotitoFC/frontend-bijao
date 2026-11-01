@@ -136,6 +136,7 @@ void main() {
     });
 
     const sede = (
+      nombre: 'RESTAURANTE BIJAO',
       direccion: 'Av. Principal 123, San Isidro',
       telefono: '987654321',
       ruc: '20123456789',

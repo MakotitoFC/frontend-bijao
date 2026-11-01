@@ -27,3 +27,15 @@ String? comentariosConNota(String? comentariosActuales, String? nota) {
   final partes = [...cliente, if (limpia.isNotEmpty) limpia];
   return partes.isEmpty ? null : partes.join('\n');
 }
+
+// El nombre que el backend guarda en la línea "Cliente: ..." de los comentarios
+// (en un pedido de empleado es el nombre del empleado). null si no hay.
+String? nombreEnComentarios(String? comentarios) {
+  for (final l in (comentarios ?? '').split('\n')) {
+    if (_esLineaDeCliente(l)) {
+      final n = l.trim().substring('Cliente:'.length).trim();
+      return n.isEmpty ? null : n;
+    }
+  }
+  return null;
+}

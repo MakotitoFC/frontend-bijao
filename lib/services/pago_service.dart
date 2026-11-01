@@ -1,3 +1,4 @@
+import '../data/cargos_extra_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
@@ -96,6 +97,7 @@ class PagoService {
     String? categoriaMovimientoId,
     double? montoRecibido,
     double? vuelto,
+    List<CargoExtra>? cargosExtra,
   }) async {
     // Un pedido del servidor no puede cobrarse con un método que no lo es (p. ej.
     // los de respaldo que se muestran cuando el servidor no tiene ninguno): el
@@ -140,6 +142,14 @@ class PagoService {
         if (montoRecibido != null && montoRecibido > 0)
           'monto_recibido': montoRecibido,
         if (vuelto != null && vuelto > 0) 'vuelto': vuelto,
+        if (cargosExtra != null && cargosExtra.isNotEmpty)
+          'cargos_extra': cargosExtra
+              .map((c) => {
+                    'concepto': 'rotura',
+                    'producto': c.nombre,
+                    'monto': c.monto,
+                  })
+              .toList(),
       },
     );
     if (res is! Map<String, dynamic>) {

@@ -3,13 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../models/pedido_line.dart';
-import '../models/taper.dart';
-import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
-import 'app_toast.dart';
-import 'selector_taper.dart';
-import 'app_switch.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
 
@@ -28,8 +23,6 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
 
   int _cantidad = 1;
   String _tipoEntrega = 'mesa'; // 'mesa', 'llevar', 'delivery'
-  bool _llevaTaper = false;
-  Taper? _taperSeleccionado;
 
   @override
   void initState() {
@@ -48,22 +41,11 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
   double get _precioBase =>
       double.tryParse(_precioController.text.trim().replaceAll(',', '.')) ??
       0.0;
-  double get _precioTaper => (_llevaTaper && _taperSeleccionado != null)
-      ? _taperSeleccionado!.precio
-      : 0.0;
-  double get _precioUnitario => _precioBase + _precioTaper;
+  double get _precioUnitario => _precioBase;
   double get _total => _precioUnitario * _cantidad;
 
   void _confirmar() {
     if (!_formKey.currentState!.validate()) return;
-    if (_llevaTaper && _taperSeleccionado == null) {
-      showAppToast(
-        context,
-        'Selecciona el táper a utilizar.',
-        type: ToastType.error,
-      );
-      return;
-    }
     final nombre = _nombreController.text.trim();
     final notas = _descripcionController.text.trim().isEmpty
         ? null
@@ -82,9 +64,6 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
       descuentoAplicado: 0,
       precioTotalLinea: _total,
       tipoEntrega: _tipoEntrega,
-      aplicaTaper: _llevaTaper,
-      taperId: _llevaTaper ? _taperSeleccionado?.id : null,
-      precioTaper: _precioTaper,
       esLibre: true,
       nombreLibre: nombre,
       descripcionLibre: notas,
@@ -97,9 +76,6 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
-    final tapers = CatalogService.instance.tapers
-        .where((t) => t.estado)
-        .toList();
 
     return Material(
       color: Colors.white,
@@ -253,81 +229,6 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
                           _chipTipo('delivery', 'Delivery', LucideIcons.bike),
                         ],
                       ),
-                      const SizedBox(height: 16),
-
-                      // Táper
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _llevaTaper
-                              ? const Color(0xFFF0FDF4)
-                              : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _llevaTaper
-                                ? AppColors.primaryGreen.withValues(alpha: 0.4)
-                                : Colors.grey.shade200,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.package,
-                                  size: 18,
-                                  color: _llevaTaper
-                                      ? AppColors.primaryGreenDark
-                                      : Colors.grey.shade600,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '¿Llevar en táper descartable?',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: _llevaTaper
-                                          ? AppColors.primaryGreenDark
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                                AppSwitch(
-                                  value: _llevaTaper,
-                                  activeThumbColor: Colors.white,
-                                  activeTrackColor: AppColors.primaryGreen,
-                                  onChanged: (val) {
-                                    setState(() => _llevaTaper = val);
-                                  },
-                                ),
-                              ],
-                            ),
-                            if (_llevaTaper) ...[
-                              const SizedBox(height: 8),
-                              if (tapers.isEmpty)
-                                Text(
-                                  'No hay táperes registrados en inventario.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                )
-                              else
-                                SelectorTaper(
-                                  tapers: tapers,
-                                  seleccionado: _taperSeleccionado,
-                                  cantidadNecesaria: _cantidad,
-                                  onElegir: (t) =>
-                                      setState(() => _taperSeleccionado = t),
-                                ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
                       // Notas para cocina
                       const Text(
                         'Indicaciones para cocina (opcional)',
@@ -416,12 +317,7 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() {
-            _tipoEntrega = tipo;
-            if (tipo == 'llear' || tipo == 'delivery') {
-              _llevaTaper = true;
-            }
-          });
+          setState(() => _tipoEntrega = tipo);
         },
         borderRadius: BorderRadius.circular(10),
         child: Container(

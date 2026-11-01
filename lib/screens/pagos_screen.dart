@@ -176,7 +176,9 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 
   String _metodos(Pedido p) {
     final pagosPedido = pagos
-        .where((x) => x.pedidoId == p.id && !x.esReembolso && x.estado != 'anulado')
+        .where(
+          (x) => x.pedidoId == p.id && !x.esReembolso && x.estado != 'anulado',
+        )
         .toList();
     if (pagosPedido.isEmpty) return '—';
 
@@ -609,10 +611,13 @@ class _CajaScreenState extends State<CajaScreen> {
       turnos = await CajaService.instance.cargarTurnos();
     } catch (_) {}
 
-    final r = await showBlurDialog<({double montoInicial, String? turnoId, String? notas})>(
-      context: context,
-      builder: (dialogContext) => _AbrirCajaDialog(turnos: turnos),
-    );
+    final r =
+        await showBlurDialog<
+          ({double montoInicial, String? turnoId, String? notas})
+        >(
+          context: context,
+          builder: (dialogContext) => _AbrirCajaDialog(turnos: turnos),
+        );
     if (r == null || !mounted) return;
     try {
       await CajaService.instance.abrir(
@@ -844,8 +849,12 @@ class _CajaScreenState extends State<CajaScreen> {
             ),
             ListTile(
               leading: const Icon(LucideIcons.fileText, color: Colors.purple),
-              title: const Text('Ver / Descargar Súper Reporte Detallado (PDF/HTML)'),
-              subtitle: const Text('Pedidos, mesas, mozos, anulaciones y rectificaciones'),
+              title: const Text(
+                'Ver / Descargar Súper Reporte Detallado (PDF/HTML)',
+              ),
+              subtitle: const Text(
+                'Pedidos, mesas, mozos, anulaciones y rectificaciones',
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _abrirReporteDiaDetallado(fechaOperativa: fStr);
@@ -1064,12 +1073,18 @@ class _CajaScreenState extends State<CajaScreen> {
     final resumen = resumenPorMedio(desde);
     final extra = totalesMovimientos(desde);
     final srv = estadoCajaServidor?.totales;
-    final filas = _cajaCerrada ? <FilaResumenMedio>[] : (srv?.porMedio ?? resumen);
-    final ventas = _cajaCerrada ? 0.0 : (srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas));
+    final filas = _cajaCerrada
+        ? <FilaResumenMedio>[]
+        : (srv?.porMedio ?? resumen);
+    final ventas = _cajaCerrada
+        ? 0.0
+        : (srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas));
     final ingresos = _cajaCerrada ? 0.0 : (srv?.ingresos ?? extra.ingresos);
     final salidas = _cajaCerrada ? 0.0 : (srv?.salidas ?? extra.egresos);
     final numPedidos = _cajaCerrada ? 0 : (srv?.numPedidos ?? t.pedidos);
-    final movimientos = _cajaCerrada ? <MovimientoCaja>[] : movimientosDesde(desde);
+    final movimientos = _cajaCerrada
+        ? <MovimientoCaja>[]
+        : movimientosDesde(desde);
     final rangoCierres = _rangoCierres;
     final cierres = rangoCierres == null
         ? cierresCaja
@@ -1180,8 +1195,7 @@ class _CajaScreenState extends State<CajaScreen> {
                                   _imprimirReporteDiaConsolidado();
                                 if (val == 'dia_pdf')
                                   _abrirReporteDiaDetallado();
-                                if (val == 'otra_fecha')
-                                  _reportesDeOtraFecha();
+                                if (val == 'otra_fecha') _reportesDeOtraFecha();
                               },
                               itemBuilder: (context) => [
                                 const PopupMenuItem(
@@ -1604,6 +1618,11 @@ class _CajaScreenState extends State<CajaScreen> {
                     icon: const Icon(LucideIcons.tag, size: 16),
                     label: const Text('Categorías'),
                   ),
+                  OutlinedButton.icon(
+                    onPressed: _cargar,
+                    icon: const Icon(LucideIcons.refreshCw, size: 16),
+                    label: const Text('Actualizar'),
+                  ),
                 ],
               );
               if (angosto) {
@@ -1653,7 +1672,10 @@ class _CajaScreenState extends State<CajaScreen> {
                 }),
               ),
               ChoiceChip(
-                label: const Text('Salidas / Egresos', style: TextStyle(fontSize: 11)),
+                label: const Text(
+                  'Salidas / Egresos',
+                  style: TextStyle(fontSize: 11),
+                ),
                 selected: _filtroTipoMovimiento == TipoMovimiento.egreso,
                 onSelected: (s) => setState(() {
                   _filtroTipoMovimiento = TipoMovimiento.egreso;
@@ -1676,7 +1698,10 @@ class _CajaScreenState extends State<CajaScreen> {
                         'Todas las categorías',
                         style: TextStyle(fontSize: 11),
                       ),
-                      style: const TextStyle(fontSize: 11, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black87,
+                      ),
                       items: [
                         const DropdownMenuItem<String?>(
                           value: null,
@@ -1744,7 +1769,9 @@ class _CajaScreenState extends State<CajaScreen> {
               child: Scrollbar(
                 child: ListView(
                   shrinkWrap: true,
-                  children: [for (final m in movimientosFiltrados) _filaMovimiento(m)],
+                  children: [
+                    for (final m in movimientosFiltrados) _filaMovimiento(m),
+                  ],
                 ),
               ),
             ),
@@ -1890,7 +1917,9 @@ class _CajaScreenState extends State<CajaScreen> {
               children: [
                 if (m.esCobroPedido) ...[
                   Tooltip(
-                    message: puedeCambiar ? 'Rectificar medio de pago (descargo)' : tooltipBloqueado,
+                    message: puedeCambiar
+                        ? 'Rectificar medio de pago (descargo)'
+                        : tooltipBloqueado,
                     child: TextButton.icon(
                       onPressed: puedeCambiar ? () => _descargo(m) : null,
                       icon: const Icon(LucideIcons.arrowLeftRight, size: 14),
@@ -2041,14 +2070,22 @@ class _CajaScreenState extends State<CajaScreen> {
             Tooltip(
               message: 'Imprimir Ticket de este Turno',
               child: IconButton(
-                icon: const Icon(LucideIcons.printer, size: 16, color: Colors.blue),
+                icon: const Icon(
+                  LucideIcons.printer,
+                  size: 16,
+                  color: Colors.blue,
+                ),
                 onPressed: () => _imprimirReporteTurno(cierreId: c.id),
               ),
             ),
             Tooltip(
               message: 'Ver Detalle del Turno (PDF/HTML)',
               child: IconButton(
-                icon: const Icon(LucideIcons.fileText, size: 16, color: Colors.purple),
+                icon: const Icon(
+                  LucideIcons.fileText,
+                  size: 16,
+                  color: Colors.purple,
+                ),
                 onPressed: () => _abrirReporteDiaDetallado(cierreId: c.id),
               ),
             ),
@@ -2074,15 +2111,31 @@ class _CajaScreenState extends State<CajaScreen> {
     final totalEgresos = salidas;
 
     final totalEfectivo = filas
-        .where((f) => f.grupo.toLowerCase() == 'efectivo' || f.medio.toLowerCase().contains('efectivo'))
+        .where(
+          (f) =>
+              f.grupo.toLowerCase() == 'efectivo' ||
+              f.medio.toLowerCase().contains('efectivo'),
+        )
         .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
     final totalTarjeta = filas
-        .where((f) => f.grupo.toLowerCase() == 'tarjeta' || (!f.medio.toLowerCase().contains('efectivo') && !f.medio.toLowerCase().contains('yape') && !f.medio.toLowerCase().contains('plin') && f.grupo.toLowerCase() != 'digital'))
+        .where(
+          (f) =>
+              f.grupo.toLowerCase() == 'tarjeta' ||
+              (!f.medio.toLowerCase().contains('efectivo') &&
+                  !f.medio.toLowerCase().contains('yape') &&
+                  !f.medio.toLowerCase().contains('plin') &&
+                  f.grupo.toLowerCase() != 'digital'),
+        )
         .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
     final totalDigital = filas
-        .where((f) => f.grupo.toLowerCase() == 'digital' || f.medio.toLowerCase().contains('yape') || f.medio.toLowerCase().contains('plin'))
+        .where(
+          (f) =>
+              f.grupo.toLowerCase() == 'digital' ||
+              f.medio.toLowerCase().contains('yape') ||
+              f.medio.toLowerCase().contains('plin'),
+        )
         .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
-    
+
     final neto = montoApertura + totalEfectivo - totalEgresos;
 
     // Menos que una tablet: tarjetas en miniatura, 2 columnas por 2 filas, con
@@ -2348,7 +2401,8 @@ class _AbrirCajaDialogState extends State<_AbrirCajaDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final m = double.tryParse(_monto.text.trim().replaceAll(',', '.')) ?? 0;
+            final m =
+                double.tryParse(_monto.text.trim().replaceAll(',', '.')) ?? 0;
             Navigator.of(context).pop((
               montoInicial: m,
               turnoId: _turnoSeleccionado?.id,
@@ -2399,7 +2453,9 @@ class _AbrirCajaDialogState extends State<_AbrirCajaDialog> {
         CampoTexto(
           controller: _monto,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Monto inicial en efectivo (S/)'),
+          decoration: const InputDecoration(
+            labelText: 'Monto inicial en efectivo (S/)',
+          ),
         ),
         const SizedBox(height: 12),
         CampoTexto(
@@ -2416,10 +2472,7 @@ class _CerrarCajaDialog extends StatefulWidget {
   final double efectivoEsperado;
   final String? turnoNombre;
 
-  const _CerrarCajaDialog({
-    required this.efectivoEsperado,
-    this.turnoNombre,
-  });
+  const _CerrarCajaDialog({required this.efectivoEsperado, this.turnoNombre});
 
   @override
   State<_CerrarCajaDialog> createState() => _CerrarCajaDialogState();
@@ -2438,13 +2491,16 @@ class _CerrarCajaDialogState extends State<_CerrarCajaDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final double? declarado = double.tryParse(_efectivo.text.trim().replaceAll(',', '.'));
+    final double? declarado = double.tryParse(
+      _efectivo.text.trim().replaceAll(',', '.'),
+    );
     final double dif = (declarado ?? 0) - widget.efectivoEsperado;
     final bool cuadra = declarado != null && dif.abs() <= 0.05;
     final bool tieneTexto = _efectivo.text.trim().isNotEmpty;
 
     return DialogoApp(
-      titulo: 'Cerrar caja ${widget.turnoNombre != null ? '· ${widget.turnoNombre}' : ''}',
+      titulo:
+          'Cerrar caja ${widget.turnoNombre != null ? '· ${widget.turnoNombre}' : ''}',
       ancho: 440,
       acciones: [
         TextButton(
@@ -2453,13 +2509,14 @@ class _CerrarCajaDialogState extends State<_CerrarCajaDialog> {
         ),
         FilledButton(
           onPressed: cuadra
-              ? () => Navigator.of(context).pop((
-                    declaradoEfectivo: declarado,
-                    notas: _notas.text.trim(),
-                  ))
+              ? () => Navigator.of(
+                  context,
+                ).pop((declaradoEfectivo: declarado, notas: _notas.text.trim()))
               : null,
           style: FilledButton.styleFrom(
-            backgroundColor: cuadra ? AppColors.primaryGreen : Colors.grey.shade400,
+            backgroundColor: cuadra
+                ? AppColors.primaryGreen
+                : Colors.grey.shade400,
           ),
           child: const Text('Cerrar caja'),
         ),

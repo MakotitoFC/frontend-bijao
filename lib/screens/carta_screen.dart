@@ -9,7 +9,6 @@ import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
 import '../models/carta_item.dart';
 import '../models/carta_presentacion.dart';
-import '../models/carta_variante.dart';
 import '../models/categoria_comida.dart';
 import '../models/usuario.dart';
 import '../services/catalog_service.dart';
@@ -22,7 +21,6 @@ import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
 import '../widgets/imagen_plato.dart';
 import '../widgets/presentacion_rapida_dialog.dart';
-import '../widgets/tamano_rapido_dialog.dart';
 import 'carta_form_screen.dart';
 
 // Filtro gris para tarjetas de productos inactivos.
@@ -167,22 +165,6 @@ class _CartaScreenState extends State<CartaScreen> {
         );
       }
     }
-  }
-
-  // Agrega un tamaño (nombre y precio) a un plato que ya existe.
-  Future<void> _agregarTamano(CartaItem item) async {
-    final creado = await showBlurDialog<CartaVariante>(
-      context: context,
-      builder: (_) => TamanoRapidoDialog(plato: item),
-    );
-    if (creado == null || !mounted) return;
-    setState(() {});
-    showAppToast(
-      context,
-      'Variante "${creado.nombre}" agregada a ${item.nombrePlato}.',
-      type: ToastType.success,
-      titulo: 'Variante creada',
-    );
   }
 
   // Agrega una presentación (ej. Vaso, Jarra y precio) a un plato/bebida que ya existe.
@@ -720,27 +702,6 @@ class _CartaScreenState extends State<CartaScreen> {
                       spacing: 8,
                       runSpacing: 6,
                       children: [
-                        OutlinedButton.icon(
-                          onPressed: () => _agregarTamano(item),
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            side: BorderSide(
-                              color: AppColors.primaryGreen.withValues(
-                                alpha: 0.5,
-                              ),
-                            ),
-                            foregroundColor: AppColors.primaryGreen,
-                          ),
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text(
-                            'Variante',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
                         OutlinedButton.icon(
                           onPressed: () => _agregarPresentacion(item),
                           style: OutlinedButton.styleFrom(

@@ -13,8 +13,6 @@ class ElegirTipoPedidoDialog extends StatefulWidget {
 }
 
 class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
-  String? _tipoSeleccion;
-
   bool _esMobile = false;
 
   @override
@@ -83,8 +81,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       titulo: 'Mesa',
                       descripcion:
                           'Pedido para consumir en una mesa del local.',
-                      seleccionado: _tipoSeleccion == 'mesa',
-                      onTap: () => setState(() => _tipoSeleccion = 'mesa'),
+                      onTap: () => Navigator.of(context).pop('mesa'),
                     ),
                     SizedBox(
                       width: esMobile ? 0 : 14,
@@ -94,8 +91,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       icono: LucideIcons.packageCheck,
                       titulo: 'Para llevar',
                       descripcion: 'El cliente recoge su pedido en el local.',
-                      seleccionado: _tipoSeleccion == 'llevar',
-                      onTap: () => setState(() => _tipoSeleccion = 'llevar'),
+                      onTap: () => Navigator.of(context).pop('llevar'),
                     ),
                     SizedBox(
                       width: esMobile ? 0 : 14,
@@ -105,25 +101,9 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       icono: LucideIcons.bike,
                       titulo: 'Delivery',
                       descripcion: 'Pedido para entregar a domicilio.',
-                      seleccionado: _tipoSeleccion == 'delivery',
-                      onTap: () => setState(() => _tipoSeleccion = 'delivery'),
+                      onTap: () => Navigator.of(context).pop('delivery'),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: FilledButton(
-                  onPressed: _tipoSeleccion == null
-                      ? null
-                      : () => Navigator.of(context).pop(_tipoSeleccion),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primaryGreen,
-                  ),
-                  child: const Text(
-                    'Continuar',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
                 ),
               ),
             ],
@@ -137,23 +117,21 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
     required IconData icono,
     required String titulo,
     required String descripcion,
-    required bool seleccionado,
     required VoidCallback onTap,
   }) {
-    final tarjeta = InkWell(
-      borderRadius: BorderRadius.circular(16),
+    final tarjeta = _TarjetaHover(
       onTap: onTap,
-      child: AnimatedContainer(
+      builder: (hover) => AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: seleccionado
+          color: hover
               ? AppColors.primaryGreen.withValues(alpha: 0.1)
               : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: seleccionado ? AppColors.primaryGreen : Colors.grey.shade300,
-            width: seleccionado ? 1.5 : 1,
+            color: hover ? AppColors.primaryGreen : Colors.grey.shade300,
+            width: hover ? 1.5 : 1,
           ),
         ),
         child: Column(
@@ -163,9 +141,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
             Icon(
               icono,
               size: 26,
-              color: seleccionado
-                  ? AppColors.primaryGreenDark
-                  : Colors.grey.shade700,
+              color: hover ? AppColors.primaryGreenDark : Colors.grey.shade700,
             ),
             const SizedBox(height: 12),
             Text(
@@ -173,9 +149,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: seleccionado
-                    ? AppColors.primaryGreenDark
-                    : Colors.black87,
+                color: hover ? AppColors.primaryGreenDark : Colors.black87,
               ),
             ),
             const SizedBox(height: 4),
@@ -190,5 +164,34 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
     // En escritorio las tres tarjetas se reparten el ancho por igual: el
     // espacio a los costados es el mismo en todas.
     return _esMobile ? tarjeta : Expanded(child: tarjeta);
+  }
+}
+
+// Tarjeta que se sombrea de verde al pasar el cursor por encima.
+class _TarjetaHover extends StatefulWidget {
+  final VoidCallback onTap;
+  final Widget Function(bool hover) builder;
+
+  const _TarjetaHover({required this.onTap, required this.builder});
+
+  @override
+  State<_TarjetaHover> createState() => _TarjetaHoverState();
+}
+
+class _TarjetaHoverState extends State<_TarjetaHover> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: widget.builder(_hover),
+      ),
+    );
   }
 }
