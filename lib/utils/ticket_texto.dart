@@ -1,6 +1,7 @@
 import '../data/cargos_extra_store.dart';
 import '../data/cliente_comprobante_store.dart';
 import '../data/mesas_store.dart';
+import '../data/pagos_store.dart' show propinaCobradaDePedido;
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -14,6 +15,10 @@ import 'nota_pedido.dart';
 const anchoTicket = 48;
 // Con letra doble (el doble de ancho) caben la mitad de columnas.
 const anchoTicketDoble = anchoTicket ~/ 2;
+// Con letra media (1.5 veces) caben dos tercios de las columnas.
+const anchoTicketMedio = anchoTicket * 2 ~/ 3;
+const _escalaMedia = 1.5;
+const _escalaMenor = 1.25;
 
 enum AlineacionTicket { izquierda, centro, derecha }
 
@@ -23,6 +28,8 @@ class LineaTicket {
   final bool negrita;
   // Doble ancho y doble alto, como los títulos de la ticketera.
   final bool doble;
+  // Tamaño de letra relativo (1 = normal, 2 = doble); sirve para tamaños medios.
+  final double escala;
   // Si no es null, esta línea es un código QR con estos datos (sin texto).
   final String? qr;
 
@@ -31,6 +38,7 @@ class LineaTicket {
     this.alineacion = AlineacionTicket.izquierda,
     this.negrita = false,
     this.doble = false,
+    this.escala = 1,
     this.qr,
   });
 
@@ -39,12 +47,14 @@ class LineaTicket {
       alineacion = AlineacionTicket.centro,
       negrita = false,
       doble = false,
+      escala = 1,
       qr = datos;
 
   const LineaTicket.centro(
     this.texto, {
     this.negrita = false,
     this.doble = false,
+    this.escala = 1,
   }) : alineacion = AlineacionTicket.centro,
        qr = null;
 
@@ -52,6 +62,7 @@ class LineaTicket {
     this.texto, {
     this.negrita = false,
     this.doble = false,
+    this.escala = 1,
   }) : alineacion = AlineacionTicket.derecha,
        qr = null;
 
@@ -179,13 +190,11 @@ List<LineaTicket> ticketComanda({
   ];
   final nota = notaGeneralDe(pedido.notas);
   final salida = <LineaTicket>[
-    LineaTicket.centro(
-      reimpresion ? '*** REIMPRESION ***' : '*** COMANDA COCINA ***',
-      negrita: true,
-    ),
-    LineaTicket.centro('ORDEN #${pedido.numeroPedido}', doble: true),
+    if (reimpresion)
+      const LineaTicket.centro('*** REIMPRESION ***', negrita: true),
+    LineaTicket.centro('ORDEN #${pedido.numeroPedido}', escala: _escalaMedia),
     LineaTicket.separador('-'),
-    LineaTicket(_lugarComanda(pedido), negrita: true, doble: true),
+    LineaTicket(_lugarComanda(pedido), negrita: true, escala: _escalaMedia),
     LineaTicket('Mozo: $mozo'),
     LineaTicket('Fecha: ${fechaHoraTicket(pedido.fechaPedido)}'),
     if (nota != null)
@@ -199,15 +208,19 @@ List<LineaTicket> ticketComanda({
     final nombre = l.esLibre ? (l.nombreLibre ?? l.nombrePlato) : l.nombrePlato;
     for (final r in envolver(
       '[${l.cantidad}x] $nombre',
-      anchoTicketDoble,
+      anchoTicketMedio,
       sangria: '     ',
     )) {
-      salida.add(LineaTicket(r, negrita: true, doble: true));
+      salida.add(LineaTicket(r, negrita: true, escala: _escalaMedia));
     }
     // Igual que el servidor: cada producto para llevar lo lleva marcado.
     if (l.tipoEntrega == 'llevar') {
       salida.add(
-        const LineaTicket('      > [PARA LLEVAR / TAPER] <', negrita: true),
+        const LineaTicket(
+          '    > [PARA LLEVAR / TAPER] <',
+          negrita: true,
+          escala: _escalaMenor,
+        ),
       );
     }
     for (final d in detalleDeLinea(l)) {
@@ -313,10 +326,14 @@ List<LineaTicket> ticketBoleta({
   );
   final cargo = cargoLinea > 0.001 ? cargoLinea : pedido.costoDelivery;
   final deliverySuma = cargoLinea <= 0.001 ? cargo : 0.0;
-  final propina = suma(lineas.where(esLineaPropina));
+  final propinaLinea = suma(lineas.where(esLineaPropina));
+  // La propina cobrada sale aunque la línea local ya no esté.
+  final propina = propinaCobradaDePedido(pedido.id) > propinaLinea
+      ? propinaCobradaDePedido(pedido.id)
+      : propinaLinea;
   final tupper = suma(lineas.where(esLineaTupper));
   final devoluciones = suma(lineas.where(esAjusteDeDevolucion));
-  final total = suma(lineas) + deliverySuma;
+  final total = suma(lineas) + deliverySuma + (propina - propinaLinea);
   final saldo = total - pagado;
   final conRecargo = recargo > 0.001;
   // Lo que paga el cliente: la cuenta más el recargo.
@@ -473,8 +490,14 @@ List<LineaTicket> ticketComprobante({
   final serie = esFactura
       ? 'F###-########'
       : (esBoleta ? 'B###-########' : 'T###-########');
+  final propinaLinea = lineas
+      .where(esLineaPropina)
+      .fold(0.0, (s, l) => s + l.precioTotalLinea);
+  final propinaExtra = propinaCobradaDePedido(pedido.id) - propinaLinea;
   final total =
       lineas.fold(0.0, (s, l) => s + l.precioTotalLinea) +
+      (propinaExtra > 0.001 ? propinaExtra : 0) +
+      totalCargosExtra(pedido.id) +
       (recargo > 0.001 ? recargo : 0);
   final gravada = total / 1.18;
   final igv = total - gravada;

@@ -70,6 +70,8 @@ class SelectorRangoFechas extends StatefulWidget {
   final String textoTodas;
   // Con false no salen los accesos rápidos (Hoy, Ayer…): solo el calendario.
   final bool conAtajos;
+  // Con true, de los accesos rápidos solo sale "Hoy".
+  final bool soloHoy;
   // Con true se pueden elegir fechas futuras (por ejemplo, la vigencia de una
   // promoción).
   final bool permiteFuturo;
@@ -82,6 +84,7 @@ class SelectorRangoFechas extends StatefulWidget {
     this.textoVacio = 'Todas las fechas',
     this.textoTodas = 'Todas',
     this.conAtajos = true,
+    this.soloHoy = false,
     this.permiteFuturo = false,
   });
 
@@ -156,6 +159,7 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
                     permiteTodas: widget.permiteTodas,
                     textoTodas: widget.textoTodas,
                     conAtajos: widget.conAtajos,
+                    soloHoy: widget.soloHoy,
                     permiteFuturo: widget.permiteFuturo,
                     onAplicar: (r) {
                       widget.onChanged(r);
@@ -203,6 +207,7 @@ class _TarjetaRango extends StatefulWidget {
   final bool permiteTodas;
   final String textoTodas;
   final bool conAtajos;
+  final bool soloHoy;
   final bool permiteFuturo;
   final ValueChanged<DateTimeRange?> onAplicar;
 
@@ -212,6 +217,7 @@ class _TarjetaRango extends StatefulWidget {
     required this.permiteTodas,
     required this.textoTodas,
     required this.conAtajos,
+    required this.soloHoy,
     required this.permiteFuturo,
     required this.onAplicar,
   });
@@ -627,25 +633,27 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
               children: [
                 if (widget.conAtajos) ...[
                   _rapido('Hoy', () => _aplicarRapido(hoy, hoy)),
-                  _rapido('Ayer', () => _aplicarRapido(ayer, ayer)),
-                  _rapido(
-                    'Últimos 7 días',
-                    () => _aplicarRapido(
-                      hoy.subtract(const Duration(days: 6)),
-                      hoy,
+                  if (!widget.soloHoy) ...[
+                    _rapido('Ayer', () => _aplicarRapido(ayer, ayer)),
+                    _rapido(
+                      'Últimos 7 días',
+                      () => _aplicarRapido(
+                        hoy.subtract(const Duration(days: 6)),
+                        hoy,
+                      ),
                     ),
-                  ),
-                  _rapido(
-                    'Este mes',
-                    () => _aplicarRapido(DateTime(hoy.year, hoy.month), hoy),
-                  ),
-                  _rapido(
-                    'Mes pasado',
-                    () => _aplicarRapido(
-                      DateTime(hoy.year, hoy.month - 1),
-                      DateTime(hoy.year, hoy.month, 0),
+                    _rapido(
+                      'Este mes',
+                      () => _aplicarRapido(DateTime(hoy.year, hoy.month), hoy),
                     ),
-                  ),
+                    _rapido(
+                      'Mes pasado',
+                      () => _aplicarRapido(
+                        DateTime(hoy.year, hoy.month - 1),
+                        DateTime(hoy.year, hoy.month, 0),
+                      ),
+                    ),
+                  ],
                 ],
                 if (widget.permiteTodas)
                   _rapido(widget.textoTodas, () => widget.onAplicar(null)),

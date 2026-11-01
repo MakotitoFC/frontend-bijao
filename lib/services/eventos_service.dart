@@ -10,6 +10,7 @@ import 'eventos/evento_sse.dart';
 import 'eventos/flujo.dart';
 import 'pedido_mozo_service.dart';
 import 'pedido_service.dart';
+import 'traspaso_service.dart';
 
 // Qué hay que volver a leer del servidor cuando llega un evento.
 class AccionesDeEvento {
@@ -20,6 +21,8 @@ class AccionesDeEvento {
   final bool porLiberar;
   // Platos, categorías y tamaños de la carta.
   final bool carta;
+  // Solicitudes de traspaso entre mozos.
+  final bool traspasos;
 
   const AccionesDeEvento({
     this.pedidos = false,
@@ -27,9 +30,11 @@ class AccionesDeEvento {
     this.stock = false,
     this.porLiberar = false,
     this.carta = false,
+    this.traspasos = false,
   });
 
-  bool get ninguna => !pedidos && !mesas && !stock && !porLiberar && !carta;
+  bool get ninguna =>
+      !pedidos && !mesas && !stock && !porLiberar && !carta && !traspasos;
 
   AccionesDeEvento unir(AccionesDeEvento o) => AccionesDeEvento(
     pedidos: pedidos || o.pedidos,
@@ -37,6 +42,7 @@ class AccionesDeEvento {
     stock: stock || o.stock,
     porLiberar: porLiberar || o.porLiberar,
     carta: carta || o.carta,
+    traspasos: traspasos || o.traspasos,
   );
 }
 
@@ -58,6 +64,12 @@ AccionesDeEvento traducirEvento(String nombre) {
     case 'PEDIDO_ESTADO_CAMBIADO':
       // Pasar a pagado deja la mesa por liberar.
       return const AccionesDeEvento(pedidos: true, porLiberar: true);
+    case 'TRASPASO_SOLICITADO':
+      return const AccionesDeEvento(traspasos: true);
+    case 'TRASPASO_RESUELTO':
+      // Aceptado cambia de mozo al pedido; rechazado o cancelado, solo la
+      // solicitud.
+      return const AccionesDeEvento(pedidos: true, traspasos: true);
     case 'CAMBIO_MESA':
       return const AccionesDeEvento(pedidos: true, mesas: true);
     case 'MESA_LIBERADA':
@@ -175,6 +187,8 @@ class EventosService {
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
         if (acciones.carta) CatalogService.instance.recargarCarta(),
+        if (acciones.traspasos && PedidoMozoService.instance.activo)
+          TraspasoService.instance.cargar(),
         if (acciones.porLiberar && PedidoMozoService.instance.activo)
           recargarMesasPorLiberar(),
       ]);

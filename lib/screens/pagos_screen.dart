@@ -27,6 +27,9 @@ import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_tag.dart';
+import '../widgets/indicador_abajo.dart';
+import '../widgets/menu_flotante.dart';
+import '../widgets/boton_icono_expandible.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/comprobante_en_cobro.dart';
 import '../widgets/comprobantes_caja_panel.dart';
@@ -386,7 +389,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                           style: TextStyle(color: Colors.grey.shade500),
                         ),
                       )
-                    : SingleChildScrollView(child: _tabla(filas)),
+                    : _tabla(filas),
               ),
             ],
           ),
@@ -469,8 +472,16 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     );
   }
 
-  Widget _tabla(List<Pedido> filas) {
+  Widget _tabla(List<Pedido> pedidosFiltrados) {
+    // Del cobro más reciente al más antiguo; sin cobro, por la hora del pedido.
+    final filas = [...pedidosFiltrados]
+      ..sort(
+        (a, b) => (_fechaPago(b) ?? b.fechaPedido).compareTo(
+          _fechaPago(a) ?? a.fechaPedido,
+        ),
+      );
     return TablaApp<Pedido>(
+      scrollInterno: true,
       porPagina: 8,
       filas: filas,
       columnas: [
@@ -553,6 +564,37 @@ class _CajaScreenState extends State<CajaScreen> {
   // Rango de fechas de los cierres mostrados (null = todos).
   DateTimeRange? _rangoCierres;
 
+  // Vista que se muestra, elegida en el menú pequeño del borde: 'caja',
+  // 'movimientos' (ingresos y salidas) o 'comprobantes' (de hoy).
+  // Cambia al actualizar para que Comprobantes de hoy se vuelva a leer.
+  int _recarga = 0;
+  // Tarjeta de medio elegida (efectivo, tarjeta o digital) para ver su resumen.
+  String? _grupoElegido;
+
+  // Días de ingresos y salidas que se ven (null = la caja actual).
+  DateTimeRange? _rangoMov;
+  List<MovimientoCaja> _movRango = const [];
+  bool _cargandoRango = false;
+
+  Future<void> _cargarRangoMov() async {
+    final r = _rangoMov;
+    if (r == null) return;
+    setState(() => _cargandoRango = true);
+    try {
+      final lista = await MovimientoCajaService.instance.listarRango(
+        r.start,
+        r.end,
+      );
+      if (mounted && _rangoMov == r) setState(() => _movRango = lista);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMovimientos = e.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _cargandoRango = false);
+    }
+  }
+
   // Filtros de movimientos de caja
   TipoMovimiento? _filtroTipoMovimiento;
   String? _filtroCategoriaId;
@@ -566,6 +608,8 @@ class _CajaScreenState extends State<CajaScreen> {
   void initState() {
     super.initState();
     _cargar();
+    // Los comprobantes de hoy se leen de antemano para que abran sin espera.
+    if (CajaService.instance.enServidor) precargarComprobantesCaja();
   }
 
   // Trae lo que vive en el servidor: los cobros del día y los ingresos y
@@ -1068,20 +1112,7 @@ class _CajaScreenState extends State<CajaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = totalesCajaActual();
     final desde = inicioCajaActual;
-    final resumen = resumenPorMedio(desde);
-    final extra = totalesMovimientos(desde);
-    final srv = estadoCajaServidor?.totales;
-    final filas = _cajaCerrada
-        ? <FilaResumenMedio>[]
-        : (srv?.porMedio ?? resumen);
-    final ventas = _cajaCerrada
-        ? 0.0
-        : (srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas));
-    final ingresos = _cajaCerrada ? 0.0 : (srv?.ingresos ?? extra.ingresos);
-    final salidas = _cajaCerrada ? 0.0 : (srv?.salidas ?? extra.egresos);
-    final numPedidos = _cajaCerrada ? 0 : (srv?.numPedidos ?? t.pedidos);
     final movimientos = _cajaCerrada
         ? <MovimientoCaja>[]
         : movimientosDesde(desde);
@@ -1098,8 +1129,143 @@ class _CajaScreenState extends State<CajaScreen> {
           ];
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _cabeceraCaja(),
+          Expanded(child: _vistaCaja(cierres, movimientos)),
+        ],
+      ),
+    );
+  }
+
+  // Arriba a la derecha: las acciones del turno (actualizar, traspaso, reportes
+  // y cerrar caja).
+  Widget _cabeceraCaja() {
+    final acciones = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (!_cajaCerrada && CajaService.instance.enServidor)
+          BotonIconoExpandible(
+            icono: LucideIcons.userCheck,
+            etiqueta: 'Traspaso de Caja',
+            onPressed: _traspasoCaja,
+          ),
+        BotonIconoExpandible(
+          icono: LucideIcons.refreshCw,
+          etiqueta: 'Actualizar',
+          onPressed: () {
+            setState(() => _recarga++);
+            _cargar();
+            _cargarRangoMov();
+          },
+        ),
+        if (CajaService.instance.enServidor)
+          MenuFlotante<String>(
+            tooltip: 'Reportes de Caja',
+            anchoMinimo: 250,
+            opciones: const [
+              OpcionMenu(valor: 'turno', etiqueta: '1. Resumen Turno (Ticket)'),
+              OpcionMenu(
+                valor: 'dia_print',
+                etiqueta: '2. Consolidado Día (Ticket)',
+              ),
+              OpcionMenu(
+                valor: 'dia_pdf',
+                etiqueta: '3. Detallado Día (PDF/HTML)',
+              ),
+              OpcionMenu(
+                valor: 'otra_fecha',
+                etiqueta: '4. Reportes de otra fecha...',
+              ),
+            ],
+            onSeleccionar: (val) {
+              if (val == 'turno') _imprimirReporteTurno();
+              if (val == 'dia_print') _imprimirReporteDiaConsolidado();
+              if (val == 'dia_pdf') _abrirReporteDiaDetallado();
+              if (val == 'otra_fecha') _reportesDeOtraFecha();
+            },
+            disparador: (context, abierto) => Container(
+              height: AppSizes.boton,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.primaryGreen),
+                borderRadius: BorderRadius.circular(AppSizes.boton / 2),
+                color: Colors.white,
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    LucideIcons.barChart2,
+                    size: 16,
+                    color: AppColors.primaryGreen,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Reportes',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryGreen,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        FilledButton.icon(
+          onPressed: _cajaCerrada ? null : _cerrarCaja,
+          icon: const Icon(LucideIcons.lock, size: 16),
+          label: const Text('Cerrar caja'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
+        ),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 10,
+        children: [acciones],
+      ),
+    );
+  }
+
+  Widget _vistaCaja(
+    List<CierreCaja> cierres,
+    List<MovimientoCaja> movimientos,
+  ) {
+    final t = totalesCajaActual();
+    final desde = inicioCajaActual;
+    final resumen = resumenPorMedio(desde);
+    final extra = totalesMovimientos(desde);
+    final srv = estadoCajaServidor?.totales;
+    final filas = _cajaCerrada
+        ? <FilaResumenMedio>[]
+        : (srv?.porMedio ?? resumen);
+    final ventas = _cajaCerrada
+        ? 0.0
+        : (srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas));
+    final ingresos = _cajaCerrada ? 0.0 : (srv?.ingresos ?? extra.ingresos);
+    final salidas = _cajaCerrada ? 0.0 : (srv?.salidas ?? extra.egresos);
+    final numPedidos = _cajaCerrada ? 0 : (srv?.numPedidos ?? t.pedidos);
+    final filasVistas = _grupoElegido == null
+        ? filas
+        : [
+            for (final f in filas)
+              if (_grupoDeMedio(f) == _grupoElegido) f,
+          ];
+    return IndicadorAbajo(
+      builder: (ctl) => SingleChildScrollView(
+        controller: ctl,
+        padding: const EdgeInsets.fromLTRB(24, 16, 36, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1140,215 +1306,61 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            Container(
-              decoration: _panel,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Caja actual',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            Text(
-                              _cajaCerrada
-                                  ? 'No hay turno activo actualmente'
-                                  : '${estadoCajaServidor?.apertura?.turnoNombre ?? 'Turno'} · Desde ${_fecha(desde)} · $numPedidos pedido(s) cobrado(s)',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (!_cajaCerrada && CajaService.instance.enServidor)
-                            OutlinedButton.icon(
-                              onPressed: _traspasoCaja,
-                              icon: const Icon(LucideIcons.userCheck, size: 16),
-                              label: const Text('Traspaso de Caja'),
-                            ),
-                          if (CajaService.instance.enServidor)
-                            PopupMenuButton<String>(
-                              tooltip: 'Reportes de Caja',
-                              constraints: const BoxConstraints(
-                                minWidth: 220,
-                                maxWidth: 260,
-                              ),
-                              onSelected: (val) {
-                                if (val == 'turno') _imprimirReporteTurno();
-                                if (val == 'dia_print')
-                                  _imprimirReporteDiaConsolidado();
-                                if (val == 'dia_pdf')
-                                  _abrirReporteDiaDetallado();
-                                if (val == 'otra_fecha') _reportesDeOtraFecha();
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'turno',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.printer,
-                                        size: 16,
-                                        color: Colors.blue,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '1. Resumen Turno (Ticket)',
-                                          style: TextStyle(fontSize: 12.5),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'dia_print',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.receipt,
-                                        size: 16,
-                                        color: Colors.green,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '2. Consolidado Día (Ticket)',
-                                          style: TextStyle(fontSize: 12.5),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'dia_pdf',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.fileText,
-                                        size: 16,
-                                        color: Colors.purple,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '3. Detallado Día (PDF/HTML)',
-                                          style: TextStyle(fontSize: 12.5),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuDivider(),
-                                const PopupMenuItem(
-                                  value: 'otra_fecha',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.calendar,
-                                        size: 16,
-                                        color: Colors.orange,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          '4. Reportes de otra fecha...',
-                                          style: TextStyle(fontSize: 12.5),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                  color: Colors.white,
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      LucideIcons.barChart2,
-                                      size: 16,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                    SizedBox(width: 6),
-                                    Text(
-                                      'Reportes ▾',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.primaryGreen,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          FilledButton.icon(
-                            onPressed: _cajaCerrada ? null : _cerrarCaja,
-                            icon: const Icon(LucideIcons.lock, size: 16),
-                            label: const Text('Cerrar caja'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primaryGreen,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  _tarjetasCaja(
-                    apertura: estadoCajaServidor?.apertura,
-                    filas: filas,
-                    ventas: ventas,
-                    delivery: srv?.delivery ?? 0,
-                    numPedidos: numPedidos,
-                    ingresos: ingresos,
-                    salidas: salidas,
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Por medio de pago (desglosado por grupo y variante)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  _tablaMediosAgrupados(filas),
-                ],
-              ),
+            const Text(
+              'Caja actual',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              _cajaCerrada
+                  ? 'No hay turno activo actualmente'
+                  : '${estadoCajaServidor?.apertura?.turnoNombre ?? 'Turno'} · Desde ${_fecha(desde)} · $numPedidos pedido(s) cobrado(s)',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 14),
+            _tarjetasCaja(
+              apertura: estadoCajaServidor?.apertura,
+              filas: filas,
+              ventas: ventas,
+              delivery: srv?.delivery ?? 0,
+              numPedidos: numPedidos,
+              ingresos: ingresos,
+              salidas: salidas,
             ),
             const SizedBox(height: 16),
-            // Ingresos y salidas, y comprobantes de hoy, en la misma fila (uno
-            // debajo del otro si no caben).
+            LayoutBuilder(
+              builder: (context, c) {
+                final cierresPanel = _vistaCierres(cierres);
+                final mediosPanel = _panelMedios(filasVistas);
+                if (c.maxWidth < 1000) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      mediosPanel,
+                      const SizedBox(height: 16),
+                      cierresPanel,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: cierresPanel),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 2, child: mediosPanel),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            // Ingresos y salidas con los comprobantes de hoy (uno debajo del
+            // otro si no caben).
             LayoutBuilder(
               builder: (context, c) {
                 final panelMov = _panelMovimientos(movimientos);
                 if (!CajaService.instance.enServidor) return panelMov;
-                const comprobantes = ComprobantesCajaPanel();
+                final comprobantes = ComprobantesCajaPanel(
+                  key: ValueKey(_recarga),
+                );
                 if (c.maxWidth < 900) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1364,60 +1376,10 @@ class _CajaScreenState extends State<CajaScreen> {
                   children: [
                     Expanded(child: panelMov),
                     const SizedBox(width: 16),
-                    const Expanded(child: comprobantes),
+                    Expanded(child: comprobantes),
                   ],
                 );
               },
-            ),
-            const SizedBox(height: 16),
-            Container(
-              decoration: _panel,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Cierres de caja',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      SelectorRangoFechas(
-                        valor: _rangoCierres,
-                        permiteTodas: true,
-                        onChanged: (r) => setState(() => _rangoCierres = r),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (cierres.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text(
-                          cierresCaja.isEmpty
-                              ? 'Aún no hay cierres de caja'
-                              : 'No hay cierres de caja en ese rango de fechas',
-                          style: TextStyle(color: Colors.grey.shade500),
-                        ),
-                      ),
-                    )
-                  else
-                    TablaApp<CierreCaja>(
-                      porPagina: 10,
-                      filas: cierres,
-                      columnas: _columnasCierres(),
-                      // En el celular, la tarjeta muestra lo principal y al
-                      // tocarla se ve el cierre completo.
-                      onTarjeta: _verCierreCompleto,
-                    ),
-                ],
-              ),
             ),
           ],
         ),
@@ -1425,142 +1387,179 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
-  Widget _tablaMediosAgrupados(List<FilaResumenMedio> filas) {
-    if (filas.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        alignment: Alignment.center,
-        child: Text(
-          _cajaCerrada
-              ? 'Caja cerrada · No hay movimientos en este turno'
-              : 'Sin métodos de pago registrados',
-          style: TextStyle(color: Colors.grey.shade500),
-        ),
-      );
+  // A qué tarjeta pertenece un medio: efectivo, digital (Yape/Plin) o tarjeta.
+  String _grupoDeMedio(FilaResumenMedio f) {
+    final grupo = f.grupo.toLowerCase();
+    final medio = f.medio.toLowerCase();
+    if (grupo == 'efectivo' || medio.contains('efectivo')) return 'efectivo';
+    if (grupo == 'digital' ||
+        medio.contains('yape') ||
+        medio.contains('plin')) {
+      return 'digital';
     }
+    return 'tarjeta';
+  }
 
-    final grupos = <String, List<FilaResumenMedio>>{
-      'efectivo': [],
-      'tarjeta': [],
-      'digital': [],
+  static const _nombresGrupo = {
+    'efectivo': 'Efectivo',
+    'tarjeta': 'Tarjetas / POS',
+    'digital': 'Yape / Plin',
+  };
+
+  Widget _vistaCierres(List<CierreCaja> cierres) {
+    return Container(
+      width: double.infinity,
+      decoration: _panel,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Cierres de caja',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ),
+              SelectorRangoFechas(
+                valor: _rangoCierres,
+                permiteTodas: true,
+                onChanged: (r) => setState(() => _rangoCierres = r),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (cierres.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  cierresCaja.isEmpty
+                      ? 'Aún no hay cierres de caja'
+                      : 'No hay cierres de caja en ese rango de fechas',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          else
+            TablaApp<CierreCaja>(
+              porPagina: 10,
+              filas: cierres,
+              columnas: _columnasCierres(),
+              // En el celular, la tarjeta muestra lo principal y al tocarla se
+              // ve el cierre completo.
+              onTarjeta: _verCierreCompleto,
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Menú pequeño pegado al borde derecho: un icono para ingresos y salidas y
+  // otro para los comprobantes de hoy. Cada uno abre su panel como cajón.
+  // Por medio de pago: una barra por medio con su parte real del total
+  // cobrado (ventas + ingresos).
+  Widget _panelMedios(List<FilaResumenMedio> filas) {
+    const colores = {
+      'efectivo': Color(0xFF16A34A),
+      'tarjeta': Color(0xFF3B82F6),
+      'digital': Color(0xFFD946EF),
     };
-
-    for (final f in filas) {
-      final g = f.grupo.toLowerCase();
-      final m = f.medio.toLowerCase();
-      if (g == 'efectivo' || m.contains('efectivo')) {
-        grupos['efectivo']!.add(f);
-      } else if (g == 'digital' || m.contains('yape') || m.contains('plin')) {
-        grupos['digital']!.add(f);
-      } else {
-        grupos['tarjeta']!.add(f);
-      }
-    }
-
-    final titulosGrupos = {
-      'efectivo': (
-        'EFECTIVO',
-        LucideIcons.dollarSign,
-        const Color(0xFF16A34A),
-        const Color(0xFFEFFBEF),
+    final ordenadas = [
+      ...filas,
+    ]..sort((a, b) => (b.ventas + b.ingresos).compareTo(a.ventas + a.ingresos));
+    final total = ordenadas.fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+    return Container(
+      decoration: _panel,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _grupoElegido == null
+                ? 'Por medio de pago'
+                : 'Por medio de pago · ${_nombresGrupo[_grupoElegido]}',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
+          Text(
+            _grupoElegido == null
+                ? 'Parte de cada medio en lo cobrado del turno'
+                : 'Toca la tarjeta otra vez para ver todos',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 14),
+          if (ordenadas.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  _cajaCerrada
+                      ? 'Caja cerrada · No hay movimientos en este turno'
+                      : 'Sin métodos de pago registrados',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          else
+            for (final f in ordenadas) ...[
+              _barraMedio(
+                f,
+                total > 0 ? (f.ventas + f.ingresos) / total : 0.0,
+                colores[_grupoDeMedio(f)]!,
+              ),
+              const SizedBox(height: 14),
+            ],
+        ],
       ),
-      'tarjeta': (
-        'TARJETAS / POS',
-        LucideIcons.creditCard,
-        const Color(0xFF3B82F6),
-        const Color(0xFFEFF6FF),
-      ),
-      'digital': (
-        'YAPE / PLIN / BILLETERAS',
-        LucideIcons.smartphone,
-        const Color(0xFFD946EF),
-        const Color(0xFFFCEBFD),
-      ),
-    };
+    );
+  }
 
+  Widget _barraMedio(FilaResumenMedio f, double fraccion, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final entry in grupos.entries)
-          if (entry.value.isNotEmpty) ...[
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: titulosGrupos[entry.key]!.$4,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: titulosGrupos[entry.key]!.$3.withValues(alpha: 0.3),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                f.medio,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    titulosGrupos[entry.key]!.$2,
-                    size: 16,
-                    color: titulosGrupos[entry.key]!.$3,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    titulosGrupos[entry.key]!.$1,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: titulosGrupos[entry.key]!.$3,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Subtotal Ventas: ${_soles(entry.value.fold(0.0, (s, it) => s + it.ventas))} | Neto: ${_soles(entry.value.fold(0.0, (s, it) => s + it.neto))}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: titulosGrupos[entry.key]!.$3,
-                    ),
-                  ),
-                ],
+            ),
+            Text(
+              '${_soles(f.neto)} · ${(fraccion * 100).round()}%',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade700,
               ),
             ),
-            TablaApp<FilaResumenMedio>(
-              porPagina: 10,
-              filas: entry.value,
-              columnas: [
-                ColumnaTabla(
-                  titulo: 'Variante / Medio',
-                  flex: 1.5,
-                  ordenarPor: (f) => f.medio.toLowerCase(),
-                  celda: (f) => TablaApp.texto(f.medio, fuerte: true),
-                ),
-                ColumnaTabla(
-                  titulo: 'Ventas',
-                  ordenarPor: (f) => f.ventas,
-                  celda: (f) => TablaApp.texto(_soles(f.ventas)),
-                ),
-                ColumnaTabla(
-                  titulo: 'Ingresos',
-                  ordenarPor: (f) => f.ingresos,
-                  celda: (f) => TablaApp.texto(_soles(f.ingresos)),
-                ),
-                ColumnaTabla(
-                  titulo: 'Salidas',
-                  ordenarPor: (f) => f.egresos,
-                  celda: (f) => TablaApp.texto(_soles(f.egresos)),
-                ),
-                ColumnaTabla(
-                  titulo: 'Neto',
-                  ordenarPor: (f) => f.neto,
-                  celda: (f) => TablaApp.texto(_soles(f.neto), fuerte: true),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
           ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: fraccion.clamp(0.0, 1.0),
+            minHeight: 7,
+            color: color,
+            backgroundColor: color.withValues(alpha: 0.14),
+          ),
+        ),
       ],
     );
   }
 
   // Ingresos y salidas de la caja actual, con los botones para registrarlos y filtros por tipo/categoría.
-  Widget _panelMovimientos(List<MovimientoCaja> movimientos) {
+  Widget _panelMovimientos(List<MovimientoCaja> delTurno) {
+    final movimientos = _rangoMov == null ? delTurno : _movRango;
     final catActivas = _filtroTipoMovimiento == null
         ? categoriasMovimiento
         : categoriasDeTipo(_filtroTipoMovimiento!);
@@ -1590,38 +1589,29 @@ class _CajaScreenState extends State<CajaScreen> {
               final angosto = c.maxWidth < 560;
               final botones = Wrap(
                 alignment: angosto ? WrapAlignment.start : WrapAlignment.end,
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  FilledButton.icon(
+                  BotonIconoExpandible(
+                    icono: LucideIcons.plus,
+                    etiqueta: 'Ingreso',
+                    color: AppColors.primaryGreen,
                     onPressed: _cajaCerrada
                         ? null
                         : () => _registrar(TipoMovimiento.ingreso),
-                    icon: const Icon(LucideIcons.plus, size: 16),
-                    label: const Text('Ingreso'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                    ),
                   ),
-                  FilledButton.icon(
+                  BotonIconoExpandible(
+                    icono: LucideIcons.minus,
+                    etiqueta: 'Salida',
+                    color: AppColors.error,
                     onPressed: _cajaCerrada
                         ? null
                         : () => _registrar(TipoMovimiento.egreso),
-                    icon: const Icon(LucideIcons.minus, size: 16),
-                    label: const Text('Salida'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.error,
-                    ),
                   ),
-                  OutlinedButton.icon(
+                  BotonIconoExpandible(
+                    icono: LucideIcons.tag,
+                    etiqueta: 'Categorías',
                     onPressed: _administrarCategorias,
-                    icon: const Icon(LucideIcons.tag, size: 16),
-                    label: const Text('Categorías'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _cargar,
-                    icon: const Icon(LucideIcons.refreshCw, size: 16),
-                    label: const Text('Actualizar'),
                   ),
                 ],
               );
@@ -1641,81 +1631,72 @@ class _CajaScreenState extends State<CajaScreen> {
             },
           ),
           const SizedBox(height: 12),
-          // FILTROS: Tipo y Categoría
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SelectorRangoFechas(
+              valor: _rangoMov,
+              permiteTodas: true,
+              soloHoy: true,
+              textoVacio: 'Caja actual',
+              textoTodas: 'Caja actual',
+              onChanged: (r) {
+                setState(() {
+                  _rangoMov = r;
+                  _movRango = const [];
+                });
+                _cargarRangoMov();
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Filtros: tipo (tags oscuros) y categoría (select de la app).
           Wrap(
-            spacing: 8,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(
-                'Filtrar:',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              ChoiceChip(
-                label: const Text('Todos', style: TextStyle(fontSize: 11)),
-                selected: _filtroTipoMovimiento == null,
-                onSelected: (s) => setState(() {
+              AppTag(
+                etiqueta: 'Todos',
+                activo: _filtroTipoMovimiento == null,
+                onTap: () => setState(() {
                   _filtroTipoMovimiento = null;
                   _filtroCategoriaId = null;
                 }),
               ),
-              ChoiceChip(
-                label: const Text('Ingresos', style: TextStyle(fontSize: 11)),
-                selected: _filtroTipoMovimiento == TipoMovimiento.ingreso,
-                onSelected: (s) => setState(() {
+              AppTag(
+                etiqueta: 'Ingresos',
+                activo: _filtroTipoMovimiento == TipoMovimiento.ingreso,
+                onTap: () => setState(() {
                   _filtroTipoMovimiento = TipoMovimiento.ingreso;
                   _filtroCategoriaId = null;
                 }),
               ),
-              ChoiceChip(
-                label: const Text(
-                  'Salidas / Egresos',
-                  style: TextStyle(fontSize: 11),
-                ),
-                selected: _filtroTipoMovimiento == TipoMovimiento.egreso,
-                onSelected: (s) => setState(() {
+              AppTag(
+                etiqueta: 'Salidas / Egresos',
+                activo: _filtroTipoMovimiento == TipoMovimiento.egreso,
+                onTap: () => setState(() {
                   _filtroTipoMovimiento = TipoMovimiento.egreso;
                   _filtroCategoriaId = null;
                 }),
               ),
               if (catActivas.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      value: _filtroCategoriaId,
-                      hint: const Text(
-                        'Todas las categorías',
-                        style: TextStyle(fontSize: 11),
+                SizedBox(
+                  width: 220,
+                  child: AppSelect<String>(
+                    compacto: true,
+                    value: _filtroCategoriaId,
+                    hint: 'Todas las categorías',
+                    items: [
+                      const AppSelectItem(
+                        value: '',
+                        label: 'Todas las categorías',
                       ),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.black87,
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('Todas las categorías'),
-                        ),
-                        ...catActivas.map(
-                          (c) => DropdownMenuItem<String?>(
-                            value: c.id,
-                            child: Text(c.nombre),
-                          ),
-                        ),
-                      ],
-                      onChanged: (val) =>
-                          setState(() => _filtroCategoriaId = val),
+                      for (final c in catActivas)
+                        AppSelectItem(value: c.id, label: c.nombre),
+                    ],
+                    onChanged: (val) => setState(
+                      () => _filtroCategoriaId = (val == null || val.isEmpty)
+                          ? null
+                          : val,
                     ),
                   ),
                 ),
@@ -1740,7 +1721,12 @@ class _CajaScreenState extends State<CajaScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          if (_cajaCerrada)
+          if (_cargandoRango)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_cajaCerrada && _rangoMov == null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
@@ -1769,6 +1755,7 @@ class _CajaScreenState extends State<CajaScreen> {
               child: Scrollbar(
                 child: ListView(
                   shrinkWrap: true,
+                  padding: const EdgeInsets.only(right: 16),
                   children: [
                     for (final m in movimientosFiltrados) _filaMovimiento(m),
                   ],
@@ -2023,7 +2010,7 @@ class _CajaScreenState extends State<CajaScreen> {
       bool fuerte = false,
     }) => ColumnaTabla(
       titulo: titulo,
-      anchoMin: 96,
+      anchoMin: 116,
       rol: RolTarjeta.dato,
       ordenarPor: valor,
       celda: (c) => TablaApp.texto(_soles(valor(c)), fuerte: fuerte),
@@ -2046,7 +2033,7 @@ class _CajaScreenState extends State<CajaScreen> {
       monto('Declarado', (c) => c.montoDeclarado),
       ColumnaTabla(
         titulo: 'Dif. efectivo',
-        anchoMin: 110,
+        anchoMin: 130,
         rol: RolTarjeta.dato,
         ordenarPor: (c) => c.diferenciaEfectivo,
         celda: (c) {
@@ -2062,7 +2049,7 @@ class _CajaScreenState extends State<CajaScreen> {
       ),
       ColumnaTabla(
         titulo: 'Reportes',
-        anchoMin: 110,
+        anchoMin: 128,
         rol: RolTarjeta.acciones,
         celda: (c) => Row(
           mainAxisSize: MainAxisSize.min,
@@ -2187,6 +2174,7 @@ class _CajaScreenState extends State<CajaScreen> {
         'Ingresos Efectivo',
         totalEfectivo,
         'Total cobrado en efectivo',
+        grupo: 'efectivo',
       ),
       _tarjetaCaja(
         LucideIcons.creditCard,
@@ -2195,6 +2183,7 @@ class _CajaScreenState extends State<CajaScreen> {
         'Tarjetas / POS',
         totalTarjeta,
         'Total cobrado con tarjeta',
+        grupo: 'tarjeta',
       ),
       _tarjetaCaja(
         LucideIcons.smartphone,
@@ -2203,6 +2192,7 @@ class _CajaScreenState extends State<CajaScreen> {
         'Yape / Plin',
         totalDigital,
         'Total cobrado por billeteras',
+        grupo: 'digital',
       ),
     ];
     if (mini) {
@@ -2260,15 +2250,141 @@ class _CajaScreenState extends State<CajaScreen> {
     Color fondo,
     String titulo,
     double valor,
-    String? detalle,
-  ) {
+    String? detalle, {
+    String? grupo,
+  }) {
     final mini = AppBreakpoints.esMenorATablet(context);
-    return Container(
+    final elegida = grupo != null && _grupoElegido == grupo;
+    if (!mini) {
+      final entero = valor.truncate().abs();
+      final dec = (valor.abs() - entero).toStringAsFixed(2).substring(1);
+      final signo = valor < 0 ? '-' : '';
+      final grande = Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: elegida ? AppColors.navbar : Colors.grey.shade200,
+            width: elegida ? 1.6 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    titulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: fondo,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icono, size: 18, color: color),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '${signo}S/ $entero',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    TextSpan(
+                      text: dec,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (detalle != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        detalle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                    if (grupo != null)
+                      Icon(
+                        LucideIcons.arrowRight,
+                        size: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+      if (grupo == null) return grande;
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => setState(() => _grupoElegido = elegida ? null : grupo),
+          child: grande,
+        ),
+      );
+    }
+    final tarjeta = Container(
       padding: EdgeInsets.all(mini ? 10 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(
+          color: elegida ? AppColors.navbar : Colors.grey.shade200,
+          width: elegida ? 1.6 : 1,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -2332,6 +2448,14 @@ class _CajaScreenState extends State<CajaScreen> {
             ),
           ),
         ],
+      ),
+    );
+    if (grupo == null) return tarjeta;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() => _grupoElegido = elegida ? null : grupo),
+        child: tarjeta,
       ),
     );
   }
@@ -2589,7 +2713,7 @@ class _CerrarCajaDialogState extends State<_CerrarCajaDialog> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '✔ Cuadre perfecto: El monto coincide exactamente con el efectivo esperado (S/ ${widget.efectivoEsperado.toStringAsFixed(2)}).',
+                      'Cuadre perfecto: El monto coincide exactamente con el efectivo esperado (S/ ${widget.efectivoEsperado.toStringAsFixed(2)}).',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

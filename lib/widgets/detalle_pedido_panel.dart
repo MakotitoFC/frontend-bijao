@@ -7,6 +7,7 @@ import '../data/incidencias_store.dart';
 import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
+import '../data/cargos_extra_store.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/promociones_store.dart';
@@ -1387,7 +1388,12 @@ class DetallePedidoPanel extends StatelessWidget {
         .fold(0.0, (s, l) => s + l.precioTotalLinea);
     final descExtra = sumaAjustes(_prefijoDescuento);
     final tupper = tupperDePedido(pedido.id);
-    final propina = propinaDePedido(pedido.id);
+    final propinaLinea = propinaDePedido(pedido.id);
+    final propina = propinaCobradaDePedido(pedido.id) > propinaLinea
+        ? propinaCobradaDePedido(pedido.id)
+        : propinaLinea;
+    final cargosExtra = cargosExtraDe(pedido.id);
+    final totalCargos = cargosExtra.fold(0.0, (s, x) => s + x.monto);
     final devoluciones = detalles
         .where(esAjusteDeDevolucion)
         .fold(0.0, (s, l) => s + l.precioTotalLinea);
@@ -1397,9 +1403,14 @@ class DetallePedidoPanel extends StatelessWidget {
     final recargo = recargoCobradoDePedido(pedido.id);
     final totalCuenta = totalDePedido(pedido.id);
     final totalCobrado = totalCobradoDePedido(pedido.id);
-    final total = recargo > 0.01 ? totalCobrado : totalCuenta;
+    final totalBase =
+        (recargo > 0.01 ? totalCobrado : totalCuenta) +
+        (propina - propinaLinea);
     final saldo = saldoPendienteDePedido(pedido.id);
-    final pagado = total - saldo;
+    // Las roturas se cobran junto con el pago: cuentan como pagadas si ya no
+    // queda saldo.
+    final pagado = totalBase - saldo + (saldo <= 0.01 ? totalCargos : 0);
+    final total = totalBase + totalCargos;
     final puedePagar = saldoCuentaDePedido(pedido.id) > 0.01;
 
     // En pantallas bajas (mobile) los totales y botones van dentro del scroll,
@@ -1434,6 +1445,8 @@ class DetallePedidoPanel extends StatelessWidget {
               tupper,
               onEditar: _esCajero ? null : () => _editarTupper(context),
             ),
+          for (final x in cargosExtra)
+            _filaTotal('Rotura/alq. ${x.nombre}', x.monto),
           if (recargo > 0.01) _filaTotal('Recargo por tarjeta', recargo),
           if (pagado > 0.01) _filaTotal('Pagado', pagado),
           // Con qué medio(s) se pagó, cada uno con su monto.

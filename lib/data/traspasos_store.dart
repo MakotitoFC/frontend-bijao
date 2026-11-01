@@ -16,6 +16,9 @@ void reemplazarTraspasos(List<TraspasoPedido> lista) {
   traspasosRevision.value++;
 }
 
+// Traspasos que el usuario envió y el otro mozo rechazó, aún sin avisarle.
+final List<TraspasoPedido> traspasosRechazados = [];
+
 // Solicitud pendiente de este pedido (la que envió su mozo), si la hay.
 TraspasoPedido? traspasoPendienteDe(String pedidoId) {
   for (final t in traspasosPendientes) {

@@ -225,8 +225,63 @@ class _PedidosScreenState extends State<PedidosScreen> {
     if (mounted) _cargar();
   }
 
+  bool _modalRechazo = false;
+
+  // Si el otro mozo rechazó un traspaso que este mozo envió, se le avisa para
+  // que elija a otro.
+  Future<void> _avisarRechazos() async {
+    if (_modalRechazo || !mounted || traspasosRechazados.isEmpty) return;
+    _modalRechazo = true;
+    while (mounted && traspasosRechazados.isNotEmpty) {
+      final t = traspasosRechazados.removeAt(0);
+      final pedido = pedidos.where((p) => p.id == t.pedidoId).firstOrNull;
+      if (pedido == null) continue;
+      final elegir = await showBlurDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertaApp(
+          title: const Text('Traspaso rechazado'),
+          content: Text(
+            '${t.destinoNombre.isEmpty ? 'El mozo' : t.destinoNombre} '
+            'rechazó el pedido #${pedido.numeroPedido} '
+            '(${pedido.ubicacion}). Sigue a tu nombre: elige a otro mozo '
+            'para traspasarlo.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Después'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Elegir otro mozo'),
+            ),
+          ],
+        ),
+      );
+      if (elegir != true || !mounted) continue;
+      final destino = await showBlurDialog<String>(
+        context: context,
+        builder: (_) => TraspasarPedidoDialog(pedido: pedido),
+      );
+      if (destino != null && mounted) {
+        showAppToast(
+          context,
+          'Traspaso del pedido #${pedido.numeroPedido} enviado a $destino.',
+          type: ToastType.success,
+        );
+      }
+    }
+    _modalRechazo = false;
+    if (mounted) _cargar();
+  }
+
   void _alCambiarEnVivo() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    // Un traspaso nuevo o rechazado avisa al momento, sin esperar la consulta
+    // periódica.
+    _avisarTraspasos();
+    _avisarRechazos();
   }
 
   @override
@@ -255,6 +310,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     }
     if (mounted) setState(() {});
     _avisarTraspasos();
+    _avisarRechazos();
   }
 
   Future<void> _liberarMesa(Mesa mesa) async {
@@ -371,7 +427,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
   bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
 
   // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
-  bool _esActivo(Pedido p) => p.abierto;
+  // Un pedido ya cobrado por completo (aunque falte servirlo) va solo en
+  // "Pagados", no en la cola.
+  bool _esCobrado(Pedido p) => p.estado == 'pagado' || pagadoSinServir(p);
+
+  bool _esActivo(Pedido p) => p.abierto && !pagadoSinServir(p);
 
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
 
@@ -411,11 +471,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     if (_tipoFiltro == 'pagados') {
       return pedidos
           .where(
-            (p) =>
-                p.estado == 'pagado' &&
-                _enVista(p) &&
-                _conMedio(p) &&
-                _coincide(p),
+            (p) => _esCobrado(p) && _enVista(p) && _conMedio(p) && _coincide(p),
           )
           .toList();
     }
@@ -430,8 +486,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   Pedido? get _seleccionado {
     for (final p in pedidos) {
       if (p.id == _seleccionId &&
-          (_esActivo(p) ||
-              (_tipoFiltro == 'pagados' && p.estado == 'pagado'))) {
+          (_esActivo(p) || (_tipoFiltro == 'pagados' && _esCobrado(p)))) {
         return p;
       }
     }
@@ -440,7 +495,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   int _contarTipo(String? tipo) {
     if (tipo == 'pagados') {
-      return pedidos.where((p) => p.estado == 'pagado' && _enVista(p)).length;
+      return pedidos.where((p) => _esCobrado(p) && _enVista(p)).length;
     }
     final base = pedidos.where((p) => _esActivo(p) && _enVista(p));
     if (tipo == null) return base.length;

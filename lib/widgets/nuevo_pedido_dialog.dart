@@ -284,7 +284,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   // ---------- acciones ----------
 
-  Future<void> _abrirOpciones(CartaItem item, {Color? acento}) async {
+  // Abre el modal del producto. Con [indice] corrige esa línea del carrito.
+  Future<void> _abrirOpciones(
+    CartaItem item, {
+    Color? acento,
+    int? indice,
+  }) async {
+    final previa = indice == null ? null : _carrito[indice];
     final resultado = await showBlurDialog<ProductoConfigurado>(
       context: context,
       builder: (_) => ProductoOpcionesDialog(
@@ -294,39 +300,45 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         enCarrito: _carrito,
         tipoEntregaInicial: widget.tipo,
         permitePrecioManual: true,
+        lineaInicial: previa,
       ),
     );
     if (resultado == null || !mounted) return;
     setState(() {
-      final idLinea = UuidHelper.v7();
+      final idLinea = previa?.id ?? UuidHelper.v7();
       if (resultado.precioManual) {
         _precioCarta[idLinea] = resultado.precioOriginal;
+      } else {
+        _precioCarta.remove(idLinea);
       }
-      _carrito.add(
-        PedidoLine(
-          id: idLinea,
-          cartaId: item.id,
-          nombrePlato: item.nombrePlato,
-          cantidad: resultado.cantidad,
-          modificadores: resultado.modificadores,
-          presentacion: resultado.presentacion,
-          variante: resultado.variante,
-          promocion: null,
-          comentario: resultado.comentario,
-          precioUnitario: resultado.precioUnitario,
-          descuentoAplicado: 0,
-          precioTotalLinea: resultado.totalLinea,
-          tipoEntrega: resultado.tipoEntrega,
-          aplicaTaper: resultado.llevaTaper,
-          taperId: resultado.taperId,
-          precioTaper: resultado.precioTaper,
-          cantidadTaper: resultado.cantidadTaper,
-          esLibre: false,
-          precioBase:
-              resultado.variante?.precioCliente ?? item.precioCliente ?? 0.0,
-          precioManual: resultado.precioManual,
-        ),
+      final nueva = PedidoLine(
+        id: idLinea,
+        cartaId: item.id,
+        nombrePlato: item.nombrePlato,
+        cantidad: resultado.cantidad,
+        modificadores: resultado.modificadores,
+        presentacion: resultado.presentacion,
+        variante: resultado.variante,
+        promocion: null,
+        comentario: resultado.comentario,
+        precioUnitario: resultado.precioUnitario,
+        descuentoAplicado: 0,
+        precioTotalLinea: resultado.totalLinea,
+        tipoEntrega: resultado.tipoEntrega,
+        aplicaTaper: resultado.llevaTaper,
+        taperId: resultado.taperId,
+        precioTaper: resultado.precioTaper,
+        cantidadTaper: resultado.cantidadTaper,
+        esLibre: false,
+        precioBase:
+            resultado.variante?.precioCliente ?? item.precioCliente ?? 0.0,
+        precioManual: resultado.precioManual,
       );
+      if (indice != null) {
+        _carrito[indice] = nueva;
+        return;
+      }
+      _carrito.add(nueva);
       // Los demás tápers elegidos van como filas propias.
       for (final e in resultado.tapersAdicionales) {
         _carrito.add(lineaDeTaper(e.taper, e.cantidad));
@@ -457,8 +469,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     // Datos que pide cada tipo: para llevar, el nombre; delivery, nombre,
     // celular, dirección y monto del delivery.
     final faltan = <String>[
-      if (!esMesa && _nombreController.text.trim().isEmpty)
-        'Nombre del cliente',
+      if ((!esMesa || _esPersonal) && _nombreController.text.trim().isEmpty)
+        _esPersonal ? 'Nombre del empleado' : 'Nombre del cliente',
       if (esDelivery && _telefonoController.text.trim().isEmpty)
         'Celular / WhatsApp',
       if (esDelivery && _direccionController.text.trim().isEmpty)
@@ -501,7 +513,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       notas: _notasController.text.trim().isEmpty
           ? null
           : _notasController.text.trim(),
-      clienteNombre: esMesa || _nombreController.text.trim().isEmpty
+      clienteNombre:
+          (esMesa && !_esPersonal) || _nombreController.text.trim().isEmpty
           ? null
           : _nombreController.text.trim(),
       clienteCelular: esDelivery && _telefonoController.text.trim().isNotEmpty
@@ -1454,11 +1467,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // En una mesa el nombre del cliente no se pide.
-        if (widget.tipo != 'mesa')
+        // En una mesa el nombre del cliente no se pide; en un pedido de empleado
+        // sí, siempre.
+        if (widget.tipo != 'mesa' || _esPersonal)
           _campoTexto(
             controller: _nombreController,
-            hint: 'Nombre del cliente * Obligatorio',
+            hint: _esPersonal
+                ? 'Nombre del empleado * Obligatorio'
+                : 'Nombre del cliente * Obligatorio',
             icono: Icons.person_outline,
             contentPaddingVertical: 16,
           ),
@@ -1495,7 +1511,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             contentPaddingVertical: 16,
           ),
         ],
-        if (widget.tipo != 'mesa') const SizedBox(height: 14),
+        if (widget.tipo != 'mesa' || _esPersonal) const SizedBox(height: 14),
         if (_carrito.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1870,7 +1886,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     final item = cartasNotifier.value
         .where((c) => c.id == linea.cartaId)
         .firstOrNull;
-    return Container(
+    // Tocar la tarjeta vuelve a abrir el modal del producto para corregirlo
+    // (no aplica a promociones, platos rápidos ni tápers).
+    final editable = item != null && linea.promocion == null && !linea.esLibre;
+    final tarjeta = Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -2010,6 +2029,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           ),
         ],
       ),
+    );
+    if (!editable) return tarjeta;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _abrirOpciones(item, indice: index),
+      child: tarjeta,
     );
   }
 

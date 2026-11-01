@@ -183,12 +183,28 @@ Para la app, mientras esto no esté, la barra de vistas sigue ocultando por rol 
 
 ---
 
-# 36. Descuentos guardados (opcional)
+# 37. Reporte detallado del día: no salen las anulaciones
+
+## Síntoma
+
+En Caja > Reportes > "Detallado Día", la sección de anulaciones sale vacía aunque se anularon pedidos o platos.
+
+## Causa (revisado en el backend, `caja_repository.go`, consulta `queryAnulaciones`)
+
+Con una caja abierta, la consulta solo trae las anulaciones de pedidos que **tienen un pago en esa apertura** (`EXISTS (SELECT 1 FROM pago ... apertura_caja_id = $2)`). Un pedido o plato anulado antes de cobrarse no tiene pago, así que nunca aparece. Además, si una fila falla al leerse (`Scan`), se descarta en silencio.
+
+## Qué se pide
+
+Filtrar las anulaciones por la fecha/hora de la anulación dentro del turno (o por `pedido_anulado.created_at` entre la apertura y el cierre), no por la existencia de un pago. Registrar el error de lectura en vez de ignorarlo.
+
+---
+
+# 38. Roturas / alquiler y propina en el ticket y los comprobantes
 
 ## Qué hace la app
 
-El botón **Descuento** del detalle del pedido muestra solo los descuentos que el negocio guardó y el formulario "Personalizado". Los guardados se pueden crear, editar y eliminar. Hoy se guardan **solo en el dispositivo** (no se comparten entre equipos).
+Las roturas o alquiler de menaje se envían con el pago (`cargos_extra`) y a la boleta/factura como ítems `Rotura/alq. X` (o como `otros_extras` si no se editan ítems). La vista previa del ticket y el detalle del pedido ya muestran roturas y propina.
 
-## Qué se pide (si se quiere compartirlos)
+## Qué se pide
 
-Un catálogo de descuentos por sede: `id`, `nombre`, `tipo` (porcentaje o monto) y `valor`, con `GET`, `POST`, `PUT` y `DELETE` para el administrador y la lectura para quien puede dar descuentos. La app cambiaría el almacenamiento local por esa ruta.
+Que el ticket impreso por el servidor (cuenta, ticket de venta, boleta y factura) incluya la **propina** del pago (`pago.propina`) y los `cargos_extra` guardados, cada uno en su línea y dentro del total.

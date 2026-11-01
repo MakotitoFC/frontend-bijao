@@ -77,21 +77,22 @@ class Pedido {
           (json['orden'] != null && (json['orden'] as num) > 0
               ? (json['orden'] as num).toInt().toString().padLeft(4, '0')
               : (fallbackNumero ??
-                  (json['id'] != null && json['id'].toString().length >= 4
-                      ? json['id'].toString().substring(0, 4)
-                      : '0000'))),
+                    (json['id'] != null && json['id'].toString().length >= 4
+                        ? json['id'].toString().substring(0, 4)
+                        : '0000'))),
       mesaNumero: (json['mesa_numero'] as num?)?.toInt() ?? 0,
       mesasUnidas: const [],
       estado: estadoNormalizado,
-      tipoPedido: json['tipo_entrega']?.toString() ??
+      tipoPedido:
+          json['tipo_entrega']?.toString() ??
           (json['tipo']?.toString() == 'delivery' ||
                   json['direccion_delivery'] != null ||
                   ((json['costo_delivery'] as num?)?.toDouble() ?? 0) > 0 ||
                   (json['delivery'] != null)
               ? 'delivery'
               : (json['tipo']?.toString() == 'llevar'
-                  ? 'llevar'
-                  : (json['tipo']?.toString() ?? 'mesa'))),
+                    ? 'llevar'
+                    : (json['tipo']?.toString() ?? 'mesa'))),
       fechaPedido: fecha,
       notas: json['comentarios']?.toString(),
       // El mozo no es el cliente: va aparte en `mozoNombre`.
@@ -104,7 +105,8 @@ class Pedido {
       version: (json['version'] as num?)?.toInt() ?? 1,
       mozoNombre: json['mozo_nombre']?.toString(),
       esEmpleado: json['tipo']?.toString() == 'empleado',
-      costoDelivery: (json['costo_delivery'] as num?)?.toDouble() ??
+      costoDelivery:
+          (json['costo_delivery'] as num?)?.toDouble() ??
           (json['delivery'] is Map
               ? (json['delivery']['costo_envio'] as num?)?.toDouble() ?? 0.0
               : (json['costo_envio'] as num?)?.toDouble() ?? 0.0),
@@ -130,7 +132,9 @@ class Pedido {
   String get ubicacion {
     if (tipoPedido == 'delivery') return 'Delivery';
     if (tipoPedido == 'llevar') return 'Para llevar';
-    if (mesaNumero == 0 && mesasUnidas.isEmpty) return 'Sin mesa';
+    if (mesaNumero == 0 && mesasUnidas.isEmpty) {
+      return esEmpleado ? 'Empleado' : 'Sin mesa';
+    }
     return 'Mesa ${todasLasMesas.join(' + ')}';
   }
 

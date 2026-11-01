@@ -20,20 +20,3 @@ void registrarCargosExtra(String pedidoId, List<CargoExtra> cargos) {
   if (cargos.isEmpty) return;
   cargosExtraPorPedido[pedidoId] = [...cargosExtraDe(pedidoId), ...cargos];
 }
-
-// Menaje que se puede cobrar por rotura o alquiler.
-const menajeCobrable = <String>[
-  'Plato',
-  'Plato hondo',
-  'Vaso',
-  'Copa',
-  'Taza',
-  'Jarra',
-  'Cubierto',
-  'Cuchara',
-  'Tenedor',
-  'Cuchillo',
-  'Bandeja',
-  'Olla',
-  'Parrilla',
-];

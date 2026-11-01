@@ -281,9 +281,7 @@ class _PestanaDesplegableState extends State<_PestanaDesplegable> {
     return CompositedTransformTarget(
       link: _link,
       child: _Caja(
-        texto: elegida == null
-            ? widget.pestana.etiqueta
-            : '${widget.pestana.etiqueta} · ${elegida.etiqueta}',
+        texto: widget.pestana.etiqueta,
         activa: elegida != null,
         conFlecha: true,
         onTap: _alternar,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../theme/app_theme.dart';
+import 'indicador_abajo.dart';
 
 // Papel de una columna cuando la tabla se muestra como tarjetas.
 enum RolTarjeta {
@@ -57,6 +59,10 @@ class TablaApp<T> extends StatefulWidget {
   final ValueChanged<T>? onFila;
   // Filas por página; null = todas en una sola página.
   final int? porPagina;
+  // Con true la tabla se desplaza por dentro (necesita alto acotado, por ejemplo
+  // dentro de un Expanded) y el selector de páginas queda flotando abajo, fuera
+  // del scroll.
+  final bool scrollInterno;
   // Se avisa al tocar una tarjeta (solo en la vista de tarjetas).
   final ValueChanged<T>? onTarjeta;
 
@@ -67,6 +73,7 @@ class TablaApp<T> extends StatefulWidget {
     this.altoFila = 52,
     this.onFila,
     this.porPagina,
+    this.scrollInterno = false,
     this.onTarjeta,
   });
 
@@ -416,16 +423,39 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
   Widget build(BuildContext context) {
     final minimo = widget.columnas.fold<double>(0, (s, c) => s + c.minimo);
     final filas = _filasPagina;
-    if (AppBreakpoints.esMenorATablet(context)) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final interno = widget.scrollInterno;
+    // Con scroll interno, el contenido va dentro del scroll y el paginador
+    // flota abajo.
+    Widget envolver(Widget contenido) {
+      if (!interno) return contenido;
+      final hayPaginas = _paginas > 1;
+      return Stack(
         children: [
-          for (var i = 0; i < filas.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
-            _tarjeta(filas[i]),
-          ],
-          _paginador(),
+          IndicadorAbajo(
+            builder: (ctl) => SingleChildScrollView(
+              controller: ctl,
+              padding: EdgeInsets.only(right: 16, bottom: hayPaginas ? 64 : 0),
+              child: contenido,
+            ),
+          ),
+          if (hayPaginas)
+            Positioned(left: 0, right: 0, bottom: 4, child: _paginador()),
         ],
+      );
+    }
+
+    if (AppBreakpoints.esMenorATablet(context)) {
+      return envolver(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < filas.length; i++) ...[
+              if (i > 0) const SizedBox(height: 10),
+              _tarjeta(filas[i]),
+            ],
+            if (!interno) _paginador(),
+          ],
+        ),
       );
     }
     final cuerpo = Column(
@@ -448,16 +478,127 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
         builder: (context, c) {
           if (c.maxWidth >= minimo) return cuerpo;
           // No cabe: se desplaza hacia el lado conservando el ancho mínimo.
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          return _DesplazableLateral(
             child: SizedBox(width: minimo, child: cuerpo),
           );
         },
       ),
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [marco, _paginador()],
+    return envolver(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [marco, if (!interno) _paginador()],
+      ),
+    );
+  }
+}
+
+// Desplazamiento horizontal con un círculo "<" o ">" a cada lado mientras haya
+// más contenido hacia ese lado; al tocarlo se mueve.
+class _DesplazableLateral extends StatefulWidget {
+  final Widget child;
+
+  const _DesplazableLateral({required this.child});
+
+  @override
+  State<_DesplazableLateral> createState() => _DesplazableLateralState();
+}
+
+class _DesplazableLateralState extends State<_DesplazableLateral> {
+  final _ctl = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _ctl.addListener(_redibujar);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _redibujar());
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  bool _hayIzq = false;
+  bool _hayDer = false;
+
+  // Solo se redibuja si cambió algún indicador (evita un ciclo de cuadros).
+  void _redibujar() {
+    if (!mounted || !_ctl.hasClients || !_ctl.position.hasContentDimensions) {
+      return;
+    }
+    final m = _ctl.position;
+    final izq = m.pixels > 1;
+    final der = m.pixels < m.maxScrollExtent - 1;
+    if (izq != _hayIzq || der != _hayDer) {
+      setState(() {
+        _hayIzq = izq;
+        _hayDer = der;
+      });
+    }
+  }
+
+  void _mover(double delta) {
+    final pos = _ctl.position;
+    _ctl.animateTo(
+      (pos.pixels + delta).clamp(0.0, pos.maxScrollExtent),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Widget _flecha(IconData icono, VoidCallback onTap) => Material(
+    color: Colors.white,
+    shape: CircleBorder(side: BorderSide(color: Colors.grey.shade300)),
+    elevation: 2,
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: SizedBox(
+        width: 30,
+        height: 30,
+        child: Icon(icono, size: 18, color: Colors.black87),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final hayIzq = _hayIzq;
+    final hayDer = _hayDer;
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _redibujar());
+        return false;
+      },
+      child: Stack(
+        children: [
+          SingleChildScrollView(
+            controller: _ctl,
+            scrollDirection: Axis.horizontal,
+            child: widget.child,
+          ),
+          if (hayIzq)
+            Positioned(
+              left: 6,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _flecha(LucideIcons.chevronLeft, () => _mover(-220)),
+              ),
+            ),
+          if (hayDer)
+            Positioned(
+              right: 6,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _flecha(LucideIcons.chevronRight, () => _mover(220)),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -30,7 +30,10 @@ double totalDePedido(String pedidoId) => (detallesPorPedido[pedidoId] ?? [])
 // Si aún no tiene pagos o no cubre todo, toma el valor de la carta/cuenta más los recargos aplicados.
 double totalCobradoDePedido(String pedidoId) {
   final pagosActivos = pagos
-      .where((p) => p.pedidoId == pedidoId && !p.esReembolso && p.estado != 'anulado')
+      .where(
+        (p) =>
+            p.pedidoId == pedidoId && !p.esReembolso && p.estado != 'anulado',
+      )
       .toList();
   if (pagosActivos.isNotEmpty) {
     return pagosActivos.fold(0.0, (sum, p) => sum + p.montoCobrado);
@@ -85,7 +88,10 @@ bool pagadoSinServir(Pedido p) {
 
 double saldoPendienteDePedido(String pedidoId) {
   final p = pedidos.where((x) => x.id == pedidoId).firstOrNull;
-  if (p != null && (p.estado == 'pagado' || p.estado == 'anulado' || p.estado == 'cancelado')) {
+  if (p != null &&
+      (p.estado == 'pagado' ||
+          p.estado == 'anulado' ||
+          p.estado == 'cancelado')) {
     return 0.0;
   }
   final totalAbonado = pagos
@@ -134,6 +140,12 @@ double propinaPendienteDePedido(String pedidoId) {
   return falta > 0.001 ? falta : 0;
 }
 
+// Propina que viajó con los pagos del pedido (sigue ahí aunque la línea local
+// de la propina se pierda al recargar el pedido del servidor).
+double propinaCobradaDePedido(String pedidoId) => pagos
+    .where((p) => p.pedidoId == pedidoId && !p.esReembolso && !p.anulado)
+    .fold(0.0, (s, p) => s + p.propina);
+
 // Táper que falta cobrar (se da por cobrado cuando se salda la cuenta).
 double taperPendienteDePedido(String pedidoId) =>
     (detallesPorPedido[pedidoId] ?? [])
@@ -155,7 +167,9 @@ void liquidarExtrasDeApp(String pedidoId) {
   final lineas = detallesPorPedido[pedidoId] ?? [];
   final propinas = lineas.where(esLineaPropina).toList();
   final tapers = lineas.where(esLineaTupper).toList();
-  final deliverys = lineas.where((l) => l.cartaId == cartaIdCargoDelivery).toList();
+  final deliverys = lineas
+      .where((l) => l.cartaId == cartaIdCargoDelivery)
+      .toList();
   final ids = {
     for (final l in [...propinas, ...tapers, ...deliverys]) l.id,
   };
@@ -186,7 +200,11 @@ void liquidarExtrasDeApp(String pedidoId) {
   }
 
   final p = pedidos.where((x) => x.id == pedidoId).firstOrNull;
-  final saldado = (p != null && (p.estado == 'pagado' || p.estado == 'anulado' || p.estado == 'cancelado')) ||
+  final saldado =
+      (p != null &&
+          (p.estado == 'pagado' ||
+              p.estado == 'anulado' ||
+              p.estado == 'cancelado')) ||
       saldoCuentaDePedido(pedidoId) <= 0.01;
   if (delPedido.isNotEmpty && saldado) {
     for (final l in [...tapers, ...deliverys]) {

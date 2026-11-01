@@ -4,6 +4,8 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cargos_extra_store.dart';
 import '../data/configuracion_store.dart';
+import '../data/inventario_store.dart';
+import '../models/producto_inventario.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart' show establecerPropinaPedido;
@@ -232,11 +234,22 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   );
   bool _conRoturas = false;
   final List<CargoExtra> _cargos = [];
+  // Producto de inventario elegido (su id).
   String? _menajeElegido;
-  // Menaje que no está en la lista: se escribe a mano.
-  final _menajeOtroCtrl = TextEditingController();
   final _costoCargoCtrl = TextEditingController();
-  static const _otroMenaje = 'Otro';
+
+  // El menaje sale del inventario: los productos de tipo menaje y, si no hay
+  // ninguno marcado así, todos los productos (igual que "Utensilios rotos").
+  List<ProductoInventario> get _menaje {
+    final todos = productosInventario.where((p) => p.estado).toList();
+    final menaje = todos
+        .where(
+          (p) => (p.tipoProductoNombre ?? '').toLowerCase().contains('menaje'),
+        )
+        .toList();
+    return menaje.isNotEmpty ? menaje : todos;
+  }
+
   double get _totalCargos => _cargos.fold(0.0, (s, c) => s + c.monto);
 
   // Lo que se cobra en efectivo: sin recargo, y con la propina y el táper.
@@ -268,7 +281,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     _comprobante?.dispose();
     _recibidoCtrl.dispose();
     _propinaCtrl.dispose();
-    _menajeOtroCtrl.dispose();
     _costoCargoCtrl.dispose();
     for (final f in _filas) {
       f.monto.dispose();
@@ -341,7 +353,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         ..addListener(() {
           if (mounted) setState(() {});
         });
-      _comprobante!.asegurarInicializado(widget.pedido, recargoActual: _recargo);
+      _comprobante!.asegurarInicializado(
+        widget.pedido,
+        recargoActual: _recargo,
+      );
     }
     _categoriaSeleccionada =
         _categoriasIngreso
@@ -351,6 +366,14 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     // Los métodos se vuelven a leer cada vez que se abre el cobro: si el
     // administrador cambió el recargo de la tarjeta, aquí se ve el vigente (el
     // servidor siempre cobra con el que tiene guardado).
+    if (productosInventario.isEmpty) {
+      CatalogService.instance
+          .cargarProductosInventario()
+          .then((_) {
+            if (mounted) setState(() {});
+          })
+          .catchError((_) {});
+    }
     CatalogService.instance
         .cargarMediosPago()
         .then((_) {
@@ -674,10 +697,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     });
   }
 
-  // Nombre del menaje elegido (o escrito, si es "Otro").
-  String get _nombreMenaje => _menajeElegido == _otroMenaje
-      ? _menajeOtroCtrl.text.trim()
-      : (_menajeElegido ?? '');
+  ProductoInventario? get _productoMenaje =>
+      productosInventario.where((p) => p.id == _menajeElegido).firstOrNull;
+
+  String get _nombreMenaje => _productoMenaje?.nombre ?? '';
 
   bool get _cargoValido =>
       _nombreMenaje.isNotEmpty && leerMonto(_costoCargoCtrl.text) > 0;
@@ -692,7 +715,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         ),
       );
       _menajeElegido = null;
-      _menajeOtroCtrl.clear();
       _costoCargoCtrl.clear();
     });
   }
@@ -750,7 +772,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                 if (!v) {
                   _cargos.clear();
                   _menajeElegido = null;
-                  _menajeOtroCtrl.clear();
                   _costoCargoCtrl.clear();
                 }
               }),
@@ -776,21 +797,16 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               value: _menajeElegido,
               hint: 'Buscar menaje',
               items: [
-                for (final m in menajeCobrable)
-                  AppSelectItem(value: m, label: m),
-                const AppSelectItem(
-                  value: _otroMenaje,
-                  label: 'Otro (escribir)',
-                ),
+                for (final m in _menaje)
+                  AppSelectItem(value: m.id, label: m.nombre),
               ],
-              onChanged: (v) => setState(() => _menajeElegido = v),
+              onChanged: (v) => setState(() {
+                _menajeElegido = v;
+              }),
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: _campoSoles(_costoCargoCtrl, hint: 'Costo S/.'),
-          ),
+          Expanded(flex: 3, child: _campoSoles(_costoCargoCtrl)),
           const SizedBox(width: 8),
           Tooltip(
             message: 'Agregar',
@@ -807,19 +823,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ),
         ],
       ),
-      if (_menajeElegido == _otroMenaje) ...[
-        const SizedBox(height: 8),
-        SizedBox(
-          height: AppSizes.boton,
-          child: CampoTexto(
-            controller: _menajeOtroCtrl,
-            expands: true,
-            maxLines: null,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(hintText: 'Nombre del menaje'),
-          ),
-        ),
-      ],
       for (var i = 0; i < _cargos.length; i++)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -869,7 +872,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (_comprobante != null) ...[
-          SelectorComprobante(control: _comprobante!, pedido: widget.pedido, recargoActual: _recargo),
+          SelectorComprobante(
+            control: _comprobante!,
+            pedido: widget.pedido,
+            recargoActual: _recargo,
+          ),
           const SizedBox(height: 12),
         ],
         Row(
@@ -919,7 +926,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final total = saldo + _recargo + propina + taper + cargos;
     return ModalPago(
       titulo: 'Pagar',
-      anchoEscritorio: _comprobante != null && _comprobante!.tipo != 'ticket_venta' ? 600 : 540,
+      anchoEscritorio:
+          _comprobante != null && _comprobante!.tipo != 'ticket_venta'
+          ? 600
+          : 540,
       subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
       onVolver: widget.permiteVolver ? _volver : null,
       pie: _pieFijo(saldo, total),

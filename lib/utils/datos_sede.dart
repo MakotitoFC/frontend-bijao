@@ -23,7 +23,7 @@ DatosSede datosDeLaSede() {
   final sede = _sedeDelUsuario();
   final celular = (sede.celular ?? '').trim();
   return (
-    nombre: negocio.nombre.isNotEmpty ? negocio.nombre : (sede.razonSocial.isNotEmpty ? sede.razonSocial : 'SERVICIOS MULTIPLES EL BIJAO E.I.R.L.'),
+    nombre: sede.razonSocial.isNotEmpty ? sede.razonSocial : (sede.razonSocial.isNotEmpty ? sede.razonSocial : 'SERVICIOS MULTIPLES EL BIJAO E.I.R.L.'),
     direccion: sede.direccion.isNotEmpty ? sede.direccion : 'CAL.LOS BRILLANTES NRO. 421 URB. SANTA INES LA LIBERTAD - TRUJILLO - TRUJILLO',
     telefono: celular.isNotEmpty ? celular : '-',
     ruc: sede.ruc.isNotEmpty ? sede.ruc : '20540005371',

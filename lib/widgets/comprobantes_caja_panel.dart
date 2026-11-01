@@ -8,6 +8,7 @@ import '../services/facturacion_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/abrir_enlace.dart';
 import '../utils/blur_dialog.dart';
+import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
@@ -85,10 +86,41 @@ class ComprobantesCajaPanel extends StatefulWidget {
   State<ComprobantesCajaPanel> createState() => _ComprobantesCajaPanelState();
 }
 
+// Última lista leída: al volver a la vista se muestra al instante y se
+// actualiza por detrás.
+List<Comprobante>? _cacheComprobantes;
+
+// Comprobantes de hoy dentro del turno actual.
+Future<List<Comprobante>> _leerComprobantesDeHoy() async {
+  if (estadoCajaServidor != null && !estadoCajaServidor!.abierta) {
+    return const [];
+  }
+  final hoy = DateTime.now();
+  final lista = await FacturacionService.instance.listar(
+    desde: hoy,
+    hasta: hoy,
+  );
+  final desdeTurno = inicioCajaActual;
+  return lista.where((c) {
+    final fh = c.fechaHora;
+    if (fh == null) return true;
+    return !fh.isBefore(desdeTurno);
+  }).toList();
+}
+
+// Lee la lista de antemano para que la vista abra sin espera.
+Future<void> precargarComprobantesCaja() async {
+  try {
+    _cacheComprobantes = await _leerComprobantesDeHoy();
+  } catch (_) {}
+}
+
 class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
-  List<Comprobante> _lista = const [];
-  bool _cargando = true;
+  List<Comprobante> _lista = _cacheComprobantes ?? const [];
+  bool _cargando = _cacheComprobantes == null;
   String? _errorCarga;
+  // Tipo de comprobante elegido para filtrar la lista (null = todos).
+  String? _tipoFiltro;
 
   @override
   void initState() {
@@ -97,27 +129,17 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
   }
 
   Future<void> _cargar() async {
-    setState(() {
-      _cargando = true;
-      _errorCarga = null;
-    });
+    // Con una lista ya en pantalla se actualiza sin tapar nada.
+    if (_cacheComprobantes == null) {
+      setState(() {
+        _cargando = true;
+        _errorCarga = null;
+      });
+    }
     try {
-      if (estadoCajaServidor != null && !estadoCajaServidor!.abierta) {
-        if (mounted) setState(() => _lista = const []);
-        return;
-      }
-      final hoy = DateTime.now();
-      final lista = await FacturacionService.instance.listar(
-        desde: hoy,
-        hasta: hoy,
-      );
-      final desdeTurno = inicioCajaActual;
-      final filtrados = lista.where((c) {
-        final fh = c.fechaHora;
-        if (fh == null) return true;
-        return !fh.isBefore(desdeTurno);
-      }).toList();
-      if (mounted) setState(() => _lista = filtrados);
+      final lista = await _leerComprobantesDeHoy();
+      _cacheComprobantes = lista;
+      if (mounted) setState(() => _lista = lista);
     } catch (e) {
       if (mounted) setState(() => _errorCarga = _error(e));
     } finally {
@@ -274,6 +296,13 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final tipos = {for (final c in _lista) c.tipoEtiqueta}.toList()..sort();
+    final visibles = _tipoFiltro == null
+        ? _lista
+        : [
+            for (final c in _lista)
+              if (c.tipoEtiqueta == _tipoFiltro) c,
+          ];
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -292,13 +321,33 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
               ),
-              IconButton(
-                tooltip: 'Actualizar',
-                onPressed: _cargando ? null : _cargar,
-                icon: const Icon(LucideIcons.refreshCw, size: 18),
-              ),
             ],
           ),
+          if (_lista.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 14, bottom: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: 240,
+                  child: AppSelect<String>(
+                    compacto: true,
+                    value: _tipoFiltro ?? '',
+                    hint: 'Todos los comprobantes',
+                    items: [
+                      const AppSelectItem(
+                        value: '',
+                        label: 'Todos los comprobantes',
+                      ),
+                      for (final t in tipos) AppSelectItem(value: t, label: t),
+                    ],
+                    onChanged: (v) => setState(
+                      () => _tipoFiltro = (v == null || v.isEmpty) ? null : v,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (_errorCarga != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -329,7 +378,8 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
               child: Scrollbar(
                 child: ListView(
                   shrinkWrap: true,
-                  children: [for (final c in _lista) _fila(c)],
+                  padding: const EdgeInsets.only(right: 16),
+                  children: [for (final c in visibles) _fila(c)],
                 ),
               ),
             ),

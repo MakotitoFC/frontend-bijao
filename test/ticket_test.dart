@@ -92,7 +92,7 @@ void main() {
         mozo: 'Joel',
       );
       final texto = _texto(t);
-      expect(texto, contains('*** COMANDA COCINA ***'));
+      expect(texto, isNot(contains('*** COMANDA COCINA ***')));
       expect(texto, contains('ORDEN #0007'));
       expect(texto, contains('MESA: 02  (SALON)'));
       expect(texto, contains('Mozo: Joel'));
@@ -293,7 +293,7 @@ void main() {
         expect(find.byType(TicketPapel), findsOneWidget);
         expect(find.byType(ColorFiltered), findsNothing);
         // La vista previa es la comanda normal (la reimpresión lleva otro rótulo).
-        expect(find.text('*** COMANDA COCINA ***'), findsOneWidget);
+        expect(find.text('*** COMANDA COCINA ***'), findsNothing);
         expect(find.text('*** REIMPRESION ***'), findsNothing);
         expect(find.text('Reimprimir comanda'), findsOneWidget);
 

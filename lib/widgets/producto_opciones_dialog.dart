@@ -58,6 +58,8 @@ class ProductoOpcionesDialog extends StatefulWidget {
   final String tipoEntregaInicial;
   // Deja cambiar el precio (con su motivo) solo para este pedido.
   final bool permitePrecioManual;
+  // Línea del carrito que se está corrigiendo: el modal abre con sus datos.
+  final PedidoLine? lineaInicial;
 
   const ProductoOpcionesDialog({
     super.key,
@@ -67,6 +69,7 @@ class ProductoOpcionesDialog extends StatefulWidget {
     this.enCarrito = const [],
     this.tipoEntregaInicial = 'mesa',
     this.permitePrecioManual = false,
+    this.lineaInicial,
   });
 
   @override
@@ -111,6 +114,65 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     final inicial = widget.tipoEntregaInicial;
     if (inicial == 'llevar' || inicial == 'delivery') {
       _tipoEntrega = inicial;
+    }
+    final l = widget.lineaInicial;
+    if (l != null) _restaurar(l);
+  }
+
+  // Abre el modal con lo que ya tenía la línea del carrito.
+  void _restaurar(PedidoLine l) {
+    _cantidad = l.cantidad;
+    _tipoEntrega = l.tipoEntrega;
+    if (l.variante != null) {
+      _variante =
+          _variantes.where((v) => v.id == l.variante!.id).firstOrNull ??
+          _variante;
+    }
+    if (l.presentacion != null) {
+      _presentacion =
+          _presentaciones
+              .where((p) => p.id == l.presentacion!.id)
+              .firstOrNull ??
+          _presentacion;
+    }
+    // Extras elegidos.
+    for (final m in l.modificadores) {
+      if (_extrasSimples.any((a) => '${a['nombre']}' == m.nombre)) {
+        _agregadosElegidos.add(m.nombre);
+      }
+      for (final g in _grupos) {
+        if (m.id == '${widget.item.id}-${nombreGrupo(g)}-${m.nombre}') {
+          _seleccionPorGrupo
+              .putIfAbsent(nombreGrupo(g), () => {})
+              .add(m.nombre);
+        }
+      }
+    }
+    // La nota y, aparte, el motivo del precio.
+    const marca = 'Precio manual: ';
+    final lineas = (l.comentario ?? '').split('\n');
+    _comentarioController.text = lineas
+        .where((x) => !x.startsWith(marca))
+        .join('\n')
+        .trim();
+    final motivo = lineas
+        .where((x) => x.startsWith(marca))
+        .map((x) => x.substring(marca.length))
+        .join(' ')
+        .trim();
+    if (l.precioManual && motivo.isNotEmpty) {
+      _precioManual = l.precioUnitario;
+      _motivoPrecio = motivo;
+      final cambio = RegExp(r'^Cambio por (.+) \(\+S/ ([0-9.]+)\)$')
+          .firstMatch(motivo);
+      if (cambio != null) {
+        _platoCambio = cambio.group(1);
+        _adicionalCtrl.text = cambio.group(2)!;
+      } else {
+        _editandoPrecio = true;
+        _precioCtrl.text = l.precioUnitario.toStringAsFixed(2);
+        _motivoCtrl.text = motivo;
+      }
     }
   }
 
@@ -303,6 +365,26 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     });
   }
 
+  // El precio se cambió pero falta el motivo (o el cambio de plato está a
+  // medias): no se puede agregar todavía.
+  bool get _falta {
+    if (_editandoPrecio) {
+      final p = _leer(_precioCtrl.text);
+      final cambio = p >= 0 && (p - _precioCalculado).abs() > 0.004;
+      if ((cambio || _motivoCtrl.text.trim().isNotEmpty) &&
+          (_motivoCtrl.text.trim().isEmpty || p < 0)) {
+        return true;
+      }
+    }
+    if (_esFamiliar) {
+      final extra = _leer(_adicionalCtrl.text);
+      final escribioExtra = _adicionalCtrl.text.trim().isNotEmpty;
+      if (_platoCambio != null && extra < 0) return true;
+      if (_platoCambio == null && escribioExtra) return true;
+    }
+    return false;
+  }
+
   void _alternarEdicionPrecio() {
     setState(() {
       _editandoPrecio = !_editandoPrecio;
@@ -361,6 +443,15 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             ],
           ),
         ],
+        if (_falta)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Escribe el motivo del cambio (y completa el cambio de plato) '
+              'para poder agregarlo.',
+              style: TextStyle(fontSize: 12, color: AppColors.error),
+            ),
+          ),
         if (_esFamiliar) ...[
           const SizedBox(height: 14),
           const Text(
@@ -526,7 +617,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     ),
                     if (_motivoPrecio != null)
                       Text(
-                        'Precio manual: $_motivoPrecio',
+                        _motivoPrecio!,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -639,13 +730,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _confirmar,
+                      onPressed: _falta ? null : _confirmar,
                       style: FilledButton.styleFrom(
                         backgroundColor:
                             widget.acento ?? AppColors.primaryGreen,
                       ),
                       child: Text(
-                        'Agregar S/ ${_total.toStringAsFixed(2)}',
+                        '${widget.lineaInicial == null ? 'Agregar' : 'Guardar'} S/ ${_total.toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),

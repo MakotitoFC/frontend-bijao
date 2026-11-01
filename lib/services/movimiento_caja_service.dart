@@ -97,6 +97,34 @@ class MovimientoCajaService {
       ..addAll(delServidor);
   }
 
+  // Movimientos de un rango de días (inclusive), sin tocar los de la caja
+  // actual. Los anulados vienen marcados.
+  Future<List<MovimientoCaja>> listarRango(
+    DateTime desde,
+    DateTime hasta,
+  ) async {
+    String dia(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    final res = await _api.get(
+      '/api/movimientos',
+      queryParams: {
+        'fecha_desde': dia(desde),
+        'fecha_hasta': dia(hasta),
+        'incluir_anulados': 'true',
+      },
+    );
+    if (res is! List) return const [];
+    return [
+      for (final j in res.whereType<Map<String, dynamic>>())
+        MovimientoCaja.fromJson(
+          j,
+          notaLocal: notasMovimientoLocales[j['id']?.toString()],
+        ),
+    ]..sort((a, b) => b.fecha.compareTo(a.fecha));
+  }
+
   // Registra un ingreso o una salida; el tipo lo da la categoría. Si el
   // servidor lo rechaza, lanza el error y no deja nada registrado.
   Future<MovimientoCaja> registrar({

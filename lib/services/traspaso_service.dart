@@ -18,6 +18,13 @@ class TraspasoService {
   // Trae las solicitudes pendientes del usuario. Si el servidor todavía no
   // tiene la ruta, la lista queda vacía sin molestar.
   Future<void> cargar() async {
+    final yo = AuthService.instance.currentUser?.id ?? '';
+    // Lo que este mozo había enviado y seguía pendiente: si deja de estarlo,
+    // se revisa si fue rechazado.
+    final enviados = {
+      for (final t in traspasosPendientes)
+        if (t.origenId == yo) t.id: t,
+    };
     try {
       final res = await _api.get('$_base?estado=pendiente');
       final lista = res is List
@@ -29,9 +36,37 @@ class TraspasoService {
         for (final j in lista.whereType<Map<String, dynamic>>())
           TraspasoPedido.fromJson(j),
       ]);
+      await _detectarRechazos(enviados);
     } catch (_) {
       // Sin ruta o sin conexión: se mantiene lo que había.
     }
+  }
+
+  // De los traspasos enviados que ya no están pendientes, deja en
+  // [traspasosRechazados] los que el otro mozo rechazó.
+  Future<void> _detectarRechazos(Map<String, TraspasoPedido> enviados) async {
+    final vigentes = traspasosPendientes.map((t) => t.id).toSet();
+    final resueltos = {
+      for (final e in enviados.entries)
+        if (!vigentes.contains(e.key)) e.key,
+    };
+    if (resueltos.isEmpty) return;
+    final res = await _api.get('$_base?estado=rechazado');
+    final lista = res is List
+        ? res
+        : (res is Map<String, dynamic> && res['traspasos'] is List
+              ? res['traspasos'] as List
+              : const []);
+    var hubo = false;
+    for (final j in lista.whereType<Map<String, dynamic>>()) {
+      final t = TraspasoPedido.fromJson(j);
+      if (resueltos.contains(t.id) &&
+          !traspasosRechazados.any((x) => x.id == t.id)) {
+        traspasosRechazados.add(t);
+        hubo = true;
+      }
+    }
+    if (hubo) traspasosRevision.value++;
   }
 
   // Mozos activos de la sede a quienes se puede traspasar, tal como los tiene

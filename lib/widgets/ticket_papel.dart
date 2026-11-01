@@ -25,7 +25,7 @@ class TicketPapel extends StatelessWidget {
   TextStyle _estilo(LineaTicket l) => TextStyle(
     fontFamily: 'monospace',
     fontFamilyFallback: _fuentes,
-    fontSize: l.doble ? _tamano * 2 : _tamano,
+    fontSize: l.doble ? _tamano * 2 : _tamano * l.escala,
     height: 1.28,
     color: Colors.black,
     fontWeight: l.negrita ? FontWeight.w800 : FontWeight.w500,
