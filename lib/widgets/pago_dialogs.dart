@@ -262,7 +262,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         ? _filas
               .where((f) => f.medio.grupo == 'efectivo')
               .fold(0.0, (s, f) => s + leerMonto(f.monto.text))
-        : (_medio.grupo == 'efectivo' ? _saldo : 0.0);
+        : (_medio.grupo == 'efectivo' ? _montoCobroUnico : 0.0);
     return enEfectivo > 0.005
         ? enEfectivo + _propina + _taper + _totalCargos
         : 0.0;
@@ -281,9 +281,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       _efectivoACobrar <= 0.005 ||
       _recibido >= _efectivoACobrar - 0.005;
 
+  late final TextEditingController _montoAbonoCtrl;
+
   @override
   void dispose() {
     _comprobante?.dispose();
+    _montoAbonoCtrl.dispose();
     _recibidoCtrl.dispose();
     _propinaCtrl.dispose();
     _costoCargoCtrl.dispose();
@@ -297,6 +300,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   double get _asignado =>
       _filas.fold(0.0, (s, f) => s + leerMonto(f.monto.text));
   double get _faltante => _saldo - _asignado;
+  // Puede ser el total de la cuenta o un abono parcial (siempre que no sobrepase el saldo)
+  bool get _repartoValido => _asignado > 0.005 && _asignado <= _saldo + 0.01;
   bool get _repartoCompleto => _faltante.abs() < 0.01;
 
   void _alternarDividir(bool v) {
@@ -333,6 +338,14 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
 
   // La cuenta que cobra el servidor (sin la propina ni el táper de la app).
   double get _saldo => saldoCuentaDePedido(widget.pedido.id);
+  // Abono a cuenta (pago parcial o total de la cuenta):
+  double get _montoAbono => leerMonto(_montoAbonoCtrl.text);
+  bool get _montoAbonoValido =>
+      _montoAbono > 0.005 && _montoAbono <= _saldo + 0.01;
+  bool get _esAbonoParcial =>
+      _montoAbonoValido && (_saldo - _montoAbono) > 0.01;
+  double get _montoCobroUnico => _montoAbonoValido ? _montoAbono : _saldo;
+
   // Propina y táper: el cliente los paga además de la cuenta, sin recargo.
   double get _propina => propinaPendienteDePedido(widget.pedido.id);
   double get _taper => taperPendienteDePedido(widget.pedido.id);
@@ -342,7 +355,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           0.0,
           (s, f) => s + f.medio.recargoSobre(leerMonto(f.monto.text)),
         )
-      : _medio.recargoSobre(_saldo);
+      : _medio.recargoSobre(_montoCobroUnico);
 
   late final List<CategoriaMovimiento> _categoriasIngreso = categoriasDeTipo(
     TipoMovimiento.ingreso,
@@ -353,6 +366,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   @override
   void initState() {
     super.initState();
+    _montoAbonoCtrl = TextEditingController(
+      text: _saldo > 0.005 ? _saldo.toStringAsFixed(2) : '',
+    );
     if (puedeElegirComprobante(widget.pedido)) {
       _comprobante = ComprobanteEnCobro(totalDePedido(widget.pedido.id))
         ..addListener(() {
@@ -417,7 +433,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   Future<void> _pagar() async {
     final saldo = _saldo;
     if (saldo <= 0.01 || _guardando) return;
-    if (_dividir && !_repartoCompleto) return;
+    if (_dividir && !_repartoValido) return;
+    if (!_dividir && !_montoAbonoValido) return;
     final recargo = _recargo;
     final extras = _propina + _taper + _totalCargos;
     // Lo que se cobra: un pago con el medio elegido o uno por cada fila.
@@ -426,7 +443,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             for (final f in _filas)
               (medio: f.medio, monto: leerMonto(f.monto.text)),
           ]
-        : [(medio: _medio, monto: saldo)];
+        : [(medio: _medio, monto: _montoCobroUnico)];
     setState(() => _guardando = true);
     var registrados = 0;
     try {
@@ -672,14 +689,16 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               falta.abs() < 0.01
                   ? 'Cuenta completa'
                   : (falta > 0
-                        ? 'Falta S/ ${falta.toStringAsFixed(2)}'
+                        ? 'Abono parcial (restará S/ ${falta.toStringAsFixed(2)})'
                         : 'Sobra S/ ${(-falta).toStringAsFixed(2)}'),
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
                 color: falta.abs() < 0.01
                     ? AppColors.primaryGreen
-                    : AppColors.error,
+                    : (falta > 0
+                        ? const Color(0xFF2563EB)
+                        : AppColors.error),
               ),
             ),
           ],
@@ -903,14 +922,16 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                 onPressed:
                     saldo > 0.01 &&
                         !_guardando &&
-                        (!_dividir || _repartoCompleto) &&
+                        (_dividir ? _repartoValido : _montoAbonoValido) &&
                         _recibidoValido &&
                         (_comprobante?.completo ?? true)
                     ? _pagar
                     : null,
                 icon: const Icon(LucideIcons.banknote, size: 18),
                 label: Text(
-                  'Pagar · S/ ${total.toStringAsFixed(2)}',
+                  _esAbonoParcial || (_dividir && !_repartoCompleto)
+                      ? 'Pagar abono · S/ ${total.toStringAsFixed(2)}'
+                      : 'Pagar · S/ ${total.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 style: FilledButton.styleFrom(backgroundColor: naranjaPago),
@@ -928,7 +949,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final propina = _propina;
     final taper = _taper;
     final cargos = _totalCargos;
-    final total = saldo + _recargo + propina + taper + cargos;
+    final montoBase = _dividir ? _asignado : _montoCobroUnico;
+    final total = montoBase + _recargo + propina + taper + cargos;
     return ModalPago(
       titulo: 'Pagar',
       anchoEscritorio:
@@ -947,13 +969,108 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
           Text(
-            'S/ ${(saldo + propina + taper + cargos).toStringAsFixed(2)}',
+            'S/ ${(total).toStringAsFixed(2)}',
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
               color: AppColors.primaryGreen,
             ),
           ),
+          if (!_dividir) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  'Monto a pagar / abonar',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                const Spacer(),
+                if (_esAbonoParcial)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(100),
+                      border: Border.all(
+                        color: const Color(0xFF2563EB).withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Text(
+                      'Abono parcial',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: _campoSoles(
+                    _montoAbonoCtrl,
+                    hint: 'S/. monto a cobrar',
+                    onChanged: (v) {
+                      setState(() {
+                        _comprobante?.actualizarRecargo(_recargo);
+                      });
+                    },
+                  ),
+                ),
+                if (_esAbonoParcial) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      _montoAbonoCtrl.text = saldo.toStringAsFixed(2);
+                      setState(() {
+                        _comprobante?.actualizarRecargo(_recargo);
+                      });
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      minimumSize: const Size(0, AppSizes.boton),
+                    ),
+                    child: const Text(
+                      'Total',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (_montoAbonoCtrl.text.isNotEmpty && !_montoAbonoValido)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _montoAbono > saldo + 0.01
+                      ? 'El monto no puede superar el saldo pendiente (S/ ${saldo.toStringAsFixed(2)})'
+                      : 'Ingresa un monto válido mayor a 0',
+                  style:
+                      const TextStyle(fontSize: 11.5, color: AppColors.error),
+                ),
+              ),
+            if (_esAbonoParcial)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Quedará pendiente por pagar: S/ ${(saldo - _montoAbono).toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+          ],
           const SizedBox(height: 16),
           _titulo('Método de pago'),
           if (!_dividir)
@@ -1023,7 +1140,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             const SizedBox(height: 14),
             const Divider(height: 1),
             const SizedBox(height: 12),
-            _filaMonto('Cuenta', saldo),
+            _filaMonto(
+              _esAbonoParcial || (_dividir && !_repartoCompleto)
+                  ? 'Abono a cuenta'
+                  : 'Cuenta',
+              montoBase,
+            ),
             if (_recargo > 0) ...[
               const SizedBox(height: 4),
               _filaMonto(

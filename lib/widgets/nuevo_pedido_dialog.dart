@@ -59,6 +59,8 @@ class NuevoPedidoDialog extends StatefulWidget {
   final ValueChanged<bool> onTerminar;
   // Volver desde el primer paso: reabre la elección del tipo de pedido.
   final VoidCallback onVolver;
+  // Si viene activo (por ejemplo, al crear desde la pestaña "Empleados"):
+  final bool inicioPersonal;
 
   const NuevoPedidoDialog({
     super.key,
@@ -66,6 +68,7 @@ class NuevoPedidoDialog extends StatefulWidget {
     required this.tipo,
     required this.onTerminar,
     required this.onVolver,
+    this.inicioPersonal = false,
   });
 
   @override
@@ -121,6 +124,9 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   @override
   void initState() {
     super.initState();
+    if (widget.inicioPersonal) {
+      _esPersonal = true;
+    }
     // Disponibilidad del día al día: otros mozos o el administrador la cambian.
     DisponibilidadService.instance.cargarHoy();
     // La carta puede haber cambiado (productos inhabilitados, precios, platos
