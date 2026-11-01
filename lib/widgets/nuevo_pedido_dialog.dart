@@ -293,13 +293,18 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         acento: acento,
         enCarrito: _carrito,
         tipoEntregaInicial: widget.tipo,
+        permitePrecioManual: true,
       ),
     );
     if (resultado == null || !mounted) return;
     setState(() {
+      final idLinea = UuidHelper.v7();
+      if (resultado.precioManual) {
+        _precioCarta[idLinea] = resultado.precioOriginal;
+      }
       _carrito.add(
         PedidoLine(
-          id: UuidHelper.v7(),
+          id: idLinea,
           cartaId: item.id,
           nombrePlato: item.nombrePlato,
           cantidad: resultado.cantidad,
@@ -319,6 +324,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           esLibre: false,
           precioBase:
               resultado.variante?.precioCliente ?? item.precioCliente ?? 0.0,
+          precioManual: resultado.precioManual,
         ),
       );
       // Los demás tápers elegidos van como filas propias.
@@ -426,6 +432,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           precioUnitario: linea.precioUnitario,
           descuentoAplicado: 0,
           precioTotalLinea: linea.precioUnitario * nueva,
+          precioManual: linea.precioManual,
         );
       }
     });
@@ -767,13 +774,54 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
+  // El buscador de productos, con "Plato rápido" al lado.
   Widget _buscador() => ConstrainedBox(
-    constraints: const BoxConstraints(maxWidth: 440),
-    child: AppSearchField(
-      controller: _busquedaController,
-      hint: 'Buscar producto...',
-      onChanged: (_) => setState(() {}),
-      ajustarAlTexto: false,
+    constraints: const BoxConstraints(maxWidth: 560),
+    child: Row(
+      children: [
+        Expanded(
+          child: AppSearchField(
+            controller: _busquedaController,
+            hint: 'Buscar producto...',
+            onChanged: (_) => setState(() {}),
+            ajustarAlTexto: false,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Tooltip(
+          message: 'Plato rápido',
+          child: OutlinedButton(
+            onPressed: _abrirPlatoLibre,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryGreenDark,
+              side: const BorderSide(color: AppColors.primaryGreen),
+              // Mismo alto que el buscador.
+              fixedSize: const Size(46, 46),
+              minimumSize: const Size(46, 46),
+              maximumSize: const Size(46, 46),
+              // Sin el margen de toque de 48 px: mide lo mismo que el buscador.
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            // Un plato con un rayo: plato rápido.
+            child: const Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Icon(LucideIcons.utensils, size: 20),
+                Positioned(
+                  right: -7,
+                  bottom: -6,
+                  child: Icon(LucideIcons.zap, size: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     ),
   );
 
@@ -1529,7 +1577,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                 colorBorde: Colors.grey.shade300,
                 onTap: _abrirTupper,
               ),
-              // Pedido de personal: el precio de cada plato se escribe a mano.
               if (_puedePersonal && !_esPersonal)
                 AppTag(
                   etiqueta: 'Empleado',
@@ -1538,13 +1585,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                   color: const Color(0xFF2563EB),
                   onTap: _abrirEmpleado,
                 ),
-              AppTag(
-                etiqueta: 'Plato rápido',
-                icono: LucideIcons.sparkles,
-                activo: false,
-                color: AppColors.primaryGreen,
-                onTap: _abrirPlatoLibre,
-              ),
             ],
           ),
         ),
@@ -1921,14 +1961,28 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                       color: Colors.grey.shade500,
                     ),
                   ),
-                Text(
-                  'S/ ${_lineas[index].precioUnitario.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryGreen,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'S/ ${_lineas[index].precioUnitario.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ],
                 ),
+                if (linea.precioManual)
+                  const Text(
+                    'Precio manual',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.naranja,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2004,6 +2058,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
     return tooltip == null ? boton : Tooltip(message: tooltip, child: boton);
   }
+
+  // ---- Precio escrito a mano para este pedido (no cambia la carta) ----
+  // Se escribe en el modal de cada producto; aquí solo se guarda el precio de la
+  // carta de cada línea.
+
+  // Precio de carta de cada línea antes de cambiarlo (por id de línea).
+  final Map<String, double> _precioCarta = {};
 
   // Empleado: cuadro con los productos, su precio y su cantidad, y un campo para
   // escribir el precio que se cobra por cada uno.

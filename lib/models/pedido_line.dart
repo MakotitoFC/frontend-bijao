@@ -33,6 +33,9 @@ class PedidoLine {
   final String? nombreLibre;
   final String? descripcionLibre;
   final double precioBase;
+  // El precio de esta línea se escribió a mano en el pedido (no es el de la
+  // carta): el servidor debe respetarlo para este pedido solamente.
+  final bool precioManual;
   // Estado de la línea (pedidos_detalle.estado): null = normal, 'incidencia'
   // = tiene una devolución/reclamo reportado (ver incidencias_store.dart).
   final String? estado;
@@ -60,6 +63,7 @@ class PedidoLine {
     this.nombreLibre,
     this.descripcionLibre,
     this.precioBase = 0.0,
+    this.precioManual = false,
     this.estado,
     this.variante,
     this.componentes = const [],
@@ -130,13 +134,14 @@ class PedidoLine {
       nombreLibre: nombreLibre,
       descripcionLibre: descripcionLibre,
       precioBase: precioBase,
+      precioManual: precioManual,
       estado: estado,
     );
   }
 
   // Precio por unidad a medida (pedido de personal): sin descuento, el total es
   // el precio por la cantidad.
-  PedidoLine conPrecio(double precio) => PedidoLine(
+  PedidoLine conPrecio(double precio, {bool? manual}) => PedidoLine(
     id: id,
     cartaId: cartaId,
     nombrePlato: nombrePlato,
@@ -158,6 +163,7 @@ class PedidoLine {
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
+    precioManual: manual ?? precioManual,
     estado: estado,
   );
 
@@ -184,6 +190,7 @@ class PedidoLine {
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
+    precioManual: precioManual,
     estado: nuevo,
     version: version,
   );
@@ -211,6 +218,7 @@ class PedidoLine {
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
+    precioManual: precioManual,
     estado: estado,
     version: version,
   );
@@ -242,6 +250,7 @@ class PedidoLine {
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
+    precioManual: precioManual,
     estado: estado ?? this.estado,
     version: version,
   );
@@ -276,6 +285,7 @@ class PedidoLine {
       nombreLibre: nombreLibre,
       descripcionLibre: descripcionLibre,
       precioBase: precioBase,
+      precioManual: precioManual,
       estado: estado,
       version: version,
     );

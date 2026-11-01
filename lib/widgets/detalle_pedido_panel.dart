@@ -40,9 +40,7 @@ import 'boton_imprimir_whatsapp.dart';
 import 'agregar_producto_dialog.dart';
 import 'app_tag.dart';
 import 'descuento_dialog.dart';
-import 'boletas_pagadores_dialog.dart';
 import 'menu_flotante.dart';
-import 'pago_compartido_dialog.dart';
 import 'indicador_abajo.dart';
 import 'pago_dialogs.dart';
 import 'promocion_pedido_dialogs.dart';
@@ -145,9 +143,18 @@ String nombreMeseroDe(Pedido p) {
   }
 }
 
+// Nombre del cliente del pedido o, en uno de empleado, el del empleado.
+String? nombreClienteDe(Pedido p) {
+  final n = (p.clienteNombre ?? '').trim();
+  return n.isNotEmpty ? n : nombreEnComentarios(p.notas);
+}
+
 // Etiqueta que identifica un pedido para el personal (empleado).
 class TagEmpleado extends StatelessWidget {
-  const TagEmpleado({super.key});
+  // Nombre del empleado: la etiqueta dice "Empleado: Nombre".
+  final String? nombre;
+
+  const TagEmpleado({super.key, this.nombre});
 
   @override
   Widget build(BuildContext context) {
@@ -158,14 +165,14 @@ class TagEmpleado extends StatelessWidget {
         borderRadius: BorderRadius.circular(100),
         border: Border.all(color: color, width: 1.2),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(LucideIcons.users, size: 11, color: color),
-          SizedBox(width: 4),
+          const Icon(LucideIcons.users, size: 11, color: color),
+          const SizedBox(width: 4),
           Text(
-            'Empleado',
-            style: TextStyle(
+            (nombre ?? '').isEmpty ? 'Empleado' : 'Empleado: $nombre',
+            style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
               color: color,
@@ -552,8 +559,8 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  // "Pagar": pago único o compartido. El delivery solo admite pago único. Desde
-  // cada forma de pago se puede regresar a esta elección.
+  // "Pagar": abre el modal de pago (pago único; con "Por montos" se reparte entre
+  // varios medios).
   Future<void> _elegirPago(BuildContext context) async {
     // Se lee lo ya cobrado en el servidor: así no se cobra dos veces algo que
     // otro equipo ya cobró. Sin conexión se sigue con lo que hay en pantalla.
@@ -561,20 +568,7 @@ class DetallePedidoPanel extends StatelessWidget {
       await PagoService.instance.cargarDePedido(pedido);
     } catch (_) {}
     if (!context.mounted) return;
-    if (pedido.tipoPedido == 'delivery') {
-      await _pagar(context, compartido: false, permiteVolver: false);
-      return;
-    }
-    while (true) {
-      if (!context.mounted) return;
-      final compartido = await showBlurDialog<bool>(
-        context: context,
-        builder: (_) => _ModoPagoDialog(titulo: tituloPedido(pedido)),
-      );
-      if (compartido == null || !context.mounted) return;
-      final volver = await _pagar(context, compartido: compartido);
-      if (!volver) return;
-    }
+    await _pagar(context);
   }
 
   // Los métodos de pago vienen del servidor: sin ninguno no se puede cobrar.
@@ -597,56 +591,15 @@ class DetallePedidoPanel extends StatelessWidget {
     return false;
   }
 
-  // Devuelve true si el usuario pidió regresar a la elección del tipo de pago.
-  Future<bool> _pagar(
-    BuildContext context, {
-    required bool compartido,
-    bool permiteVolver = true,
-  }) async {
-    if (!await _hayMediosPago(context)) return true;
-    if (!context.mounted) return false;
-    if (compartido) {
-      final r = await showBlurDialog<Object>(
-        context: context,
-        builder: (_) => PagoCompartidoDialog(
-          pedido: pedido,
-          titulo: tituloPedido(pedido),
-          permiteVolver: permiteVolver,
-        ),
-      );
-      if (r == null) {
-        // Cancelado, o un pago que quedó a medias: se refresca desde el servidor.
-        onCambio();
-        return false;
-      }
-      if (identical(r, volverAElegirPago)) return true;
-      final resultado = r as ResultadoPagoCompartido;
-      // Las boletas se muestran antes de refrescar: si el pedido quedó
-      // pagado, este panel deja de existir.
-      if (resultado.boletasIndividuales && context.mounted) {
-        await showBlurDialog<void>(
-          context: context,
-          builder: (_) => BoletasPagadoresDialog(
-            pedido: pedido,
-            boletas: resultado.boletas,
-          ),
-        );
-      }
-      onCambio();
-      return false;
-    }
-    if (!context.mounted) return false;
+  Future<void> _pagar(BuildContext context) async {
+    if (!await _hayMediosPago(context)) return;
+    if (!context.mounted) return;
     final r = await showBlurDialog<Object>(
       context: context,
-      builder: (_) => PagarPedidoDialog(
-        pedido: pedido,
-        titulo: tituloPedido(pedido),
-        permiteVolver: permiteVolver,
-      ),
+      builder: (_) =>
+          PagarPedidoDialog(pedido: pedido, titulo: tituloPedido(pedido)),
     );
-    if (identical(r, volverAElegirPago)) return true;
     if (r == true) onCambio();
-    return false;
   }
 
   Future<void> _anularPedidoApi(BuildContext context) async {
@@ -1660,10 +1613,6 @@ class DetallePedidoPanel extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (esPedidoDeEmpleado(pedido)) ...[
-                      const SizedBox(width: 6),
-                      const TagEmpleado(),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -1673,7 +1622,13 @@ class DetallePedidoPanel extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
-                if (cliente != null)
+                // La etiqueta del empleado va debajo de la descripción.
+                if (esPedidoDeEmpleado(pedido))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: TagEmpleado(nombre: nombreClienteDe(pedido)),
+                  ),
+                if (cliente != null && !esPedidoDeEmpleado(pedido))
                   Text(
                     cliente,
                     maxLines: 1,
@@ -2155,27 +2110,42 @@ class DetallePedidoPanel extends StatelessWidget {
 
   // − n + : cambia la cantidad de la línea.
   Widget _stepper(BuildContext context, PedidoLine l) {
-    Widget boton(IconData icono, VoidCallback? onTap) => InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Container(
-        width: 22,
-        height: 22,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: onTap == null
-              ? Colors.grey.shade100
-              : AppColors.primaryGreen.withValues(alpha: 0.12),
+    // Mismo diseño que en el registro de pedido: "−" con trazo gris y "+"
+    // relleno de verde con el signo blanco, en cuadros de esquinas suaves.
+    Widget boton(IconData icono, VoidCallback? onTap) {
+      const lado = 26.0;
+      final esMas = icono == Icons.add;
+      final habilitado = onTap != null;
+      final trazo = esMas ? AppColors.primaryGreen : Colors.grey.shade500;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(lado * 0.1),
+          onTap: onTap,
+          child: Container(
+            width: lado,
+            height: lado,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(lado * 0.1),
+              color: esMas
+                  ? (habilitado ? AppColors.primaryGreen : Colors.grey.shade300)
+                  : null,
+              border: Border.all(
+                color: habilitado ? trazo : Colors.grey.shade300,
+              ),
+            ),
+            child: Icon(
+              icono,
+              size: 16,
+              color: esMas
+                  ? Colors.white
+                  : (habilitado ? trazo : Colors.grey.shade400),
+            ),
+          ),
         ),
-        child: Icon(
-          icono,
-          size: 14,
-          color: onTap == null
-              ? Colors.grey.shade400
-              : AppColors.primaryGreenDark,
-        ),
-      ),
-    );
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2333,7 +2303,7 @@ class DetallePedidoPanel extends StatelessWidget {
     );
   }
 
-  // Imprimir (oscuro) + Devolución, y debajo Pagar (naranja) + Pago compartido (verde).
+  // Imprimir (oscuro) + Devolución, y debajo Servido + Pagar (naranja).
   // Pagar e imprimir son de administración y caja: el mozo no los ve.
   bool get _veCaja => !(AuthService.instance.currentUser?.esMozo ?? false);
 
@@ -2383,8 +2353,7 @@ class DetallePedidoPanel extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
-        // Servido y Pagar en la misma fila. "Pagar" abre la elección entre pago
-        // único y compartido.
+        // Servido y Pagar en la misma fila.
         Row(
           children: [
             // Siempre visible: queda desactivado cuando el pedido ya no está
@@ -2435,94 +2404,6 @@ class DetallePedidoPanel extends StatelessWidget {
             ],
           ],
         ),
-      ],
-    );
-  }
-}
-
-// Cómo se va a pagar: devuelve false (pago único) o true (pago compartido).
-class _ModoPagoDialog extends StatelessWidget {
-  final String titulo;
-
-  const _ModoPagoDialog({required this.titulo});
-
-  Widget _opcion(
-    BuildContext context, {
-    required IconData icono,
-    required String titulo,
-    required String detalle,
-    required bool compartido,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => Navigator.of(context).pop(compartido),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.primaryGreen.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icono, size: 20, color: AppColors.primaryGreenDark),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    titulo,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    detalle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, size: 20, color: Colors.grey.shade500),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DialogoApp(
-      titulo: 'Pagar · $titulo',
-      ancho: 420,
-      children: [
-        _opcion(
-          context,
-          icono: LucideIcons.banknote,
-          titulo: 'Pago único',
-          detalle: 'Una sola persona paga todo el pedido.',
-          compartido: false,
-        ),
-        _opcion(
-          context,
-          icono: LucideIcons.users,
-          titulo: 'Pago compartido',
-          detalle: 'Se divide entre varios: por partes iguales, por platos…',
-          compartido: true,
-        ),
-        const SizedBox(height: 8),
       ],
     );
   }
@@ -2923,7 +2804,8 @@ class _NotaPedidoEnLineaState extends State<_NotaPedidoEnLinea> {
           CampoTexto(
             controller: _texto,
             autofocus: widget.inicial.isEmpty,
-            maxLines: 3,
+            minLines: 3,
+            maxLines: null,
             maxLength: 200,
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(

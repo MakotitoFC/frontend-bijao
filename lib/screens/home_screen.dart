@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/borrador_pedido_store.dart';
 import '../widgets/campana_notificaciones.dart';
@@ -99,6 +100,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final u = widget.usuario;
     if (!u.debeCambiarPin) return;
     if (!(u.esAdmin || u.tienePermiso('OTORGAR.DESCUENTO'))) return;
+    // Solo se avisa una vez por usuario en este dispositivo; después, el PIN se
+    // cambia desde Configuración.
+    final clave = 'aviso_pin_${u.id}';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(clave) == true) return;
+      await prefs.setBool(clave, true);
+    } catch (_) {}
     if (!mounted) return;
     final cambiado = await showBlurDialog<bool>(
       context: context,

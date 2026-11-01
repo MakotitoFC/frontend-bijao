@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/cargos_extra_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
+import '../data/pedidos_store.dart' show establecerPropinaPedido;
 import '../models/movimiento_caja.dart';
 import '../services/movimiento_caja_service.dart';
 import 'app_select.dart';
@@ -15,10 +17,12 @@ import '../models/medio_pago.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import 'app_switch.dart';
+import 'app_tag.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'comprobante_en_cobro.dart';
 import 'dialogo_app.dart';
+import 'indicador_abajo.dart';
 
 const naranjaPago = Color(0xFFF07F13);
 
@@ -41,6 +45,9 @@ class ModalPago extends StatelessWidget {
   final double anchoEscritorio;
   // Si viene, se muestra un botón "Regresar" junto al título.
   final VoidCallback? onVolver;
+  // Si viene, queda fijo abajo (fuera del scroll) y el scroll de [child] lleva
+  // un padding a la derecha para que su barra no tape el contenido.
+  final Widget? pie;
 
   const ModalPago({
     super.key,
@@ -49,6 +56,7 @@ class ModalPago extends StatelessWidget {
     required this.child,
     this.anchoEscritorio = 440,
     this.onVolver,
+    this.pie,
   });
 
   @override
@@ -126,7 +134,20 @@ class ModalPago extends StatelessWidget {
                 ],
               ),
               const SeparadorDialogo(),
-              Flexible(child: SingleChildScrollView(child: child)),
+              Flexible(
+                child: pie != null
+                    // Con pie fijo: el scroll lleva el aviso ">" de que hay
+                    // más contenido abajo.
+                    ? IndicadorAbajo(
+                        builder: (ctl) => SingleChildScrollView(
+                          controller: ctl,
+                          padding: const EdgeInsets.only(right: 14),
+                          child: child,
+                        ),
+                      )
+                    : SingleChildScrollView(child: child),
+              ),
+              if (pie != null) ...[const SizedBox(height: 12), pie!],
             ],
           ),
         ),
@@ -200,8 +221,23 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // en las filas de [_filas].
   bool _dividir = false;
   final List<_FilaMedio> _filas = [];
-  // Efectivo con el que paga el cliente (para calcular el vuelto).
+  // Efectivo con el que paga el cliente (para calcular el vuelto). Solo se pide
+  // si se activa "Vuelto".
   final _recibidoCtrl = TextEditingController();
+  bool _conVuelto = false;
+  // Extras: propina (con su campo) y roturas o alquiler de menaje.
+  late bool _conPropina = _propina > 0.005;
+  late final _propinaCtrl = TextEditingController(
+    text: _propina > 0.005 ? _propina.toStringAsFixed(2) : '',
+  );
+  bool _conRoturas = false;
+  final List<CargoExtra> _cargos = [];
+  String? _menajeElegido;
+  // Menaje que no está en la lista: se escribe a mano.
+  final _menajeOtroCtrl = TextEditingController();
+  final _costoCargoCtrl = TextEditingController();
+  static const _otroMenaje = 'Otro';
+  double get _totalCargos => _cargos.fold(0.0, (s, c) => s + c.monto);
 
   // Lo que se cobra en efectivo: sin recargo, y con la propina y el táper.
   double get _efectivoACobrar {
@@ -210,10 +246,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               .where((f) => f.medio.grupo == 'efectivo')
               .fold(0.0, (s, f) => s + leerMonto(f.monto.text))
         : (_medio.grupo == 'efectivo' ? _saldo : 0.0);
-    return enEfectivo > 0.005 ? enEfectivo + _propina + _taper : 0.0;
+    return enEfectivo > 0.005
+        ? enEfectivo + _propina + _taper + _totalCargos
+        : 0.0;
   }
 
-  double get _recibido => leerMonto(_recibidoCtrl.text);
+  double get _recibido => _conVuelto ? leerMonto(_recibidoCtrl.text) : 0.0;
   double get _vuelto {
     final r = _recibido;
     return r > _efectivoACobrar + 0.005 ? r - _efectivoACobrar : 0.0;
@@ -229,6 +267,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   void dispose() {
     _comprobante?.dispose();
     _recibidoCtrl.dispose();
+    _propinaCtrl.dispose();
+    _menajeOtroCtrl.dispose();
+    _costoCargoCtrl.dispose();
     for (final f in _filas) {
       f.monto.dispose();
     }
@@ -349,7 +390,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     if (saldo <= 0.01 || _guardando) return;
     if (_dividir && !_repartoCompleto) return;
     final recargo = _recargo;
-    final extras = _propina + _taper;
+    final extras = _propina + _taper + _totalCargos;
     // Lo que se cobra: un pago con el medio elegido o uno por cada fila.
     final cobros = _dividir
         ? [
@@ -408,6 +449,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       return;
     }
     if (!mounted) return;
+    registrarCargosExtra(widget.pedido.id, _cargos);
     if (_vuelto > 0.005) {
       efectivoRecibidoPorPedido[widget.pedido.id] = (
         recibido: _recibido,
@@ -470,73 +512,71 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     return LucideIcons.wallet;
   }
 
-  Widget _tileMedio(MedioPago m, double ancho) {
-    final activo = m.id == _medio.id;
-    return SizedBox(
-      width: ancho,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => setState(() => _medio = m),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-          decoration: BoxDecoration(
-            color: activo
-                ? AppColors.primaryGreen.withValues(alpha: 0.08)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
-              width: activo ? 1.6 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                _icono(m),
-                size: 20,
-                color: activo
-                    ? AppColors.primaryGreenDark
-                    : Colors.grey.shade600,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      m.medioPago,
-                      softWrap: true,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: activo ? FontWeight.w700 : FontWeight.w600,
-                      ),
-                    ),
-                    if (m.aplicaComision)
-                      Text(
-                        '+${m.porcentajeComision.toStringAsFixed(1)}% recargo',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (activo)
-                const Icon(
-                  Icons.check_circle,
-                  size: 18,
-                  color: AppColors.primaryGreen,
-                ),
-            ],
+  // Un método de pago como etiqueta de solo trazo (sin tarjeta).
+  Widget _etiquetaMedio(MedioPago m) {
+    return AppTag(
+      etiqueta: m.aplicaComision
+          ? '${m.medioPago} (+${m.porcentajeComision.toStringAsFixed(1)}%)'
+          : m.medioPago,
+      icono: _icono(m),
+      activo: m.id == _medio.id,
+      color: AppColors.primaryGreen,
+      onTap: () => setState(() => _medio = m),
+    );
+  }
+
+  Widget _titulo(String texto) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      texto,
+      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+    ),
+  );
+
+  // Encabezado con interruptor: "Vuelto", "Por montos", "Propina".
+  Widget _conInterruptor(
+    String texto,
+    bool valor,
+    ValueChanged<bool> onChanged,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            texto,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
         ),
+        AppSwitch(value: valor, onChanged: onChanged),
+      ],
+    );
+  }
+
+  Widget _campoSoles(
+    TextEditingController ctrl, {
+    String hint = 'S/.',
+    ValueChanged<String>? onChanged,
+  }) {
+    return SizedBox(
+      height: AppSizes.boton,
+      child: CampoTexto(
+        controller: ctrl,
+        expands: true,
+        maxLines: null,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+        ],
+        onChanged: (v) {
+          setState(() {});
+          onChanged?.call(v);
+        },
+        decoration: InputDecoration(hintText: hint),
       ),
     );
   }
 
-  // Una fila por medio: el medio, cuánto de la cuenta paga con él y quitar.
+  // Por montos: una fila por medio, con su monto y una "x" para quitarla.
   Widget _filasDeMedios() {
     final falta = _faltante;
     return Column(
@@ -551,8 +591,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                   flex: 5,
                   child: AppSelect<String>(
                     compacto: true,
+                    buscable: true,
                     value: _filas[i].medio.id,
-                    hint: 'Medio',
+                    hint: 'Buscar medio',
                     items: [
                       for (final m in mediosPagoActivos)
                         AppSelectItem(
@@ -572,39 +613,24 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  flex: 4,
-                  child: SizedBox(
-                    height: AppSizes.boton,
-                    child: CampoTexto(
-                      controller: _filas[i].monto,
-                      expands: true,
-                      maxLines: null,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                      ],
-                      onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(prefixText: 'S/ '),
-                    ),
+                Expanded(flex: 3, child: _campoSoles(_filas[i].monto)),
+                const SizedBox(width: 8),
+                Opacity(
+                  opacity: _filas.length > 1 ? 1 : 0.35,
+                  child: BotonCerrarCircular(
+                    tamano: 30,
+                    onPressed: _filas.length > 1 ? () => _quitarFila(i) : () {},
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Quitar medio',
-                  onPressed: _filas.length > 1 ? () => _quitarFila(i) : null,
-                  icon: const Icon(LucideIcons.x, size: 18),
                 ),
               ],
             ),
           ),
         Row(
           children: [
-            TextButton.icon(
+            OutlinedButton.icon(
               onPressed: _agregarFila,
               icon: const Icon(LucideIcons.plus, size: 16),
-              label: const Text('Agregar otro medio'),
+              label: const Text('Agregar'),
             ),
             const Spacer(),
             Text(
@@ -627,43 +653,290 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     );
   }
 
+  void _cambiarPropina(String texto) {
+    establecerPropinaPedido(widget.pedido.id, leerMonto(texto));
+  }
+
+  void _alternarPropina(bool v) {
+    setState(() {
+      _conPropina = v;
+      if (!v) {
+        _propinaCtrl.clear();
+        establecerPropinaPedido(widget.pedido.id, 0);
+      }
+    });
+  }
+
+  // Nombre del menaje elegido (o escrito, si es "Otro").
+  String get _nombreMenaje => _menajeElegido == _otroMenaje
+      ? _menajeOtroCtrl.text.trim()
+      : (_menajeElegido ?? '');
+
+  bool get _cargoValido =>
+      _nombreMenaje.isNotEmpty && leerMonto(_costoCargoCtrl.text) > 0;
+
+  void _agregarCargo() {
+    if (!_cargoValido) return;
+    setState(() {
+      _cargos.add(
+        CargoExtra(
+          nombre: _nombreMenaje,
+          monto: leerMonto(_costoCargoCtrl.text),
+        ),
+      );
+      _menajeElegido = null;
+      _menajeOtroCtrl.clear();
+      _costoCargoCtrl.clear();
+    });
+  }
+
+  // Título gris de cada bloque de Extras.
+  Widget _subtitulo(String texto) => Text(
+    texto,
+    style: TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w700,
+      color: Colors.grey.shade600,
+    ),
+  );
+
+  Widget _columnaPropina() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _subtitulo('Propina')),
+            AppSwitch(value: _conPropina, onChanged: _alternarPropina),
+          ],
+        ),
+        if (_conPropina) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _campoSoles(_propinaCtrl, onChanged: _cambiarPropina),
+              ),
+              const SizedBox(width: 8),
+              BotonCerrarCircular(
+                tamano: 30,
+                onPressed: () => _alternarPropina(false),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _columnaRoturas() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _subtitulo('Roturas / alquiler')),
+            AppSwitch(
+              value: _conRoturas,
+              onChanged: (v) => setState(() {
+                _conRoturas = v;
+                if (!v) {
+                  _cargos.clear();
+                  _menajeElegido = null;
+                  _menajeOtroCtrl.clear();
+                  _costoCargoCtrl.clear();
+                }
+              }),
+            ),
+          ],
+        ),
+        if (_conRoturas) ..._camposRoturas(),
+      ],
+    );
+  }
+
+  List<Widget> _camposRoturas() {
+    return [
+      const SizedBox(height: 8),
+      // Buscador, costo y botón de agregar, en la misma fila.
+      Row(
+        children: [
+          Expanded(
+            flex: 5,
+            child: AppSelect<String>(
+              compacto: true,
+              buscable: true,
+              value: _menajeElegido,
+              hint: 'Buscar menaje',
+              items: [
+                for (final m in menajeCobrable)
+                  AppSelectItem(value: m, label: m),
+                const AppSelectItem(
+                  value: _otroMenaje,
+                  label: 'Otro (escribir)',
+                ),
+              ],
+              onChanged: (v) => setState(() => _menajeElegido = v),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: _campoSoles(_costoCargoCtrl, hint: 'Costo S/.'),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Agregar',
+            child: FilledButton.icon(
+              onPressed: _cargoValido ? _agregarCargo : null,
+              icon: const Icon(LucideIcons.plus, size: 16),
+              label: const Text('Agregar'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                minimumSize: const Size(0, AppSizes.boton),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+      if (_menajeElegido == _otroMenaje) ...[
+        const SizedBox(height: 8),
+        SizedBox(
+          height: AppSizes.boton,
+          child: CampoTexto(
+            controller: _menajeOtroCtrl,
+            expands: true,
+            maxLines: null,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(hintText: 'Nombre del menaje'),
+          ),
+        ),
+      ],
+      for (var i = 0; i < _cargos.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _cargos[i].nombre,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+              Text(
+                'S/ ${_cargos[i].monto.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              BotonCerrarCircular(
+                tamano: 28,
+                onPressed: () => setState(() => _cargos.removeAt(i)),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  // Extras: propina y roturas o alquiler, en una sola columna.
+  Widget _extras() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _titulo('Extras'),
+        _columnaPropina(),
+        const SizedBox(height: 14),
+        _columnaRoturas(),
+      ],
+    );
+  }
+
+  // Lo que queda fijo abajo: tipo de comprobante y botón Pagar.
+  Widget _pieFijo(double saldo, double total) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_comprobante != null) ...[
+          SelectorComprobante(control: _comprobante!, pedido: widget.pedido),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          children: [
+            if (widget.permiteVolver) ...[
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed: _volver,
+                  icon: const Icon(LucideIcons.chevronLeft, size: 16),
+                  label: const Text('Regresar'),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              flex: 3,
+              child: FilledButton.icon(
+                onPressed:
+                    saldo > 0.01 &&
+                        !_guardando &&
+                        (!_dividir || _repartoCompleto) &&
+                        _recibidoValido &&
+                        (_comprobante?.completo ?? true)
+                    ? _pagar
+                    : null,
+                icon: const Icon(LucideIcons.banknote, size: 18),
+                label: Text(
+                  'Pagar · S/ ${total.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(backgroundColor: naranjaPago),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final saldo = _saldo;
     final propina = _propina;
     final taper = _taper;
-    final total = saldo + _recargo + propina + taper;
+    final cargos = _totalCargos;
+    final total = saldo + _recargo + propina + taper + cargos;
     return ModalPago(
-      titulo: 'Pago único',
+      titulo: 'Pagar',
+      anchoEscritorio: 580,
       subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
       onVolver: widget.permiteVolver ? _volver : null,
+      pie: _pieFijo(saldo, total),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tarjetaSaldo('Total a pagar', saldo + propina + taper),
-          const SizedBox(height: 14),
-          AppSelect<CategoriaMovimiento>(
-            label: 'Concepto / Categoría del cobro',
-            flotante: true,
-            buscable: true,
-            value: _categoriaSeleccionada,
-            hint: 'Selecciona concepto de ingreso',
-            items: [
-              for (final c in categoriasDeTipo(TipoMovimiento.ingreso))
-                AppSelectItem(value: c, label: c.nombre),
-            ],
-            onChanged: (c) => setState(() => _categoriaSeleccionada = c),
+          // Total a pagar: texto grande, sin tarjeta.
+          Text(
+            'Total a pagar',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
-          const SizedBox(height: 14),
-          const Text(
-            'Método de pago',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          Text(
+            'S/ ${(saldo + propina + taper + cargos).toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryGreen,
+            ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
+          _titulo('Método de pago'),
           if (!_dividir)
-            LayoutBuilder(
-              builder: (context, c) {
-                final ancho = (c.maxWidth - 10) / 2;
+            Builder(
+              builder: (context) {
                 final grupos = agruparMediosPago(mediosPagoActivos);
                 // Con un solo grupo no hace falta el título; con varios, el
                 // tipo va primero y dentro de él cada medio (cada Yape).
@@ -673,7 +946,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                     for (final e in grupos.entries) ...[
                       if (grupos.length > 1)
                         Padding(
-                          padding: const EdgeInsets.only(top: 6, bottom: 6),
+                          padding: const EdgeInsets.only(top: 4, bottom: 6),
                           child: Text(
                             etiquetaGrupoMedioPago(e.key),
                             style: TextStyle(
@@ -684,131 +957,81 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                           ),
                         ),
                       Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          for (final m in e.value) _tileMedio(m, ancho),
-                        ],
+                        runSpacing: 8,
+                        children: [for (final m in e.value) _etiquetaMedio(m)],
                       ),
                     ],
                   ],
                 );
               },
-            )
-          else
-            _filasDeMedios(),
-          const SizedBox(height: 10),
-          // La misma persona paga con varios medios y montos.
-          Row(
-            children: [
-              const Expanded(
+            ),
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          _conInterruptor('Vuelto', _conVuelto, (v) {
+            setState(() {
+              _conVuelto = v;
+              if (!v) _recibidoCtrl.clear();
+            });
+          }),
+          if (_conVuelto) ...[
+            const SizedBox(height: 8),
+            _campoSoles(_recibidoCtrl, hint: 'S/. con cuánto paga el cliente'),
+            if (!_recibidoValido)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Pagar con varios medios (montos distintos)',
-                  style: TextStyle(fontSize: 13),
+                  'Falta: el efectivo a cobrar es '
+                  'S/ ${_efectivoACobrar.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.error),
                 ),
               ),
-              AppSwitch(value: _dividir, onChanged: _alternarDividir),
-            ],
-          ),
-          if (_efectivoACobrar > 0.005) ...[
-            const SizedBox(height: 14),
-            CampoTexto(
-              controller: _recibidoCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-              ],
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: 'El cliente paga en efectivo con (S/) · opcional, para el vuelto',
-                errorText: _recibidoValido
-                    ? null
-                    : 'Falta: el efectivo a cobrar es '
-                          'S/ ${_efectivoACobrar.toStringAsFixed(2)}',
-              ),
-            ),
             if (_vuelto > 0.005)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: _filaMonto('Vuelto', _vuelto, fuerte: true),
               ),
           ],
-          if (_comprobante != null) ...[
-            const SizedBox(height: 18),
-            SelectorComprobante(control: _comprobante!, pedido: widget.pedido),
-          ],
-          if (_recargo > 0 || propina > 0 || taper > 0)
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.naranja.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  _filaMonto('Cuenta', saldo),
-                  if (_recargo > 0) ...[
-                    const SizedBox(height: 4),
-                    _filaMonto(
-                      _dividir
-                          ? 'Recargo por medios de pago'
-                          : 'Recargo ${_medio.medioPago.toLowerCase()} '
-                                '(${_medio.porcentajeComision.toStringAsFixed(1)}%)',
-                      _recargo,
-                      mas: true,
-                    ),
-                  ],
-                  if (propina > 0) ...[
-                    const SizedBox(height: 4),
-                    _filaMonto('Propina (sin recargo)', propina, mas: true),
-                  ],
-                  if (taper > 0) ...[
-                    const SizedBox(height: 4),
-                    _filaMonto('Táper (sin recargo)', taper, mas: true),
-                  ],
-                  const Divider(height: 14),
-                  _filaMonto('Total a cobrar', total, fuerte: true),
-                ],
-              ),
-            ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              if (widget.permiteVolver) ...[
-                Expanded(
-                  flex: 2,
-                  child: OutlinedButton.icon(
-                    onPressed: _volver,
-                    icon: const Icon(LucideIcons.chevronLeft, size: 16),
-                    label: const Text('Regresar'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                flex: 3,
-                child: FilledButton.icon(
-                  onPressed:
-                      saldo > 0.01 &&
-                          !_guardando &&
-                          (!_dividir || _repartoCompleto) &&
-                          _recibidoValido &&
-                          (_comprobante?.completo ?? true)
-                      ? _pagar
-                      : null,
-                  icon: const Icon(LucideIcons.banknote, size: 18),
-                  label: Text(
-                    'Pagar · S/ ${total.toStringAsFixed(2)}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  style: FilledButton.styleFrom(backgroundColor: naranjaPago),
-                ),
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          _conInterruptor('Por montos', _dividir, _alternarDividir),
+          if (_dividir) ...[const SizedBox(height: 8), _filasDeMedios()],
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          _extras(),
+          if (_recargo > 0 || propina > 0 || taper > 0 || cargos > 0) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            _filaMonto('Cuenta', saldo),
+            if (_recargo > 0) ...[
+              const SizedBox(height: 4),
+              _filaMonto(
+                _dividir
+                    ? 'Recargo por medios de pago'
+                    : 'Recargo ${_medio.medioPago.toLowerCase()} '
+                          '(${_medio.porcentajeComision.toStringAsFixed(1)}%)',
+                _recargo,
+                mas: true,
               ),
             ],
-          ),
+            if (propina > 0) ...[
+              const SizedBox(height: 4),
+              _filaMonto('Propina (sin recargo)', propina, mas: true),
+            ],
+            if (taper > 0) ...[
+              const SizedBox(height: 4),
+              _filaMonto('Táper (sin recargo)', taper, mas: true),
+            ],
+            if (cargos > 0) ...[
+              const SizedBox(height: 4),
+              _filaMonto('Roturas / alquiler', cargos, mas: true),
+            ],
+            const SizedBox(height: 8),
+            _filaMonto('Total a cobrar', total, fuerte: true),
+          ],
         ],
       ),
     );

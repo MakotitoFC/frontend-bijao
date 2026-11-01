@@ -159,6 +159,8 @@ List<Map<String, dynamic>> itemsDeLinea(
       if (l.presentacion != null && _esUuid(l.presentacion!.id))
         'carta_presentacion_id': l.presentacion!.id,
       if (precioPersonal) 'precio_personal': l.precioUnitario,
+      // Precio escrito a mano para este pedido (el motivo va en el comentario).
+      if (l.precioManual && !precioPersonal) 'precio_manual': l.precioUnitario,
       'cantidad': l.cantidad,
       'tipo_entrega': entrega,
       'comentario': ?comentario,

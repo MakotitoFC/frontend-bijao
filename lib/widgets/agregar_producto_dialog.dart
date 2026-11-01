@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config/app_config.dart';
 import '../data/cartas_store.dart';
+import '../data/categorias_store.dart';
 import '../data/disponibilidad_store.dart';
 import '../data/insumos_store.dart';
 import '../data/pedidos_store.dart';
@@ -15,6 +16,7 @@ import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'app_search_field.dart';
+import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
 import 'producto_opciones_dialog.dart';
@@ -39,6 +41,8 @@ class AgregarProductoDialog extends StatefulWidget {
 
 class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   final _busqueda = TextEditingController();
+  // Categoría elegida para filtrar (null = todas).
+  String? _categoriaId;
 
   @override
   void initState() {
@@ -55,7 +59,12 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   List<CartaItem> get _productos {
     final t = _busqueda.text.trim().toLowerCase();
     return cartasNotifier.value
-        .where((c) => c.disponible && c.nombrePlato.toLowerCase().contains(t))
+        .where(
+          (c) =>
+              c.disponible &&
+              (_categoriaId == null || c.categoriaId == _categoriaId) &&
+              c.nombrePlato.toLowerCase().contains(t),
+        )
         .toList();
   }
 
@@ -66,6 +75,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
         item: item,
         esAdmin: widget.esAdmin,
         tipoEntregaInicial: widget.pedido.tipoPedido,
+        permitePrecioManual: true,
       ),
     );
     if (r == null || !mounted) return;
@@ -88,6 +98,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
       precioTaper: r.precioTaper,
       cantidadTaper: r.cantidadTaper,
       precioBase: r.variante?.precioCliente ?? item.precioCliente ?? 0.0,
+      precioManual: r.precioManual,
     );
     final lineas = [
       linea,
@@ -173,6 +184,26 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                   controller: _busqueda,
                   hint: 'Buscar producto...',
                   onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Filtro por categoría.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    AppTag(
+                      etiqueta: 'Todos',
+                      activo: _categoriaId == null,
+                      onTap: () => setState(() => _categoriaId = null),
+                    ),
+                    for (final cat in categorias)
+                      AppTag(
+                        etiqueta: cat.categoria,
+                        activo: _categoriaId == cat.id,
+                        onTap: () => setState(() => _categoriaId = cat.id),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),

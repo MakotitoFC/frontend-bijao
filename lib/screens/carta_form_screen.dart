@@ -156,16 +156,12 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   late final TextEditingController _descripcionController;
   late final TextEditingController _precioClienteController;
   late final TextEditingController _precioPersonalController;
-  late final TextEditingController _taperSearchController;
-  late final FocusNode _taperFocusNode;
 
   CategoriaComida? _categoria;
   Set<String> _subcategoriaIds = {};
   // Tápers elegidos para el plato, en el orden en que se marcaron.
   final List<String> _tapersElegidos = [];
   String _estado = 'disponible';
-  bool _mostrarListaTapers = false;
-  bool _cargandoTapers = false;
   // Foto elegida en este formulario (aún no subida).
   Uint8List? _fotoBytes;
   String? _fotoNombre;
@@ -236,28 +232,6 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                 item.taperId!,
             ],
     );
-
-    _taperSearchController = TextEditingController();
-    _taperFocusNode = FocusNode();
-
-    _taperFocusNode.addListener(() {
-      if (_taperFocusNode.hasFocus) {
-        setState(() => _mostrarListaTapers = true);
-      }
-    });
-
-    _inicializarTapers();
-  }
-
-  Future<void> _inicializarTapers() async {
-    if (CatalogService.instance.tapers.isEmpty) {
-      setState(() => _cargandoTapers = true);
-      await CatalogService.instance.cargarTapers();
-      if (!mounted) return;
-      setState(() => _cargandoTapers = false);
-    }
-
-    if (mounted) setState(() {});
   }
 
   @override
@@ -266,8 +240,6 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     _descripcionController.dispose();
     _precioClienteController.dispose();
     _precioPersonalController.dispose();
-    _taperSearchController.dispose();
-    _taperFocusNode.dispose();
     for (final f in _filas) {
       f.liberar();
     }
@@ -276,14 +248,6 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     }
     super.dispose();
   }
-
-  // Marca o desmarca un táper al tocarlo; la lista queda abierta para elegir
-  // más de uno.
-  void _alternarTaper(String id) => setState(() {
-    if (!_tapersElegidos.remove(id)) _tapersElegidos.add(id);
-  });
-
-  void _quitarTodosTapers() => setState(_tapersElegidos.clear);
 
   void _guardar() {
     if (!_formKey.currentState!.validate()) return;
@@ -783,11 +747,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 4. Selector interactivo de Táper con ventana de 4-5 opciones
-                      _buildTaperSelector(),
-                      const SizedBox(height: 16),
-
-                      // 5. Precios (Cliente y Personal)
+                      // Precio al público (el de empleado se escribe en cada pedido)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -817,40 +777,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: CampoTexto(
-                              controller: _precioPersonalController,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              decoration: InputDecoration(
-                                labelText: 'Precio personal (S/)',
-                                hintText: 'Opcional',
-                                prefixText: 'S/ ',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              validator: (v) {
-                                final text = v?.trim() ?? '';
-                                if (text.isNotEmpty) {
-                                  final p = double.tryParse(text);
-                                  if (p == null || p < 0) {
-                                    return 'Precio inválido';
-                                  }
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
 
-                      // 6. Tamaños (interruptor y filas, se guardan con el plato)
-                      _seccionTamanos(),
                       const SizedBox(height: 16),
 
                       // 6b. Presentaciones (interruptor y filas para bebidas: Vaso, Jarra, etc.)
@@ -956,249 +886,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     );
   }
 
-  /// Selector múltiple de tápers: se marcan y desmarcan tocándolos, los elegidos
-  /// se ven como etiquetas y un contador dice cuántos tiene el plato.
-  Widget _buildTaperSelector() {
-    final todos = CatalogService.instance.tapers;
-    final query = _taperSearchController.text.trim().toLowerCase();
-    final filtrados = todos.where((t) {
-      if (query.isEmpty) return true;
-      return t.nombre.toLowerCase().contains(query);
-    }).toList();
-    final n = _tapersElegidos.length;
-    String nombreDe(String id) =>
-        todos.where((t) => t.id == id).firstOrNull?.nombre ?? 'Táper';
-    final contador = n == 0 ? 'Sin tápers' : (n == 1 ? '1 táper' : '$n tápers');
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Tápers para llevar (opcional)',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: n > 0
-                    ? AppColors.primaryGreen.withValues(alpha: 0.12)
-                    : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                contador,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: n > 0
-                      ? AppColors.primaryGreenDark
-                      : Colors.grey.shade600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        if (n > 0) ...[
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final id in _tapersElegidos)
-                Chip(
-                  label: Text(
-                    nombreDe(id),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  deleteIcon: const Icon(Icons.close, size: 16),
-                  deleteButtonTooltipMessage: 'Quitar este táper',
-                  onDeleted: () => _alternarTaper(id),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
-        CampoTexto(
-          controller: _taperSearchController,
-          focusNode: _taperFocusNode,
-          onTap: () => setState(() => _mostrarListaTapers = true),
-          onChanged: (_) => setState(() => _mostrarListaTapers = true),
-          decoration: InputDecoration(
-            hintText: 'Busca y marca los tápers del plato...',
-            prefixIcon: const Icon(Icons.takeout_dining_outlined, size: 20),
-            suffixIcon: IconButton(
-              tooltip: _mostrarListaTapers ? 'Cerrar lista' : 'Ver tápers',
-              icon: Icon(
-                _mostrarListaTapers
-                    ? Icons.arrow_drop_up
-                    : Icons.arrow_drop_down,
-              ),
-              onPressed: () =>
-                  setState(() => _mostrarListaTapers = !_mostrarListaTapers),
-            ),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-        if (_mostrarListaTapers) ...[
-          const SizedBox(height: 6),
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: AppColors.primaryGreen.withValues(alpha: 0.5),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            // El fondo blanco va en un Material propio para que las filas
-            // (ListTile) muestren su selección y su efecto al tocarlas.
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 6, 0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            n == 0
-                                ? 'Toca un táper para marcarlo'
-                                : '$n seleccionado${n == 1 ? '' : 's'}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                        if (n > 0)
-                          TextButton(
-                            onPressed: _quitarTodosTapers,
-                            child: const Text('Quitar todos'),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 190),
-                    child: _cargandoTapers
-                        ? const Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ),
-                          )
-                        : todos.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Text(
-                              'Aún no hay tápers registrados en inventario.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          )
-                        : Scrollbar(
-                            child: ListView(
-                              padding: EdgeInsets.zero,
-                              shrinkWrap: true,
-                              children: [
-                                for (final t in filtrados)
-                                  CheckboxListTile(
-                                    dense: true,
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    value: _tapersElegidos.contains(t.id),
-                                    onChanged: (_) => _alternarTaper(t.id),
-                                    activeColor: AppColors.primaryGreen,
-                                    title: Text(
-                                      t.nombre,
-                                      style: TextStyle(
-                                        fontWeight:
-                                            _tapersElegidos.contains(t.id)
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    secondary: Text(
-                                      'S/ ${t.precio.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
-                                        color: AppColors.primaryGreen,
-                                      ),
-                                    ),
-                                  ),
-                                if (filtrados.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Text(
-                                      'No se encontró ningún táper con "$query"',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade500,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                  ),
-                  const Divider(height: 1),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () =>
-                          setState(() => _mostrarListaTapers = false),
-                      child: const Text('Listo'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   // Variantes del plato (`carta_variante`): interruptor "Tiene variantes" y, al
   // activarlo, una fila por tamaño con su nombre y precio. Se guardan junto con
   // el plato en una sola operación.
+  // ignore: unused_element
   Widget _seccionTamanos() {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1278,9 +969,7 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                   onPressed: () =>
                       setState(() => _tamanosAvanzado = !_tamanosAvanzado),
                   child: Text(
-                    _tamanosAvanzado
-                        ? 'Ocultar avanzado'
-                        : 'Avanzado (precio personal y peso)',
+                    _tamanosAvanzado ? 'Ocultar avanzado' : 'Avanzado (peso)',
                   ),
                 ),
               ],
@@ -1363,23 +1052,6 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Expanded(
-                    child: CampoTexto(
-                      controller: f.personal,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Precio personal',
-                        hintText: 'Igual al público',
-                        prefixText: 'S/ ',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: CampoTexto(
                       controller: f.pesoMin,

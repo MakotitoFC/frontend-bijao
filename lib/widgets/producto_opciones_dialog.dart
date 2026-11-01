@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/cartas_store.dart';
 import '../data/disponibilidad_store.dart';
 import '../data/presentaciones_store.dart';
 import '../data/variantes_store.dart';
@@ -10,6 +11,7 @@ import '../models/carta_variante.dart';
 import '../models/modificador.dart';
 import '../models/pedido_line.dart';
 import '../theme/app_theme.dart';
+import 'app_select.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
@@ -36,6 +38,10 @@ typedef ProductoConfigurado = ({
   // Los demás tápers elegidos (el primero va en la línea del plato): cada uno
   // se agrega como una fila propia con su cantidad.
   List<TaperElegido> tapersAdicionales,
+  // El precio se escribió a mano para este pedido; [precioOriginal] es el de la
+  // carta antes del cambio.
+  bool precioManual,
+  double precioOriginal,
 });
 
 // Modal "Agregar al pedido": presentación, extras opcionales y nota.
@@ -50,6 +56,8 @@ class ProductoOpcionesDialog extends StatefulWidget {
   // Tipo del pedido en curso ('mesa', 'llevar' o 'delivery'): el producto
   // arranca con esa entrega, que se puede cambiar producto por producto.
   final String tipoEntregaInicial;
+  // Deja cambiar el precio (con su motivo) solo para este pedido.
+  final bool permitePrecioManual;
 
   const ProductoOpcionesDialog({
     super.key,
@@ -58,6 +66,7 @@ class ProductoOpcionesDialog extends StatefulWidget {
     this.acento,
     this.enCarrito = const [],
     this.tipoEntregaInicial = 'mesa',
+    this.permitePrecioManual = false,
   });
 
   @override
@@ -108,10 +117,22 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   @override
   void dispose() {
     _comentarioController.dispose();
+    _precioCtrl.dispose();
+    _motivoCtrl.dispose();
+    _adicionalCtrl.dispose();
     super.dispose();
   }
 
-  double get _precioUnitario {
+  // Precio escrito a mano para este pedido y su motivo (null = el de la carta).
+  double? _precioManual;
+  String? _motivoPrecio;
+
+  double get _precioUnitario => _precioManual ?? _precioCalculado;
+
+  bool get _esFamiliar =>
+      (widget.item.categoriaNombre ?? '').toLowerCase().contains('familiar');
+
+  double get _precioCalculado {
     final base =
         _variante?.precioCliente ??
         _presentacion?.precioCliente ??
@@ -218,9 +239,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       presentacion: _presentacion,
       variante: _variante,
       modificadores: modificadores,
-      comentario: _comentarioController.text.trim().isEmpty
-          ? null
-          : _comentarioController.text.trim(),
+      comentario: _comentarioFinal,
       precioUnitario: totalLinea / _cantidad,
       tipoEntrega: _tipoEntrega,
       // El táper se agrega después, desde el detalle del pedido.
@@ -230,7 +249,159 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       cantidadTaper: null,
       totalLinea: totalLinea,
       tapersAdicionales: const [],
+      precioManual: _precioManual != null,
+      precioOriginal: _precioCalculado,
     ));
+  }
+
+  // La nota del producto, más el motivo del precio si se cambió.
+  String? get _comentarioFinal {
+    final nota = _comentarioController.text.trim();
+    final motivo = _motivoPrecio == null ? '' : 'Precio manual: $_motivoPrecio';
+    final partes = [nota, motivo].where((x) => x.isNotEmpty).join('\n');
+    return partes.isEmpty ? null : partes;
+  }
+
+  // ---- Precio a mano y cambio de plato, en el mismo modal (sin otros modales) ----
+
+  bool _editandoPrecio = false;
+  final _precioCtrl = TextEditingController();
+  final _motivoCtrl = TextEditingController();
+  String? _platoCambio;
+  final _adicionalCtrl = TextEditingController();
+
+  double _leer(String s) =>
+      double.tryParse(s.trim().replaceAll(',', '.')) ?? -1;
+
+  // Platos entre los que se puede cambiar un plato familiar: sus variantes y,
+  // si no tiene, los demás platos de la carta.
+  List<String> get _opcionesDeCambio => _variantes.isNotEmpty
+      ? [for (final v in _variantes) v.nombre]
+      : [
+          for (final c in cartasNotifier.value)
+            if (c.id != widget.item.id) c.nombrePlato,
+        ];
+
+  // Vuelve a calcular el precio manual con lo escrito: el precio con su motivo
+  // o, si no, el cambio de plato con su adicional.
+  void _recalcularManual() {
+    final p = _leer(_precioCtrl.text);
+    final motivo = _motivoCtrl.text.trim();
+    final extra = _leer(_adicionalCtrl.text);
+    setState(() {
+      if (_editandoPrecio && p >= 0 && motivo.isNotEmpty) {
+        _precioManual = p;
+        _motivoPrecio = motivo;
+      } else if (_platoCambio != null && extra >= 0) {
+        _precioManual = _precioCalculado + extra;
+        _motivoPrecio =
+            'Cambio por $_platoCambio (+S/ ${extra.toStringAsFixed(2)})';
+      } else {
+        _precioManual = null;
+        _motivoPrecio = null;
+      }
+    });
+  }
+
+  void _alternarEdicionPrecio() {
+    setState(() {
+      _editandoPrecio = !_editandoPrecio;
+      if (_editandoPrecio) {
+        _precioCtrl.text = _precioUnitario.toStringAsFixed(2);
+      } else {
+        _precioCtrl.clear();
+        _motivoCtrl.clear();
+      }
+    });
+    _recalcularManual();
+  }
+
+  // Campo de texto de una sola línea del modal.
+  Widget _campoLinea(
+    TextEditingController ctrl,
+    String hint, {
+    bool numero = false,
+    String? prefijo,
+  }) => SizedBox(
+    height: AppSizes.boton,
+    child: CampoTexto(
+      controller: ctrl,
+      expands: true,
+      maxLines: null,
+      keyboardType: numero
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : null,
+      onChanged: (_) => _recalcularManual(),
+      decoration: InputDecoration(hintText: hint, prefixText: prefijo),
+    ),
+  );
+
+  Widget _precioEnLinea() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_editandoPrecio) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _campoLinea(
+                  _precioCtrl,
+                  'Precio',
+                  numero: true,
+                  prefijo: 'S/ ',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 4,
+                child: _campoLinea(_motivoCtrl, 'Motivo del cambio'),
+              ),
+            ],
+          ),
+        ],
+        if (_esFamiliar) ...[
+          const SizedBox(height: 14),
+          const Text(
+            'Cambio de plato',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: AppSelect<String>(
+                  compacto: true,
+                  buscable: true,
+                  value: _platoCambio,
+                  hint: 'Plato que se cambia',
+                  items: [
+                    for (final n in _opcionesDeCambio)
+                      AppSelectItem(value: n, label: n),
+                  ],
+                  onChanged: (v) {
+                    _platoCambio = v;
+                    _recalcularManual();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: _campoLinea(
+                  _adicionalCtrl,
+                  'Adicional',
+                  numero: true,
+                  prefijo: 'S/ ',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -308,21 +479,69 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    Text(
-                      'S/ ${_precioUnitario.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          'S/ ${_precioUnitario.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (widget.permitePrecioManual) ...[
+                          const SizedBox(width: 8),
+                          Tooltip(
+                            message: 'Cambiar el precio',
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _alternarEdicionPrecio,
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(
+                                  LucideIcons.pencil,
+                                  size: 16,
+                                  color: _precioManual != null
+                                      ? AppColors.naranja
+                                      : Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_precioManual != null)
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _editandoPrecio = false;
+                                  _platoCambio = null;
+                                  _precioCtrl.clear();
+                                  _motivoCtrl.clear();
+                                  _adicionalCtrl.clear();
+                                });
+                                _recalcularManual();
+                              },
+                              child: const Text('Quitar cambio'),
+                            ),
+                        ],
+                      ],
                     ),
-                    if (_variantes.isNotEmpty) ...[
+                    if (_motivoPrecio != null)
+                      Text(
+                        'Precio manual: $_motivoPrecio',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.naranja,
+                        ),
+                      ),
+                    if (widget.permitePrecioManual) _precioEnLinea(),
+                    // Las variantes ya no se muestran: si el plato aún tiene,
+                    // se usa la primera (su precio) sin preguntar.
+                    if (_variantes.isEmpty && _presentaciones.isNotEmpty) ...[
                       const SizedBox(height: 18),
-                      _tituloSeccion('Elige la variante', obligatorio: true),
-                      const SizedBox(height: 6),
-                      for (final v in _variantes) _filaVariante(v),
-                    ] else if (_presentaciones.isNotEmpty) ...[
-                      const SizedBox(height: 18),
-                      _tituloSeccion('Elige la variante', obligatorio: true),
+                      _tituloSeccion(
+                        'Elige la presentación',
+                        obligatorio: true,
+                      ),
                       const SizedBox(height: 6),
                       for (final p in _presentaciones) _filaRadio(p),
                     ],
@@ -550,37 +769,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             ),
           ),
       ],
-    );
-  }
-
-  Widget _filaVariante(CartaVariante v) {
-    final activo = _variante?.id == v.id;
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => setState(() => _variante = v),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Icon(
-                activo ? Icons.radio_button_checked : Icons.radio_button_off,
-                size: 20,
-                color: activo ? AppColors.primaryGreen : Colors.grey.shade400,
-              ),
-            ),
-            Expanded(child: Text(v.nombre)),
-            Text(
-              'S/ ${v.precioCliente.toStringAsFixed(2)}',
-              style: TextStyle(
-                fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                color: activo ? AppColors.primaryGreenDark : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/borrador_pedido_store.dart';
 import '../data/mesas_por_liberar_store.dart';
@@ -24,6 +22,7 @@ import '../services/auth_service.dart';
 import '../widgets/traspaso_dialogs.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/nota_pedido.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_select.dart';
@@ -34,7 +33,6 @@ import '../services/caja_service.dart';
 import '../widgets/dialogo_app.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/campo_texto.dart';
 import '../widgets/indicador_abajo.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
@@ -61,22 +59,15 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   String? _tipoFiltro; // null = Todos; 'mesa' | 'delivery' | 'llevar'
 
-  // Vistas de la cola, como pestañas de carpeta: Clientes y Empleados vienen
-  // siempre; las demás las agrega el usuario con "+".
-  static const _vistasFijas = <_VistaCola>[
+  // Vistas de la cola: Clientes y Empleados, como pestañas en cadena.
+  static const _vistas = <_VistaCola>[
     _VistaCola(id: 'clientes', nombre: 'Clientes', filtro: 'clientes'),
     _VistaCola(id: 'empleados', nombre: 'Empleados', filtro: 'empleados'),
   ];
-  List<_VistaCola> _vistasPropias = [];
   String _vistaId = 'clientes';
-  static const _claveVistas = 'vistas_cola_pedidos';
 
-  List<_VistaCola> get _vistas => [..._vistasFijas, ..._vistasPropias];
-
-  _VistaCola get _vistaActual => _vistas.firstWhere(
-    (v) => v.id == _vistaId,
-    orElse: () => _vistasFijas[0],
-  );
+  _VistaCola get _vistaActual =>
+      _vistas.firstWhere((v) => v.id == _vistaId, orElse: () => _vistas.first);
 
   bool _enVista(Pedido p) => _enVistaDe(_vistaActual, p);
 
@@ -90,123 +81,15 @@ class _PedidosScreenState extends State<PedidosScreen> {
   int _cantidadDeVista(_VistaCola v) =>
       pedidos.where((p) => _esActivo(p) && _enVistaDe(v, p)).length;
 
-  Future<void> _cargarVistas() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final texto = prefs.getString(_claveVistas);
-      if (texto == null) return;
-      final lista = [
-        for (final j in jsonDecode(texto) as List)
-          _VistaCola.fromJson(Map<String, dynamic>.from(j as Map)),
-      ];
-      if (mounted) setState(() => _vistasPropias = lista);
-    } catch (_) {}
-  }
-
-  Future<void> _guardarVistas() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _claveVistas,
-        jsonEncode([for (final v in _vistasPropias) v.toJson()]),
-      );
-    } catch (_) {}
-  }
-
-  Future<void> _agregarVista() async {
-    final nombre = TextEditingController();
-    var filtro = 'todos';
-    final r = await showBlurDialog<_VistaCola>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialog) => AlertaApp(
-          title: const Text('Nueva vista de pedidos'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CampoTexto(
-                controller: nombre,
-                autofocus: true,
-                maxLength: 24,
-                decoration: const InputDecoration(
-                  hintText: 'Nombre de la vista',
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text('Qué pedidos muestra'),
-              const SizedBox(height: 8),
-              Wrap(
-                runSpacing: 8,
-                children: [
-                  for (final o in const [
-                    ('todos', 'Todos'),
-                    ('clientes', 'Clientes'),
-                    ('empleados', 'Empleados'),
-                  ])
-                    AppTag(
-                      etiqueta: o.$2,
-                      activo: filtro == o.$1,
-                      color: AppColors.primaryGreen,
-                      onTap: () => setDialog(() => filtro = o.$1),
-                    ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final n = nombre.text.trim();
-                if (n.isEmpty) return;
-                Navigator.of(dialogContext).pop(
-                  _VistaCola(
-                    id: DateTime.now().microsecondsSinceEpoch.toString(),
-                    nombre: n,
-                    filtro: filtro,
-                  ),
-                );
-              },
-              child: const Text('Crear'),
-            ),
-          ],
-        ),
-      ),
-    );
-    nombre.dispose();
-    if (r == null || !mounted) return;
-    setState(() {
-      _vistasPropias = [..._vistasPropias, r];
-      _vistaId = r.id;
-    });
-    await _guardarVistas();
-  }
-
-  Future<void> _quitarVista(_VistaCola v) async {
-    setState(() {
-      _vistasPropias = [
-        for (final x in _vistasPropias)
-          if (x.id != v.id) x,
-      ];
-      if (_vistaId == v.id) _vistaId = 'clientes';
-    });
-    await _guardarVistas();
-  }
-
   // Pestañas de la cola, tipo carpeta: la vista abierta va en verde.
   Widget _pestanasVistas() {
     // Cada pestaña es una flecha ">" con la punta como pieza de rompecabezas:
     // la siguiente encaja en la muesca de la anterior.
     Widget pestana(_VistaCola v, int i) {
       final activa = v.id == _vistaId;
-      final fija = _vistasFijas.any((f) => f.id == v.id);
       const punta = 14.0;
       return Padding(
-        padding: EdgeInsets.only(left: i == 0 ? 0 : 2),
+        padding: EdgeInsets.zero,
         child: Transform.translate(
           offset: Offset(i == 0 ? 0 : -punta, 0),
           child: InkWell(
@@ -217,7 +100,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
               padding: EdgeInsets.fromLTRB(
                 i == 0 ? 16 : punta + 10,
                 0,
-                punta + (fija ? 12 : 6),
+                punta + 12,
                 0,
               ),
               decoration: ShapeDecoration(
@@ -264,18 +147,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
                       ),
                     ),
                   ),
-                  if (!fija) ...[
-                    const SizedBox(width: 6),
-                    InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => _quitarVista(v),
-                      child: Icon(
-                        Icons.close,
-                        size: 15,
-                        color: activa ? Colors.white : Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -290,23 +161,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           for (var i = 0; i < _vistas.length; i++) pestana(_vistas[i], i),
-          Tooltip(
-            message: 'Agregar vista',
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: _agregarVista,
-              child: Container(
-                width: 30,
-                height: 30,
-                margin: const EdgeInsets.only(left: 8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey.shade400),
-                ),
-                child: Icon(Icons.add, size: 18, color: Colors.grey.shade700),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -323,14 +177,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
     super.initState();
     // Se salió de aquí con un pedido a medias: se vuelve a él.
     final borrador = borradorDe(widget.usuario.id);
-    if (borrador != null) {
+    // Un borrador con un tipo que ya no existe (por ejemplo, uno de una versión
+    // anterior) se descarta en vez de abrirse.
+    if (borrador != null &&
+        const ['mesa', 'llevar', 'delivery'].contains(borrador.tipo)) {
       _armandoPedido = true;
       _tipoNuevoPedido = borrador.tipo;
+    } else if (borrador != null) {
+      descartarBorradorYEsperar();
     }
     mesasPorLiberarNotifier.addListener(_alCambiarEnVivo);
     traspasosRevision.addListener(_alCambiarEnVivo);
     _cargar();
-    _cargarVistas();
     EventosService.instance.revision.addListener(_alCambiarEnVivo);
     // Con la conexión en vivo activa, la consulta periódica es solo un respaldo
     // (cada 32 s); sin ella, cada 4 s.
@@ -1169,10 +1027,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
               children: [
                 // El tipo de pedido (Mesa, Para llevar, Delivery) con su color.
                 Flexible(child: _tipoDePedido(p)),
-                if (esPedidoDeEmpleado(p)) ...[
-                  const SizedBox(width: 6),
-                  const TagEmpleado(),
-                ],
               ],
             ),
             const SizedBox(height: 2),
@@ -1200,10 +1054,21 @@ class _PedidosScreenState extends State<PedidosScreen> {
                 ),
               ],
             ),
-            if (p.notas != null) ...[
+            // La etiqueta del empleado va debajo del mozo.
+            if (esPedidoDeEmpleado(p)) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TagEmpleado(nombre: nombreClienteDe(p)),
+              ),
+            ],
+            // En un pedido de empleado el nombre ya va en la etiqueta: aquí solo
+            // queda la nota, sin la línea "Cliente: ...".
+            if ((esPedidoDeEmpleado(p) ? notaGeneralDe(p.notas) : p.notas) !=
+                null) ...[
               const SizedBox(height: 4),
               Text(
-                p.notas!,
+                (esPedidoDeEmpleado(p) ? notaGeneralDe(p.notas) : p.notas)!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1361,18 +1226,6 @@ class _VistaCola {
     required this.nombre,
     required this.filtro,
   });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'nombre': nombre,
-    'filtro': filtro,
-  };
-
-  factory _VistaCola.fromJson(Map<String, dynamic> j) => _VistaCola(
-    id: j['id'] as String,
-    nombre: j['nombre'] as String,
-    filtro: j['filtro'] as String? ?? 'todos',
-  );
 }
 
 // Pestaña en forma de flecha: punta a la derecha y, salvo la primera, una

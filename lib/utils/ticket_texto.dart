@@ -1,3 +1,4 @@
+import '../data/cargos_extra_store.dart';
 import '../data/cliente_comprobante_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pedidos_store.dart';
@@ -137,6 +138,13 @@ List<String> detalleDeLinea(PedidoLine l) => [
     '${m.tipo == 'quitar' ? '- Sin' : '+'} ${m.nombre}',
 ];
 
+// Motivo del precio escrito a mano en un producto (va en su nota como una
+// línea "Precio manual: ..."): sale en la boleta, la factura y el ticket.
+List<String> detalleDePrecioManual(PedidoLine l) => [
+  for (final x in (l.comentario ?? '').split('\n'))
+    if (x.trim().startsWith('Precio manual: ')) x.trim(),
+];
+
 String _lugarComanda(Pedido p) {
   switch (p.tipoPedido) {
     case 'delivery':
@@ -225,7 +233,12 @@ List<LineaTicket> ticketComanda({
 }
 
 // Datos de la sede que van arriba de la boleta.
-typedef DatosSede = ({String nombre, String direccion, String telefono, String ruc});
+typedef DatosSede = ({
+  String nombre,
+  String direccion,
+  String telefono,
+  String ruc,
+});
 
 // Parte alta de la boleta: ubicación, teléfono y el título con su número. El
 // logo lo pone quien dibuja el ticket.
@@ -307,7 +320,9 @@ List<LineaTicket> ticketBoleta({
   final saldo = total - pagado;
   final conRecargo = recargo > 0.001;
   // Lo que paga el cliente: la cuenta más el recargo.
-  final totalCobrado = total + (conRecargo ? recargo : 0);
+  final cargosExtra = cargosExtraDe(pedido.id);
+  final totalCargos = cargosExtra.fold(0.0, (s, x) => s + x.monto);
+  final totalCobrado = total + (conRecargo ? recargo : 0) + totalCargos;
   final numero = pedido.numeroPedido;
   // El nombre del pedido o, si no tiene, el del cliente al que se emitió la
   // boleta o la factura.
@@ -321,7 +336,11 @@ List<LineaTicket> ticketBoleta({
     LineaTicket(
       'Forma de pago: ${metodoPago.isEmpty ? 'Pendiente de pago' : metodoPago}',
     ),
-    LineaTicket('Cliente: ${cliente.isEmpty ? 'CLIENTES VARIOS' : cliente}'),
+    // En un pedido de empleado la línea dice "Empleado: Nombre".
+    if (pedido.esEmpleado)
+      LineaTicket('Empleado: ${cliente.isEmpty ? 'SIN NOMBRE' : cliente}')
+    else
+      LineaTicket('Cliente: ${cliente.isEmpty ? 'CLIENTES VARIOS' : cliente}'),
     LineaTicket('Atendido por: $mozo'),
     LineaTicket('Atencion: ${pedido.ubicacion}'),
     LineaTicket.separador('='),
@@ -338,7 +357,7 @@ List<LineaTicket> ticketBoleta({
     for (final r in partes.skip(1)) {
       salida.add(LineaTicket(r));
     }
-    for (final d in detalleDeLinea(l)) {
+    for (final d in [...detalleDeLinea(l), ...detalleDePrecioManual(l)]) {
       for (final r in envolver(d, anchoTicket - 4, sangria: '  ')) {
         salida.add(LineaTicket('    $r'));
       }
@@ -360,6 +379,10 @@ List<LineaTicket> ticketBoleta({
   if (cargo > 0.001) salida.add(montoLinea('CARGO POR DELIVERY', cargo));
   if (propina > 0.001) salida.add(montoLinea('PROPINA', propina));
   if (tupper > 0.001) salida.add(montoLinea('TAPER', tupper));
+  // Roturas o alquiler de menaje: una línea por cada cosa, con su nombre.
+  for (final x in cargosExtra) {
+    salida.add(montoLinea('ROTURA/ALQ. ${x.nombre.toUpperCase()}', x.monto));
+  }
   salida.add(LineaTicket.separador('-'));
   if (conRecargo) {
     salida.add(montoLinea('TOTAL CUENTA', total));

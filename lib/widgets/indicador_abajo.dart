@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 // Barra de desplazamiento por defecto (siempre visible) y, abajo, un círculo con ">"
@@ -58,17 +59,26 @@ class IndicadorAbajoState extends State<IndicadorAbajo> {
         return false;
       },
       child: Stack(
+        fit: StackFit.passthrough,
         children: [
           // Sin la barra automática de escritorio: solo se ve la nuestra.
-          Positioned.fill(
-            child: ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context)
-                  .copyWith(scrollbars: false),
-              child: Scrollbar(
-                controller: ctl,
-                thumbVisibility: scrollable,
-                child: widget.builder(ctl),
-              ),
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              scrollbars: false,
+              // Se desplaza con el dedo, el lápiz, el mouse o el panel táctil.
+              dragDevices: {
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.stylus,
+                PointerDeviceKind.invertedStylus,
+                PointerDeviceKind.trackpad,
+                PointerDeviceKind.unknown,
+              },
+            ),
+            child: Scrollbar(
+              controller: ctl,
+              thumbVisibility: scrollable,
+              child: widget.builder(ctl),
             ),
           ),
           if (hayMas && widget.conFlecha)
