@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/cierres_store.dart';
 import '../models/comprobante.dart';
 import '../services/api_client.dart';
 import '../services/facturacion_service.dart';
@@ -101,12 +102,22 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
       _errorCarga = null;
     });
     try {
+      if (estadoCajaServidor != null && !estadoCajaServidor!.abierta) {
+        if (mounted) setState(() => _lista = const []);
+        return;
+      }
       final hoy = DateTime.now();
       final lista = await FacturacionService.instance.listar(
         desde: hoy,
         hasta: hoy,
       );
-      if (mounted) setState(() => _lista = lista);
+      final desdeTurno = inicioCajaActual;
+      final filtrados = lista.where((c) {
+        final fh = c.fechaHora;
+        if (fh == null) return true;
+        return !fh.isBefore(desdeTurno);
+      }).toList();
+      if (mounted) setState(() => _lista = filtrados);
     } catch (e) {
       if (mounted) setState(() => _errorCarga = _error(e));
     } finally {

@@ -103,7 +103,7 @@ List<FilaResumenMedio> resumenPorMedio(DateTime desde) {
     () => FilaResumenMedio(nombre.trim()),
   );
 
-  for (final p in pagos.where((p) => !p.fechaPago.isBefore(desde))) {
+  for (final p in pagos.where((p) => !p.fechaPago.isBefore(desde) && !p.anulado)) {
     fila(p.medioPago.medioPago).ventas += p.montoCobrado;
   }
   for (final m in movimientosDesde(desde).where((m) => !m.anulado)) {

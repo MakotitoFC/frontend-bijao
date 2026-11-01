@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
-
+import '../data/mesas_store.dart';
 import '../utils/datos_sede.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
@@ -421,25 +421,34 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
     final recargo = recargoCobradoDePedido(pedido.id);
     final delivery = pedido.costoDelivery;
     final lineas = detallesPorPedido[pedido.id] ?? const [];
+    final horaAtencion = '${pedido.fechaPedido.hour.toString().padLeft(2, '0')}:${pedido.fechaPedido.minute.toString().padLeft(2, '0')}:${pedido.fechaPedido.second.toString().padLeft(2, '0')}';
+    final mesaObj = mesas.where((m) => m.numero == pedido.mesaNumero).firstOrNull;
+    final zonaStr = (mesaObj != null && mesaObj.zona.trim().isNotEmpty) ? mesaObj.zona.trim().toUpperCase() : 'SALÓN';
 
-    // Calcular montos en base a opciones activas
-    final baseLineas = lineas.fold(
+    // Los productos y tápers reales (sin la línea virtual de delivery)
+    final productos = lineas
+        .where((x) => esLineaDeProducto(x) || esLineaTupper(x) || esLineaTaper(x))
+        .toList();
+    final subtotalProductos = productos.fold(
       0.0,
-      (s, l) => s + l.precioTotalLinea + l.descuentoAplicado,
+      (s, l) => s + l.precioTotalLinea,
     );
-    final descLineas = lineas.fold(0.0, (s, l) => s + l.descuentoAplicado);
-    final subtotalPlatos = baseLineas - descLineas;
+    final cargoDelivery = delivery > 0 ? delivery : pedido.costoDelivery;
+    final conDelivery = (control.tipo == 'ticket_venta' || control.incluirDelivery) && cargoDelivery > 0;
+    final conRecargo = (control.tipo == 'ticket_venta' || control.incluirRecargo) && recargo > 0;
 
-    double totalCalc = subtotalPlatos;
-    if (control.incluirRecargo && recargo > 0) totalCalc += recargo;
-    if (control.incluirDelivery && delivery > 0) totalCalc += delivery;
+    double totalCalc = control.soloConsumo ? (subtotalProductos + (conDelivery ? cargoDelivery : 0) + (conRecargo ? recargo : 0)) : subtotalProductos;
+    if (!control.soloConsumo) {
+      if (conDelivery) totalCalc += cargoDelivery;
+      if (conRecargo) totalCalc += recargo;
+    }
 
     final igv = (totalCalc * (18.0 / 118.0));
     final opGravada = totalCalc - igv;
 
     final tituloDoc = switch (control.tipo) {
       'factura' => 'FACTURA ELECTRÓNICA',
-      'boleta' => 'BOLETA DE VENTA ELECTRÓNICA',
+      'boleta' => 'BOLETA ELECTRÓNICA',
       _ => 'TICKET DE VENTA',
     };
 
@@ -509,23 +518,25 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    (nombreDelNegocio().isEmpty
-                        ? 'RESTAURANTE'
-                        : nombreDelNegocio().toUpperCase()),
+                    sede.nombre.toUpperCase(),
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    'RUC: ${sede.ruc.isNotEmpty ? sede.ruc : "20608543211"}',
+                    'RUC: ${sede.ruc}',
                     textAlign: TextAlign.center,
                   ),
                   Text(
-                    sede.direccion.isNotEmpty
-                        ? sede.direccion
-                        : 'CAL. LOS BRILLANTES 421B',
+                    sede.direccion,
                     textAlign: TextAlign.center,
                   ),
+                  if (sede.telefono.isNotEmpty)
+                    Text(
+                      'Tel: ${sede.telefono}',
+                      textAlign: TextAlign.center,
+                    ),
                   const SizedBox(height: 6),
+                  const Divider(thickness: 1, height: 10),
                   Text(
                     tituloDoc,
                     textAlign: TextAlign.center,
@@ -538,38 +549,61 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   ),
                   const Divider(thickness: 1, height: 14),
                   Text(
-                    'Fecha/Hora: ${DateTime.now().toString().substring(0, 19)}',
+                    'Fecha:   ${DateTime.now().toString().substring(0, 10)} ${DateTime.now().toString().substring(11, 19)}',
                   ),
+                  Text('Hora atención:   $horaAtencion'),
+                  Text('Hora impresión:  ${DateTime.now().toString().substring(11, 19)}'),
+                  if (pedido.tipoPedido == 'mesa' && pedido.mesaNumero > 0)
+                    Text('Mesa:    ${pedido.mesaNumero} ($zonaStr)'),
+                  if (pedido.mozoNombre != null && pedido.mozoNombre!.trim().isNotEmpty)
+                    Text('Mozo:    ${pedido.mozoNombre!.trim()}'),
+                  if (pedido.tipoPedido == 'delivery')
+                    const Text('TIPO:    >> DELIVERY <<')
+                  else if (pedido.tipoPedido == 'llevar')
+                    const Text('TIPO:    >> PARA LLEVAR (RECOJO EN LOCAL) <<')
+                  else if (pedido.tipoPedido == 'mesa')
+                    const Text('TIPO:    MESA (CONSUMO EN SALON)'),
+                  const Divider(thickness: 1, height: 14),
                   if (control.tipo == 'factura') ...[
                     Text(
-                      'RUC: ${control.ruc.text.isEmpty ? "—" : control.ruc.text}',
+                      'RUC:      ${control.ruc.text.isEmpty ? "—" : control.ruc.text}',
                     ),
                     Text(
-                      'Razón Social: ${control.razon.text.isEmpty ? "—" : control.razon.text}',
+                      'CLIENTE:  ${control.razon.text.isEmpty ? "—" : control.razon.text}',
                     ),
-                    Text(
-                      'Dirección: ${control.direccion.text.isEmpty ? "—" : control.direccion.text}',
-                    ),
+                    if (control.direccion.text.isNotEmpty)
+                      Text(
+                        'DIR:      ${control.direccion.text}',
+                      ),
                   ] else if (control.tipo == 'boleta') ...[
+                    if (control.conDni && control.dni.text.isNotEmpty)
+                      Text('DNI:      ${control.dni.text}'),
                     Text(
-                      'DNI: ${control.conDni && control.dni.text.isNotEmpty ? control.dni.text : "—"}',
-                    ),
-                    Text(
-                      'Cliente: ${control.conDni ? (control.nombre.text.trim().isNotEmpty ? control.nombre.text : (control.dni.text.trim().isEmpty ? "CLIENTES VARIOS" : (control.buscando ? "buscando en RENIEC…" : "(falta el nombre del cliente)"))) : "CLIENTES VARIOS"}',
+                      'CLIENTE:  ${control.conDni ? (control.nombre.text.trim().isNotEmpty ? control.nombre.text : "CLIENTES VARIOS") : "CLIENTES VARIOS"}',
                     ),
                   ] else ...[
                     Text(
-                      'Cliente: ${pedido.clienteNombre ?? "CLIENTES VARIOS"}',
+                      'CLIENTE:  ${pedido.clienteNombre ?? "CLIENTES VARIOS"}',
                     ),
+                    if (pedido.direccionDelivery != null && pedido.direccionDelivery!.isNotEmpty)
+                      Text('DIR:      ${pedido.direccionDelivery}'),
                   ],
-                  Text('Moneda: SOLES (S/)'),
+                  const Text('MONEDA:   SOLES (S/)'),
                   const Divider(thickness: 1, height: 14),
 
                   // Detalle de ítems
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('CANT DESCRIPCION', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const Divider(thickness: 1, height: 10),
                   if (control.soloConsumo) ...[
                     _filaItem('1 NIU', 'Por consumo', totalCalc),
                   ] else ...[
-                    for (final l in lineas.where((x) => esLineaDeProducto(x) || esLineaTupper(x) || esLineaTaper(x)))
+                    for (final l in productos)
                       _filaItem(
                         '${l.cantidad} NIU',
                         l.esLibre
@@ -577,14 +611,14 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                             : l.nombrePlato,
                         l.precioTotalLinea,
                       ),
-                    if (control.incluirRecargo && recargo > 0)
+                    if (conDelivery)
+                      _filaItem('1 NIU', 'Servicio Delivery', cargoDelivery),
+                    if (conRecargo)
                       _filaItem(
                         '1 NIU',
                         'Recargo por pago con tarjeta',
                         recargo,
                       ),
-                    if (control.incluirDelivery && delivery > 0)
-                      _filaItem('1 NIU', 'Servicio de Delivery', delivery),
                   ],
 
                   const Divider(thickness: 1, height: 14),
@@ -620,17 +654,66 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                       fontStyle: FontStyle.italic,
                     ),
                   ),
+
+                  // Medios de pago y vuelto
+                  if (pagosPorMedioDe(pedido.id) case final pagosLista when pagosLista.isNotEmpty) ...[
+                    const Divider(thickness: 1, height: 14),
+                    const Text('MEDIO(S) DE PAGO:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    for (final p in pagosLista)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('  - ${p.medio.toUpperCase()}:'),
+                          Text('S/ ${p.monto.toStringAsFixed(2)}'),
+                        ],
+                      ),
+                    if (efectivoRecibidoPorPedido[pedido.id] case final e? when e.recibido > 0) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('  EFECTIVO RECIBIDO:'),
+                          Text('S/ ${e.recibido.toStringAsFixed(2)}'),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('  VUELTO:'),
+                          Text('S/ ${e.vuelto.toStringAsFixed(2)}'),
+                        ],
+                      ),
+                    ],
+                  ],
+
                   const Divider(thickness: 1, height: 14),
-                  const Text(
-                    'Representación impresa del comprobante electrónico',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
-                  const Text(
-                    'Consulte su documento en: https://apisunat.pe',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
+                  if (control.tipo == 'ticket_venta') ...[
+                    const Text(
+                      'Documento interno no fiscal',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                    const Text(
+                      '¡Gracias por su preferencia!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  ] else ...[
+                    Text(
+                      'Representación impresa de la ${control.tipo == 'factura' ? 'FACTURA ELECTRÓNICA' : 'BOLETA ELECTRÓNICA'}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                    const Text(
+                      'Consulte su documento en: https://apisunat.pe',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                    const Text(
+                      'Autorizado con Resolución N° 034-005-0005315/SUNAT',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  ],
                 ],
               ),
             ),

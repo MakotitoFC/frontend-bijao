@@ -40,6 +40,15 @@ class Comprobante {
     this.usuarioNombre,
   });
 
+  DateTime? get fechaHora {
+    try {
+      final h = horaEmision.isNotEmpty ? horaEmision : '00:00:00';
+      return DateTime.tryParse('$fechaEmision $h') ?? DateTime.tryParse('${fechaEmision}T$h');
+    } catch (_) {
+      return null;
+    }
+  }
+
   factory Comprobante.fromJson(Map<String, dynamic> j) {
     String? texto(String k) {
       final v = j[k]?.toString();

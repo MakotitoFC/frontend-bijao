@@ -17,6 +17,7 @@ import '../models/usuario.dart';
 import '../services/catalog_service.dart';
 import '../services/disponibilidad_service.dart';
 import '../services/eventos_service.dart';
+import '../services/facturacion_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/resumen_inicio.dart';
@@ -118,6 +119,7 @@ class _InicioScreenState extends State<InicioScreen> {
 
     await Future.wait([
       seguro(() => PedidoService.instance.cargarPedidos()),
+      seguro(() => FacturacionService.instance.obtenerSedeConfig()),
       if (!_esCocina) seguro(() => CatalogService.instance.cargarMesas()),
       if (!_esCocina) seguro(() => DisponibilidadService.instance.cargarHoy()),
       if (_veMesas) seguro(() => CatalogService.instance.cargarTapers()),

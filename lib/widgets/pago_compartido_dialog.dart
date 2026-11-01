@@ -149,9 +149,10 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   MedioPago get _medioInicial => mediosPagoActivos.first;
 
   // Comprobante a emitir al saldar la cuenta (solo administración y caja).
-  // Cada pagador puede pedir un comprobante distinto: uno ticket, otro boleta
-  // y otro factura. Se crea al armar los pagadores.
+  // Cada pagador puede pedir un comprobante distinto si se activa boletas individuales;
+  // de lo contrario, se emite un solo comprobante para la totalidad del pedido.
   late final bool _admiteComprobante = puedeElegirComprobante(widget.pedido);
+  late final ComprobanteEnCobro? _comprobanteGeneral = _nuevoComprobante();
 
   ComprobanteEnCobro? _nuevoComprobante() {
     if (!_admiteComprobante) return null;
@@ -209,6 +210,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   @override
   void dispose() {
+    _comprobanteGeneral?.dispose();
     for (final p in _pagadores) {
       p.liberar();
     }
@@ -470,14 +472,18 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   bool _guardando = false;
 
-  // Cada pagador con monto tiene completos los datos de su comprobante.
+  // Si son boletas individuales, cada pagador con monto debe tener completos sus datos.
+  // De lo contrario, valida el comprobante general del pedido.
   bool get _comprobantesCompletos {
-    final montos = _montos;
-    for (var i = 0; i < _pagadores.length; i++) {
-      if (montos[i] <= 0.005) continue;
-      if (!(_pagadores[i].comprobante?.completo ?? true)) return false;
+    if (_boletasIndividuales) {
+      final montos = _montos;
+      for (var i = 0; i < _pagadores.length; i++) {
+        if (montos[i] <= 0.005) continue;
+        if (!(_pagadores[i].comprobante?.completo ?? true)) return false;
+      }
+      return true;
     }
-    return true;
+    return _comprobanteGeneral?.completo ?? true;
   }
 
   // Selector de comprobante de un pagador, con lo que paga como total (así la
@@ -597,22 +603,34 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       PagoService.instance.avisoPropina = null;
       showAppToast(context, avisoPropina, type: ToastType.info);
     }
-    // La cuenta quedó saldada: se emite el comprobante que pidió cada pagador
-    // (uno puede no querer nada, otro boleta y otro factura).
-    final conMonto = [
-      for (var i = 0; i < _pagadores.length; i++)
-        if (montos[i] > 0.005) _pagadores[i],
-    ];
-    for (var b = 0; b < conMonto.length; b++) {
-      final eleccion = conMonto[b].comprobante;
-      if (eleccion == null || !eleccion.emite) continue;
-      await emitirComprobanteTrasCobro(
-        context,
-        widget.pedido,
-        eleccion,
-        pagoId: pagoDe[b],
-      );
-      if (!mounted) return;
+    // Emisión de comprobantes tras el cobro completo:
+    if (_boletasIndividuales) {
+      final conMonto = [
+        for (var i = 0; i < _pagadores.length; i++)
+          if (montos[i] > 0.005) _pagadores[i],
+      ];
+      for (var b = 0; b < conMonto.length; b++) {
+        final eleccion = conMonto[b].comprobante;
+        if (eleccion == null || !eleccion.emite) continue;
+        await emitirComprobanteTrasCobro(
+          context,
+          widget.pedido,
+          eleccion,
+          pagoId: pagoDe[b],
+        );
+        if (!mounted) return;
+      }
+    } else {
+      final eleccion = _comprobanteGeneral;
+      if (eleccion != null && eleccion.emite) {
+        await emitirComprobanteTrasCobro(
+          context,
+          widget.pedido,
+          eleccion,
+          pagoId: null, // Totalidad del pedido: todos los platos y todos los pagos juntos
+        );
+        if (!mounted) return;
+      }
     }
     Navigator.of(context)
         .pop((boletasIndividuales: _boletasIndividuales, boletas: boletas));
@@ -1271,10 +1289,22 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             _tarjetaPagador(i, montos[i]),
           if (_admiteComprobante) ...[
             const SizedBox(height: 12),
-            _etiquetaSeccion('COMPROBANTE DE CADA UNO'),
-            const SizedBox(height: 8),
-            for (var i = 0; i < _pagadores.length; i++)
-              if (montos[i] > 0.005) _comprobanteDe(i, montos[i]),
+            if (_boletasIndividuales) ...[
+              _etiquetaSeccion('COMPROBANTE DE CADA UNO'),
+              const SizedBox(height: 8),
+              for (var i = 0; i < _pagadores.length; i++)
+                if (montos[i] > 0.005) _comprobanteDe(i, montos[i]),
+            ] else if (_comprobanteGeneral != null) ...[
+              _etiquetaSeccion('COMPROBANTE DEL PEDIDO'),
+              const SizedBox(height: 8),
+              Builder(
+                builder: (context) {
+                  _comprobanteGeneral.total =
+                      _saldo + _recargoTotal + _propinaApp + _taperApp;
+                  return SelectorComprobante(control: _comprobanteGeneral);
+                },
+              ),
+            ],
             const SizedBox(height: 8),
           ],
           Container(

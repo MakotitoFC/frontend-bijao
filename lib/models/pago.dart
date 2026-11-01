@@ -16,6 +16,7 @@ class Pago {
   final String? pagador;
   final double? montoRecibido;
   final double? vuelto;
+  final String estado;
 
   const Pago({
     required this.id,
@@ -30,7 +31,9 @@ class Pago {
     this.pagador,
     this.montoRecibido,
     this.vuelto,
+    this.estado = 'activo',
   });
 
   bool get esReembolso => montoAbonado < 0;
+  bool get anulado => estado.toLowerCase() == 'anulado';
 }

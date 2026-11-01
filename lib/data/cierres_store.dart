@@ -49,7 +49,7 @@ TotalesCaja totalesCajaActual() {
   final desde = inicioCajaActual;
   var efectivo = 0.0, tarjeta = 0.0, yape = 0.0, plin = 0.0, delivery = 0.0;
   final pedidosIds = <String>{};
-  for (final pago in pagos.where((p) => !p.fechaPago.isBefore(desde))) {
+  for (final pago in pagos.where((p) => !p.fechaPago.isBefore(desde) && !p.anulado)) {
     pedidosIds.add(pago.pedidoId);
     // Lo que de verdad entró por ese método: la cuenta más el recargo.
     final monto = pago.montoCobrado;

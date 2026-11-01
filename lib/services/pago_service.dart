@@ -189,4 +189,23 @@ class PagoService {
       actualizarEstadoPedido(pedido.id, 'pagado');
     }
   }
+
+  // Rectifica el medio de pago de un cobro ya registrado (Módulo de Descargos).
+  Future<Map<String, dynamic>> rectificarPago({
+    required String pagoId,
+    required String nuevoMedioPagoId,
+    required String motivo,
+  }) async {
+    final res = await _api.post(
+      '/api/pagos/$pagoId/rectificar',
+      body: {
+        'nuevo_medio_pago_id': nuevoMedioPagoId,
+        'motivo': motivo.trim(),
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió la confirmación del descargo');
+    }
+    return res;
+  }
 }
