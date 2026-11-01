@@ -221,12 +221,17 @@ class FacturacionService {
   // CONFIGURACIÓN DE SEDE Y SERIES
   // ==========================================================================
 
+  SedeConfig? _cachedConfig;
+  SedeConfig? get cachedConfig => _cachedConfig;
+
   Future<SedeConfig> obtenerSedeConfig() async {
     final res = await _api.get('/api/v1/sede/config');
     if (res is! Map<String, dynamic>) {
       throw Exception('Error obteniendo configuración de la sede');
     }
-    return SedeConfig.fromJson(res);
+    final cfg = SedeConfig.fromJson(res);
+    _cachedConfig = cfg;
+    return cfg;
   }
 
   Future<SedeConfig> guardarSedeConfig(Map<String, dynamic> datos) async {

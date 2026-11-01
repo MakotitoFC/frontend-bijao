@@ -225,11 +225,13 @@ List<LineaTicket> ticketComanda({
 }
 
 // Datos de la sede que van arriba de la boleta.
-typedef DatosSede = ({String direccion, String telefono, String ruc});
+typedef DatosSede = ({String nombre, String direccion, String telefono, String ruc});
 
 // Parte alta de la boleta: ubicación, teléfono y el título con su número. El
 // logo lo pone quien dibuja el ticket.
 List<LineaTicket> _cabeceraBoleta(DatosSede sede, String numero) => [
+  if (sede.nombre.isNotEmpty) LineaTicket.centro(sede.nombre, negrita: true),
+  if (sede.ruc.isNotEmpty) LineaTicket.centro('RUC: ${sede.ruc}'),
   for (final r in envolver(sede.direccion, anchoTicket)) LineaTicket.centro(r),
   if (sede.telefono.isNotEmpty) LineaTicket.centro('Tel. ${sede.telefono}'),
   LineaTicket.separador('-'),

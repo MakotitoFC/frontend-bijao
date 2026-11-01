@@ -1474,7 +1474,10 @@ class DetallePedidoPanel extends StatelessWidget {
     final cargo = detalles
         .where((l) => l.cartaId == cartaIdCargoDelivery)
         .fold(0.0, (s, l) => s + l.precioTotalLinea);
-    final total = totalDePedido(pedido.id);
+    final recargo = recargoCobradoDePedido(pedido.id);
+    final totalCuenta = totalDePedido(pedido.id);
+    final totalCobrado = totalCobradoDePedido(pedido.id);
+    final total = recargo > 0.01 ? totalCobrado : totalCuenta;
     final saldo = saldoPendienteDePedido(pedido.id);
     final pagado = total - saldo;
     final puedePagar = saldoCuentaDePedido(pedido.id) > 0.01;
@@ -1511,6 +1514,7 @@ class DetallePedidoPanel extends StatelessWidget {
               tupper,
               onEditar: _esCajero ? null : () => _editarTupper(context),
             ),
+          if (recargo > 0.01) _filaTotal('Recargo por tarjeta', recargo),
           if (pagado > 0.01) _filaTotal('Pagado', pagado),
           // Con qué medio(s) se pagó, cada uno con su monto.
           if (pagado > 0.01)

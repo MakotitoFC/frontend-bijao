@@ -84,11 +84,23 @@ bool pagadoSinServir(Pedido p) {
 }
 
 double saldoPendienteDePedido(String pedidoId) {
+  final p = pedidos.where((x) => x.id == pedidoId).firstOrNull;
+  if (p != null && (p.estado == 'pagado' || p.estado == 'anulado' || p.estado == 'cancelado')) {
+    return 0.0;
+  }
+  final totalAbonado = pagos
+      .where((x) => x.pedidoId == pedidoId && !x.esReembolso && !x.anulado)
+      .fold(0.0, (s, x) => s + x.montoAbonado);
+  final totalPed = totalDePedido(pedidoId);
+  if (totalAbonado >= totalPed - 0.01) {
+    return 0.0;
+  }
   final lineas = detallesPorPedido[pedidoId] ?? [];
-  return lineas.fold(
+  final pendiente = lineas.fold(
     0.0,
     (sum, l) => sum + (l.precioTotalLinea - montoPagadoDeLinea(l.id)),
   );
+  return pendiente > 0.01 ? pendiente : 0.0;
 }
 
 // Líneas que solo existen en la app: el servidor no las conoce y no las cuenta
@@ -135,22 +147,23 @@ double taperPendienteDePedido(String pedidoId) =>
 double extrasDeAppPendientes(String pedidoId) =>
     propinaPendienteDePedido(pedidoId) + taperPendienteDePedido(pedidoId);
 
-// Deja la propina y el táper de la app como cobrados según los pagos del
-// pedido: la propina, con lo que viajó en cada pago; el táper, cuando la cuenta
-// quedó saldada. Se puede llamar las veces que haga falta.
+// Deja la propina, el táper y el delivery de la app como cobrados según los pagos del
+// pedido: la propina, con lo que viajó en cada pago; el táper y delivery, cuando la cuenta
+// quedó saldada o pagada. Se puede llamar las veces que haga falta.
 void liquidarExtrasDeApp(String pedidoId) {
   if (!UuidHelper.isValid(pedidoId)) return;
   final lineas = detallesPorPedido[pedidoId] ?? [];
   final propinas = lineas.where(esLineaPropina).toList();
   final tapers = lineas.where(esLineaTupper).toList();
+  final deliverys = lineas.where((l) => l.cartaId == cartaIdCargoDelivery).toList();
   final ids = {
-    for (final l in [...propinas, ...tapers]) l.id,
+    for (final l in [...propinas, ...tapers, ...deliverys]) l.id,
   };
   pagoDetalles.removeWhere((d) => ids.contains(d.pedidoDetalleId));
 
   // Del pago más antiguo al más nuevo (la lista va del más nuevo al más antiguo).
   final delPedido = pagos
-      .where((p) => p.pedidoId == pedidoId && !p.esReembolso)
+      .where((p) => p.pedidoId == pedidoId && !p.esReembolso && !p.anulado)
       .toList()
       .reversed
       .toList();
@@ -171,8 +184,12 @@ void liquidarExtrasDeApp(String pedidoId) {
       restante -= aplicado;
     }
   }
-  if (delPedido.isNotEmpty && saldoCuentaDePedido(pedidoId) <= 0.01) {
-    for (final l in tapers) {
+
+  final p = pedidos.where((x) => x.id == pedidoId).firstOrNull;
+  final saldado = (p != null && (p.estado == 'pagado' || p.estado == 'anulado' || p.estado == 'cancelado')) ||
+      saldoCuentaDePedido(pedidoId) <= 0.01;
+  if (delPedido.isNotEmpty && saldado) {
+    for (final l in [...tapers, ...deliverys]) {
       final falta = l.precioTotalLinea - montoPagadoDeLinea(l.id);
       if (falta <= 0.001) continue;
       pagoDetalles.add(

@@ -45,7 +45,7 @@ class Pedido {
     this.costoDelivery = 0.0,
   });
 
-  factory Pedido.fromJson(Map<String, dynamic> json) {
+  factory Pedido.fromJson(Map<String, dynamic> json, {String? fallbackNumero}) {
     DateTime fecha;
     if (json['created_at'] != null) {
       fecha =
@@ -74,9 +74,12 @@ class Pedido {
       numeroPedido:
           json['codigo_orden']?.toString().replaceFirst('#', '') ??
           json['numero_pedido']?.toString() ??
-          (json['id'] != null && json['id'].toString().length >= 4
-              ? json['id'].toString().substring(0, 4)
-              : '0000'),
+          (json['orden'] != null && (json['orden'] as num) > 0
+              ? (json['orden'] as num).toInt().toString().padLeft(4, '0')
+              : (fallbackNumero ??
+                  (json['id'] != null && json['id'].toString().length >= 4
+                      ? json['id'].toString().substring(0, 4)
+                      : '0000'))),
       mesaNumero: (json['mesa_numero'] as num?)?.toInt() ?? 0,
       mesasUnidas: const [],
       estado: estadoNormalizado,

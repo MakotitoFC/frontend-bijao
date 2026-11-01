@@ -273,7 +273,8 @@ class PedidoService {
 
         for (final item in res) {
           if (item is Map<String, dynamic>) {
-            final p = Pedido.fromJson(item);
+            final previo = pedidos.where((x) => x.id == item['id']?.toString()).firstOrNull;
+            final p = Pedido.fromJson(item, fallbackNumero: previo?.numeroPedido);
             listaPedidos.add(p);
 
             final detList = item['detalles'];
