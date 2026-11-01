@@ -2,16 +2,17 @@ import '../utils/json_num.dart';
 
 // Grupos de medios de pago: de ellos salen las tarjetas de Caja y el efectivo
 // esperado (así varios números de Yape suman juntos).
-const gruposMedioPago = ['efectivo', 'tarjeta', 'digital'];
+const gruposMedioPago = ['efectivo', 'tarjeta', 'digital', 'credito'];
 
 String etiquetaGrupoMedioPago(String grupo) => switch (grupo) {
   'efectivo' => 'En efectivo',
   'digital' => 'Digital (Yape, Plin…)',
+  'credito' || 'planilla' => 'Crédito / Descuento Planilla',
   _ => 'Tarjeta / otros',
 };
 
-// Los medios activos agrupados (efectivo, tarjeta, digital) y en ese orden, para
-// elegir primero el tipo y luego el medio (por ejemplo, cuál Yape).
+// Los medios activos agrupados (efectivo, tarjeta, digital, crédito) y en ese orden, para
+// elegir primero el tipo y luego el medio (por ejemplo, cuál Yape o Descuento Planilla).
 Map<String, List<MedioPago>> agruparMediosPago(Iterable<MedioPago> medios) => {
   for (final g in gruposMedioPago)
     if (medios.any((m) => m.grupo == g))
@@ -26,6 +27,13 @@ String grupoPorNombre(String nombre) {
   final n = nombre.trim().toLowerCase();
   if (n.contains('efectivo')) return 'efectivo';
   if (n.contains('yape') || n.contains('plin')) return 'digital';
+  if (n.contains('planilla') ||
+      n.contains('cuenta empleado') ||
+      n.contains('credito') ||
+      n.contains('crédito') ||
+      n.contains('personal')) {
+    return 'credito';
+  }
   return 'tarjeta';
 }
 

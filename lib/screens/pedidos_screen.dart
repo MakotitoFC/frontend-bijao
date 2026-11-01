@@ -566,6 +566,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   tipo: _tipoNuevoPedido!,
                   onTerminar: _terminarNuevoPedido,
                   onVolver: _volverATipo,
+                  inicioPersonal: _vistaId == 'empleados',
                 ),
               )
             : Padding(
