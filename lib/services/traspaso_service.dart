@@ -42,31 +42,35 @@ class TraspasoService {
     }
   }
 
-  // De los traspasos enviados que ya no están pendientes, deja en
-  // [traspasosRechazados] los que el otro mozo rechazó.
+  // De los traspasos enviados que ya no están pendientes o no vistos,
+  // deja en [traspasosRechazados] los que el otro mozo rechazó.
   Future<void> _detectarRechazos(Map<String, TraspasoPedido> enviados) async {
-    final vigentes = traspasosPendientes.map((t) => t.id).toSet();
-    final resueltos = {
-      for (final e in enviados.entries)
-        if (!vigentes.contains(e.key)) e.key,
-    };
-    if (resueltos.isEmpty) return;
-    final res = await _api.get('$_base?estado=rechazado');
-    final lista = res is List
-        ? res
-        : (res is Map<String, dynamic> && res['traspasos'] is List
-              ? res['traspasos'] as List
-              : const []);
-    var hubo = false;
-    for (final j in lista.whereType<Map<String, dynamic>>()) {
-      final t = TraspasoPedido.fromJson(j);
-      if (resueltos.contains(t.id) &&
-          !traspasosRechazados.any((x) => x.id == t.id)) {
-        traspasosRechazados.add(t);
-        hubo = true;
+    final yo = AuthService.instance.currentUser?.id;
+    try {
+      final res = await _api.get('$_base?estado=rechazado&visto=false');
+      final lista = res is List
+          ? res
+          : (res is Map<String, dynamic> && res['traspasos'] is List
+                ? res['traspasos'] as List
+                : const []);
+      var hubo = false;
+      for (final j in lista.whereType<Map<String, dynamic>>()) {
+        final t = TraspasoPedido.fromJson(j);
+        if (t.origenId == yo &&
+            !traspasosRechazados.any((x) => x.id == t.id)) {
+          traspasosRechazados.add(t);
+          hubo = true;
+        }
       }
-    }
-    if (hubo) traspasosRevision.value++;
+      if (hubo) traspasosRevision.value++;
+    } catch (_) {}
+  }
+
+  // Marca el traspaso rechazado como visto en el servidor.
+  Future<void> marcarVisto(String id) async {
+    try {
+      await _api.post('$_base/$id/visto', body: {});
+    } catch (_) {}
   }
 
   // Mozos activos de la sede a quienes se puede traspasar, tal como los tiene

@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../data/mesas_por_liberar_store.dart';
+import '../data/traspasos_store.dart';
+import '../models/traspaso_pedido.dart';
+import 'auth_service.dart';
 import 'api_client.dart';
 import 'catalog_service.dart';
 import 'disponibilidad_service.dart';
@@ -160,6 +163,16 @@ class EventosService {
       );
       _agendar();
       return;
+    }
+    if (evento.nombre == 'TRASPASO_RESUELTO' && evento.json != null) {
+      final t = TraspasoPedido.fromJson(evento.json!);
+      final yo = AuthService.instance.currentUser?.id;
+      if (t.estado == 'rechazado' && yo != null && t.origenId.isNotEmpty && t.origenId == yo) {
+        if (!traspasosRechazados.any((x) => x.id == t.id)) {
+          traspasosRechazados.add(t);
+          traspasosRevision.value++;
+        }
+      }
     }
     if (evento.nombre == 'MESA_LIBERADA') {
       final mesaId = evento.json?['mesa_id']?.toString();

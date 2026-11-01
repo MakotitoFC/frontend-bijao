@@ -235,15 +235,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
     while (mounted && traspasosRechazados.isNotEmpty) {
       final t = traspasosRechazados.removeAt(0);
       final pedido = pedidos.where((p) => p.id == t.pedidoId).firstOrNull;
-      if (pedido == null) continue;
+      TraspasoService.instance.marcarVisto(t.id);
+      final numPedido = pedido?.numeroPedido ?? t.pedidoNumero ?? '';
+      final ubicacion = pedido?.ubicacion ?? t.ubicacion ?? '';
       final elegir = await showBlurDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertaApp(
           title: const Text('Traspaso rechazado'),
           content: Text(
             '${t.destinoNombre.isEmpty ? 'El mozo' : t.destinoNombre} '
-            'rechazó el pedido #${pedido.numeroPedido} '
-            '(${pedido.ubicacion}). Sigue a tu nombre: elige a otro mozo '
+            'rechazó el pedido #${numPedido.isEmpty ? 's/n' : numPedido} '
+            '(${ubicacion.isEmpty ? 'Salón' : ubicacion}). Sigue a tu nombre: elige a otro mozo '
+
             'para traspasarlo.',
           ),
           actions: [
@@ -259,14 +262,16 @@ class _PedidosScreenState extends State<PedidosScreen> {
         ),
       );
       if (elegir != true || !mounted) continue;
+      final pedidoObj = pedido ?? pedidos.where((p) => p.id == t.pedidoId).firstOrNull;
+      if (pedidoObj == null) continue;
       final destino = await showBlurDialog<String>(
         context: context,
-        builder: (_) => TraspasarPedidoDialog(pedido: pedido),
+        builder: (_) => TraspasarPedidoDialog(pedido: pedidoObj),
       );
       if (destino != null && mounted) {
         showAppToast(
           context,
-          'Traspaso del pedido #${pedido.numeroPedido} enviado a $destino.',
+          'Traspaso del pedido #${pedidoObj.numeroPedido} enviado a $destino.',
           type: ToastType.success,
         );
       }
