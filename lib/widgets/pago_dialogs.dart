@@ -226,7 +226,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // Efectivo con el que paga el cliente (para calcular el vuelto). Solo se pide
   // si se activa "Vuelto".
   final _recibidoCtrl = TextEditingController();
-  bool _conVuelto = false;
+  // El campo de vuelto sale solo si algún pago es en efectivo: el medio elegido
+  // o cualquiera de las filas de "Por montos".
+  bool get _hayEfectivo => _dividir
+      ? _filas.any((f) => f.medio.grupo == 'efectivo')
+      : _medio.grupo == 'efectivo';
   // Extras: propina (con su campo) y roturas o alquiler de menaje.
   late bool _conPropina = _propina > 0.005;
   late final _propinaCtrl = TextEditingController(
@@ -264,7 +268,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         : 0.0;
   }
 
-  double get _recibido => _conVuelto ? leerMonto(_recibidoCtrl.text) : 0.0;
+  // Lo que escribe el cajero: con cuánto paga el cliente en efectivo.
+  double get _recibido => _hayEfectivo ? leerMonto(_recibidoCtrl.text) : 0.0;
   double get _vuelto {
     final r = _recibido;
     return r > _efectivoACobrar + 0.005 ? r - _efectivoACobrar : 0.0;
@@ -985,13 +990,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           const SizedBox(height: 14),
           const Divider(height: 1),
           const SizedBox(height: 14),
-          _conInterruptor('Vuelto', _conVuelto, (v) {
-            setState(() {
-              _conVuelto = v;
-              if (!v) _recibidoCtrl.clear();
-            });
-          }),
-          if (_conVuelto) ...[
+          // Campo permanente: sin interruptor y siempre a la vista.
+          ...[
+            _subtitulo('Vuelto'),
             const SizedBox(height: 8),
             _campoSoles(_recibidoCtrl, hint: 'S/. con cuánto paga el cliente'),
             if (!_recibidoValido)
@@ -1008,10 +1009,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                 padding: const EdgeInsets.only(top: 8),
                 child: _filaMonto('Vuelto', _vuelto, fuerte: true),
               ),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
           ],
-          const SizedBox(height: 14),
-          const Divider(height: 1),
-          const SizedBox(height: 14),
           _conInterruptor('Por montos', _dividir, _alternarDividir),
           if (_dividir) ...[const SizedBox(height: 8), _filasDeMedios()],
           const SizedBox(height: 14),
