@@ -24,6 +24,7 @@ Estado revisado contra el commit `6a28e71` del backend (28-oct-2026).
 29. Pedido de personal: el precio de cada plato se escribe a mano
 30. El cajero es el rol invitado: sus accesos los define el administrador
 31. `GET /api/pedidos` devuelve también las líneas anuladas
+32. Un pedido que cambió de mesa sale duplicado y con la mesa vieja
 
 ---
 
@@ -488,4 +489,33 @@ Efecto: si se corrige el precio de un plato y se quita la línea vieja para agre
 ## Lado del frontend (ya hecho)
 
 La app ya descarta esas líneas al leer la lista general. Con este ajuste del servidor deja de depender de ese filtro.
+
+---
+
+# 32. Un pedido que cambió de mesa sale duplicado y con la mesa vieja
+
+## Problema
+
+Al cambiar un pedido de la mesa 6 a la 7, `mesa_pedido` queda con **dos filas**: la de la mesa 6 (cerrada, con `hora_fin`) y la de la mesa 7 (vigente, `hora_fin IS NULL`). Las consultas que arman los listados y el detalle unen `mesa_pedido` **sin** filtrar la fila vigente:
+
+```sql
+LEFT JOIN mesa_pedido mp ON mp.pedidos_id = p.id
+LEFT JOIN mesa m ON m.id = mp.mesa_id
+```
+
+Están en `pedido_repository.go` (líneas ~719 y ~887, `GET /api/pedidos`) y en `pedido_mozo_repository.go` (líneas ~151, lista, y ~272, detalle). Resultado:
+
+- El pedido **se devuelve dos veces**, una por cada mesa que tuvo, y la app lo muestra duplicado (por ejemplo #0007 y #7afb).
+- La tarjeta y el detalle pueden mostrar **la mesa vieja** (Mesa 6) aunque el pedido ya esté en la 7.
+
+Otra consulta del mismo archivo (~3631) ya lo hace bien: `LEFT JOIN mesa_pedido mp ON mp.pedidos_id = p.id AND mp.hora_fin IS NULL`.
+
+## Qué se pide
+
+- Agregar `AND mp.hora_fin IS NULL` a esos cuatro `JOIN` (y a cualquier otro que lea la mesa del pedido). Para un pedido con varias mesas unidas, siguen saliendo las vigentes.
+- El historial del cambio (mesa de origen y de destino) queda en `mesa_pedido` y en la nota del pedido; no se pierde.
+
+## Lado del frontend (ya hecho)
+
+La app ya junta las filas repetidas de un pedido y se queda con la de la mesa que hoy está ocupada, y pide su detalle una sola vez. Aun así, el detalle del servidor puede traer la mesa vieja hasta que se corrija la consulta.
 

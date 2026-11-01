@@ -9,16 +9,12 @@ import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
 import '../models/modificador.dart';
 import '../models/pedido_line.dart';
-import '../models/taper.dart';
-import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
-import 'selector_taper.dart';
 import 'taper_catalogo_dialog.dart' show TaperElegido;
 import '../utils/agregados_utils.dart';
-import 'app_switch.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
 
@@ -87,45 +83,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   int _cantidad = 1;
 
   String _tipoEntrega = 'mesa'; // 'mesa', 'llevar', 'delivery'
-  bool _llevaTaper = false;
-  // Tápers elegidos, en el orden en que se marcaron (el primero va en la línea).
-  final Set<String> _tapersIds = {};
-  // Cantidad de tápers elegida a mano; 0 = igual a la cantidad del plato.
-  // Cantidad de cada táper puesta a mano (por id); sin ella, igual a la
-  // cantidad del plato.
-  final Map<String, int> _tapersManual = {};
-  int _cantTaper(String id) => _tapersManual[id] ?? _cantidad;
-
-  List<Taper> get _tapersCatalogo =>
-      CatalogService.instance.tapers.where((t) => t.estado).toList();
-
-  // Los tápers elegidos, en el orden en que se marcaron.
-  List<Taper> get _tapersElegidos {
-    final porId = {for (final t in _tapersCatalogo) t.id: t};
-    return [
-      for (final id in _tapersIds)
-        if (porId[id] != null) porId[id]!,
-    ];
-  }
-
-  // Los que trae el plato en la carta (todos los elegidos por el admin).
-  void _preelegirTapersDelPlato() {
-    final ids = widget.item.taperIds.isNotEmpty
-        ? widget.item.taperIds
-        : [
-            if (widget.item.taperId != null && widget.item.taperId!.isNotEmpty)
-              widget.item.taperId!,
-          ];
-    final validos = {for (final t in _tapersCatalogo) t.id};
-    _tapersIds.addAll(ids.where(validos.contains));
-  }
-
-  void _alternarTaper(Taper t) {
-    setState(() {
-      if (!_tapersIds.remove(t.id)) _tapersIds.add(t.id);
-    });
-  }
-
   late final List<Map<String, dynamic>> _extrasSimples = agregadosSimples(
     widget.item.agregados,
   );
@@ -141,15 +98,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     } else if (_presentaciones.isNotEmpty) {
       _presentacion = _presentaciones.first;
     }
-    // Solo se marcan por defecto los tápers que el plato trae en la carta; si
-    // no tiene ninguno, queda a decisión del mozo.
-    _preelegirTapersDelPlato();
-
     // Entrega según el pedido en curso (lo mismo que hace tocar el chip).
     final inicial = widget.tipoEntregaInicial;
     if (inicial == 'llevar' || inicial == 'delivery') {
       _tipoEntrega = inicial;
-      if (_tapersIds.isNotEmpty) _llevaTaper = true;
     }
   }
 
@@ -178,12 +130,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     return base + extrasSimples + extrasGrupos;
   }
 
-  // Precio de los tápers elegidos: cada uno, tantas veces como tápers se lleven.
-  double get _totalTaper => _llevaTaper
-      ? _tapersElegidos.fold(0.0, (s, t) => s + t.precio * _cantTaper(t.id))
-      : 0.0;
-
-  double get _total => _precioUnitario * _cantidad + _totalTaper;
+  double get _total => _precioUnitario * _cantidad;
 
   // Porciones que aún se pueden agregar de lo elegido (null = sin tope).
   int? get _tope {
@@ -242,14 +189,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       );
       return;
     }
-    if (_llevaTaper && _tapersIds.isEmpty) {
-      showAppToast(
-        context,
-        'Selecciona el táper a utilizar para "${widget.item.nombrePlato}".',
-        type: ToastType.error,
-      );
-      return;
-    }
     final modificadores = [
       for (final a in _extrasSimples)
         if (_agregadosElegidos.contains('${a['nombre']}'))
@@ -273,13 +212,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               precioAjuste: precioDeAgregado(it) ?? 0,
             ),
     ];
-    final elegidos = _llevaTaper ? _tapersElegidos : const <Taper>[];
-    final primero = elegidos.firstOrNull;
-    // En la línea del plato va solo el primer táper; los demás son filas
-    // propias, con su propio total.
-    final totalLinea =
-        _precioUnitario * _cantidad +
-        (primero == null ? 0.0 : primero.precio * _cantTaper(primero.id));
+    final totalLinea = _precioUnitario * _cantidad;
     Navigator.of(context).pop<ProductoConfigurado>((
       cantidad: _cantidad,
       presentacion: _presentacion,
@@ -288,21 +221,15 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       comentario: _comentarioController.text.trim().isEmpty
           ? null
           : _comentarioController.text.trim(),
-      // Precio por unidad con el táper repartido: el total exacto va en
-      // [totalLinea].
       precioUnitario: totalLinea / _cantidad,
       tipoEntrega: _tipoEntrega,
-      llevaTaper: _llevaTaper,
-      taperId: primero?.id,
-      precioTaper: primero?.precio ?? 0.0,
-      cantidadTaper: (primero != null && _tapersManual.containsKey(primero.id))
-          ? _tapersManual[primero.id]
-          : null,
+      // El táper se agrega después, desde el detalle del pedido.
+      llevaTaper: false,
+      taperId: null,
+      precioTaper: 0.0,
+      cantidadTaper: null,
       totalLinea: totalLinea,
-      tapersAdicionales: [
-        for (final t in elegidos.skip(1))
-          (taper: t, cantidad: _cantTaper(t.id)),
-      ],
+      tapersAdicionales: const [],
     ));
   }
 
@@ -435,8 +362,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     ],
                     const SizedBox(height: 18),
                     _selectorTipoEntrega(),
-                    const SizedBox(height: 16),
-                    _selectorTaper(),
                     const SizedBox(height: 18),
                     _tituloSeccion('Notas (opcional)'),
                     const SizedBox(height: 6),
@@ -539,12 +464,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() {
-            _tipoEntrega = tipo;
-            if (tipo == 'llevar' || tipo == 'delivery') {
-              _llevaTaper = true;
-            }
-          });
+          setState(() => _tipoEntrega = tipo);
         },
         borderRadius: BorderRadius.circular(10),
         child: Container(
@@ -587,83 +507,6 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _selectorTaper() {
-    final tapers = CatalogService.instance.tapers
-        .where((t) => t.estado)
-        .toList();
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _llevaTaper ? const Color(0xFFF0FDF4) : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _llevaTaper
-              ? AppColors.primaryGreen.withValues(alpha: 0.4)
-              : Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.package,
-                size: 18,
-                color: _llevaTaper
-                    ? AppColors.primaryGreenDark
-                    : Colors.grey.shade600,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '¿Llevar en táper descartable?',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _llevaTaper
-                        ? AppColors.primaryGreenDark
-                        : Colors.black87,
-                  ),
-                ),
-              ),
-              AppSwitch(
-                value: _llevaTaper,
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.primaryGreen,
-                onChanged: (val) {
-                  setState(() {
-                    _llevaTaper = val;
-                    if (_llevaTaper && _tapersIds.isEmpty) {
-                      _preelegirTapersDelPlato();
-                    }
-                  });
-                },
-              ),
-            ],
-          ),
-          if (_llevaTaper) ...[
-            const SizedBox(height: 8),
-            if (tapers.isEmpty)
-              Text(
-                'No hay táperes registrados en inventario.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              )
-            else
-              SelectorTaper(
-                tapers: tapers,
-                seleccionados: _tapersIds,
-                cantidadNecesaria: _cantidad,
-                cantidades: {for (final id in _tapersIds) id: _cantTaper(id)},
-                onAlternar: _alternarTaper,
-                onCantidad: (t, c) => setState(() => _tapersManual[t.id] = c),
-              ),
-          ],
-        ],
       ),
     );
   }

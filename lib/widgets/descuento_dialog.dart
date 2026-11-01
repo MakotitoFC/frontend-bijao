@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/descuentos_guardados_store.dart';
 import '../theme/app_theme.dart';
 import 'app_tag.dart';
 import 'pago_dialogs.dart';
@@ -14,21 +15,8 @@ typedef DescuentoConfigurado = ({
   bool quitar,
 });
 
-class _TipoDescuento {
-  final IconData icono;
-  final String nombre;
-  final bool esPorcentaje;
-  final double monto;
-
-  const _TipoDescuento({
-    required this.icono,
-    required this.nombre,
-    required this.esPorcentaje,
-    required this.monto,
-  });
-}
-
-// Descuento extra del pedido: tickets de distintos tipos de descuento.
+// Descuento del pedido: los descuentos que el negocio guardó y, para crear
+// uno nuevo, el ticket a medida. Los guardados se pueden editar y eliminar.
 class DescuentoDialog extends StatefulWidget {
   // Consumo sobre el que se calculan los porcentajes.
   final double base;
@@ -49,43 +37,33 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
   final _nombre = TextEditingController();
   final _monto = TextEditingController();
   bool _esPorcentaje = true;
+  // Descuento guardado que se está editando (null: se crea uno nuevo).
+  String? _editandoId;
+
+  @override
+  void initState() {
+    super.initState();
+    descuentosGuardadosNotifier.addListener(_alCambiar);
+    cargarDescuentosGuardados();
+  }
 
   @override
   void dispose() {
+    descuentosGuardadosNotifier.removeListener(_alCambiar);
     _nombre.dispose();
     _monto.dispose();
     super.dispose();
   }
 
-  List<_TipoDescuento> get _tipos => [
-    const _TipoDescuento(
-      icono: LucideIcons.heart,
-      nombre: 'Cliente frecuente',
-      esPorcentaje: true,
-      monto: 10,
-    ),
-    const _TipoDescuento(
-      icono: LucideIcons.gift,
-      nombre: 'Cortesía de la casa',
-      esPorcentaje: true,
-      monto: 15,
-    ),
-    const _TipoDescuento(
-      icono: LucideIcons.banknote,
-      nombre: 'Descuento S/ 5',
-      esPorcentaje: false,
-      monto: 5,
-    ),
-    const _TipoDescuento(
-      icono: LucideIcons.coins,
-      nombre: 'Descuento S/ 10',
-      esPorcentaje: false,
-      monto: 10,
-    ),
-  ];
+  void _alCambiar() {
+    if (mounted) setState(() {});
+  }
 
   double get _montoPersonalizado =>
       double.tryParse(_monto.text.trim().replaceAll(',', '.')) ?? 0;
+
+  bool get _formularioValido =>
+      _nombre.text.trim().isNotEmpty && _montoPersonalizado > 0;
 
   void _resolver(String nombre, bool esPorcentaje, double monto, bool quitar) {
     Navigator.of(context).pop<DescuentoConfigurado>((
@@ -97,9 +75,42 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
   }
 
   void _aplicarPersonalizado() {
-    final nombre = _nombre.text.trim();
-    if (nombre.isEmpty || _montoPersonalizado <= 0) return;
-    _resolver(nombre, _esPorcentaje, _montoPersonalizado, false);
+    if (!_formularioValido) return;
+    _resolver(_nombre.text.trim(), _esPorcentaje, _montoPersonalizado, false);
+  }
+
+  Future<void> _guardarPersonalizado() async {
+    if (!_formularioValido) return;
+    await guardarDescuento(
+      id: _editandoId,
+      nombre: _nombre.text.trim(),
+      esPorcentaje: _esPorcentaje,
+      monto: _montoPersonalizado,
+    );
+    if (!mounted) return;
+    setState(_limpiarFormulario);
+  }
+
+  void _limpiarFormulario() {
+    _editandoId = null;
+    _nombre.clear();
+    _monto.clear();
+    _esPorcentaje = true;
+  }
+
+  void _editar(DescuentoGuardado d) {
+    setState(() {
+      _editandoId = d.id;
+      _nombre.text = d.nombre;
+      _monto.text = d.monto.toStringAsFixed(d.monto % 1 == 0 ? 0 : 2);
+      _esPorcentaje = d.esPorcentaje;
+    });
+  }
+
+  Future<void> _eliminar(DescuentoGuardado d) async {
+    await eliminarDescuentoGuardado(d.id);
+    if (!mounted) return;
+    if (_editandoId == d.id) setState(_limpiarFormulario);
   }
 
   String _valor(bool esPorcentaje, double monto) => esPorcentaje
@@ -108,33 +119,39 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final guardados = descuentosGuardadosNotifier.value;
     return ModalPago(
-      titulo: 'Descuento extra',
-      subtitulo: 'Elige un ticket de descuento',
+      titulo: 'Descuento',
+      subtitulo: 'Elige un descuento guardado o crea uno',
       anchoEscritorio: 460,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          4,
-          4,
-          4,
-          4 + MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final t in _tipos) ...[_ticket(t), const SizedBox(height: 14)],
-            _ticketPersonalizado(),
-          ],
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            4,
+            4,
+            4,
+            4 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final d in guardados) ...[
+                _ticket(d),
+                const SizedBox(height: 14),
+              ],
+              _ticketPersonalizado(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _ticket(_TipoDescuento t) {
+  Widget _ticket(DescuentoGuardado t) {
     final aplicado = widget.aplicados.contains(t.nombre);
     final ahorro = t.esPorcentaje ? widget.base * t.monto / 100 : t.monto;
     return _MarcoTicket(
-      icono: t.icono,
+      icono: LucideIcons.tag,
       lateral: t.esPorcentaje ? 'PORCENTAJE' : 'SOLES',
       centro: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,30 +197,56 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
             style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 10),
-          aplicado
-              ? OutlinedButton(
-                  onPressed: () =>
-                      _resolver(t.nombre, t.esPorcentaje, t.monto, true),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.error,
-                    side: const BorderSide(color: AppColors.error),
-                  ),
-                  child: const Text('Quitar'),
-                )
-              : FilledButton(
-                  onPressed: () =>
-                      _resolver(t.nombre, t.esPorcentaje, t.monto, false),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primaryGreen,
-                  ),
-                  child: const Text('Aplicar'),
+          Row(
+            children: [
+              aplicado
+                  ? OutlinedButton(
+                      onPressed: () =>
+                          _resolver(t.nombre, t.esPorcentaje, t.monto, true),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.error,
+                        side: const BorderSide(color: AppColors.error),
+                      ),
+                      child: const Text('Quitar'),
+                    )
+                  : FilledButton(
+                      onPressed: () =>
+                          _resolver(t.nombre, t.esPorcentaje, t.monto, false),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                      ),
+                      child: const Text('Aplicar'),
+                    ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Editar',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _editar(t),
+                icon: Icon(
+                  LucideIcons.pencil,
+                  size: 16,
+                  color: Colors.grey.shade700,
                 ),
+              ),
+              IconButton(
+                tooltip: 'Eliminar',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _eliminar(t),
+                icon: const Icon(
+                  LucideIcons.trash2,
+                  size: 16,
+                  color: AppColors.error,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _ticketPersonalizado() {
+    final editando = _editandoId != null;
     return _MarcoTicket(
       icono: LucideIcons.pencil,
       lateral: 'A MEDIDA',
@@ -212,7 +255,7 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'PERSONALIZADO',
+            editando ? 'EDITAR DESCUENTO' : 'PERSONALIZADO',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -254,18 +297,27 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
             ],
           ),
           const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton(
-              onPressed:
-                  _nombre.text.trim().isNotEmpty && _montoPersonalizado > 0
-                  ? _aplicarPersonalizado
-                  : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primaryGreen,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton(
+                onPressed: _formularioValido ? _aplicarPersonalizado : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                ),
+                child: const Text('Aplicar'),
               ),
-              child: const Text('Aplicar'),
-            ),
+              OutlinedButton(
+                onPressed: _formularioValido ? _guardarPersonalizado : null,
+                child: Text(editando ? 'Guardar cambios' : 'Guardar'),
+              ),
+              if (editando)
+                TextButton(
+                  onPressed: () => setState(_limpiarFormulario),
+                  child: const Text('Cancelar'),
+                ),
+            ],
           ),
         ],
       ),

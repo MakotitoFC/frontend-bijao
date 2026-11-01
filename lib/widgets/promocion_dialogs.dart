@@ -17,7 +17,7 @@ import 'app_select.dart';
 import 'pago_dialogs.dart';
 import 'app_switch.dart';
 import 'campo_texto.dart';
-import 'selector_fecha.dart';
+import 'selector_rango_fechas.dart';
 
 // "Categoría › Subcategoría" para elegir sin confundirse entre categorías.
 String etiquetaSubcategoria(Subcategoria s) {
@@ -144,25 +144,35 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            SelectorFecha(
-              etiqueta: 'Desde',
-              valor: _inicio,
-              permiteVacio: true,
-              anioMin: DateTime.now().year - 1,
-              anioMax: DateTime.now().year + 5,
-              onChanged: (d) => setState(() => _inicio = d),
+            const Text(
+              'Vigencia (opcional)',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 14),
-            SelectorFecha(
-              etiqueta: 'Hasta',
-              valor: _fin,
-              permiteVacio: true,
-              anioMin: DateTime.now().year - 1,
-              anioMax: DateTime.now().year + 5,
-              onChanged: (d) => setState(
-                () => _fin = d == null
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectorRangoFechas(
+                valor: _inicio == null
                     ? null
-                    : DateTime(d.year, d.month, d.day, 23, 59, 59),
+                    : DateTimeRange(start: _inicio!, end: _fin ?? _inicio!),
+                permiteTodas: true,
+                conAtajos: false,
+                permiteFuturo: true,
+                textoVacio: 'Sin fechas (siempre vigente)',
+                textoTodas: 'Sin fechas',
+                onChanged: (r) => setState(() {
+                  _inicio = r?.start;
+                  _fin = r == null
+                      ? null
+                      : DateTime(
+                          r.end.year,
+                          r.end.month,
+                          r.end.day,
+                          23,
+                          59,
+                          59,
+                        );
+                }),
               ),
             ),
             const SizedBox(height: 18),

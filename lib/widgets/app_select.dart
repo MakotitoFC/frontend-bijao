@@ -102,16 +102,14 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     final espacioAbajo =
         limite.bottom - (origen.dy + alto) - separacion - margen;
     final espacioArriba = origen.dy - limite.top - separacion - margen;
-    final necesario =
-        (widget.items.length * _altoOpcion + 2 + (widget.buscable ? 52 : 0))
-            .clamp(0.0, _altoMaximo);
+    final necesario = (widget.items.length * _altoOpcion + 2).clamp(
+      0.0,
+      _altoMaximo,
+    );
     // Debajo si cabe (o si hay más sitio que arriba); si no, encima.
     final abajo = espacioAbajo >= necesario || espacioAbajo >= espacioArriba;
     final disponible = abajo ? espacioAbajo : espacioArriba;
-    final altoPanel = disponible.clamp(
-      widget.buscable ? 120.0 : 60.0,
-      _altoMaximo,
-    );
+    final altoPanel = disponible.clamp(60.0, _altoMaximo);
     _buscador.clear();
     _consulta.value = '';
 
@@ -173,35 +171,38 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     );
   }
 
-  // Campo de búsqueda del panel: filtra mientras se escribe y, con Enter,
-  // elige la primera coincidencia.
-  Widget _campoBusqueda() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      child: SizedBox(
-        height: 38,
-        child: TextField(
-          controller: _buscador,
-          autofocus: true,
-          style: const TextStyle(fontSize: 13.5),
-          onChanged: (v) => _consulta.value = v,
-          onSubmitted: (v) {
-            final lista = _filtradas(v);
-            if (lista.isEmpty) return;
-            widget.onChanged(lista.first.value);
-            _cerrar();
-          },
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'Escribe para buscar...',
-            prefixIcon: const Icon(Icons.search, size: 18),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppRadii.tag),
-            ),
-          ),
+  // En un select buscable el propio campo es una caja de texto: al abrirlo se
+  // escribe ahí, la lista se va filtrando y, con Enter, se elige la primera
+  // coincidencia.
+  Widget _textoDelCampo(TextStyle? estilo, TextStyle estiloHint) {
+    if (widget.buscable && _abierto) {
+      return TextField(
+        controller: _buscador,
+        autofocus: true,
+        style: estilo,
+        onChanged: (v) => _consulta.value = v,
+        onSubmitted: (v) {
+          final lista = _filtradas(v);
+          if (lista.isEmpty) return;
+          widget.onChanged(lista.first.value);
+          _cerrar();
+        },
+        decoration: InputDecoration(
+          isDense: true,
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          hintText: 'Escribe para buscar...',
+          hintStyle: estiloHint,
         ),
-      ),
+      );
+    }
+    return Text(
+      _etiquetaActual,
+      overflow: TextOverflow.ellipsis,
+      style: widget.value == null ? estiloHint : estilo,
     );
   }
 
@@ -222,36 +223,28 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
       ),
       clipBehavior: Clip.antiAlias,
       child: widget.buscable
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _campoBusqueda(),
-                Flexible(
-                  child: ValueListenableBuilder<String>(
-                    valueListenable: _consulta,
-                    builder: (context, consulta, _) {
-                      final lista = _filtradas(consulta);
-                      if (lista.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            'Sin resultados',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        );
-                      }
-                      return ListView(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        children: [for (final i in lista) _opcion(i)],
-                      );
-                    },
-                  ),
-                ),
-              ],
+          ? ValueListenableBuilder<String>(
+              valueListenable: _consulta,
+              builder: (context, consulta, _) {
+                final lista = _filtradas(consulta);
+                if (lista.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'Sin resultados',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  );
+                }
+                return ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [for (final i in lista) _opcion(i)],
+                );
+              },
             )
           : ListView(
               shrinkWrap: true,
@@ -278,10 +271,9 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    _etiquetaActual,
-                    overflow: TextOverflow.ellipsis,
-                    style: estilo,
+                  child: _textoDelCampo(
+                    estilo,
+                    TextStyle(color: Colors.grey.shade500),
                   ),
                 ),
                 AnimatedRotation(
@@ -343,15 +335,12 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        _etiquetaActual,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                      child: _textoDelCampo(
+                        TextStyle(
                           fontSize: widget.value == null ? 12.5 : 13.5,
-                          color: widget.value == null
-                              ? Colors.grey.shade500
-                              : Colors.black87,
+                          color: Colors.black87,
                         ),
+                        TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
                       ),
                     ),
                     AnimatedRotation(

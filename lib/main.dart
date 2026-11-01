@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'data/descuentos_guardados_store.dart';
+
 import 'data/configuracion_store.dart';
-import 'data/notificaciones_store.dart';
 import 'models/usuario.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -13,7 +14,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiClient.instance.initialize();
   await config.cargar();
-  await NotificacionesStore.instance.cargar();
+  await cargarDescuentosGuardados();
   await AuthService.instance.restoreSession();
   runApp(const MyApp());
 }

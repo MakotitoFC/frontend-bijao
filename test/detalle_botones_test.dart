@@ -70,7 +70,7 @@ void main() {
   }
 
   testWidgets(
-    'hay un solo botón Pagar y el detalle trae Promoción, Propina y Táper',
+    'hay un solo botón Pagar y el detalle trae Promoción y Táper',
     (tester) async {
       await abrir(tester, _pedido());
       expect(find.text('Pagar'), findsOneWidget);
@@ -78,7 +78,6 @@ void main() {
       // Un cliente puede pedir solo un táper: también se agrega desde el detalle.
       expect(find.text('Táper'), findsOneWidget);
       expect(find.text('Promoción'), findsOneWidget);
-      expect(find.text('Propina'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     },
   );

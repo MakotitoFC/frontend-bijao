@@ -17,6 +17,7 @@ const _mozo = Usuario(
   nombre: 'ana',
   email: 'a@a',
   rol: AppRole.mesero,
+  permisos: {'LEER.PEDIDO'},
 );
 
 const _linea = PedidoLine(

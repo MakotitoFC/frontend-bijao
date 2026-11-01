@@ -1,5 +1,6 @@
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
+import 'mesas_store.dart';
 
 // Estado en memoria de pedidos confirmados, compartido entre Mesas/Pedidos
 // (mesero) y Cocina.
@@ -35,8 +36,26 @@ void sincronizarPedidosDesdeServidor(
   List<Pedido> nuevosPedidos,
   Map<String, List<PedidoLine>> nuevosDetalles,
 ) {
+  // El servidor devuelve una fila por cada mesa que tuvo el pedido: tras un
+  // cambio de mesa llega dos veces. Queda una sola, la de la mesa que hoy está
+  // ocupada (si no se sabe, la última).
+  final porId = <String, Pedido>{};
+  for (final p in nuevosPedidos) {
+    final previo = porId[p.id];
+    if (previo == null) {
+      porId[p.id] = p;
+      continue;
+    }
+    final ocupada = mesas.any(
+      (m) => m.estaOcupada && m.numero == previo.mesaNumero,
+    );
+    final nuevaOcupada = mesas.any(
+      (m) => m.estaOcupada && m.numero == p.mesaNumero,
+    );
+    porId[p.id] = (ocupada && !nuevaOcupada) ? previo : p;
+  }
   pedidos.clear();
-  pedidos.addAll(nuevosPedidos);
+  pedidos.addAll(porId.values);
   detallesPorPedido.clear();
   detallesPorPedido.addAll(nuevosDetalles);
 }

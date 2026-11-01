@@ -43,6 +43,7 @@ import 'descuento_dialog.dart';
 import 'boletas_pagadores_dialog.dart';
 import 'menu_flotante.dart';
 import 'pago_compartido_dialog.dart';
+import 'indicador_abajo.dart';
 import 'pago_dialogs.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
@@ -150,13 +151,12 @@ class TagEmpleado extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const color = Color(0xFF7C3AED);
+    const color = Color(0xFF2563EB);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        border: Border.all(color: color, width: 1.2),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
@@ -868,20 +868,8 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // Nota general del pedido (aparte de las notas de cada producto): se ve en la
-  // comanda y en cocina.
-  Future<void> _editarNotaPedido(BuildContext context) async {
-    final nota = await showBlurDialog<String>(
-      context: context,
-      builder: (_) => _NotaDialog(
-        titulo: 'Nota del pedido',
-        subtitulo:
-            'Pedido #${pedido.numeroPedido}. Vale para todo el pedido, no solo '
-            'para un producto.',
-        inicial: notaGeneralDe(pedido.notas),
-        hint: 'Ej. cliente alérgico, llevar todo junto, cumpleaños',
-      ),
-    );
-    if (nota == null) return;
+  // comanda y en cocina. Se escribe en línea, igual que al registrar el pedido.
+  Future<void> _guardarNotaPedido(BuildContext context, String nota) async {
     if (_api) {
       if (!context.mounted || !_puedeModificar(context)) return;
       await _ejecutar(
@@ -901,75 +889,18 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  // Bloque de la nota del pedido, arriba de los productos.
+  // Nota del pedido, arriba de los productos: mismo diseño que al registrar.
   Widget _notaDelPedido(BuildContext context) {
     final nota = notaGeneralDe(pedido.notas) ?? '';
     final editable = !pedido.terminado;
     if (nota.isEmpty && !editable) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: nota.isEmpty ? Colors.white : const Color(0xFFFFFBEB),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: nota.isEmpty ? Colors.grey.shade300 : const Color(0xFFF5D98B),
-        ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: editable ? () => _editarNotaPedido(context) : null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: Icon(
-                  LucideIcons.notebookPen,
-                  size: 16,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Nota del pedido',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      nota.isEmpty
-                          ? 'Sin nota. Toca para agregar una nota general.'
-                          : nota,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: nota.isEmpty
-                            ? Colors.grey.shade500
-                            : Colors.black87,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (editable)
-                Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    nota.isEmpty ? Icons.add : LucideIcons.pencil,
-                    size: 16,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-            ],
-          ),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _NotaPedidoEnLinea(
+        key: ValueKey('nota-${pedido.id}'),
+        inicial: nota,
+        editable: editable,
+        onGuardar: (texto) => _guardarNotaPedido(context, texto),
       ),
     );
   }
@@ -1387,6 +1318,40 @@ class DetallePedidoPanel extends StatelessWidget {
     );
   }
 
+  // Empleado: cuadro con los productos del pedido (precio y cantidad) y un
+  // campo para el precio que se cobra por cada uno.
+  Future<void> _editarPreciosEmpleado(BuildContext context) async {
+    if (!_puedeModificar(context)) return;
+    final lineas = (detallesPorPedido[pedido.id] ?? [])
+        .where(esLineaDeProducto)
+        .toList();
+    if (lineas.isEmpty) {
+      showAppToast(
+        context,
+        'El pedido aún no tiene productos.',
+        type: ToastType.info,
+      );
+      return;
+    }
+    final precios = await showBlurDialog<Map<String, double>>(
+      context: context,
+      builder: (_) => _PreciosEmpleadoDialog(lineas: lineas),
+    );
+    if (precios == null || precios.isEmpty || !context.mounted) return;
+    await _ejecutar(context, () async {
+      for (final e in precios.entries) {
+        // La versión de cada fila se lee de nuevo: cada cambio la actualiza.
+        final fila = (detallesPorPedido[pedido.id] ?? const <PedidoLine>[])
+            .firstWhere((l) => l.id == e.key);
+        await PedidoMozoService.instance.precioPersonalFila(
+          pedido.id,
+          fila,
+          e.value,
+        );
+      }
+    }, exito: 'Precios de empleado guardados.');
+  }
+
   Future<void> _cambiarEntrega(BuildContext context) async {
     if (!_puedeModificar(context)) return;
     final c = await showBlurDialog<CambioEntrega>(
@@ -1436,12 +1401,14 @@ class DetallePedidoPanel extends StatelessWidget {
       () => PedidoMozoService.instance.tipoEntregaFila(
         pedido.id,
         l,
-        opcion == 'mesa' ? 'mesa' : 'llevar',
-        aplicaTaper: opcion == 'llevar_taper',
+        opcion,
+        aplicaTaper: l.aplicaTaper,
       ),
-      exito: opcion == 'mesa'
-          ? '"${l.nombrePlato}" ahora es para comer en mesa.'
-          : '"${l.nombrePlato}" ahora es para llevar.',
+      exito: switch (opcion) {
+        'mesa' => '"${l.nombrePlato}" ahora es para comer en mesa.',
+        'delivery' => '"${l.nombrePlato}" ahora es para delivery.',
+        _ => '"${l.nombrePlato}" ahora es para llevar.',
+      },
     );
   }
 
@@ -1481,7 +1448,7 @@ class DetallePedidoPanel extends StatelessWidget {
 
     // En pantallas bajas (mobile) los totales y botones van dentro del scroll,
     // para que los productos no queden aplastados.
-    final pieEnLista = MediaQuery.sizeOf(context).height < 760;
+    final pieEnLista = MediaQuery.sizeOf(context).height < 520;
     final pieTotales = Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: Column(
@@ -1491,7 +1458,7 @@ class DetallePedidoPanel extends StatelessWidget {
           if (descProductos > 0)
             _filaTotal('Descuento de productos', -descProductos),
           _filaTotal(
-            'Descuento extra',
+            'Descuento',
             -descExtra,
             // El mozo solo usa las promociones que ya existen; el descuento a
             // medida lo ponen caja y administración.
@@ -1538,14 +1505,7 @@ class DetallePedidoPanel extends StatelessWidget {
                   color: AppColors.naranja,
                   onTap: () => _agregarPromocion(context),
                 ),
-                if (!_esCajero) ...[
-                  AppTag(
-                    etiqueta: 'Propina',
-                    icono: LucideIcons.handCoins,
-                    activo: false,
-                    color: AppColors.naranja,
-                    onTap: () => _editarPropina(context),
-                  ),
+                if (!_esCajero)
                   // También aquí: un cliente puede pedir solo un táper.
                   AppTag(
                     etiqueta: 'Táper',
@@ -1555,7 +1515,14 @@ class DetallePedidoPanel extends StatelessWidget {
                     colorBorde: Colors.grey.shade300,
                     onTap: () => _editarTupper(context),
                   ),
-                ],
+                if (_api && _veCaja && pedido.abierto)
+                  AppTag(
+                    etiqueta: 'Empleado',
+                    icono: LucideIcons.users,
+                    activo: esPedidoDeEmpleado(pedido),
+                    color: const Color(0xFF2563EB),
+                    onTap: () => _editarPreciosEmpleado(context),
+                  ),
               ],
             ),
           ),
@@ -1568,61 +1535,60 @@ class DetallePedidoPanel extends StatelessWidget {
     );
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
+      color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _cabecera(context),
           Divider(height: 1, color: Colors.grey.shade200),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              children: [
-                _notaDelPedido(context),
-                if (detalles.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Text(
-                        'Este pedido aún no tiene ítems.',
-                        style: TextStyle(color: Colors.grey.shade500),
+            child: IndicadorAbajo(
+              builder: (ctl) => ListView(
+                controller: ctl,
+                padding: const EdgeInsets.fromLTRB(16, 14, 22, 8),
+                children: [
+                  _notaDelPedido(context),
+                  if (detalles.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'Este pedido aún no tiene ítems.',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
                       ),
-                    ),
-                  )
-                else
-                  for (final l in detalles) _filaLinea(context, l),
-                // Solo el administrador ve las líneas anuladas: deshabilitadas,
-                // con su etiqueta, y sin sumar en ningún total.
-                if (esAdmin)
-                  for (final l
-                      in lineasAnuladasPorPedido[pedido.id] ??
-                          const <PedidoLine>[])
-                    _filaAnulada(l),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _agregarProducto(context),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Agregar producto'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primaryGreenDark,
-                        side: const BorderSide(color: AppColors.primaryGreen),
+                    )
+                  else
+                    for (final l in detalles) _filaLinea(context, l),
+                  // Solo el administrador ve las líneas anuladas: deshabilitadas,
+                  // con su etiqueta, y sin sumar en ningún total.
+                  if (esAdmin)
+                    for (final l
+                        in lineasAnuladasPorPedido[pedido.id] ??
+                            const <PedidoLine>[])
+                      _filaAnulada(l),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _agregarProducto(context),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Agregar producto'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primaryGreenDark,
+                          side: const BorderSide(color: AppColors.primaryGreen),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (pieEnLista) ...[
-                  Divider(height: 24, color: Colors.grey.shade200),
-                  pieTotales,
-                  pieBotones,
+                  if (pieEnLista) ...[
+                    Divider(height: 24, color: Colors.grey.shade200),
+                    pieTotales,
+                    pieBotones,
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           if (!pieEnLista) ...[
@@ -1743,6 +1709,11 @@ class DetallePedidoPanel extends StatelessWidget {
               );
             },
           ),
+          const SizedBox(width: 6),
+          _botonCirculoRojo(
+            tooltip: 'Cancelar pedido',
+            onTap: () => _cancelar(context),
+          ),
           if (_api && pedido.abierto && esAdmin) ...[
             const SizedBox(width: 6),
             Tooltip(
@@ -1819,11 +1790,6 @@ class DetallePedidoPanel extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(width: 6),
-          _botonCirculoRojo(
-            tooltip: 'Cancelar pedido',
-            onTap: () => _cancelar(context),
-          ),
         ],
       ),
     );
@@ -2231,23 +2197,25 @@ class DetallePedidoPanel extends StatelessWidget {
     );
   }
 
-  // Entrega del producto: en mesa o para llevar (con o sin cobro de táper).
+  // Tipo del producto: mesa, para llevar o delivery (resguardo para corregir
+  // un plato ya confirmado).
   Widget _botonEntregaFila(BuildContext context, PedidoLine l) {
-    final llevar = l.tipoEntrega == 'llevar' || l.tipoEntrega == 'delivery';
+    final tipo = l.tipoEntrega == 'llevar' || l.tipoEntrega == 'delivery'
+        ? l.tipoEntrega
+        : 'mesa';
     return MenuFlotante<String>(
-      tooltip: llevar ? 'Para llevar' : 'En mesa',
-      seleccionada: !llevar
-          ? 'mesa'
-          : (l.aplicaTaper ? 'llevar_taper' : 'llevar'),
+      tooltip: switch (tipo) {
+        'llevar' => 'Para llevar (cambiar tipo)',
+        'delivery' => 'Delivery (cambiar tipo)',
+        _ => 'En mesa (cambiar tipo)',
+      },
+      seleccionada: tipo,
       opciones: const [
-        OpcionMenu(valor: 'mesa', etiqueta: 'En mesa'),
+        OpcionMenu(valor: 'mesa', etiqueta: 'Mesa'),
         OpcionMenu(valor: 'llevar', etiqueta: 'Para llevar'),
-        OpcionMenu(
-          valor: 'llevar_taper',
-          etiqueta: 'Para llevar (cobrar táper)',
-        ),
+        OpcionMenu(valor: 'delivery', etiqueta: 'Delivery'),
       ],
-      anchoMinimo: 220,
+      anchoMinimo: 180,
       onSeleccionar: (v) => _cambiarEntregaFila(context, l, v),
       disparador: (context, abierto) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -2256,7 +2224,11 @@ class DetallePedidoPanel extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
-          llevar ? LucideIcons.package : LucideIcons.utensils,
+          switch (tipo) {
+            'llevar' => LucideIcons.packageCheck,
+            'delivery' => LucideIcons.bike,
+            _ => LucideIcons.utensils,
+          },
           size: 13,
           color: Colors.grey.shade700,
         ),
@@ -2558,14 +2530,8 @@ class _NotaDialog extends StatefulWidget {
   final String titulo;
   final String? subtitulo;
   final String? inicial;
-  final String hint;
 
-  const _NotaDialog({
-    required this.titulo,
-    this.subtitulo,
-    this.inicial,
-    this.hint = 'Ej. sin cebolla, poco picante',
-  });
+  const _NotaDialog({required this.titulo, this.subtitulo, this.inicial});
 
   @override
   State<_NotaDialog> createState() => _NotaDialogState();
@@ -2614,7 +2580,9 @@ class _NotaDialogState extends State<_NotaDialog> {
           controller: _controller,
           autofocus: true,
           maxLines: 3,
-          decoration: InputDecoration(hintText: widget.hint),
+          decoration: const InputDecoration(
+            hintText: 'Ej. sin cebolla, poco picante',
+          ),
         ),
         const SizedBox(height: 8),
       ],
@@ -2736,6 +2704,243 @@ class _ElegirLineaDialog extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Cuadro del botón Empleado en un pedido ya registrado: los productos con su
+// precio y cantidad, y un campo (S/.) para escribir el precio que se cobra. Lo
+// que se deja en blanco no cambia.
+class _PreciosEmpleadoDialog extends StatefulWidget {
+  final List<PedidoLine> lineas;
+
+  const _PreciosEmpleadoDialog({required this.lineas});
+
+  @override
+  State<_PreciosEmpleadoDialog> createState() => _PreciosEmpleadoDialogState();
+}
+
+class _PreciosEmpleadoDialogState extends State<_PreciosEmpleadoDialog> {
+  late final Map<String, TextEditingController> _campos = {
+    for (final l in widget.lineas) l.id: TextEditingController(),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _campos.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _guardar() {
+    final precios = <String, double>{};
+    _campos.forEach((id, campo) {
+      final v = double.tryParse(campo.text.trim().replaceAll(',', '.'));
+      if (v != null && v >= 0) precios[id] = v;
+    });
+    Navigator.of(context).pop<Map<String, double>>(precios);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ModalPago(
+      titulo: 'Pedido de empleado',
+      subtitulo: 'Escribe el precio que se cobra por cada producto',
+      anchoEscritorio: 520,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final l in widget.lineas)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l.nombrePlato,
+                            softWrap: true,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            'Precio S/ ${l.precioUnitario.toStringAsFixed(2)} · '
+                            'Cantidad ${l.cantidad}',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 110,
+                      child: TextField(
+                        controller: _campos[l.id],
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: 'S/.',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _guardar,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                ),
+                child: const Text('Guardar'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Botón "Nota" que despliega el campo en el mismo lugar (sin modal), igual que
+// en el registro de pedido. "Guardar" envía la nota; la "x" la quita.
+class _NotaPedidoEnLinea extends StatefulWidget {
+  final String inicial;
+  final bool editable;
+  final Future<void> Function(String texto) onGuardar;
+
+  const _NotaPedidoEnLinea({
+    super.key,
+    required this.inicial,
+    required this.editable,
+    required this.onGuardar,
+  });
+
+  @override
+  State<_NotaPedidoEnLinea> createState() => _NotaPedidoEnLineaState();
+}
+
+class _NotaPedidoEnLineaState extends State<_NotaPedidoEnLinea> {
+  late final TextEditingController _texto = TextEditingController(
+    text: widget.inicial,
+  );
+  late bool _abierta = widget.inicial.isNotEmpty;
+  bool _guardando = false;
+
+  @override
+  void dispose() {
+    _texto.dispose();
+    super.dispose();
+  }
+
+  bool get _cambio => _texto.text.trim() != widget.inicial.trim();
+
+  Future<void> _guardar(String nota) async {
+    setState(() => _guardando = true);
+    await widget.onGuardar(nota);
+    if (mounted) setState(() => _guardando = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.editable) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade400),
+        ),
+        child: Text(
+          'Nota: ${widget.inicial}',
+          style: const TextStyle(fontSize: 12.5),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _guardando
+                ? null
+                : () {
+                    if (_abierta) {
+                      final habia = widget.inicial.isNotEmpty;
+                      _texto.clear();
+                      setState(() => _abierta = false);
+                      if (habia) _guardar('');
+                    } else {
+                      setState(() => _abierta = true);
+                    }
+                  },
+            icon: Icon(_abierta ? Icons.close : Icons.add, size: 15),
+            label: const Text('Nota'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black87,
+              side: BorderSide(color: Colors.grey.shade600, width: 1.3),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        if (_abierta) ...[
+          const SizedBox(height: 8),
+          CampoTexto(
+            controller: _texto,
+            autofocus: widget.inicial.isEmpty,
+            maxLines: 3,
+            maxLength: 200,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              hintText: 'Ej. cliente alérgico, llevar todo junto',
+            ),
+          ),
+          if (_cambio && _texto.text.trim().isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _guardando
+                    ? null
+                    : () => _guardar(_texto.text.trim()),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                ),
+                child: const Text('Guardar'),
+              ),
+            ),
+        ],
+      ],
     );
   }
 }

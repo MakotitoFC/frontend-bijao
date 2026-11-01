@@ -90,7 +90,11 @@ void main() {
     await agregarTacacho(tester);
     await tester.tap(find.byTooltip('Ver detalle completo'));
     await esperar(tester);
-    await tester.enterText(find.byType(TextField).first, 'Carlos');
+    // Con el buscador en la cabecera, el primer campo ya no es el del nombre.
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Nombre del cliente * Obligatorio'),
+      'Carlos',
+    );
     await tester.tap(find.text('Seguir agregando'));
     await esperar(tester);
     expect(find.textContaining('Pedido · 1 producto'), findsOneWidget);

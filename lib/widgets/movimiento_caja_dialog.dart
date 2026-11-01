@@ -100,6 +100,7 @@ class _MovimientoCajaDialogState extends State<MovimientoCajaDialog> {
       children: [
         AppSelect<CategoriaMovimiento>(
           label: 'Categoría',
+          buscable: true,
           value: _categoria,
           hint: 'Elige para qué fue',
           items: [

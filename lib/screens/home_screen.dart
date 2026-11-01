@@ -946,8 +946,9 @@ class _Sidebar extends StatelessWidget {
     required this.onSeleccionar,
   });
 
-  static const double _anchoExpandido = 256;
-  static const double _anchoContraido = 68;
+  // 2 % más angosta que antes (256 y 68).
+  static const double _anchoExpandido = 250.88;
+  static const double _anchoContraido = 66.64;
 
   List<NavItem> _hijosPermitidos(NavItem item) =>
       item.hijos.where((h) => h.tieneAcceso(usuario)).toList();

@@ -179,17 +179,17 @@ void main() {
           w is AnimatedContainer &&
           (w.decoration as BoxDecoration?)?.color == AppColors.navbar,
     );
-    expect(tester.getSize(menu).width, 256); // expandido
+    expect(tester.getSize(menu).width, closeTo(250.88, 0.01)); // expandido
 
     tester.view.physicalSize = const Size(900, 900);
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(tester.getSize(menu).width, 68); // solo íconos
+    expect(tester.getSize(menu).width, closeTo(66.64, 0.01)); // solo íconos
 
     tester.view.physicalSize = const Size(1400, 900);
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(tester.getSize(menu).width, 256);
+    expect(tester.getSize(menu).width, closeTo(250.88, 0.01));
     await tester.pumpWidget(const SizedBox());
   });
 }
