@@ -525,9 +525,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       try {
         await PagoService.instance.cargarDePedido(widget.pedido);
       } catch (_) {}
-      final parcial =
-          faltaPorPagarDePedido(widget.pedido.id) > 0.01 ||
-          abonosDePedido(widget.pedido.id).length > 1;
+      final saldoRestante = faltaPorPagarDePedido(widget.pedido.id);
+      final abonosPrevios = abonosDePedido(widget.pedido.id).length - registrados;
+      final parcial = saldoRestante > 0.01 || abonosPrevios > 0;
       await emitirComprobanteTrasCobro(
         context,
         widget.pedido,
