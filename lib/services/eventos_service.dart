@@ -105,6 +105,10 @@ class EventosService {
   // redibujan al notarlo.
   final ValueNotifier<int> revision = ValueNotifier(0);
 
+  final StreamController<Map<String, dynamic>> _cajaTraspasoCtrl =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get alTraspasarCaja => _cajaTraspasoCtrl.stream;
+
   bool _activo = false;
   StreamSubscription<EventoSse>? _suscripcion;
   Timer? _reintento;
@@ -177,6 +181,9 @@ class EventosService {
     if (evento.nombre == 'MESA_LIBERADA') {
       final mesaId = evento.json?['mesa_id']?.toString();
       if (mesaId != null) quitarMesaPorLiberar(mesaId);
+    }
+    if (evento.nombre == 'CAJA_TRASPASADA' && evento.json != null) {
+      _cajaTraspasoCtrl.add(evento.json!);
     }
     final acciones = traducirEvento(evento.nombre);
     if (acciones.ninguna) return;

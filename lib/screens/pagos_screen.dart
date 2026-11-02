@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_client.dart';
 
 import '../widgets/dialogo_app.dart';
+import '../widgets/traspaso_caja_dialog.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
 
@@ -713,18 +714,26 @@ class _CajaScreenState extends State<CajaScreen> {
 
   Future<void> _traspasoCaja() async {
     final notasCtrl = TextEditingController();
-    // Otros administradores y cajeros activos (nunca el usuario actual). La
-    // lista sale de la gestión de usuarios (`GET /api/usuarios`).
-    final yo = AuthService.instance.currentUser?.id;
-    final candidatos = await CatalogService.instance.cargarUsuariosRBAC();
-    final usuarios = <Map<String, dynamic>>[
-      for (final u in candidatos)
-        if (u.estado &&
-            u.id != yo &&
-            (u.rolNombre.toUpperCase().contains('ADMIN') ||
-                u.rolNombre.toUpperCase().contains('CAJ')))
-          {'id': u.id, 'nombre': u.usuario, 'rol': u.rolNombre},
-    ];
+    List<Map<String, dynamic>> usuarios = [];
+    try {
+      final res = await CajaService.instance.cargarResponsables();
+      final miId = AuthService.instance.currentUser?.id;
+      usuarios = res.where((u) => u['id']?.toString() != miId).toList();
+    } catch (_) {}
+    if (usuarios.isEmpty) {
+      try {
+        final yo = AuthService.instance.currentUser?.id;
+        final candidatos = await CatalogService.instance.cargarUsuariosRBAC();
+        usuarios = [
+          for (final u in candidatos)
+            if (u.estado &&
+                u.id != yo &&
+                (u.rolNombre.toUpperCase().contains('ADMIN') ||
+                    u.rolNombre.toUpperCase().contains('CAJ')))
+              {'id': u.id, 'nombre': u.usuario, 'rol': u.rolNombre},
+        ];
+      } catch (_) {}
+    }
 
     String? nuevoUsuarioId = usuarios.firstOrNull?['id']?.toString();
 
@@ -772,6 +781,28 @@ class _CajaScreenState extends State<CajaScreen> {
                     labelText: 'Motivo / Observaciones (opcional)',
                   ),
                 ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                    ),
+                    onPressed: () {
+                      Navigator.of(ctx).pop(false);
+                      HistorialTraspasosCajaDialog.mostrar(
+                        context,
+                        aperturaId: estadoCajaServidor?.apertura?.id,
+                      );
+                    },
+                    icon: const Icon(LucideIcons.history, size: 14),
+                    label: const Text(
+                      'Ver historial de traspasos del turno',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -797,14 +828,17 @@ class _CajaScreenState extends State<CajaScreen> {
     if (confirmar != true || nuevoUsuarioId == null || !mounted) return;
 
     try {
+      final dest = usuarios.firstWhere((u) => u['id']?.toString() == nuevoUsuarioId, orElse: () => {});
+      final nombreDestino = dest['nombre'] ?? dest['usuario'] ?? 'el nuevo responsable';
       await CajaService.instance.traspaso(
         nuevoUsuarioId: nuevoUsuarioId!,
         notas: notasCtrl.text.trim(),
+        motivo: notasCtrl.text.trim(),
       );
       if (mounted) {
         showAppToast(
           context,
-          'Traspaso de caja efectuado con éxito.',
+          'Traspaso de caja efectuado con éxito a $nombreDestino.',
           type: ToastType.success,
         );
         _cargar();
@@ -860,10 +894,12 @@ class _CajaScreenState extends State<CajaScreen> {
 
   Future<void> _abrirReporteDiaDetallado({
     String? fechaOperativa,
+    String? aperturaId,
     String? cierreId,
   }) async {
     final url = CajaService.instance.urlReporteDiaDetalladoHTML(
-      fechaOperativa: fechaOperativa,
+      fechaOperativa: fechaOperativa ?? estadoCajaServidor?.apertura?.fechaOperativa,
+      aperturaId: aperturaId,
       cierreId: cierreId,
     );
     try {
@@ -1164,19 +1200,43 @@ class _CajaScreenState extends State<CajaScreen> {
                 etiqueta: 'Consolidado del día (ticket)',
               ),
               OpcionMenu(
+                valor: 'turno_pdf',
+                etiqueta: '3. Detalle Turno Actual (PDF/HTML)',
+              ),
+              OpcionMenu(
                 valor: 'dia_pdf',
-                etiqueta: 'Detallado del día (PDF/HTML)',
+                etiqueta: '4. Detallado Día Completo (PDF/HTML)',
               ),
               OpcionMenu(
                 valor: 'otra_fecha',
-                etiqueta: 'Reportes de otra fecha…',
+                etiqueta: '5. Reportes de otra fecha...',
+              ),
+              OpcionMenu(
+                valor: 'traspasos_historial',
+                etiqueta: '6. Historial Traspasos de Caja',
               ),
             ],
             onSeleccionar: (val) {
               if (val == 'turno') _imprimirReporteTurno();
               if (val == 'dia_print') _imprimirReporteDiaConsolidado();
-              if (val == 'dia_pdf') _abrirReporteDiaDetallado();
+              if (val == 'turno_pdf') {
+                _abrirReporteDiaDetallado(
+                  aperturaId: estadoCajaServidor?.apertura?.id,
+                  fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
+                );
+              }
+              if (val == 'dia_pdf') {
+                _abrirReporteDiaDetallado(
+                  fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
+                );
+              }
               if (val == 'otra_fecha') _reportesDeOtraFecha();
+              if (val == 'traspasos_historial') {
+                HistorialTraspasosCajaDialog.mostrar(
+                  context,
+                  aperturaId: estadoCajaServidor?.apertura?.id,
+                );
+              }
             },
             disparador: (context, abierto) => Container(
               height: AppSizes.boton,
