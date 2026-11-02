@@ -109,4 +109,23 @@ class ImpresionService {
     }
     return {};
   }
+
+  // ----------------------------------------------------------------------
+  // VISUALIZACIÓN DE PRUEBAS EN PDF DESDE RAW BYTES ESC/POS
+  // ----------------------------------------------------------------------
+
+  String urlPdfMuestra(String tipo) {
+    final base = _api.baseUrl.replaceAll(RegExp(r'/+$'), '');
+    return '$base$_base/pdf/muestra/$tipo';
+  }
+
+  String urlPdfUltimo() {
+    final base = _api.baseUrl.replaceAll(RegExp(r'/+$'), '');
+    return '$base$_base/pdf/ultimo';
+  }
+
+  String urlPdfJob(String jobId) {
+    final base = _api.baseUrl.replaceAll(RegExp(r'/+$'), '');
+    return '$base$_base/pdf/jobs/$jobId';
+  }
 }

@@ -7,6 +7,7 @@ import '../models/config_impresora.dart';
 import '../services/api_client.dart';
 import '../services/impresion_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/abrir_enlace.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
@@ -399,6 +400,11 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
               ],
             ),
           ),
+          TextButton.icon(
+            onPressed: () => abrirEnlace(_servicio.urlPdfJob(t.id)),
+            icon: const Icon(LucideIcons.fileText, size: 14),
+            label: const Text('Ver PDF'),
+          ),
           if (t.sePuedeReintentar)
             TextButton(
               onPressed: () => _reintentar(t),
@@ -425,6 +431,8 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _seccionEstado(cfg),
+                    const SizedBox(height: 32),
+                    _seccionPruebasPDF(),
                     const SizedBox(height: 32),
                     _seccionCocina(cfg),
                     const SizedBox(height: 32),
@@ -498,6 +506,58 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
           destino: 'caja',
           extra: cfg.cajaHabilitada ? _abrirCajon : null,
           etiquetaExtra: 'Abrir cajón',
+        ),
+      ],
+    );
+  }
+
+  Widget _seccionPruebasPDF() {
+    final tipos = [
+      ('comanda', 'Comanda de Cocina', LucideIcons.utensils),
+      ('precuenta', 'Precuenta de Consumo', LucideIcons.receipt),
+      ('ticket', 'Ticket de Venta (Interno)', LucideIcons.ticket),
+      ('boleta', 'Boleta Electrónica (QR SUNAT)', LucideIcons.qrCode),
+      ('factura', 'Factura Electrónica (QR SUNAT)', LucideIcons.building2),
+    ];
+
+    return SeccionConfig(
+      titulo: 'Modo Pruebas: Ver Impresiones en PDF',
+      descripcion:
+          'Genera y visualiza en PDF el flujo exacto de bytes ESC/POS que se envía al cabezal térmico de 80mm, aplicando todas las configuraciones y plantillas actuales.',
+      filas: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final (tipo, nombre, icono) in tipos)
+                OutlinedButton.icon(
+                  onPressed: () => abrirEnlace(_servicio.urlPdfMuestra(tipo)),
+                  icon: Icon(icono, size: 16),
+                  label: Text(nombre),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ElevatedButton.icon(
+                onPressed: () => abrirEnlace(_servicio.urlPdfUltimo()),
+                icon: const Icon(LucideIcons.fileText, size: 16),
+                label: const Text('Último Ticket Impreso'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
