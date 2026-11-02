@@ -76,6 +76,7 @@ class _InicioScreenState extends State<InicioScreen> {
 
   AppRole get _rol => widget.usuario.rol;
   bool get _esMozo => _rol == AppRole.mesero;
+  bool get _puedeLiberarMesas => _rol == AppRole.mesero || _rol == AppRole.administrador;
   bool get _esCocina => _rol == AppRole.trabajador;
   bool get _veMesas => _rol == AppRole.administrador || _rol == AppRole.cajero;
 
@@ -123,7 +124,7 @@ class _InicioScreenState extends State<InicioScreen> {
       if (!_esCocina) seguro(() => CatalogService.instance.cargarMesas()),
       if (!_esCocina) seguro(() => DisponibilidadService.instance.cargarHoy()),
       if (_veMesas) seguro(() => CatalogService.instance.cargarTapers()),
-      if (_esMozo) seguro(recargarMesasPorLiberar),
+      if (_puedeLiberarMesas) seguro(recargarMesasPorLiberar),
     ]);
     if (mounted) setState(() => _cargando = false);
   }
@@ -143,7 +144,7 @@ class _InicioScreenState extends State<InicioScreen> {
   @override
   Widget build(BuildContext context) {
     final r = _resumen();
-    final porLiberar = _esMozo ? mesasPorLiberar() : const <Mesa>[];
+    final porLiberar = _puedeLiberarMesas ? mesasPorLiberar() : const <Mesa>[];
     final ancho = MediaQuery.sizeOf(context).width;
     final esMobile = ancho < 700;
     return Scaffold(
