@@ -50,7 +50,7 @@ double montoPagadoDeLinea(String pedidoDetalleId) => pagoDetalles
 List<String> mediosDePagoDe(String pedidoId) => [
   ...{
     for (final p in pagos.where(
-      (x) => x.pedidoId == pedidoId && !x.esReembolso,
+      (x) => x.pedidoId == pedidoId && !x.esReembolso && !x.anulado && x.estado != 'anulado',
     ))
       p.medioPago.medioPago,
   },
@@ -67,7 +67,7 @@ efectivoRecibidoPorPedido = {};
 List<({String medio, double monto})> pagosPorMedioDe(String pedidoId) {
   final porMedio = <String, double>{};
   for (final p in pagos.where(
-    (x) => x.pedidoId == pedidoId && !x.esReembolso,
+    (x) => x.pedidoId == pedidoId && !x.esReembolso && !x.anulado && x.estado != 'anulado',
   )) {
     porMedio.update(
       p.medioPago.medioPago,
@@ -82,31 +82,26 @@ List<({String medio, double monto})> pagosPorMedioDe(String pedidoId) {
 // servir): se marca con un tag para que no se confunda con uno por cobrar.
 bool pagadoSinServir(Pedido p) {
   if (p.estado != 'pendiente' && p.estado != 'pedido') return false;
-  if (!pagos.any((x) => x.pedidoId == p.id && !x.esReembolso)) return false;
-  return totalDePedido(p.id) > 0 && saldoPendienteDePedido(p.id) <= 0.01;
+  if (!pagos.any((x) => x.pedidoId == p.id && !x.esReembolso && !x.anulado && x.estado != 'anulado')) return false;
+  return totalDePedido(p.id) > 0.005 && saldoPendienteDePedido(p.id) <= 0.005;
 }
 
 double saldoPendienteDePedido(String pedidoId) {
   final p = pedidos.where((x) => x.id == pedidoId).firstOrNull;
   if (p != null &&
-      (p.estado == 'pagado' ||
-          p.estado == 'anulado' ||
+      (p.estado == 'anulado' ||
           p.estado == 'cancelado')) {
     return 0.0;
   }
   final totalAbonado = pagos
-      .where((x) => x.pedidoId == pedidoId && !x.esReembolso && !x.anulado)
+      .where((x) => x.pedidoId == pedidoId && !x.esReembolso && !x.anulado && x.estado != 'anulado')
       .fold(0.0, (s, x) => s + x.montoAbonado);
   final totalPed = totalDePedido(pedidoId);
-  if (totalAbonado >= totalPed - 0.01) {
+  final saldo = totalPed - totalAbonado;
+  if (saldo <= 0.005) {
     return 0.0;
   }
-  final lineas = detallesPorPedido[pedidoId] ?? [];
-  final pendiente = lineas.fold(
-    0.0,
-    (sum, l) => sum + (l.precioTotalLinea - montoPagadoDeLinea(l.id)),
-  );
-  return pendiente > 0.01 ? pendiente : 0.0;
+  return double.parse(saldo.toStringAsFixed(2));
 }
 
 // Lo abonado a la cuenta de un pedido, sumando sus pagos vigentes (sin la
@@ -315,7 +310,7 @@ Pago registrarPago({
 // pasa el pedido a 'pagado' solo (al cubrirse el total), así que no hace falta
 // pedirlo otra vez; solo se vuelve a leer la lista de mesas por liberar.
 void cerrarSiSaldado(Pedido pedido, {bool marcarEnServidor = true}) {
-  if (saldoCuentaDePedido(pedido.id) > 0.01) return;
+  if (saldoPendienteDePedido(pedido.id) > 0.005 && saldoCuentaDePedido(pedido.id) > 0.005) return;
   actualizarEstadoPedido(pedido.id, 'pagado');
   for (final numero in pedido.todasLasMesas) {
     if (numero == 0) continue;

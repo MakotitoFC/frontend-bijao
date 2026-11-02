@@ -957,23 +957,37 @@ class MesasScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            if (mesa.estaOcupada)
+            if (mesa.estaOcupada || usuario.esAdmin)
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(
                   LucideIcons.checkCircle2,
                   color: AppColors.primaryGreen,
                 ),
-                title: const Text('Liberar mesa manualmente'),
-                subtitle: const Text('Marcar la mesa como disponible'),
+                title: Text(
+                  mesa.estaOcupada
+                      ? 'Liberar mesa manualmente'
+                      : 'Desbloquear / Restablecer mesa',
+                ),
+                subtitle: Text(
+                  mesa.estaOcupada
+                      ? 'Marcar la mesa como disponible'
+                      : 'Cerrar cualquier pedido previo y asegurar disponibilidad',
+                ),
                 onTap: () async {
                   Navigator.of(sheetCtx).pop();
                   final confirmar = await showBlurDialog<bool>(
                     context: context,
                     builder: (dCtx) => AlertaApp(
-                      title: Text('¿Liberar Mesa ${mesa.numero}?'),
-                      content: const Text(
-                        'La mesa volverá al estado disponible.',
+                      title: Text(
+                        mesa.estaOcupada
+                            ? '¿Liberar Mesa ${mesa.numero}?'
+                            : '¿Restablecer Mesa ${mesa.numero}?',
+                      ),
+                      content: Text(
+                        mesa.estaOcupada
+                            ? 'La mesa volverá al estado disponible.'
+                            : 'Se cerrará cualquier pedido previo y se asegurará que esté lista para nuevos pedidos.',
                       ),
                       actions: [
                         TextButton(
@@ -982,7 +996,7 @@ class MesasScreen extends StatelessWidget {
                         ),
                         FilledButton(
                           onPressed: () => Navigator.of(dCtx).pop(true),
-                          child: const Text('Liberar'),
+                          child: Text(mesa.estaOcupada ? 'Liberar' : 'Restablecer'),
                         ),
                       ],
                     ),

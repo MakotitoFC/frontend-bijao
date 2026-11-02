@@ -431,11 +431,25 @@ class _PedidosScreenState extends State<PedidosScreen> {
   bool get _esAdmin => widget.usuario.administraPedidos;
 
   // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
-  // Un pedido ya cobrado por completo (aunque falte servirlo) va solo en
-  // "Pagados", no en la cola.
-  bool _esCobrado(Pedido p) => p.estado == 'pagado' || pagadoSinServir(p);
+  // Un pedido ya cobrado por completo va solo en "Pagados", no en la cola.
+  bool _esCobrado(Pedido p) {
+    if (p.estado == 'anulado' || p.estado == 'devuelto') return false;
+    // Si está en 'pagado', pero por anulación de pagos/movimientos en caja ahora tiene saldo pendiente:
+    if (p.estado == 'pagado') {
+      return saldoPendienteDePedido(p.id) <= 0.005;
+    }
+    // Si su estado es 'pendiente', 'pedido' o 'servido', pero ya está 100% saldado con pagos activos:
+    final total = totalDePedido(p.id);
+    if (total > 0.005 && saldoPendienteDePedido(p.id) <= 0.005) {
+      final tienePagos = pagos.any(
+        (x) => x.pedidoId == p.id && !x.esReembolso && !x.anulado && x.estado != 'anulado',
+      );
+      if (tienePagos) return true;
+    }
+    return pagadoSinServir(p);
+  }
 
-  bool _esActivo(Pedido p) => p.abierto && !pagadoSinServir(p);
+  bool _esActivo(Pedido p) => p.abierto && !_esCobrado(p);
 
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
 
@@ -1069,7 +1083,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   ),
                 ),
                 const Spacer(),
-                if (p.estado == 'pagado')
+                if (p.estado == 'pagado' || _esCobrado(p))
                   // Ya cobrado: "Pagado" en rojo con letras blancas.
                   const _TagPagado(cobrado: true)
                 else ...[
