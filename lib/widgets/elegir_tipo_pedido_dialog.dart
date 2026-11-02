@@ -6,7 +6,19 @@ import '../theme/app_theme.dart';
 // Modal de "Nuevo Pedido": elige tipo (Mesa, Para llevar o Delivery) y retorna
 // 'mesa'/'llevar'/'delivery'.
 class ElegirTipoPedidoDialog extends StatefulWidget {
-  const ElegirTipoPedidoDialog({super.key});
+  // Con true sale la flecha para volver al paso anterior (devuelve 'atras').
+  final bool conAtras;
+  // Dentro del flujo de un solo modal: avisan la elección y el retroceso en
+  // vez de cerrar el diálogo.
+  final ValueChanged<String>? onElegir;
+  final VoidCallback? onAtras;
+
+  const ElegirTipoPedidoDialog({
+    super.key,
+    this.conAtras = false,
+    this.onElegir,
+    this.onAtras,
+  });
 
   @override
   State<ElegirTipoPedidoDialog> createState() => _ElegirTipoPedidoDialogState();
@@ -14,6 +26,10 @@ class ElegirTipoPedidoDialog extends StatefulWidget {
 
 class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
   bool _esMobile = false;
+
+  void _elegir(String valor) => widget.onElegir != null
+      ? widget.onElegir!(valor)
+      : Navigator.of(context).pop(valor);
 
   @override
   Widget build(BuildContext context) {
@@ -27,14 +43,37 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
           : BorderRadius.circular(AppRadii.sheet),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        width: esMobile ? anchoPantalla : 600,
+        width: esMobile ? anchoPantalla : 640,
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
+                  if (widget.conAtras) ...[
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => widget.onAtras != null
+                          ? widget.onAtras!()
+                          : Navigator.of(context).pop('atras'),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Icon(
+                          Icons.chevron_left,
+                          size: 20,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   const Expanded(
                     child: Text(
                       'Nuevo pedido',
@@ -81,7 +120,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       titulo: 'Mesa',
                       descripcion:
                           'Pedido para consumir en una mesa del local.',
-                      onTap: () => Navigator.of(context).pop('mesa'),
+                      onTap: () => _elegir('mesa'),
                     ),
                     SizedBox(
                       width: esMobile ? 0 : 14,
@@ -91,7 +130,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       icono: LucideIcons.packageCheck,
                       titulo: 'Para llevar',
                       descripcion: 'El cliente recoge su pedido en el local.',
-                      onTap: () => Navigator.of(context).pop('llevar'),
+                      onTap: () => _elegir('llevar'),
                     ),
                     SizedBox(
                       width: esMobile ? 0 : 14,
@@ -101,7 +140,7 @@ class _ElegirTipoPedidoDialogState extends State<ElegirTipoPedidoDialog> {
                       icono: LucideIcons.bike,
                       titulo: 'Delivery',
                       descripcion: 'Pedido para entregar a domicilio.',
-                      onTap: () => Navigator.of(context).pop('delivery'),
+                      onTap: () => _elegir('delivery'),
                     ),
                   ],
                 ),

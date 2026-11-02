@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/borrador_pedido_store.dart';
@@ -11,6 +12,7 @@ import '../data/pedidos_store.dart';
 import '../models/mesa.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
+import '../models/pedido_line.dart';
 import '../services/catalog_service.dart';
 import '../services/eventos_service.dart';
 import '../services/pedido_mozo_service.dart';
@@ -36,8 +38,7 @@ import '../widgets/icono_mesa.dart';
 import '../widgets/indicador_abajo.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
-import '../widgets/elegir_destinatario_dialog.dart';
-import '../widgets/elegir_tipo_pedido_dialog.dart';
+import '../widgets/elegir_nuevo_pedido_dialog.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
 import '../widgets/tabs_desplazables.dart';
 
@@ -72,11 +73,23 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   bool _enVista(Pedido p) => _enVistaDe(_vistaActual, p);
 
-  bool _enVistaDe(_VistaCola v, Pedido p) => switch (v.filtro) {
-    'clientes' => !esPedidoDeEmpleado(p),
-    'empleados' => esPedidoDeEmpleado(p),
-    _ => true,
-  };
+  // Pedidos viejos fuera de esta vista: Pedidos solo muestra lo de hoy o de la
+  // caja actual (lo anterior vive en Ventas y Caja).
+  bool _esDelPeriodo(Pedido p) {
+    final h = DateTime.now();
+    final hoy = DateTime(h.year, h.month, h.day);
+    final caja = inicioCajaActual;
+    final desde = caja.isBefore(hoy) ? caja : hoy;
+    return !p.fechaPedido.isBefore(desde);
+  }
+
+  bool _enVistaDe(_VistaCola v, Pedido p) =>
+      _esDelPeriodo(p) &&
+      switch (v.filtro) {
+        'clientes' => !esPedidoDeEmpleado(p),
+        'empleados' => esPedidoDeEmpleado(p),
+        _ => true,
+      };
 
   // Pedidos abiertos que tiene cada vista.
   int _cantidadDeVista(_VistaCola v) =>
@@ -188,6 +201,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     } else if (borrador != null) {
       descartarBorradorYEsperar();
     }
+    _cargarPagadosOcultos();
     mesasPorLiberarNotifier.addListener(_alCambiarEnVivo);
     traspasosRevision.addListener(_alCambiarEnVivo);
     _cargar();
@@ -357,7 +371,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
       children: [
         IconoMesa(
           numero: m.numero,
-          colorPropio: AppColors.primaryGreen,
+          colorPropio: const Color(0xFF2563EB),
           ocupada: false,
           actual: false,
           seleccionada: false,
@@ -366,7 +380,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         FilledButton(
           onPressed: () => _liberarMesa(m),
           style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primaryGreen,
+            backgroundColor: const Color(0xFF2563EB),
             foregroundColor: Colors.white,
             minimumSize: const Size(0, 32),
             padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -437,6 +451,20 @@ class _PedidosScreenState extends State<PedidosScreen> {
     if (p.estado == 'pagado') {
       return saldoPendienteDePedido(p.id) <= 0.005;
     }
+    // Cuenta en cero a propósito (familia, empleado o cumpleaños): al "pagarse"
+    // queda con un pago en cero y pasa a Pagados. Solo si su total es cero: un
+    // pedido de empleado con abonos y saldo sigue en la cola.
+    if (motivoCuentaCero(p) != null &&
+        totalDePedido(p.id).abs() < 0.005 &&
+        pagos.any(
+          (x) =>
+              x.pedidoId == p.id &&
+              !x.esReembolso &&
+              !x.anulado &&
+              x.estado != 'anulado',
+        )) {
+      return true;
+    }
     // Si su estado es 'pendiente', 'pedido' o 'servido', pero ya está 100% saldado con pagos activos:
     final total = totalDePedido(p.id);
     if (total > 0.005 && saldoPendienteDePedido(p.id) <= 0.005) {
@@ -452,7 +480,63 @@ class _PedidosScreenState extends State<PedidosScreen> {
     return pagadoSinServir(p);
   }
 
-  bool _esActivo(Pedido p) => p.abierto && !_esCobrado(p);
+  // En la cola solo salen pedidos abiertos, no cobrados y con sus productos ya
+  // cargados: sin ellos el total se ve en cero y la tarjeta aparecía unos
+  // segundos hasta que llegaba el detalle y se movía a Pagados.
+  bool _esActivo(Pedido p) =>
+      p.abierto &&
+      !_esCobrado(p) &&
+      (detallesPorPedido[p.id] ?? const <PedidoLine>[]).isNotEmpty;
+
+  // Pedidos pagados que se quitaron de la vista con "Borrar". Solo limpia la
+  // pantalla (en este dispositivo): los registros siguen en Ventas y reportes.
+  Set<String> _pagadosOcultos = {};
+  static const _clavePagadosOcultos = 'pagados_ocultos';
+
+  Future<void> _cargarPagadosOcultos() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = prefs.getStringList(_clavePagadosOcultos);
+      if (ids != null && mounted) setState(() => _pagadosOcultos = ids.toSet());
+    } catch (_) {}
+  }
+
+  Future<void> _borrarPagadosDeLaVista() async {
+    final visibles = pedidos
+        .where(
+          (p) =>
+              _esCobrado(p) && _enVista(p) && !_pagadosOcultos.contains(p.id),
+        )
+        .map((p) => p.id)
+        .toList();
+    if (visibles.isEmpty) return;
+    final ok = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: const Text('Limpiar pagados'),
+        content: const Text(
+          'Se quitan de esta vista los pedidos pagados. No se borra ningún '
+          'registro: siguen en Ventas y en los reportes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Borrar de la vista'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _pagadosOcultos = {..._pagadosOcultos, ...visibles});
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_clavePagadosOcultos, _pagadosOcultos.toList());
+    } catch (_) {}
+  }
 
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
 
@@ -492,7 +576,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
     if (_tipoFiltro == 'pagados') {
       return pedidos
           .where(
-            (p) => _esCobrado(p) && _enVista(p) && _conMedio(p) && _coincide(p),
+            (p) =>
+                _esCobrado(p) &&
+                _enVista(p) &&
+                !_pagadosOcultos.contains(p.id) &&
+                _conMedio(p) &&
+                _coincide(p),
           )
           .toList();
     }
@@ -507,7 +596,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
   Pedido? get _seleccionado {
     for (final p in pedidos) {
       if (p.id == _seleccionId &&
-          (_esActivo(p) || (_tipoFiltro == 'pagados' && _esCobrado(p)))) {
+          _esDelPeriodo(p) &&
+          (_esActivo(p) ||
+              (_tipoFiltro == 'pagados' &&
+                  _esCobrado(p) &&
+                  !_pagadosOcultos.contains(p.id)))) {
         return p;
       }
     }
@@ -516,7 +609,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   int _contarTipo(String? tipo) {
     if (tipo == 'pagados') {
-      return pedidos.where((p) => _esCobrado(p) && _enVista(p)).length;
+      return pedidos
+          .where(
+            (p) =>
+                _esCobrado(p) && _enVista(p) && !_pagadosOcultos.contains(p.id),
+          )
+          .length;
     }
     final base = pedidos.where((p) => _esActivo(p) && _enVista(p));
     if (tipo == null) return base.length;
@@ -538,22 +636,15 @@ class _PedidosScreenState extends State<PedidosScreen> {
       return;
     }
     if (!mounted) return;
-    // Primero, para quién es (cliente, familia o empleado); el mozo solo
-    // registra pedidos de clientes.
-    var destinatario = 'cliente';
-    if (_esAdmin) {
-      final d = await showBlurDialog<String>(
-        context: context,
-        builder: (_) => const ElegirDestinatarioDialog(),
-      );
-      if (d == null || !mounted) return;
-      destinatario = d;
-    }
-    final tipo = await showBlurDialog<String>(
+    // Un solo modal con dos pasos (para quién es y el tipo); el mozo solo
+    // registra pedidos de clientes y empieza directo en el tipo.
+    final eleccion = await showBlurDialog<EleccionNuevoPedido>(
       context: context,
-      builder: (_) => const ElegirTipoPedidoDialog(),
+      builder: (_) => ElegirNuevoPedidoDialog(conDestinatario: _esAdmin),
     );
-    if (tipo == null || !mounted) return;
+    if (eleccion == null || !mounted) return;
+    final destinatario = _esAdmin ? eleccion.destinatario : 'cliente';
+    final tipo = eleccion.tipo;
     setState(() {
       _destinatarioNuevo = destinatario;
       _tipoNuevoPedido = tipo;
@@ -1012,6 +1103,16 @@ class _PedidosScreenState extends State<PedidosScreen> {
               onChanged: (v) => setState(() => _medioFiltro = v ?? 'todos'),
             ),
           ),
+        if (_tipoFiltro == 'pagados')
+          OutlinedButton.icon(
+            onPressed: _borrarPagadosDeLaVista,
+            icon: const Icon(Icons.cleaning_services_outlined, size: 16),
+            label: const Text('Borrar'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.error,
+              side: const BorderSide(color: AppColors.error),
+            ),
+          ),
       ],
     );
   }
@@ -1099,17 +1200,28 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   ),
                 ),
                 const Spacer(),
-                if (p.estado == 'pagado' || _esCobrado(p))
-                  // Ya cobrado: "Pagado" en rojo con letras blancas.
-                  const _TagPagado(cobrado: true)
-                else ...[
-                  // Cobrado antes de servir: "Pagado" en naranja.
-                  if (pagadoSinServir(p)) ...[
-                    const _TagPagado(),
-                    const SizedBox(width: 6),
-                  ],
-                  BadgeEstadoPedido(p.estado),
-                ],
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (p.estado == 'pagado' || _esCobrado(p))
+                          // Ya cobrado: "Pagado" en rojo con letras blancas.
+                          const _TagPagado(cobrado: true)
+                        else ...[
+                          // Cobrado antes de servir: "Pagado" en naranja.
+                          if (pagadoSinServir(p)) ...[
+                            const _TagPagado(),
+                            const SizedBox(width: 6),
+                          ],
+                          BadgeEstadoPedido(p.estado),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -1144,12 +1256,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
                 ),
               ],
             ),
-            // La etiqueta del empleado va debajo del mozo.
+            // La etiqueta del empleado o de la familia va debajo del mozo.
             if (esPedidoDeEmpleado(p)) ...[
               const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerLeft,
                 child: TagEmpleado(nombre: nombreClienteDe(p)),
+              ),
+            ] else if (esPedidoDeFamilia(p.id)) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TagFamilia(nombre: nombreClienteDe(p)),
               ),
             ],
             // En un pedido de empleado el nombre ya va en la etiqueta: aquí solo

@@ -125,6 +125,16 @@ class PagoService {
     final abono = montoAbonado > saldoCuenta + 0.01
         ? saldoCuenta
         : montoAbonado;
+    // Nunca se registra un cobro en cero por un error de cálculo del saldo
+    // (por ejemplo, si el pedido aún no cargó sus productos): se pide
+    // actualizar y reintentar. Los cobros en cero solo existen en cuentas de
+    // familia, que mandan monto 0 a propósito.
+    if (montoAbonado > 0.005 && abono <= 0.005) {
+      throw Exception(
+        'No se pudo calcular el saldo de este pedido. Actualiza la pantalla y '
+        'vuelve a intentar el cobro.',
+      );
+    }
     final propinaAEnviar = propina > 0
         ? propina
         : propinaPendienteDePedido(pedido.id);
@@ -144,11 +154,13 @@ class PagoService {
         if (vuelto != null && vuelto > 0) 'vuelto': vuelto,
         if (cargosExtra != null && cargosExtra.isNotEmpty)
           'cargos_extra': cargosExtra
-              .map((c) => {
-                    'concepto': 'rotura',
-                    'producto': c.nombre,
-                    'monto': c.monto,
-                  })
+              .map(
+                (c) => {
+                  'concepto': 'rotura',
+                  'producto': c.nombre,
+                  'monto': c.monto,
+                },
+              )
               .toList(),
       },
     );
@@ -208,10 +220,7 @@ class PagoService {
   }) async {
     final res = await _api.post(
       '/api/pagos/$pagoId/rectificar',
-      body: {
-        'nuevo_medio_pago_id': nuevoMedioPagoId,
-        'motivo': motivo.trim(),
-      },
+      body: {'nuevo_medio_pago_id': nuevoMedioPagoId, 'motivo': motivo.trim()},
     );
     if (res is! Map<String, dynamic>) {
       throw Exception('El servidor no devolvió la confirmación del descargo');

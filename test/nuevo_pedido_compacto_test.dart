@@ -90,7 +90,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byTooltip('Ver detalle completo'), findsNothing);
     expect(find.text('Nota'), findsOneWidget);
-    expect(find.byTooltip('Plato rápido'), findsOneWidget); // junto al buscador
+    expect(find.text('Plato rápido'), findsOneWidget); // junto al buscador
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

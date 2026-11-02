@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'dialogo_app.dart';
@@ -131,6 +132,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     super.initState();
     if (widget.inicioPersonal) {
       _esPersonal = true;
+      // Antes de agregar productos: aviso de que el precio de empleado se
+      // escribe después, con el botón PRECIO EMPLEADO.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _carrito.isEmpty) _avisarPrecioEmpleado();
+      });
     }
     // Disponibilidad del día al día: otros mozos o el administrador la cambian.
     DisponibilidadService.instance.cargarHoy();
@@ -828,52 +834,42 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   // El buscador de productos, con "Plato rápido" al lado.
   Widget _buscador() => ConstrainedBox(
-    constraints: const BoxConstraints(maxWidth: 560),
-    child: Row(
-      children: [
-        Expanded(
-          child: AppSearchField(
-            controller: _busquedaController,
-            hint: 'Buscar producto...',
-            onChanged: (_) => setState(() {}),
-            ajustarAlTexto: false,
+    constraints: const BoxConstraints(maxWidth: 640),
+    // El botón se estira al alto del buscador: siempre miden lo mismo.
+    child: IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: AppSearchField(
+              controller: _busquedaController,
+              hint: 'Buscar producto...',
+              onChanged: (_) => setState(() {}),
+              ajustarAlTexto: false,
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Tooltip(
-          message: 'Plato rápido',
-          child: OutlinedButton(
+          const SizedBox(width: 10),
+          OutlinedButton.icon(
             onPressed: _abrirPlatoLibre,
+            icon: const Icon(LucideIcons.zap, size: 17),
+            label: const Text(
+              'Plato rápido',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primaryGreenDark,
               side: const BorderSide(color: AppColors.primaryGreen),
-              // Mismo alto que el buscador.
-              fixedSize: const Size(46, 46),
-              minimumSize: const Size(46, 46),
-              maximumSize: const Size(46, 46),
-              // Sin el margen de toque de 48 px: mide lo mismo que el buscador.
+              minimumSize: Size.zero,
+              maximumSize: const Size(double.infinity, double.infinity),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-            // Un plato con un rayo: plato rápido.
-            child: const Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                Icon(LucideIcons.utensils, size: 20),
-                Positioned(
-                  right: -7,
-                  bottom: -6,
-                  child: Icon(LucideIcons.zap, size: 13),
-                ),
-              ],
-            ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 
@@ -1519,6 +1515,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             icono: Icons.person_outline,
             contentPaddingVertical: 16,
           ),
+        // Pedido de empleado: el botón para escribir su precio va justo después
+        // del nombre.
+        if (_puedePersonal && _esPersonal) ...[
+          const SizedBox(height: 10),
+          _botonPrecioEmpleado(),
+        ],
         if (esDelivery) ...[
           const SizedBox(height: 10),
           _campoTexto(
@@ -1606,20 +1608,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           ),
         ),
         const SizedBox(height: 8),
-        // Una sola fila a tamaño normal: si no caben, salen los botones < y >.
-        _FilaDesplazable(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        // Alineados a la izquierda; si no caben, bajan a otra línea.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(
+            alignment: WrapAlignment.start,
+            runSpacing: 8,
             children: [
-              // Pedido de personal: el precio de cada plato se escribe a mano.
-              if (_puedePersonal && _esPersonal)
-                AppTag(
-                  etiqueta: 'Empleado',
-                  icono: LucideIcons.users,
-                  activo: _esPersonal,
-                  color: const Color(0xFF2563EB),
-                  onTap: _abrirEmpleado,
-                ),
               AppTag(
                 etiqueta: 'Promoción',
                 icono: LucideIcons.tag,
@@ -1635,14 +1630,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                 colorBorde: Colors.grey.shade300,
                 onTap: _abrirTupper,
               ),
-              if (_puedePersonal && !_esPersonal)
-                AppTag(
-                  etiqueta: 'Empleado',
-                  icono: LucideIcons.users,
-                  activo: _esPersonal,
-                  color: const Color(0xFF2563EB),
-                  onTap: _abrirEmpleado,
-                ),
             ],
           ),
         ),
@@ -2126,6 +2113,109 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   // Empleado: cuadro con los productos, su precio y su cantidad, y un campo para
   // escribir el precio que se cobra por cada uno.
+  // El botón PRECIO EMPLEADO (el mismo que se muestra en el aviso).
+  Widget _botonPrecioEmpleado() => FilledButton.icon(
+    onPressed: _abrirEmpleado,
+    icon: const Icon(LucideIcons.users, size: 16),
+    label: const Text(
+      'PRECIO EMPLEADO',
+      style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.4),
+    ),
+    style: FilledButton.styleFrom(
+      backgroundColor: const Color(0xFF2563EB),
+      minimumSize: const Size.fromHeight(AppSizes.boton),
+    ),
+  );
+
+  // Aviso previo: después de agregar los productos hay que pulsar PRECIO
+  // EMPLEADO; se muestra el botón tal como se verá.
+  Future<void> _avisarPrecioEmpleado() async {
+    const clave = 'aviso_precio_empleado_oculto';
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(clave) == true) return;
+    } catch (_) {}
+    if (!mounted) return;
+    var noMostrar = false;
+    await showBlurDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: const Text('Pedido de empleado'),
+        content: StatefulBuilder(
+          builder: (context, setAviso) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Primero agrega los productos. Después, pulsa este botón (debajo '
+                'del nombre del empleado) para escribir el precio de empleado de '
+                'cada plato:',
+              ),
+              const SizedBox(height: 14),
+              IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: FilledButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(LucideIcons.users, size: 16),
+                    label: const Text(
+                      'PRECIO EMPLEADO',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      minimumSize: const Size.fromHeight(AppSizes.boton),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Para no volver a ver este aviso.
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setAviso(() => noMostrar = !noMostrar),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: noMostrar,
+                      activeColor: AppColors.primaryGreen,
+                      visualDensity: VisualDensity.compact,
+                      onChanged: (v) => setAviso(() => noMostrar = v ?? false),
+                    ),
+                    const Text(
+                      'No volver a mostrar',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+    if (noMostrar) {
+      try {
+        await prefs?.setBool(clave, true);
+      } catch (_) {}
+    }
+  }
+
   Future<void> _abrirEmpleado() async {
     if (_carrito.isEmpty) {
       showAppToast(

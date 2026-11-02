@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/pedidos_store.dart';
+import '../data/promociones_destacadas_store.dart';
 import '../data/promociones_store.dart';
 import '../data/subcategorias_store.dart';
 import '../models/pedido_line.dart';
@@ -66,7 +67,9 @@ Future<EleccionDePromocion?> elegirPromocionOCumpleanos(
 ) async {
   final elegido = await showBlurDialog<Object>(
     context: context,
-    builder: (_) => const PromocionesDisponiblesDialog(conCumpleanos: true),
+    builder: (_) => PromocionesDisponiblesDialog(
+      conCumpleanos: !configCumpleanos.value.eliminada,
+    ),
   );
   if (elegido == null || !context.mounted) return null;
   if (elegido == _eleccionCumpleanos) {
@@ -149,23 +152,38 @@ class PromocionesDisponiblesDialog extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
+          color: esPromocionDestacada(idCumpleanos)
+              ? const Color(0xFFFEF9C3)
+              : null,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.naranja.withValues(alpha: 0.6)),
+          border: Border.all(
+            color: esPromocionDestacada(idCumpleanos)
+                ? const Color(0xFFEAB308)
+                : Colors.grey.shade300,
+          ),
         ),
         child: Row(
           children: [
-            const Icon(LucideIcons.cake, color: AppColors.naranja),
+            Icon(
+              LucideIcons.cake,
+              color: esPromocionDestacada(idCumpleanos)
+                  ? const Color(0xFFA16207)
+                  : AppColors.naranja,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Cumpleaños',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  Text(
+                    configCumpleanos.value.nombre,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                   Text(
-                    'Elige los productos y su precio (por defecto S/ 0.00)',
+                    configCumpleanos.value.descripcion,
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                 ],
@@ -185,8 +203,14 @@ class PromocionesDisponiblesDialog extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
+          // Las destacadas se resaltan en amarillo.
+          color: esPromocionDestacada(p.id) ? const Color(0xFFFEF9C3) : null,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(
+            color: esPromocionDestacada(p.id)
+                ? const Color(0xFFEAB308)
+                : Colors.grey.shade300,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

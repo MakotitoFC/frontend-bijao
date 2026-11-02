@@ -518,7 +518,16 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     if (eleccion != null) {
       // Con un abono parcial (queda saldo), el comprobante es de ese pago y
       // muestra lo que se pagó ahora; al saldar, es el de toda la cuenta.
-      final parcial = faltaPorPagarDePedido(widget.pedido.id) > 0.01;
+      // Si la cuenta ya tenía abonos, el último pago tampoco es "todo el monto":
+      // su comprobante es solo de ese pago.
+      // Los abonos de otros días no están en memoria: se leen todos los pagos
+      // del pedido para saber si ya tenía abonos.
+      try {
+        await PagoService.instance.cargarDePedido(widget.pedido);
+      } catch (_) {}
+      final parcial =
+          faltaPorPagarDePedido(widget.pedido.id) > 0.01 ||
+          abonosDePedido(widget.pedido.id).length > 1;
       await emitirComprobanteTrasCobro(
         context,
         widget.pedido,

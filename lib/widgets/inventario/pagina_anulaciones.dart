@@ -215,6 +215,7 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
             )
           else
             TablaApp<Map<String, dynamic>>(
+              scrollInterno: true,
               porPagina: 10,
               filas: filtradas,
               altoFila: 62,

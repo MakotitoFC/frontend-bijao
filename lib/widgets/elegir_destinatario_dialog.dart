@@ -8,7 +8,13 @@ import 'dialogo_app.dart';
 // (cuenta cero: hijos y familia de los dueños) o 'empleado' (consumo del
 // personal); null si se cierra.
 class ElegirDestinatarioDialog extends StatelessWidget {
-  const ElegirDestinatarioDialog({super.key});
+  // Dentro del flujo de un solo modal: avisa la elección en vez de cerrar.
+  final ValueChanged<String>? onElegir;
+
+  const ElegirDestinatarioDialog({super.key, this.onElegir});
+
+  void _elegir(BuildContext context, String valor) =>
+      onElegir != null ? onElegir!(valor) : Navigator.of(context).pop(valor);
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +27,9 @@ class ElegirDestinatarioDialog extends StatelessWidget {
           : BorderRadius.circular(AppRadii.sheet),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        width: esMobile ? ancho : 520,
+        width: esMobile ? ancho : 640,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,27 +61,27 @@ class ElegirDestinatarioDialog extends StatelessWidget {
                 color: AppColors.primaryGreen,
                 titulo: 'Cliente',
                 descripcion: 'Un cliente del local: se cobra la cuenta normal.',
-                onTap: () => Navigator.of(context).pop('cliente'),
+                onTap: () => _elegir(context, 'cliente'),
               ),
               const SizedBox(height: 12),
               _TarjetaDestinatario(
                 icono: LucideIcons.house,
-                color: AppColors.naranja,
+                color: AppColors.primaryGreen,
                 titulo: 'Familia',
                 descripcion:
                     'Hijos y familia de los dueños: cuenta cero (descuento del '
                     '100 %), sin cobro.',
-                onTap: () => Navigator.of(context).pop('familia'),
+                onTap: () => _elegir(context, 'familia'),
               ),
               const SizedBox(height: 12),
               _TarjetaDestinatario(
                 icono: LucideIcons.users,
-                color: const Color(0xFF2563EB),
+                color: AppColors.primaryGreen,
                 titulo: 'Empleado',
                 descripcion:
                     'Consumo del personal: cada plato con su precio de '
                     'empleado, pagado por abonos.',
-                onTap: () => Navigator.of(context).pop('empleado'),
+                onTap: () => _elegir(context, 'empleado'),
               ),
             ],
           ),

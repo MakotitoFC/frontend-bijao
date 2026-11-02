@@ -1,5 +1,6 @@
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
+import '../utils/motivo_precio.dart';
 import 'mesas_store.dart';
 
 // Estado en memoria de pedidos confirmados, compartido entre Mesas/Pedidos
@@ -229,6 +230,30 @@ bool esPedidoDeEmpleado(Pedido p) =>
           l.nombrePlato.startsWith('Descuento: ') &&
           l.nombrePlato.toLowerCase().contains('empleado'),
     );
+
+// ¿Es una cuenta de familia (cuenta cero)? Lo marca el descuento "Cuenta cero"
+// que se aplica al registrar el pedido.
+bool esPedidoDeFamilia(String pedidoId) =>
+    (detallesPorPedido[pedidoId] ?? const <PedidoLine>[]).any(
+      (l) =>
+          l.cartaId == cartaIdAjuste &&
+          l.nombrePlato.startsWith('Descuento: ') &&
+          l.nombrePlato.toLowerCase().contains('cuenta cero'),
+    );
+
+// Por qué una cuenta puede quedar legítimamente en S/ 0.00: 'familia' (cuenta
+// cero), 'empleado' (consumo del personal con precio 0) o 'cumpleanos'
+// (productos de cortesía). Cualquier otro pedido en cero es un error de datos
+// y no se cierra como cuenta en cero.
+String? motivoCuentaCero(Pedido p) {
+  if (esPedidoDeFamilia(p.id)) return 'familia';
+  if (esPedidoDeEmpleado(p)) return 'empleado';
+  final lineas = detallesPorPedido[p.id] ?? const <PedidoLine>[];
+  final cumple = lineas.any(
+    (l) => motivoDePrecio(l.comentario)?.toLowerCase() == 'cumpleaños',
+  );
+  return cumple ? 'cumpleanos' : null;
+}
 
 // Propina para el mesero: una línea de ajuste con monto positivo.
 const ajustePropina = 'Propina: ';

@@ -358,10 +358,14 @@ List<LineaTicket> ticketBoleta({
     // En un pedido de empleado, el cliente es el empleado, marcado "(Mozo)".
     if (pedido.esEmpleado)
       LineaTicket('Cliente: ${cliente.isEmpty ? 'SIN NOMBRE' : cliente} (Mozo)')
+    else if (esPedidoDeFamilia(pedido.id))
+      LineaTicket('Cliente: ${cliente.isEmpty ? 'FAMILIA' : cliente} (Familia)')
     else
       LineaTicket('Cliente: ${cliente.isEmpty ? 'CLIENTES VARIOS' : cliente}'),
     LineaTicket('Atendido por: $mozo'),
     LineaTicket('Atencion: ${pedido.ubicacion}'),
+    if (esPedidoDeFamilia(pedido.id))
+      const LineaTicket('CONSUMO DE FAMILIA - CUENTA CERO', negrita: true),
     LineaTicket.separador('='),
     LineaTicket(padLinea('CANT DESCRIPCION', 'TOTAL'), negrita: true),
     LineaTicket.separador('-'),
@@ -421,9 +425,15 @@ List<LineaTicket> ticketBoleta({
       doble: true,
     ),
   );
-  if (pagado > 0.001 && saldo > 0.01) {
-    // La lista de abonos solo sale en pedidos de empleado (consumo del personal).
-    if (abonos.isNotEmpty && esPedidoDeEmpleado(pedido)) {
+  // La lista de abonos solo sale en pedidos de empleado (consumo del personal),
+  // también al saldar: así se ve que el último pago solo terminó de pagar la
+  // cuenta, no que se pagó todo en ese momento.
+  final listarAbonos =
+      abonos.isNotEmpty &&
+      esPedidoDeEmpleado(pedido) &&
+      (saldo > 0.01 || abonos.length > 1);
+  if ((pagado > 0.001 && saldo > 0.01) || listarAbonos) {
+    if (listarAbonos) {
       salida.add(LineaTicket.separador('-'));
       salida.add(const LineaTicket('ABONOS', negrita: true));
       for (var i = 0; i < abonos.length; i++) {
@@ -431,15 +441,25 @@ List<LineaTicket> ticketBoleta({
         final hora =
             '${a.fecha.hour.toString().padLeft(2, '0')}:'
             '${a.fecha.minute.toString().padLeft(2, '0')}';
+        final ultimo = i == abonos.length - 1 && saldo <= 0.01;
         salida.add(
-          LineaTicket(padLinea('${i + 1}. $hora ${a.medio}', soles(a.monto))),
+          LineaTicket(
+            padLinea(
+              '${i + 1}. $hora ${a.medio}${ultimo ? ' (saldó)' : ''}',
+              soles(a.monto),
+            ),
+          ),
         );
       }
     }
     salida.add(LineaTicket(padLinea('PAGADO', soles(pagado))));
-    salida.add(
-      LineaTicket(padLinea('SALDO PENDIENTE', soles(saldo)), negrita: true),
-    );
+    if (saldo > 0.01) {
+      salida.add(
+        LineaTicket(padLinea('SALDO PENDIENTE', soles(saldo)), negrita: true),
+      );
+    } else {
+      salida.add(const LineaTicket('CUENTA SALDADA', negrita: true));
+    }
   }
   if (vuelto > 0.001 && recibido > 0.001) {
     salida

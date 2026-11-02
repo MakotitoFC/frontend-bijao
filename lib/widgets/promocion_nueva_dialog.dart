@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../data/cartas_store.dart';
 import '../data/presentaciones_store.dart';
+import '../data/promociones_destacadas_store.dart';
+import '../data/promociones_store.dart';
 import '../data/subcategorias_store.dart';
 import '../models/carta_item.dart';
 import '../models/carta_presentacion.dart';
@@ -27,22 +29,36 @@ typedef PromocionCompleta = ({
 });
 
 class _OpcionBorrador {
+  // Si se está editando, la opción que ya existe (conserva su id y si es la
+  // incluida).
+  final PromocionOpcion? existente;
   CartaItem? item;
   CartaPresentacion? presentacion;
   final precio = TextEditingController();
+  bool activa = true;
+
+  _OpcionBorrador({this.existente});
 }
 
 class _ComponenteBorrador {
+  // Si se está editando, el componente que ya existe.
+  final PromocionComponente? existente;
   Subcategoria? subcategoria;
   int cantidad = 1;
-  final List<_OpcionBorrador> opciones = [_OpcionBorrador()];
+  final List<_OpcionBorrador> opciones;
+
+  _ComponenteBorrador({this.existente, List<_OpcionBorrador>? opciones})
+    : opciones = opciones ?? [_OpcionBorrador()];
 }
 
 // Registro de una promoción en un solo modal: datos, componentes (huecos del
 // combo por subcategoría) y productos de cada uno. Usa las mismas rutas del
 // servidor que ya existen (promoción, componente y opción), una tras otra.
 class PromocionNuevaDialog extends StatefulWidget {
-  const PromocionNuevaDialog({super.key});
+  // Si viene, el modal edita esa promoción (mismos pasos, ya llenos).
+  final Promocion? existente;
+
+  const PromocionNuevaDialog({super.key, this.existente});
 
   @override
   State<PromocionNuevaDialog> createState() => _PromocionNuevaDialogState();
@@ -54,10 +70,53 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
   final _porcentaje = TextEditingController();
   bool _seMantiene = true;
   bool _estado = true;
+  bool _destacada = false;
   DateTime? _inicio;
   DateTime? _fin;
-  final List<_ComponenteBorrador> _componentes = [_ComponenteBorrador()];
+  List<_ComponenteBorrador> _componentes = [_ComponenteBorrador()];
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.existente;
+    if (p == null) return;
+    _nombre.text = p.nombre;
+    _descripcion.text = p.descripcion ?? '';
+    if (p.porcentajeDescuento != null) {
+      final d = p.porcentajeDescuento!;
+      _porcentaje.text = d.toStringAsFixed(d % 1 == 0 ? 0 : 2);
+    }
+    _seMantiene = p.seMantiene;
+    _estado = p.estado;
+    _destacada = esPromocionDestacada(p.id);
+    _inicio = p.fechaInicio;
+    _fin = p.fechaFin;
+    final comps = [
+      for (final comp in componentesDe(p.id))
+        _ComponenteBorrador(
+            existente: comp,
+            opciones: [
+              for (final o in opcionesDe(comp.id))
+                _OpcionBorrador(existente: o)
+                  ..item = cartasNotifier.value
+                      .where((x) => x.id == o.cartaId)
+                      .firstOrNull
+                  ..presentacion = presentaciones
+                      .where((x) => x.id == o.cartaPresentacionId)
+                      .firstOrNull
+                  ..activa = o.estado
+                  ..precio.text = o.precio > 0
+                      ? o.precio.toStringAsFixed(o.precio % 1 == 0 ? 0 : 2)
+                      : '',
+            ],
+          )
+          ..subcategoria = subcategorias
+              .where((s) => s.id == comp.subcategoriaId)
+              .firstOrNull,
+    ];
+    if (comps.isNotEmpty) _componentes = comps;
+  }
 
   @override
   void dispose() {
@@ -132,7 +191,7 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
       setState(() => _error = 'Agrega al menos un componente al combo');
       return;
     }
-    final promoId = UuidHelper.v7();
+    final promoId = widget.existente?.id ?? UuidHelper.v7();
     final comps =
         <({PromocionComponente componente, List<PromocionOpcion> opciones})>[];
     for (var i = 0; i < _componentes.length; i++) {
@@ -142,7 +201,7 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
         setState(() => _error = 'Componente ${i + 1}: elige la subcategoría');
         return;
       }
-      final compId = UuidHelper.v7();
+      final compId = c.existente?.id ?? UuidHelper.v7();
       final opciones = <PromocionOpcion>[];
       for (final o in c.opciones) {
         final item = o.item;
@@ -166,11 +225,14 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
         }
         opciones.add(
           PromocionOpcion(
-            id: UuidHelper.v7(),
+            id: o.existente?.id ?? UuidHelper.v7(),
             componenteId: compId,
             cartaId: item.id,
             cartaPresentacionId: o.presentacion?.id,
+            cartaVarianteId: o.existente?.cartaVarianteId,
             precio: _num(o.precio),
+            estado: o.activa,
+            esFijo: o.existente?.esFijo ?? false,
           ),
         );
       }
@@ -190,6 +252,7 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
       ));
     }
     final descripcion = _descripcion.text.trim();
+    marcarPromocionDestacada(promoId, _destacada);
     Navigator.of(context).pop<PromocionCompleta>((
       promocion: Promocion(
         id: promoId,
@@ -200,7 +263,9 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
         fechaInicio: _inicio,
         fechaFin: _fin,
         estado: _estado,
-        sedeId: AuthService.instance.currentUser?.sedeId,
+        sedeId:
+            widget.existente?.sedeId ??
+            AuthService.instance.currentUser?.sedeId,
       ),
       componentes: comps,
     ));
@@ -225,14 +290,6 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
             ? Colors.grey.shade400
             : AppColors.primaryGreenDark,
       ),
-    ),
-  );
-
-  Widget _titulo(String texto) => Padding(
-    padding: const EdgeInsets.only(top: 18, bottom: 8),
-    child: Text(
-      texto,
-      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
     ),
   );
 
@@ -330,6 +387,16 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
               helperMaxLines: 2,
             ),
           ),
+          // Al editar, un producto se puede desactivar sin quitarlo.
+          if (o.existente != null)
+            AppSwitchTile(
+              contentPadding: EdgeInsets.zero,
+              value: o.activa,
+              activeThumbColor: Colors.white,
+              activeTrackColor: AppColors.primaryGreen,
+              title: const Text('Activo', style: TextStyle(fontSize: 13)),
+              onChanged: (v) => setState(() => o.activa = v),
+            ),
         ],
       ),
     );
@@ -430,12 +497,266 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
     );
   }
 
+  // ---- Pasos tipo carrusel: Datos, Reglas y Combo, en un solo modal ----
+
+  int _paso0 = 0;
+  bool _haciaAdelante = true;
+  static const _titulosPaso = ['Datos', 'Vigencia y reglas', 'Combo'];
+
+  // Valida lo del paso actual antes de avanzar.
+  String? _validarPaso(int paso) {
+    if (paso == 0) {
+      if (_nombre.text.trim().isEmpty) {
+        return 'Ingresa el nombre de la promoción';
+      }
+      final textoPct = _porcentaje.text.trim();
+      if (textoPct.isNotEmpty) {
+        final pct = _num(_porcentaje);
+        if (pct <= 0 || pct > 100) {
+          return 'El descuento debe estar entre 0 y 100';
+        }
+      }
+    }
+    if (paso == 1 &&
+        _inicio != null &&
+        _fin != null &&
+        _fin!.isBefore(_inicio!)) {
+      return 'La fecha fin no puede ser anterior al inicio';
+    }
+    return null;
+  }
+
+  void _siguiente() {
+    final e = _validarPaso(_paso0);
+    if (e != null) {
+      setState(() => _error = e);
+      return;
+    }
+    setState(() {
+      _error = null;
+      _haciaAdelante = true;
+      _paso0++;
+    });
+  }
+
+  void _anterior() => setState(() {
+    _error = null;
+    _haciaAdelante = false;
+    _paso0--;
+  });
+
+  Widget _indicador() => Row(
+    children: [
+      for (var i = 0; i < _titulosPaso.length; i++) ...[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                height: 4,
+                decoration: BoxDecoration(
+                  color: i <= _paso0
+                      ? AppColors.primaryGreen
+                      : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${i + 1}. ${_titulosPaso[i]}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: i == _paso0 ? FontWeight.w800 : FontWeight.w500,
+                  color: i == _paso0 ? Colors.black87 : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (i < _titulosPaso.length - 1) const SizedBox(width: 8),
+      ],
+    ],
+  );
+
+  Widget _pasoDatos() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      CampoTexto(
+        controller: _nombre,
+        maxLength: 80,
+        decoration: const InputDecoration(
+          labelText: 'Nombre *',
+          counterText: '',
+        ),
+      ),
+      const SizedBox(height: 12),
+      CampoTexto(
+        controller: _descripcion,
+        maxLines: 2,
+        decoration: const InputDecoration(labelText: 'Descripción (opcional)'),
+      ),
+      const SizedBox(height: 12),
+      CampoTexto(
+        controller: _porcentaje,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(
+          labelText: 'Descuento (%) · opcional',
+          helperText:
+              'Se aplica al precio normal de los productos que no tienen '
+              'precio de promoción propio',
+          helperMaxLines: 2,
+          suffixText: '%',
+        ),
+      ),
+    ],
+  );
+
+  Widget _pasoReglas() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        'Vigencia (opcional)',
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 6),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: SelectorRangoFechas(
+          valor: _inicio == null
+              ? null
+              : DateTimeRange(start: _inicio!, end: _fin ?? _inicio!),
+          permiteTodas: true,
+          conAtajos: false,
+          permiteFuturo: true,
+          textoVacio: 'Sin fechas (siempre vigente)',
+          textoTodas: 'Sin fechas',
+          onChanged: (r) => setState(() {
+            _inicio = r?.start;
+            _fin = r == null
+                ? null
+                : DateTime(r.end.year, r.end.month, r.end.day, 23, 59, 59);
+          }),
+        ),
+      ),
+      const SizedBox(height: 12),
+      AppSwitchTile(
+        contentPadding: EdgeInsets.zero,
+        value: _seMantiene,
+        activeThumbColor: Colors.white,
+        activeTrackColor: AppColors.primaryGreen,
+        title: const Text('Se mantiene al hacer un cambio'),
+        subtitle: Text(
+          _seMantiene
+              ? 'El producto cambiado conserva su precio de promoción'
+              : 'El producto cambiado se cobra a su precio normal',
+          style: const TextStyle(fontSize: 12),
+        ),
+        onChanged: (v) => setState(() => _seMantiene = v),
+      ),
+      AppSwitchTile(
+        contentPadding: EdgeInsets.zero,
+        value: _estado,
+        activeThumbColor: Colors.white,
+        activeTrackColor: AppColors.primaryGreen,
+        title: const Text('Activa'),
+        onChanged: (v) => setState(() => _estado = v),
+      ),
+      AppSwitchTile(
+        contentPadding: EdgeInsets.zero,
+        value: _destacada,
+        activeThumbColor: Colors.white,
+        activeTrackColor: const Color(0xFFEAB308),
+        title: const Text('Destacada (color amarillo)'),
+        subtitle: const Text(
+          'Se resalta en amarillo, como Cumpleaños',
+          style: TextStyle(fontSize: 12),
+        ),
+        onChanged: (v) => setState(() => _destacada = v),
+      ),
+    ],
+  );
+
+  Widget _pasoCombo() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Cada componente es un hueco (ej. 1 Segundo, 1 Bebida). El primer '
+        'producto es el incluido; los demás son cambios que el mozo puede '
+        'hacer si el cliente lo pide.',
+        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+      ),
+      const SizedBox(height: 10),
+      for (var i = 0; i < _componentes.length; i++)
+        _componente(_componentes[i], i),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: () =>
+              setState(() => _componentes.add(_ComponenteBorrador())),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Otro componente'),
+        ),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
+    final ultimo = _paso0 == _titulosPaso.length - 1;
+    final contenido = switch (_paso0) {
+      0 => _pasoDatos(),
+      1 => _pasoReglas(),
+      _ => _pasoCombo(),
+    };
     return ModalPago(
-      titulo: 'Nueva promoción',
-      subtitulo: 'Datos, componentes y productos en un solo paso',
+      titulo: widget.existente == null ? 'Nueva promoción' : 'Editar promoción',
+      subtitulo: 'Paso ${_paso0 + 1} de ${_titulosPaso.length}',
       anchoEscritorio: 560,
+      pie: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _error!,
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+          Row(
+            children: [
+              if (_paso0 > 0) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _anterior,
+                    icon: const Icon(Icons.chevron_left, size: 18),
+                    label: const Text('Atrás'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                flex: 2,
+                child: FilledButton(
+                  onPressed: ultimo ? _guardar : _siguiente,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: Text(
+                    ultimo
+                        ? (widget.existente == null
+                              ? 'Crear promoción'
+                              : 'Guardar cambios')
+                        : 'Siguiente',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
       child: Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -443,125 +764,19 @@ class _PromocionNuevaDialogState extends State<PromocionNuevaDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            CampoTexto(
-              controller: _nombre,
-              maxLength: 80,
-              decoration: const InputDecoration(
-                labelText: 'Nombre *',
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 12),
-            CampoTexto(
-              controller: _descripcion,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Descripción (opcional)',
-              ),
-            ),
-            const SizedBox(height: 12),
-            CampoTexto(
-              controller: _porcentaje,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Descuento (%) · opcional',
-                helperText:
-                    'Se aplica al precio normal de los productos que no tienen '
-                    'precio de promoción propio',
-                helperMaxLines: 2,
-                suffixText: '%',
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Vigencia (opcional)',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectorRangoFechas(
-                valor: _inicio == null
-                    ? null
-                    : DateTimeRange(start: _inicio!, end: _fin ?? _inicio!),
-                permiteTodas: true,
-                conAtajos: false,
-                permiteFuturo: true,
-                textoVacio: 'Sin fechas (siempre vigente)',
-                textoTodas: 'Sin fechas',
-                onChanged: (r) => setState(() {
-                  _inicio = r?.start;
-                  _fin = r == null
-                      ? null
-                      : DateTime(
-                          r.end.year,
-                          r.end.month,
-                          r.end.day,
-                          23,
-                          59,
-                          59,
-                        );
-                }),
-              ),
-            ),
-            const SizedBox(height: 8),
-            AppSwitchTile(
-              contentPadding: EdgeInsets.zero,
-              value: _seMantiene,
-              activeThumbColor: Colors.white,
-              activeTrackColor: AppColors.primaryGreen,
-              title: const Text('Se mantiene al hacer un cambio'),
-              subtitle: Text(
-                _seMantiene
-                    ? 'El producto cambiado conserva su precio de promoción'
-                    : 'El producto cambiado se cobra a su precio normal',
-                style: const TextStyle(fontSize: 12),
-              ),
-              onChanged: (v) => setState(() => _seMantiene = v),
-            ),
-            AppSwitchTile(
-              contentPadding: EdgeInsets.zero,
-              value: _estado,
-              activeThumbColor: Colors.white,
-              activeTrackColor: AppColors.primaryGreen,
-              title: const Text('Activa'),
-              onChanged: (v) => setState(() => _estado = v),
-            ),
-            _titulo('Qué incluye el combo'),
-            Text(
-              'Cada componente es un hueco (ej. 1 Segundo, 1 Bebida). El primer '
-              'producto es el incluido; los demás son cambios que el mozo puede '
-              'hacer si el cliente lo pide.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 10),
-            for (var i = 0; i < _componentes.length; i++)
-              _componente(_componentes[i], i),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: () =>
-                    setState(() => _componentes.add(_ComponenteBorrador())),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Otro componente'),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _error!,
-                style: const TextStyle(fontSize: 12, color: AppColors.error),
-              ),
-            ],
+            _indicador(),
             const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton(
-                onPressed: _guardar,
-                child: const Text('Crear promoción'),
+            // El paso entra deslizándose, como un carrusel.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              transitionBuilder: (child, animacion) => SlideTransition(
+                position: Tween<Offset>(
+                  begin: Offset(_haciaAdelante ? 0.25 : -0.25, 0),
+                  end: Offset.zero,
+                ).animate(animacion),
+                child: FadeTransition(opacity: animacion, child: child),
               ),
+              child: KeyedSubtree(key: ValueKey(_paso0), child: contenido),
             ),
           ],
         ),

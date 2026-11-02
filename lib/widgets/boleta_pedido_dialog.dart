@@ -3,6 +3,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/logo_ticket_store.dart';
 import '../data/pagos_store.dart';
+import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../services/impresion_service.dart';
@@ -52,6 +53,13 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
   void initState() {
     super.initState();
     cargarLogoTicketLocal();
+    // Todos los abonos del pedido (también los de otros días) para listarlos.
+    PagoService.instance
+        .cargarDePedido(widget.pedido)
+        .then((_) {
+          if (mounted) setState(() {});
+        })
+        .catchError((_) {});
   }
 
   @override

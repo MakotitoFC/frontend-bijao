@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 
 import 'dialogo_app.dart';
 
+import '../data/promociones_destacadas_store.dart';
 import '../data/promociones_store.dart';
-import '../data/subcategorias_store.dart';
 import '../models/promocion.dart';
-import '../models/promocion_componente.dart';
 import '../services/api_client.dart';
 import '../services/promocion_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'app_toast.dart';
-import 'menu_flotante.dart';
-import 'promocion_dialogs.dart';
+import 'app_switch.dart';
+import 'campo_texto.dart';
+import 'tabla_app.dart';
 import 'promocion_nueva_dialog.dart';
 
 // Configuración de promociones (administrador): cada promoción es un acordeón
@@ -35,9 +35,115 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
   @override
   void initState() {
     super.initState();
+    cargarPromocionesDestacadas();
+    configCumpleanos.addListener(_alCambiarCumpleanos);
+    promocionesDestacadas.addListener(_alCambiarCumpleanos);
     PromocionService.instance.cargar().then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  void _alCambiarCumpleanos() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    configCumpleanos.removeListener(_alCambiarCumpleanos);
+    promocionesDestacadas.removeListener(_alCambiarCumpleanos);
+    super.dispose();
+  }
+
+  // Cumpleaños: se puede renombrar, describir, quitar el amarillo y eliminar
+  // (deja de salir en el registro de pedidos; se puede restaurar).
+  Future<void> _editarCumpleanos() async {
+    final actual = configCumpleanos.value;
+    final nombre = TextEditingController(text: actual.nombre);
+    final descripcion = TextEditingController(text: actual.descripcion);
+    var destacada = esPromocionDestacada(idCumpleanos);
+    final ok = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogo) => DialogoApp(
+          titulo: 'Editar Cumpleaños',
+          ancho: 460,
+          acciones: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Guardar'),
+            ),
+          ],
+          children: [
+            CampoTexto(
+              controller: nombre,
+              maxLength: 60,
+              decoration: const InputDecoration(
+                labelText: 'Nombre',
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 12),
+            CampoTexto(
+              controller: descripcion,
+              maxLines: 2,
+              decoration: const InputDecoration(labelText: 'Descripción'),
+            ),
+            const SizedBox(height: 8),
+            AppSwitchTile(
+              contentPadding: EdgeInsets.zero,
+              value: destacada,
+              activeThumbColor: Colors.white,
+              activeTrackColor: const Color(0xFFEAB308),
+              title: const Text('Destacada (color amarillo)'),
+              onChanged: (v) => setDialogo(() => destacada = v),
+            ),
+          ],
+        ),
+      ),
+    );
+    final n = nombre.text.trim();
+    final d = descripcion.text.trim();
+    nombre.dispose();
+    descripcion.dispose();
+    if (ok != true || !mounted) return;
+    await guardarConfigCumpleanos((
+      nombre: n.isEmpty ? nombreCumpleanosPorDefecto : n,
+      descripcion: d.isEmpty ? descripcionCumpleanosPorDefecto : d,
+      eliminada: false,
+    ));
+    await marcarPromocionDestacada(idCumpleanos, destacada);
+    if (mounted) {
+      showAppToast(context, 'Cumpleaños actualizado.', type: ToastType.success);
+    }
+  }
+
+  Future<void> _eliminarCumpleanos() async {
+    if (!await _confirmar(
+      'Eliminar Cumpleaños',
+      'Deja de salir en el registro de pedidos. Puedes restaurarla desde '
+          'esta pantalla cuando quieras.',
+    )) {
+      return;
+    }
+    final a = configCumpleanos.value;
+    await guardarConfigCumpleanos((
+      nombre: a.nombre,
+      descripcion: a.descripcion,
+      eliminada: true,
+    ));
+  }
+
+  Future<void> _restaurarCumpleanos() async {
+    final a = configCumpleanos.value;
+    await guardarConfigCumpleanos((
+      nombre: a.nombre,
+      descripcion: a.descripcion,
+      eliminada: false,
+    ));
   }
 
   // Envía el cambio al servidor y, si sale bien, refresca la pantalla y avisa
@@ -118,16 +224,61 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     }, exito: 'Promoción "${r.promocion.nombre}" creada.');
   }
 
+  // Editar en el mismo modal de pasos. Al guardar se envían al servidor solo
+  // las diferencias, con las mismas llamadas de siempre (promoción, componente
+  // y opción).
   Future<void> _editarPromocion(Promocion p) async {
-    final r = await showBlurDialog<Promocion>(
+    final r = await showBlurDialog<PromocionCompleta>(
       context: context,
-      builder: (_) => PromocionFormDialog(promocion: p),
+      builder: (_) => PromocionNuevaDialog(existente: p),
     );
     if (r == null || !mounted) return;
     await _ejecutar(
-      () => PromocionService.instance.actualizarPromocionEnServidor(r),
-      exito: 'Promoción "${r.nombre}" actualizada.',
+      () => _aplicarEdicion(p, r),
+      exito: 'Promoción "${r.promocion.nombre}" actualizada.',
     );
+  }
+
+  Future<void> _aplicarEdicion(Promocion original, PromocionCompleta r) async {
+    final s = PromocionService.instance;
+    await s.actualizarPromocionEnServidor(r.promocion);
+    final viejos = componentesDe(original.id);
+    final nuevosIds = {for (final c in r.componentes) c.componente.id};
+    // Componentes quitados.
+    for (final v in viejos) {
+      if (!nuevosIds.contains(v.id)) await s.eliminarComponenteEnServidor(v.id);
+    }
+    for (final c in r.componentes) {
+      final viejo = viejos.where((v) => v.id == c.componente.id).firstOrNull;
+      if (viejo == null) {
+        // Componente nuevo, con todos sus productos.
+        await s.crearComponente(c.componente);
+        for (final o in c.opciones) {
+          await s.crearOpcion(o);
+        }
+        continue;
+      }
+      if (viejo.subcategoriaId != c.componente.subcategoriaId ||
+          viejo.cantidad != c.componente.cantidad) {
+        await s.actualizarComponenteEnServidor(c.componente);
+      }
+      final opViejas = opcionesDe(viejo.id);
+      final opNuevasIds = {for (final o in c.opciones) o.id};
+      for (final ov in opViejas) {
+        if (!opNuevasIds.contains(ov.id)) await s.eliminarOpcionEnServidor(ov);
+      }
+      for (final o in c.opciones) {
+        final ov = opViejas.where((x) => x.id == o.id).firstOrNull;
+        if (ov == null) {
+          await s.crearOpcion(o);
+        } else if (ov.cartaId != o.cartaId ||
+            ov.cartaPresentacionId != o.cartaPresentacionId ||
+            ov.precio != o.precio ||
+            ov.estado != o.estado) {
+          await s.actualizarOpcionEnServidor(o);
+        }
+      }
+    }
   }
 
   Future<void> _eliminarPromocion(Promocion p) async {
@@ -143,419 +294,225 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     );
   }
 
-  Future<void> _agregarComponente(Promocion p) async {
-    final c = await showBlurDialog<PromocionComponente>(
-      context: context,
-      builder: (_) => ComponenteFormDialog(promocionId: p.id),
-    );
-    if (c == null || !mounted) return;
-    await _ejecutar(
-      () => PromocionService.instance.crearComponente(c),
-      exito: 'Componente agregado a "${p.nombre}".',
-    );
-  }
-
-  Future<void> _editarComponente(Promocion p, PromocionComponente c) async {
-    final r = await showBlurDialog<PromocionComponente>(
-      context: context,
-      builder: (_) => ComponenteFormDialog(promocionId: p.id, componente: c),
-    );
-    if (r == null || !mounted) return;
-    await _ejecutar(
-      () => PromocionService.instance.actualizarComponenteEnServidor(r),
-      exito: 'Componente actualizado.',
-    );
-  }
-
-  Future<void> _eliminarComponente(PromocionComponente c) async {
-    if (!await _confirmar(
-      'Eliminar componente',
-      '¿Eliminar "${nombreDeSubcategoria(c.subcategoriaId)}" y sus opciones?',
-    )) {
-      return;
-    }
-    await _ejecutar(
-      () => PromocionService.instance.eliminarComponenteEnServidor(c.id),
-      exito: 'Componente eliminado.',
-    );
-  }
-
-  Future<void> _agregarOpcion(Promocion p, PromocionComponente c) async {
-    final o = await showBlurDialog<PromocionOpcion>(
-      context: context,
-      builder: (_) => OpcionFormDialog(promocion: p, componente: c),
-    );
-    if (o == null || !mounted) return;
-    await _ejecutar(
-      () => PromocionService.instance.crearOpcion(o),
-      exito: 'Opción agregada.',
-    );
-  }
-
-  Future<void> _editarOpcion(
-    Promocion p,
-    PromocionComponente c,
-    PromocionOpcion o,
-  ) async {
-    final r = await showBlurDialog<PromocionOpcion>(
-      context: context,
-      builder: (_) => OpcionFormDialog(promocion: p, componente: c, opcion: o),
-    );
-    if (r == null || !mounted) return;
-    await _ejecutar(
-      () => PromocionService.instance.actualizarOpcionEnServidor(r),
-      exito: 'Opción actualizada.',
-    );
-  }
-
   // ---------- UI ----------
 
-  static const _paleta = [
-    Color(0xFF16A34A),
-    Color(0xFFD99A06),
-    Color(0xFF7C3AED),
-    Color(0xFFE5484D),
-    Color(0xFF2563EB),
-    Color(0xFFF07F13),
-  ];
-
-  Color _colorDe(Promocion p) =>
-      _paleta[p.nombre.codeUnits.fold<int>(0, (s, u) => s + u) %
-          _paleta.length];
-
-  bool _disponible(Promocion p) => p.vigente && promocionLista(p);
-
+  // Registros de promociones: título con el botón "+ Promoción" y una tabla.
   @override
   Widget build(BuildContext context) {
-    final disponibles = [
-      for (final p in promociones)
-        if (_disponible(p)) p,
-    ];
-    final otras = [
-      for (final p in promociones)
-        if (!_disponible(p)) p,
-    ];
+    final esMobile = AppBreakpoints.esMobile(context);
     return SingleChildScrollView(
-      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
+      padding: EdgeInsets.all(esMobile ? 16 : 28),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1040),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _cabecera(),
-              const SizedBox(height: 18),
-              if (promociones.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: Center(
-                    child: Text(
-                      'Aún no hay promociones registradas',
-                      style: TextStyle(color: Colors.grey.shade500),
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Promociones',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _nuevaPromocion,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                      ),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Promoción'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'El mozo vende cada promoción tal como la configuras; solo '
+                  'cambia un producto por otra opción registrada aquí.',
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                ),
+                if (configCumpleanos.value.eliminada)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _restaurarCumpleanos,
+                      icon: const Icon(Icons.restore, size: 16),
+                      label: const Text('Restaurar Cumpleaños'),
                     ),
                   ),
+                const SizedBox(height: 14),
+                TablaApp<Promocion>(
+                  scrollInterno: true,
+                  porPagina: 10,
+                  filas: [
+                    if (!configCumpleanos.value.eliminada) _cumpleanos,
+                    ...promociones,
+                  ],
+                  onFila: (p) => p.id == idCumpleanos
+                      ? _editarCumpleanos()
+                      : _editarPromocion(p),
+                  columnas: _columnas(),
                 ),
-              if (disponibles.isNotEmpty) ...[
-                _tituloSeccion('Disponibles', disponibles.length),
-                _cuadricula(disponibles),
-                const SizedBox(height: 22),
               ],
-              if (otras.isNotEmpty) ...[
-                _tituloSeccion(
-                  'Inactivas, vencidas o incompletas',
-                  otras.length,
-                ),
-                _cuadricula(otras),
-              ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _cabecera() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
-      decoration: BoxDecoration(
-        color: AppColors.navbar,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
+  // Cumpleaños: cada producto con el precio que se elija (por defecto S/ 0.00).
+  Promocion get _cumpleanos => Promocion(
+    id: idCumpleanos,
+    nombre: configCumpleanos.value.nombre,
+    descripcion: configCumpleanos.value.descripcion,
+    estado: true,
+  );
+
+  List<ColumnaTabla<Promocion>> _columnas() => [
+    ColumnaTabla(
+      titulo: 'Promoción',
+      flex: 1.6,
+      anchoMin: 180,
+      rol: RolTarjeta.titulo,
+      ordenarPor: (p) => p.nombre.toLowerCase(),
+      celda: (p) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.local_offer_outlined,
-                      color: Colors.white,
-                      size: 22,
+          esPromocionDestacada(p.id)
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
                     ),
-                    SizedBox(width: 8),
-                    Text(
-                      'PROMOCIONES',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
-                      ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF08A),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'El mozo vende cada promoción tal como la configuras. Solo '
-                  'puede cambiar un producto por otra opción que registres '
-                  'aquí, y solo si el cliente lo pide.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.75),
-                    fontSize: 13,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 14,
+                          color: Color(0xFFA16207),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          p.nombre,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF713F12),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                )
+              : TablaApp.texto(p.nombre, fuerte: true),
+          if ((p.descripcion ?? '').isNotEmpty)
+            Text(
+              p.descripcion!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
             ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton.icon(
-            onPressed: _nuevaPromocion,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-            ),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Promoción'),
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _tituloSeccion(String titulo, int cantidad) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Text(
-            titulo.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              '$cantidad',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _cuadricula(List<Promocion> lista) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        const espacio = 16.0;
-        final columnas = c.maxWidth >= 900 ? 3 : (c.maxWidth >= 560 ? 2 : 1);
-        final ancho = (c.maxWidth - espacio * (columnas - 1)) / columnas;
-        return Wrap(
-          spacing: espacio,
-          runSpacing: espacio,
-          children: [
-            for (final p in lista)
-              SizedBox(width: ancho, child: _tarjetaPromo(p)),
-          ],
+    ),
+    ColumnaTabla(
+      titulo: 'Incluye',
+      flex: 1.4,
+      anchoMin: 150,
+      celda: (p) {
+        if (p.id == idCumpleanos) return TablaApp.texto('A elección');
+        final n = componentesDe(p.id).length;
+        return TablaApp.texto(
+          n == 0 ? 'Sin componentes' : '$n componente${n == 1 ? '' : 's'}',
         );
       },
-    );
-  }
-
-  // Tarjeta de una promoción: franja de color con el valor, lo que incluye y
-  // los botones para ver el detalle o editar.
-  Widget _tarjetaPromo(Promocion p) {
-    final color = _colorDe(p);
-    final componentes = componentesDe(p.id);
-    String vigencia = '';
-    if (p.fechaInicio != null || p.fechaFin != null) {
-      vigencia =
-          '${p.fechaInicio != null ? _fecha(p.fechaInicio!) : '…'} – '
-          '${p.fechaFin != null ? _fecha(p.fechaFin!) : '…'}';
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(16),
+    ),
+    ColumnaTabla(
+      titulo: 'Descuento',
+      anchoMin: 100,
+      rol: RolTarjeta.dato,
+      ordenarPor: (p) => p.porcentajeDescuento ?? 0,
+      celda: (p) => TablaApp.texto(
+        p.porcentajeDescuento == null
+            ? '—'
+            : '${p.porcentajeDescuento!.toStringAsFixed(p.porcentajeDescuento! % 1 == 0 ? 0 : 1)} %',
       ),
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    ),
+    ColumnaTabla(
+      titulo: 'Vigencia',
+      flex: 1.3,
+      anchoMin: 150,
+      celda: (p) => TablaApp.texto(
+        p.fechaInicio == null && p.fechaFin == null
+            ? 'Siempre vigente'
+            : '${p.fechaInicio != null ? _fecha(p.fechaInicio!) : '…'} – '
+                  '${p.fechaFin != null ? _fecha(p.fechaFin!) : '…'}',
+      ),
+    ),
+    ColumnaTabla(
+      titulo: 'Estado',
+      flex: 1.3,
+      anchoMin: 150,
+      rol: RolTarjeta.estado,
+      celda: (p) => Align(
+        alignment: Alignment.centerLeft,
+        child: p.id == idCumpleanos
+            ? _chip('Disponible en el registro', AppColors.primaryGreenDark)
+            : _estadoChip(p),
+      ),
+    ),
+    ColumnaTabla(
+      titulo: 'Acciones',
+      ancho: 110,
+      rol: RolTarjeta.acciones,
+      celda: (p) => Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 14, 10, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    p.etiqueta,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const Icon(Icons.local_offer, color: Colors.white54, size: 30),
-              ],
-            ),
+          IconButton(
+            tooltip: 'Editar',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => p.id == idCumpleanos
+                ? _editarCumpleanos()
+                : _editarPromocion(p),
+            icon: const Icon(Icons.edit_outlined, size: 18),
           ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  p.nombre.toUpperCase(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if ((p.descripcion ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    p.descripcion!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                if (componentes.isEmpty)
-                  Text(
-                    'Sin componentes todavía',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  )
-                else
-                  for (final comp in componentes)
-                    Text(
-                      '• ${comp.cantidad} × ${nombreDeSubcategoria(comp.subcategoriaId)}',
-                      style: const TextStyle(fontSize: 12.5),
-                    ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _estadoChip(p),
-                    if (vigencia.isNotEmpty)
-                      Text(
-                        vigencia,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _abrirDetalle(p),
-                        child: const Text('Detalle'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => _editarPromocion(p),
-                        style: FilledButton.styleFrom(backgroundColor: color),
-                        child: const Text('Editar'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          IconButton(
+            tooltip: 'Eliminar',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => p.id == idCumpleanos
+                ? _eliminarCumpleanos()
+                : _eliminarPromocion(p),
+            icon: const Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: AppColors.error,
             ),
           ),
         ],
       ),
-    );
-  }
-
-  // Detalle de la promoción en un modal: componentes y productos (agregar,
-  // cambiar, activar, eliminar).
-  Future<void> _abrirDetalle(Promocion inicial) async {
-    _detalleId = inicial.id;
-    await showBlurDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogo) {
-          _refrescarDetalle = () => setDialogo(() {});
-          final actual =
-              promociones.where((x) => x.id == inicial.id).firstOrNull ??
-              inicial;
-          final alto = MediaQuery.sizeOf(context).height * 0.9;
-          return Material(
-            color: Colors.transparent,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: AppBreakpoints.esMobile(context)
-                    ? MediaQuery.sizeOf(context).width
-                    : 620,
-                maxHeight: alto,
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(AppRadii.sheet),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  children: [
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(12, 52, 12, 12),
-                      child: _tarjeta(actual),
-                    ),
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: BotonCerrarCircular(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-    _refrescarDetalle = null;
-    _detalleId = null;
-  }
+    ),
+  ];
 
   Widget _chip(String texto, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -576,308 +533,5 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
       return _chip('Incompleta · no la ve el mozo', AppColors.error);
     }
     return _chip('Disponible', AppColors.primaryGreenDark);
-  }
-
-  Widget _tarjeta(Promocion p) {
-    final componentes = componentesDe(p.id);
-    String vigencia = '';
-    if (p.fechaInicio != null || p.fechaFin != null) {
-      vigencia =
-          '${p.fechaInicio != null ? _fecha(p.fechaInicio!) : '…'} – '
-          '${p.fechaFin != null ? _fecha(p.fechaFin!) : '…'}';
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InkWell(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          p.nombre,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            _chip(p.etiqueta, AppColors.naranja),
-                            _estadoChip(p),
-                            if (vigencia.isNotEmpty)
-                              Text(
-                                vigencia,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Editar promoción',
-                    onPressed: () => _editarPromocion(p),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                  ),
-                  IconButton(
-                    tooltip: 'Eliminar promoción',
-                    onPressed: () => _eliminarPromocion(p),
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 18,
-                      color: AppColors.error,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Divider(height: 1, color: Colors.grey.shade200),
-                  if (p.descripcion != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        p.descripcion!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      p.seMantiene
-                          ? 'Al hacer un cambio se mantiene el precio de promoción.'
-                          : 'Al hacer un cambio, el producto nuevo se cobra a su precio normal.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (componentes.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Agrega los componentes del combo (ej. 1 Segundo, 1 Bebida).',
-                        style: TextStyle(color: Colors.grey.shade500),
-                      ),
-                    ),
-                  for (final c in componentes) ...[
-                    _bloqueComponente(p, c),
-                    const SizedBox(height: 10),
-                  ],
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _agregarComponente(p),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Componente'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bloqueComponente(Promocion p, PromocionComponente c) {
-    final opciones = opcionesDe(c.id);
-    final incluida = opcionIncluida(c.id);
-    final activas = opciones.where((o) => o.estado).length;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FA),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${c.cantidad} × ${nombreDeSubcategoria(c.subcategoriaId)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Editar componente',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _editarComponente(p, c),
-                icon: const Icon(Icons.edit_outlined, size: 17),
-              ),
-              IconButton(
-                tooltip: 'Eliminar componente',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _eliminarComponente(c),
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 17,
-                  color: AppColors.error,
-                ),
-              ),
-            ],
-          ),
-          if (opciones.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Sin opciones: agrega al menos un producto.',
-                style: TextStyle(fontSize: 12, color: AppColors.error),
-              ),
-            )
-          else ...[
-            for (final o in opciones)
-              _filaOpcion(p, c, o, o.id == incluida?.id),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0, 4, 6, 4),
-              child: Text(
-                activas > 1
-                    ? 'El mozo puede cambiar entre ${activas > 2 ? 'estas $activas opciones' : 'estas 2 opciones'} si el cliente lo pide.'
-                    : 'Con una sola opción activa no hay cambios posibles.',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              ),
-            ),
-          ],
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => _agregarOpcion(p, c),
-              icon: const Icon(Icons.add, size: 17),
-              label: const Text('Opción'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _filaOpcion(
-    Promocion p,
-    PromocionComponente c,
-    PromocionOpcion o,
-    bool incluida,
-  ) {
-    final normal = precioNormalDeOpcion(o);
-    final promo = precioPromocionalDeOpcion(p, o);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Opacity(
-              opacity: o.estado ? 1 : 0.5,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        nombreDeOpcion(o),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                      if (incluida)
-                        _chip('Incluido', AppColors.primaryGreenDark),
-                      if (!o.estado) _chip('Inactiva', Colors.grey.shade600),
-                    ],
-                  ),
-                  Text(
-                    'Normal S/ ${normal.toStringAsFixed(2)} · Promoción S/ ${promo.toStringAsFixed(2)}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          MenuFlotante<String>(
-            tooltip: 'Acciones',
-            anchoMinimo: 170,
-            opciones: [
-              const OpcionMenu(valor: 'editar', etiqueta: 'Editar'),
-              if (!incluida && o.estado)
-                const OpcionMenu(valor: 'incluida', etiqueta: 'Hacer incluida'),
-              OpcionMenu(
-                valor: 'estado',
-                etiqueta: o.estado ? 'Desactivar' : 'Activar',
-              ),
-              const OpcionMenu(valor: 'eliminar', etiqueta: 'Eliminar'),
-            ],
-            onSeleccionar: (v) {
-              switch (v) {
-                case 'editar':
-                  _editarOpcion(p, c, o);
-                case 'incluida':
-                  _ejecutar(
-                    () => PromocionService.instance.hacerIncluidaEnServidor(o),
-                    exito: 'La opción ahora es la incluida.',
-                  );
-                case 'estado':
-                  _ejecutar(
-                    () => PromocionService.instance.actualizarOpcionEnServidor(
-                      o.copyWith(estado: !o.estado),
-                    ),
-                    exito: o.estado
-                        ? 'Opción desactivada.'
-                        : 'Opción activada.',
-                  );
-                case 'eliminar':
-                  _ejecutar(
-                    () => PromocionService.instance.eliminarOpcionEnServidor(o),
-                    exito: 'Opción eliminada.',
-                  );
-              }
-            },
-            disparador: (context, abierto) => const Padding(
-              padding: EdgeInsets.all(6),
-              child: Icon(Icons.more_vert, size: 18),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

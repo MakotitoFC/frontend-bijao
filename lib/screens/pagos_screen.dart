@@ -289,95 +289,114 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              LayoutBuilder(
-                builder: (context, c) {
-                  const titulo = Text(
-                    'Historial de ventas',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  );
-                  final controles = [
-                    _pastilla('Todos', 'todos'),
-                    _pastilla('Pagados', 'pagados'),
-                    _pastilla('Por cobrar', 'por_cobrar'),
-                    // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
-                    // calendario para un día o un rango. Sin fechas = hoy.
-                    SelectorRangoFechas(
-                      valor: _rango,
-                      onChanged: (r) {
-                        final hoy = DateUtils.dateOnly(DateTime.now());
-                        _cambiarRango(r ?? DateTimeRange(start: hoy, end: hoy));
-                      },
-                    ),
-                    SizedBox(
-                      width: 220,
-                      child: AppSelect<String>(
-                        compacto: true,
-                        value: _medioFiltro,
-                        hint: 'Medio de pago',
-                        items: [
-                          const AppSelectItem(
-                            value: 'todos',
-                            label: 'Todos los medios de pago',
+              // En pantallas bajas los filtros se desplazan en vez de desbordar.
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                ),
+                child: SingleChildScrollView(
+                  child: LayoutBuilder(
+                    builder: (context, c) {
+                      const titulo = Text(
+                        'Historial de ventas',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      );
+                      final controles = [
+                        _pastilla('Todos', 'todos'),
+                        _pastilla('Pagados', 'pagados'),
+                        _pastilla('Por cobrar', 'por_cobrar'),
+                        // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
+                        // calendario para un día o un rango. Sin fechas = hoy.
+                        SelectorRangoFechas(
+                          valor: _rango,
+                          onChanged: (r) {
+                            final hoy = DateUtils.dateOnly(DateTime.now());
+                            _cambiarRango(
+                              r ?? DateTimeRange(start: hoy, end: hoy),
+                            );
+                          },
+                        ),
+                        SizedBox(
+                          width: 220,
+                          child: AppSelect<String>(
+                            compacto: true,
+                            value: _medioFiltro,
+                            hint: 'Medio de pago',
+                            items: [
+                              const AppSelectItem(
+                                value: 'todos',
+                                label: 'Todos los medios de pago',
+                              ),
+                              for (final n in _nombresMedios)
+                                AppSelectItem(value: n, label: n),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _medioFiltro = v ?? 'todos'),
                           ),
-                          for (final n in _nombresMedios)
-                            AppSelectItem(value: n, label: n),
-                        ],
-                        onChanged: (v) =>
-                            setState(() => _medioFiltro = v ?? 'todos'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 170,
-                      child: AppSelect<String>(
-                        compacto: true,
-                        value: _tipoFiltro,
-                        hint: 'Tipo de pedido',
-                        items: const [
-                          AppSelectItem(
-                            value: 'todos',
-                            label: 'Todos los tipos',
+                        ),
+                        SizedBox(
+                          width: 170,
+                          child: AppSelect<String>(
+                            compacto: true,
+                            value: _tipoFiltro,
+                            hint: 'Tipo de pedido',
+                            items: const [
+                              AppSelectItem(
+                                value: 'todos',
+                                label: 'Todos los tipos',
+                              ),
+                              AppSelectItem(value: 'mesa', label: 'Mesa'),
+                              AppSelectItem(
+                                value: 'llevar',
+                                label: 'Para llevar',
+                              ),
+                              AppSelectItem(
+                                value: 'delivery',
+                                label: 'Delivery',
+                              ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _tipoFiltro = v ?? 'todos'),
                           ),
-                          AppSelectItem(value: 'mesa', label: 'Mesa'),
-                          AppSelectItem(value: 'llevar', label: 'Para llevar'),
-                          AppSelectItem(value: 'delivery', label: 'Delivery'),
-                        ],
-                        onChanged: (v) =>
-                            setState(() => _tipoFiltro = v ?? 'todos'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 170,
-                      child: AppSelect<String>(
-                        compacto: true,
-                        value: _mozoFiltro,
-                        hint: 'Mozo',
-                        items: [
-                          const AppSelectItem(
-                            value: 'todos',
-                            label: 'Todos los mozos',
+                        ),
+                        SizedBox(
+                          width: 170,
+                          child: AppSelect<String>(
+                            compacto: true,
+                            value: _mozoFiltro,
+                            hint: 'Mozo',
+                            items: [
+                              const AppSelectItem(
+                                value: 'todos',
+                                label: 'Todos los mozos',
+                              ),
+                              for (final m in _mozos)
+                                AppSelectItem(value: m.id, label: m.nombre),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _mozoFiltro = v ?? 'todos'),
                           ),
-                          for (final m in _mozos)
-                            AppSelectItem(value: m.id, label: m.nombre),
+                        ),
+                        AppSearchField(
+                          controller: _busqueda,
+                          hint: 'Buscar pedido o cliente...',
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          titulo,
+                          const SizedBox(height: 10),
+                          Wrap(spacing: 8, runSpacing: 8, children: controles),
                         ],
-                        onChanged: (v) =>
-                            setState(() => _mozoFiltro = v ?? 'todos'),
-                      ),
-                    ),
-                    AppSearchField(
-                      controller: _busqueda,
-                      hint: 'Buscar pedido o cliente...',
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      titulo,
-                      const SizedBox(height: 10),
-                      Wrap(spacing: 8, runSpacing: 8, children: controles),
-                    ],
-                  );
-                },
+                      );
+                    },
+                  ),
+                ),
               ),
               if (_errorPagos != null) ...[
                 const SizedBox(height: 8),
@@ -531,10 +550,47 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
             final cobrado = TablaApp.texto(_soles(totalCobradoDePedido(p.id)));
             // Solo en pedidos de consumo de personal (se pagan por abonos): el
             // total del pedido y, debajo en rojo, lo que aún falta pagar.
+            // Consumo de familia (cuenta cero): el total es S/ 0.00.
+            if (esPedidoDeFamilia(p.id)) {
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TablaApp.texto(_soles(0)),
+                  const Text(
+                    'Consumo de familia',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFB45309),
+                    ),
+                  ),
+                ],
+              );
+            }
             if (!esPedidoDeEmpleado(p)) return cobrado;
             final falta = faltaPorPagarDePedido(p.id);
             final total = TablaApp.texto(_soles(totalDePedido(p.id)));
-            if (falta <= 0.01) return total;
+            final n = abonosDePedido(p.id).length;
+            if (falta <= 0.01) {
+              // Saldada por abonos: se ve cuántos fueron.
+              if (n <= 1) return total;
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  total,
+                  Text(
+                    '$n abonos',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              );
+            }
             return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -828,8 +884,12 @@ class _CajaScreenState extends State<CajaScreen> {
     if (confirmar != true || nuevoUsuarioId == null || !mounted) return;
 
     try {
-      final dest = usuarios.firstWhere((u) => u['id']?.toString() == nuevoUsuarioId, orElse: () => {});
-      final nombreDestino = dest['nombre'] ?? dest['usuario'] ?? 'el nuevo responsable';
+      final dest = usuarios.firstWhere(
+        (u) => u['id']?.toString() == nuevoUsuarioId,
+        orElse: () => {},
+      );
+      final nombreDestino =
+          dest['nombre'] ?? dest['usuario'] ?? 'el nuevo responsable';
       await CajaService.instance.traspaso(
         nuevoUsuarioId: nuevoUsuarioId!,
         notas: notasCtrl.text.trim(),
@@ -898,7 +958,8 @@ class _CajaScreenState extends State<CajaScreen> {
     String? cierreId,
   }) async {
     final url = CajaService.instance.urlReporteDiaDetalladoHTML(
-      fechaOperativa: fechaOperativa ?? estadoCajaServidor?.apertura?.fechaOperativa,
+      fechaOperativa:
+          fechaOperativa ?? estadoCajaServidor?.apertura?.fechaOperativa,
       aperturaId: aperturaId,
       cierreId: cierreId,
     );
@@ -1465,13 +1526,15 @@ class _CajaScreenState extends State<CajaScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: [
-              const Expanded(
-                child: Text(
-                  'Cierres de caja',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
+              const Text(
+                'Cierres de caja',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
               ),
               SelectorRangoFechas(
                 valor: _rangoCierres,
@@ -1495,6 +1558,7 @@ class _CajaScreenState extends State<CajaScreen> {
             )
           else
             TablaApp<CierreCaja>(
+              scrollInterno: true,
               porPagina: 10,
               filas: cierres,
               columnas: _columnasCierres(),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../theme/app_theme.dart';
+import 'dialogo_app.dart' show LimiteModal;
 
 const _mesesCortos = [
   'ene',
@@ -118,15 +119,23 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
     final ancho = anchoPantalla - 24 < 340 ? anchoPantalla - 24 : 340.0;
     // Se alinea al borde derecho del botón salvo que se salga de la pantalla.
     final derecha = posicion.dx + caja.size.width - ancho >= 12;
-    // Si abajo no hay lugar para el calendario (unos 440 px), se abre hacia
-    // arriba; si en ningún lado cabe entero, hacia donde haya más espacio y con
-    // desplazamiento.
-    final altoPantalla = MediaQuery.sizeOf(context).height;
-    final abajo = altoPantalla - (posicion.dy + caja.size.height) - 16;
-    final arriba = posicion.dy - 16;
+    // Dentro de un modal el calendario no se pasa del borde inferior del modal:
+    // si no cabe debajo del botón, se sube hasta que su base quede en ese límite
+    // (sin salirse de la pantalla). Fuera de un modal, el límite es la pantalla.
+    final pantalla = Offset.zero & MediaQuery.sizeOf(context);
+    final limite = LimiteModal.rectDe(context) ?? pantalla;
     const altoTarjeta = 440.0;
-    final haciaArriba = abajo < altoTarjeta && arriba > abajo;
-    final disponible = (haciaArriba ? arriba : abajo).clamp(200.0, 2000.0);
+    const margen = 8.0;
+    final debajo = posicion.dy + caja.size.height + margen;
+    final tope = limite.bottom < pantalla.bottom
+        ? limite.bottom
+        : pantalla.bottom - margen;
+    final cabe = debajo + altoTarjeta <= tope;
+    final inicio = cabe
+        ? debajo
+        : (tope - altoTarjeta).clamp(pantalla.top + margen, debajo);
+    final desplazamientoY = inicio - (posicion.dy + caja.size.height);
+    final disponible = (tope - inicio).clamp(200.0, 2000.0);
     _entrada = OverlayEntry(
       builder: (_) => Stack(
         children: [
@@ -139,17 +148,13 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
           CompositedTransformFollower(
             link: _enlace,
             showWhenUnlinked: false,
-            targetAnchor: haciaArriba
-                ? (derecha ? Alignment.topRight : Alignment.topLeft)
-                : (derecha ? Alignment.bottomRight : Alignment.bottomLeft),
-            followerAnchor: haciaArriba
-                ? (derecha ? Alignment.bottomRight : Alignment.bottomLeft)
-                : (derecha ? Alignment.topRight : Alignment.topLeft),
-            offset: Offset(0, haciaArriba ? -8 : 8),
+            targetAnchor: derecha
+                ? Alignment.bottomRight
+                : Alignment.bottomLeft,
+            followerAnchor: derecha ? Alignment.topRight : Alignment.topLeft,
+            offset: Offset(0, desplazamientoY),
             child: Align(
-              alignment: haciaArriba
-                  ? (derecha ? Alignment.bottomRight : Alignment.bottomLeft)
-                  : (derecha ? Alignment.topRight : Alignment.topLeft),
+              alignment: derecha ? Alignment.topRight : Alignment.topLeft,
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: disponible),
                 child: SingleChildScrollView(

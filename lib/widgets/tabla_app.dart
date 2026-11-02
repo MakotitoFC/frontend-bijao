@@ -63,6 +63,8 @@ class TablaApp<T> extends StatefulWidget {
   // dentro de un Expanded) y el selector de páginas queda flotando abajo, fuera
   // del scroll.
   final bool scrollInterno;
+  // Alto máximo de la tabla con scroll interno cuando no tiene alto acotado.
+  final double altoMaximo;
   // Se avisa al tocar una tarjeta (solo en la vista de tarjetas).
   final ValueChanged<T>? onTarjeta;
 
@@ -74,6 +76,7 @@ class TablaApp<T> extends StatefulWidget {
     this.onFila,
     this.porPagina,
     this.scrollInterno = false,
+    this.altoMaximo = 520,
     this.onTarjeta,
   });
 
@@ -429,18 +432,50 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
     Widget envolver(Widget contenido) {
       if (!interno) return contenido;
       final hayPaginas = _paginas > 1;
-      return Stack(
-        children: [
-          IndicadorAbajo(
-            builder: (ctl) => SingleChildScrollView(
-              controller: ctl,
-              padding: EdgeInsets.only(right: 16, bottom: hayPaginas ? 64 : 0),
-              child: contenido,
+      return LayoutBuilder(
+        builder: (context, c) {
+          // Con alto acotado (dentro de un Expanded) el paginador flota sobre
+          // el borde de abajo. Sin alto acotado (dentro de otra página con
+          // scroll) la tabla se limita a [altoMaximo] y el paginador queda
+          // fijo debajo: en ambos casos el scroll nunca lleva al paginador.
+          if (c.hasBoundedHeight) {
+            return Stack(
+              children: [
+                IndicadorAbajo(
+                  builder: (ctl) => SingleChildScrollView(
+                    controller: ctl,
+                    padding: EdgeInsets.only(
+                      right: 16,
+                      bottom: hayPaginas ? 64 : 0,
+                    ),
+                    child: contenido,
+                  ),
+                ),
+                if (hayPaginas)
+                  Positioned(left: 0, right: 0, bottom: 4, child: _paginador()),
+              ],
+            );
+          }
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: widget.altoMaximo),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Flexible(
+                  child: IndicadorAbajo(
+                    builder: (ctl) => SingleChildScrollView(
+                      controller: ctl,
+                      padding: const EdgeInsets.only(right: 16),
+                      child: contenido,
+                    ),
+                  ),
+                ),
+                if (hayPaginas) _paginador(),
+              ],
             ),
-          ),
-          if (hayPaginas)
-            Positioned(left: 0, right: 0, bottom: 4, child: _paginador()),
-        ],
+          );
+        },
       );
     }
 

@@ -190,6 +190,41 @@ class TagEmpleado extends StatelessWidget {
   }
 }
 
+// Etiqueta de una cuenta de familia (cuenta cero): como la del empleado pero
+// en ámbar.
+class TagFamilia extends StatelessWidget {
+  final String? nombre;
+
+  const TagFamilia({super.key, this.nombre});
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFB45309);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: color, width: 1.2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(LucideIcons.house, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            (nombre ?? '').isEmpty ? 'Familia' : 'Familia: $nombre',
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // Píldora sólida con el estado del pedido, interactiva con selector de estados.
 class BadgeEstadoPedido extends StatelessWidget {
   final String estado;
@@ -574,6 +609,36 @@ class DetallePedidoPanel extends StatelessWidget {
       await PagoService.instance.cargarDePedido(pedido);
     } catch (_) {}
     if (!context.mounted) return;
+    // Si el servidor ya tiene la cuenta cobrada, no se abre un cobro en cero:
+    // se avisa con lo que ya está registrado y se actualiza el estado (el
+    // pedido pasa a Pagados).
+    final cobrado = abonadoDePedido(pedido.id);
+    final yaPagado =
+        pedidos.where((x) => x.id == pedido.id).firstOrNull?.estado == 'pagado';
+    if (yaPagado ||
+        (saldoCuentaDePedido(pedido.id) <= 0.01 && cobrado > 0.01)) {
+      final detalle = abonosDePedido(pedido.id)
+          .map(
+            (a) =>
+                '${a.medio} S/ ${a.monto.toStringAsFixed(2)} '
+                '(${a.fecha.day.toString().padLeft(2, '0')}/'
+                '${a.fecha.month.toString().padLeft(2, '0')} '
+                '${a.fecha.hour.toString().padLeft(2, '0')}:'
+                '${a.fecha.minute.toString().padLeft(2, '0')})',
+          )
+          .join(' · ');
+      showAppToast(
+        context,
+        detalle.isEmpty
+            ? 'El servidor ya tiene este pedido como pagado.'
+            : 'Este pedido ya tiene su cuenta cobrada: $detalle.',
+        type: ToastType.info,
+        titulo: 'Pedido ya pagado',
+        duration: const Duration(seconds: 6),
+      );
+      onCambio();
+      return;
+    }
     await _pagar(context);
   }
 
@@ -1344,40 +1409,6 @@ class DetallePedidoPanel extends StatelessWidget {
     );
   }
 
-  // Empleado: cuadro con los productos del pedido (precio y cantidad) y un
-  // campo para el precio que se cobra por cada uno.
-  Future<void> _editarPreciosEmpleado(BuildContext context) async {
-    if (!_puedeModificar(context)) return;
-    final lineas = (detallesPorPedido[pedido.id] ?? [])
-        .where(esLineaDeProducto)
-        .toList();
-    if (lineas.isEmpty) {
-      showAppToast(
-        context,
-        'El pedido aún no tiene productos.',
-        type: ToastType.info,
-      );
-      return;
-    }
-    final precios = await showBlurDialog<Map<String, double>>(
-      context: context,
-      builder: (_) => _PreciosEmpleadoDialog(lineas: lineas),
-    );
-    if (precios == null || precios.isEmpty || !context.mounted) return;
-    await _ejecutar(context, () async {
-      for (final e in precios.entries) {
-        // La versión de cada fila se lee de nuevo: cada cambio la actualiza.
-        final fila = (detallesPorPedido[pedido.id] ?? const <PedidoLine>[])
-            .firstWhere((l) => l.id == e.key);
-        await PedidoMozoService.instance.precioPersonalFila(
-          pedido.id,
-          fila,
-          e.value,
-        );
-      }
-    }, exito: 'Precios de empleado guardados.');
-  }
-
   Future<void> _cambiarEntrega(BuildContext context) async {
     if (!_puedeModificar(context)) return;
     final c = await showBlurDialog<CambioEntrega>(
@@ -1524,8 +1555,19 @@ class DetallePedidoPanel extends StatelessWidget {
           if (pagado > 0.01) _filaTotal('Pagado', pagado),
           // Con qué medio(s) se pagó, cada uno con su monto.
           if (pagado > 0.01)
-            for (final m in pagosPorMedioDe(pedido.id))
-              _filaTotal('Pagó con ${m.medio}', m.monto),
+            if (esPedidoDeEmpleado(pedido) &&
+                abonosDePedido(pedido.id).length > 1)
+              // Cada abono con su hora y medio: el último solo saldó la cuenta.
+              for (final (i, a) in abonosDePedido(pedido.id).indexed)
+                _filaTotal(
+                  'Abono ${i + 1} · '
+                  '${a.fecha.hour.toString().padLeft(2, '0')}:'
+                  '${a.fecha.minute.toString().padLeft(2, '0')} · ${a.medio}',
+                  a.monto,
+                )
+            else
+              for (final m in pagosPorMedioDe(pedido.id))
+                _filaTotal('Pagó con ${m.medio}', m.monto),
           // Efectivo que entregó el cliente y vuelto (solo en este dispositivo).
           if (efectivoRecibidoPorPedido[pedido.id] case final e?) ...[
             _filaTotal('Efectivo recibido', e.recibido),
@@ -1557,14 +1599,6 @@ class DetallePedidoPanel extends StatelessWidget {
                     color: Colors.black87,
                     colorBorde: Colors.grey.shade300,
                     onTap: () => _editarTupper(context),
-                  ),
-                if (_api && _veCaja && pedido.abierto)
-                  AppTag(
-                    etiqueta: 'Empleado',
-                    icono: LucideIcons.users,
-                    activo: esPedidoDeEmpleado(pedido),
-                    color: const Color(0xFF2563EB),
-                    onTap: () => _editarPreciosEmpleado(context),
                   ),
               ],
             ),
@@ -1721,6 +1755,11 @@ class DetallePedidoPanel extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: TagEmpleado(nombre: nombreClienteDe(pedido)),
+                  )
+                else if (esPedidoDeFamilia(pedido.id))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: TagFamilia(nombre: nombreClienteDe(pedido)),
                   ),
                 if (cliente != null && !esPedidoDeEmpleado(pedido))
                   Text(
@@ -2216,15 +2255,23 @@ class DetallePedidoPanel extends StatelessWidget {
                 if (esProducto)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Row(
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 6,
                       children: [
                         _stepper(context, l),
-                        const Spacer(),
-                        if (_api && !esLineaTaper(l)) ...[
-                          _botonEntregaFila(context, l),
-                          const SizedBox(width: 6),
-                        ],
-                        _botonNota(context, l),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_api && !esLineaTaper(l)) ...[
+                              _botonEntregaFila(context, l),
+                              const SizedBox(width: 6),
+                            ],
+                            _botonNota(context, l),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -2486,28 +2533,106 @@ class DetallePedidoPanel extends StatelessWidget {
   }
 
   // Servido y Pagar: son los únicos botones fijos abajo.
-  // Pedido con productos y total en cero (por ejemplo, con Cuenta cero).
+  // Pedido abierto con productos y total en cero (cuenta cero de familia).
   bool get _esCuentaCero {
     final lineas = detallesPorPedido[pedido.id] ?? const <PedidoLine>[];
-    return lineas.any(esLineaDeProducto) &&
+    // Solo cuentas que pueden valer cero a propósito (familia, empleado o
+    // cumpleaños): un pedido de cliente con total en cero NO se cierra desde
+    // aquí.
+    return pedido.abierto &&
+        motivoCuentaCero(pedido) != null &&
+        lineas.any(esLineaDeProducto) &&
         totalDePedido(pedido.id).abs() < 0.005 &&
         abonadoDePedido(pedido.id) < 0.005;
   }
 
-  // Emite el ticket de venta por S/ 0.00 y lo manda a imprimir.
-  Future<void> _ticketCuentaCero(BuildContext context) async {
+  String _textoCuentaCero(String? m) => switch (m) {
+    'empleado' => 'un consumo de empleado',
+    'cumpleanos' => 'un cumpleaños',
+    _ => 'un consumo de familia',
+  };
+
+  String _rotuloCuentaCero(String? m) => switch (m) {
+    'empleado' => 'CONSUMO DE EMPLEADO',
+    'cumpleanos' => 'CUMPLEAÑOS',
+    _ => 'CONSUMO DE FAMILIA',
+  };
+
+  // Pagar una cuenta cero: pregunta si se imprime el ticket. Siempre queda
+  // registrado en el sistema como consumo de familia por S/ 0.00; imprimir o
+  // no solo cambia si sale por la ticketera.
+  Future<void> _pagarCuentaCero(BuildContext context) async {
+    final imprimir = await showBlurDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: const Text('Cuenta cero'),
+        content: Text(
+          'Es ${_textoCuentaCero(motivoCuentaCero(pedido))} por S/ 0.00. '
+          'Quedará registrado en el sistema. ¿Deseas imprimir el ticket?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('No imprimir'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Imprimir ticket'),
+          ),
+        ],
+      ),
+    );
+    if (imprimir == null || !context.mounted) return;
     try {
+      final nombre = (pedido.clienteNombre ?? '').trim();
       final c = await FacturacionService.instance.emitir(
         pedidoId: pedido.id,
         tipoDocumento: 'ticket_venta',
-        imprimir: true,
+        imprimir: imprimir,
+        clienteDenominacion: nombre.isEmpty
+            ? _rotuloCuentaCero(motivoCuentaCero(pedido))
+            : '${_rotuloCuentaCero(motivoCuentaCero(pedido))} - '
+                  '${nombre.toUpperCase()}',
       );
+      // Cierra la cuenta con un pago en cero (efectivo).
+      try {
+        final medios = mediosPagoActivos;
+        final medio = medios.firstWhere(
+          (m) => m.grupo == 'efectivo',
+          orElse: () => medios.first,
+        );
+        await PagoService.instance.registrar(
+          pedido: pedido,
+          medio: medio,
+          montoAbonado: 0,
+        );
+      } catch (_) {
+        if (context.mounted) {
+          showAppToast(
+            context,
+            'El ticket quedó registrado, pero no se pudo cerrar la cuenta.',
+            type: ToastType.info,
+          );
+        }
+      }
       if (!context.mounted) return;
-      await showBlurDialog<void>(
-        context: context,
-        builder: (_) =>
-            ComprobanteEmitidoDialog(comprobante: c, pedido: pedido),
-      );
+      if (imprimir) {
+        await showBlurDialog<void>(
+          context: context,
+          builder: (_) =>
+              ComprobanteEmitidoDialog(comprobante: c, pedido: pedido),
+        );
+      } else {
+        showAppToast(
+          context,
+          'Ticket S/ 0.00 ${c.numeroComprobante} registrado (${_textoCuentaCero(motivoCuentaCero(pedido)).replaceFirst('un ', '')}).',
+          type: ToastType.success,
+        );
+      }
       onCambio();
     } catch (e) {
       if (!context.mounted) return;
@@ -2517,7 +2642,7 @@ class DetallePedidoPanel extends StatelessWidget {
             ? e.message
             : e.toString().replaceFirst('Exception: ', ''),
         type: ToastType.error,
-        titulo: 'Ticket no emitido',
+        titulo: 'Ticket no registrado',
       );
     }
   }
@@ -2568,27 +2693,16 @@ class DetallePedidoPanel extends StatelessWidget {
             if (_veCaja) ...[
               if (!_esCajero) const SizedBox(width: 12),
               Expanded(
-                child: _esCuentaCero
-                    // Cuenta en S/ 0.00 (descuento del 100 %): no hay nada que
-                    // cobrar, pero se puede emitir e imprimir el ticket.
-                    ? FilledButton.icon(
-                        onPressed: () => _ticketCuentaCero(context),
-                        icon: const Icon(LucideIcons.printer, size: 16),
-                        label: const Text('Ticket S/ 0.00', style: texto),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _naranjaPago,
-                        ),
-                      )
-                    : FilledButton.icon(
-                        onPressed: puedePagar
-                            ? () => _elegirPago(context)
-                            : null,
-                        icon: const Icon(LucideIcons.banknote, size: 16),
-                        label: const Text('Pagar', style: texto),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _naranjaPago,
-                        ),
-                      ),
+                child: FilledButton.icon(
+                  // Una cuenta en cero (familia) también se "paga": pregunta si
+                  // se imprime el ticket y deja el registro en el sistema.
+                  onPressed: _esCuentaCero
+                      ? () => _pagarCuentaCero(context)
+                      : (puedePagar ? () => _elegirPago(context) : null),
+                  icon: const Icon(LucideIcons.banknote, size: 16),
+                  label: const Text('Pagar', style: texto),
+                  style: FilledButton.styleFrom(backgroundColor: _naranjaPago),
+                ),
               ),
             ],
           ],
@@ -2776,121 +2890,6 @@ class _ElegirLineaDialog extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// Cuadro del botón Empleado en un pedido ya registrado: los productos con su
-// precio y cantidad, y un campo (S/.) para escribir el precio que se cobra. Lo
-// que se deja en blanco no cambia.
-class _PreciosEmpleadoDialog extends StatefulWidget {
-  final List<PedidoLine> lineas;
-
-  const _PreciosEmpleadoDialog({required this.lineas});
-
-  @override
-  State<_PreciosEmpleadoDialog> createState() => _PreciosEmpleadoDialogState();
-}
-
-class _PreciosEmpleadoDialogState extends State<_PreciosEmpleadoDialog> {
-  late final Map<String, TextEditingController> _campos = {
-    for (final l in widget.lineas) l.id: TextEditingController(),
-  };
-
-  @override
-  void dispose() {
-    for (final c in _campos.values) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  void _guardar() {
-    final precios = <String, double>{};
-    _campos.forEach((id, campo) {
-      final v = double.tryParse(campo.text.trim().replaceAll(',', '.'));
-      if (v != null && v >= 0) precios[id] = v;
-    });
-    Navigator.of(context).pop<Map<String, double>>(precios);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ModalPago(
-      titulo: 'Pedido de empleado',
-      subtitulo: 'Escribe el precio que se cobra por cada producto',
-      anchoEscritorio: 520,
-      child: SingleChildScrollView(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final l in widget.lineas)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l.nombrePlato,
-                            softWrap: true,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            'Precio S/ ${l.precioUnitario.toStringAsFixed(2)} · '
-                            'Cantidad ${l.cantidad}',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 110,
-                      child: TextField(
-                        controller: _campos[l.id],
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          hintText: 'S/.',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                onPressed: _guardar,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                ),
-                child: const Text('Guardar'),
-              ),
-            ),
-          ],
         ),
       ),
     );
