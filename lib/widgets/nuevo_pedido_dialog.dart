@@ -34,6 +34,7 @@ import '../services/disponibilidad_service.dart';
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/error_disponibilidad.dart';
+import '../utils/motivo_precio.dart';
 import '../utils/uuid_helper.dart';
 import 'app_search_field.dart';
 import 'app_tag.dart';
@@ -1977,7 +1978,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                   ),
                 if (linea.comentario != null)
                   Text(
-                    linea.comentario!,
+                    comentarioVisible(linea.comentario!),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1999,15 +2000,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                     ),
                   ],
                 ),
-                if (linea.precioManual)
-                  const Text(
-                    'Precio manual',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.naranja,
-                    ),
-                  ),
               ],
             ),
           ),

@@ -208,3 +208,27 @@ Las roturas o alquiler de menaje se envían con el pago (`cargos_extra`) y a la 
 ## Qué se pide
 
 Que el ticket impreso por el servidor (cuenta, ticket de venta, boleta y factura) incluya la **propina** del pago (`pago.propina`) y los `cargos_extra` guardados, cada uno en su línea y dentro del total.
+
+---
+
+# 39. Editar un producto ya registrado en el pedido
+
+## Qué se quiere
+
+En el detalle del pedido, al tocar la card de un producto, abrir el mismo modal del registro ("Agregar al pedido") con lo que ya tiene (cantidad, variante o presentación, extras, nota, tipo de entrega, precio manual con su motivo, cambio de plato) y guardar los cambios sobre la misma fila. Es lo que ya hace el registro de pedido antes de enviarlo.
+
+## Qué hay hoy
+
+Solo hay rutas para cambiar una cosa a la vez: `PATCH /api/v1/mozo/pedidos/:id/items/:detalle_id/cantidad`, `/comentario`, `/tipo-entrega` y `/precio-personal`. No hay forma de cambiar variante, presentación, extras ni precio manual de una fila ya enviada. Hacerlo con anular + agregar nuevo deja una anulación falsa en la auditoría y puede mover el stock dos veces.
+
+## Qué se pide
+
+`PATCH /api/v1/mozo/pedidos/:id/items/:detalle_id` con el mismo cuerpo de un ítem de `POST .../items` (`carta_id`, `cantidad`, `carta_variante_id`, `carta_presentacion_id`, `modificadores`, `comentario`, `tipo_entrega`, `precio_manual`) más `version`:
+
+- Reemplaza la fila en la misma transacción y recalcula el precio.
+- Ajusta el consumo de stock por la diferencia, no devolviendo y descontando todo.
+- Solo si la fila no está servida ni tiene pagos (o con el permiso `UPDATE.PEDIDO_DETALLE`, igual que cantidad y comentario).
+- Registra la edición en el historial del pedido, sin crear una anulación.
+- Devuelve el pedido actualizado, como las demás rutas de filas.
+
+La app ya tiene el modal listo para reutilizar (`ProductoOpcionesDialog` con `lineaInicial`): al tener la ruta, solo hay que conectar el toque de la card del detalle.

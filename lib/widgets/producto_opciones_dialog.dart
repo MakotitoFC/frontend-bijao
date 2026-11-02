@@ -17,6 +17,7 @@ import 'app_toast.dart';
 import 'imagen_plato.dart';
 import 'taper_catalogo_dialog.dart' show TaperElegido;
 import '../utils/agregados_utils.dart';
+import '../utils/motivo_precio.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
 
@@ -149,25 +150,21 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       }
     }
     // La nota y, aparte, el motivo del precio.
-    const marca = 'Precio manual: ';
-    final lineas = (l.comentario ?? '').split('\n');
-    _comentarioController.text = lineas
-        .where((x) => !x.startsWith(marca))
-        .join('\n')
-        .trim();
-    final motivo = lineas
-        .where((x) => x.startsWith(marca))
-        .map((x) => x.substring(marca.length))
-        .join(' ')
-        .trim();
+    _comentarioController.text = notaSinMotivoDePrecio(l.comentario);
+    final motivo = motivoDePrecio(l.comentario) ?? '';
     if (l.precioManual && motivo.isNotEmpty) {
       _precioManual = l.precioUnitario;
       _motivoPrecio = motivo;
-      final cambio = RegExp(r'^Cambio por (.+) \(\+S/ ([0-9.]+)\)$')
-          .firstMatch(motivo);
-      if (cambio != null) {
-        _platoCambio = cambio.group(1);
-        _adicionalCtrl.text = cambio.group(2)!;
+      final regex = RegExp(r'^Cambio por (.+) \(\+S/ ([0-9.]+)\)$');
+      final partes = [for (final x in motivo.split(' · ')) regex.firstMatch(x)];
+      if (partes.every((m) => m != null)) {
+        for (final m in partes) {
+          _cambios.add(
+            _CambioPlato()
+              ..plato = m!.group(1)
+              ..adicional.text = m.group(2)!,
+          );
+        }
       } else {
         _editandoPrecio = true;
         _precioCtrl.text = l.precioUnitario.toStringAsFixed(2);
@@ -181,7 +178,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     _comentarioController.dispose();
     _precioCtrl.dispose();
     _motivoCtrl.dispose();
-    _adicionalCtrl.dispose();
+    for (final x in _cambios) {
+      x.adicional.dispose();
+    }
     super.dispose();
   }
 
@@ -319,7 +318,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   // La nota del producto, más el motivo del precio si se cambió.
   String? get _comentarioFinal {
     final nota = _comentarioController.text.trim();
-    final motivo = _motivoPrecio == null ? '' : 'Precio manual: $_motivoPrecio';
+    final motivo = _motivoPrecio == null
+        ? ''
+        : lineaDeMotivoPrecio(_motivoPrecio!);
     final partes = [nota, motivo].where((x) => x.isNotEmpty).join('\n');
     return partes.isEmpty ? null : partes;
   }
@@ -329,8 +330,8 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   bool _editandoPrecio = false;
   final _precioCtrl = TextEditingController();
   final _motivoCtrl = TextEditingController();
-  String? _platoCambio;
-  final _adicionalCtrl = TextEditingController();
+  // Cambios de plato: un plato familiar puede llevar más de uno.
+  final List<_CambioPlato> _cambios = [];
 
   double _leer(String s) =>
       double.tryParse(s.trim().replaceAll(',', '.')) ?? -1;
@@ -349,15 +350,27 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   void _recalcularManual() {
     final p = _leer(_precioCtrl.text);
     final motivo = _motivoCtrl.text.trim();
-    final extra = _leer(_adicionalCtrl.text);
+    final completos = [
+      for (final x in _cambios)
+        if (x.plato != null && _leer(x.adicional.text) >= 0) x,
+    ];
     setState(() {
       if (_editandoPrecio && p >= 0 && motivo.isNotEmpty) {
         _precioManual = p;
         _motivoPrecio = motivo;
-      } else if (_platoCambio != null && extra >= 0) {
+      } else if (completos.isNotEmpty) {
+        final extra = completos.fold(
+          0.0,
+          (s, x) => s + _leer(x.adicional.text),
+        );
         _precioManual = _precioCalculado + extra;
-        _motivoPrecio =
-            'Cambio por $_platoCambio (+S/ ${extra.toStringAsFixed(2)})';
+        _motivoPrecio = completos
+            .map(
+              (x) =>
+                  'Cambio por ${x.plato} '
+                  '(+S/ ${_leer(x.adicional.text).toStringAsFixed(2)})',
+            )
+            .join(' · ');
       } else {
         _precioManual = null;
         _motivoPrecio = null;
@@ -376,19 +389,38 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
         return true;
       }
     }
-    if (_esFamiliar) {
-      final extra = _leer(_adicionalCtrl.text);
-      final escribioExtra = _adicionalCtrl.text.trim().isNotEmpty;
-      if (_platoCambio != null && extra < 0) return true;
-      if (_platoCambio == null && escribioExtra) return true;
+    // Cada cambio de plato necesita el plato y su adicional.
+    for (final x in _cambios) {
+      if (x.plato == null || _leer(x.adicional.text) < 0) return true;
     }
     return false;
+  }
+
+  void _quitarCambios() {
+    for (final x in _cambios) {
+      x.adicional.dispose();
+    }
+    _cambios.clear();
+  }
+
+  // Agrega un cambio de plato (se pueden hacer varios).
+  void _agregarCambio() {
+    setState(() {
+      if (_editandoPrecio) {
+        _editandoPrecio = false;
+        _precioCtrl.clear();
+        _motivoCtrl.clear();
+      }
+      _cambios.add(_CambioPlato());
+    });
+    _recalcularManual();
   }
 
   void _alternarEdicionPrecio() {
     setState(() {
       _editandoPrecio = !_editandoPrecio;
       if (_editandoPrecio) {
+        _quitarCambios();
         _precioCtrl.text = _precioUnitario.toStringAsFixed(2);
       } else {
         _precioCtrl.clear();
@@ -452,43 +484,63 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               style: TextStyle(fontSize: 12, color: AppColors.error),
             ),
           ),
-        if (_esFamiliar) ...[
+        if (_esFamiliar && _cambios.isNotEmpty) ...[
           const SizedBox(height: 14),
           const Text(
             'Cambio de plato',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                flex: 4,
-                child: AppSelect<String>(
-                  compacto: true,
-                  buscable: true,
-                  value: _platoCambio,
-                  hint: 'Plato que se cambia',
-                  items: [
-                    for (final n in _opcionesDeCambio)
-                      AppSelectItem(value: n, label: n),
-                  ],
-                  onChanged: (v) {
-                    _platoCambio = v;
-                    _recalcularManual();
-                  },
-                ),
+          for (var i = 0; i < _cambios.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: AppSelect<String>(
+                      compacto: true,
+                      buscable: true,
+                      value: _cambios[i].plato,
+                      hint: 'Plato que se cambia',
+                      items: [
+                        for (final n in _opcionesDeCambio)
+                          AppSelectItem(value: n, label: n),
+                      ],
+                      onChanged: (v) {
+                        _cambios[i].plato = v;
+                        _recalcularManual();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: _campoLinea(
+                      _cambios[i].adicional,
+                      'Adicional',
+                      numero: true,
+                      prefijo: 'S/ ',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  BotonCerrarCircular(
+                    tamano: 30,
+                    onPressed: () {
+                      setState(() => _cambios.removeAt(i).adicional.dispose());
+                      _recalcularManual();
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: _campoLinea(
-                  _adicionalCtrl,
-                  'Adicional',
-                  numero: true,
-                  prefijo: 'S/ ',
-                ),
-              ),
-            ],
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _agregarCambio,
+              icon: const Icon(LucideIcons.plus, size: 16),
+              label: const Text('Otro cambio'),
+            ),
           ),
         ],
       ],
@@ -598,15 +650,32 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                               ),
                             ),
                           ),
+                          if (_esFamiliar)
+                            Tooltip(
+                              message: 'Cambio de plato (puedes hacer varios)',
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _agregarCambio,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Icon(
+                                    LucideIcons.repeat2,
+                                    size: 16,
+                                    color: _cambios.isNotEmpty
+                                        ? AppColors.naranja
+                                        : Colors.grey.shade700,
+                                  ),
+                                ),
+                              ),
+                            ),
                           if (_precioManual != null)
                             TextButton(
                               onPressed: () {
                                 setState(() {
                                   _editandoPrecio = false;
-                                  _platoCambio = null;
+                                  _quitarCambios();
                                   _precioCtrl.clear();
                                   _motivoCtrl.clear();
-                                  _adicionalCtrl.clear();
                                 });
                                 _recalcularManual();
                               },
@@ -952,4 +1021,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   }
 
   Widget _imagen(CartaItem item) => ImagenPlato(item: item, tamanoIcono: 26);
+}
+
+// Un cambio de plato: cuál se cambia y cuánto se cobra de adicional.
+class _CambioPlato {
+  String? plato;
+  final TextEditingController adicional = TextEditingController();
 }

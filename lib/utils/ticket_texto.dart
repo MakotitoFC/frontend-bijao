@@ -6,6 +6,7 @@ import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import 'monto_letras.dart';
+import 'motivo_precio.dart';
 import 'nota_pedido.dart';
 
 // Texto de los tickets, pensado para una ticketera térmica de 80 mm: 48
@@ -149,11 +150,10 @@ List<String> detalleDeLinea(PedidoLine l) => [
     '${m.tipo == 'quitar' ? '- Sin' : '+'} ${m.nombre}',
 ];
 
-// Motivo del precio escrito a mano en un producto (va en su nota como una
-// línea "Precio manual: ..."): sale en la boleta, la factura y el ticket.
+// Motivo del precio escrito a mano en un producto (va en su nota, en una línea
+// aparte): sale en la boleta, la factura y el ticket, solo con su texto.
 List<String> detalleDePrecioManual(PedidoLine l) => [
-  for (final x in (l.comentario ?? '').split('\n'))
-    if (x.trim().startsWith('Precio manual: ')) x.trim(),
+  if (motivoDePrecio(l.comentario) case final m?) m,
 ];
 
 String _lugarComanda(Pedido p) {
@@ -230,7 +230,7 @@ List<LineaTicket> ticketComanda({
     }
     if ((l.comentario ?? '').trim().isNotEmpty) {
       for (final r in envolver(
-        '* NOTA: ${l.comentario!.trim()}',
+        '* NOTA: ${comentarioVisible(l.comentario!).trim()}',
         anchoTicket - 6,
         sangria: '  ',
       )) {

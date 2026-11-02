@@ -27,6 +27,7 @@ import '../services/pedido_mozo_service.dart';
 
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/motivo_precio.dart';
 import '../utils/nota_pedido.dart';
 import '../utils/uuid_helper.dart';
 import 'anulacion_dialog.dart';
@@ -2014,7 +2015,7 @@ class DetallePedidoPanel extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      l.comentario!,
+                      comentarioVisible(l.comentario!),
                       style: TextStyle(
                         fontSize: 11,
                         fontStyle: FontStyle.italic,
