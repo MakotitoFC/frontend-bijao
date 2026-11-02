@@ -74,21 +74,77 @@ class CajaService {
     await cargarEstado();
   }
 
+  // Lista de administradores y cajeros activos elegibles para recibir la caja.
+  Future<List<Map<String, dynamic>>> cargarResponsables() async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final res = await _api.get(
+      '/api/v1/caja/responsables',
+      queryParams: (sedeId != null && sedeId.isNotEmpty) ? {'sede_id': sedeId} : null,
+    );
+    if (res is Map<String, dynamic> && res['data'] is List) {
+      return (res['data'] as List).whereType<Map<String, dynamic>>().toList();
+    }
+    if (res is List) {
+      return res.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  // Lista el historial o avisos de traspasos de caja según filtros.
+  Future<List<Map<String, dynamic>>> cargarTraspasos({
+    bool? visto,
+    bool destinoYo = false,
+    String? aperturaId,
+    String? desde,
+    String? hasta,
+  }) async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final Map<String, String> qp = {};
+    if (sedeId != null && sedeId.isNotEmpty) qp['sede_id'] = sedeId;
+    if (visto != null) qp['visto'] = visto.toString();
+    if (destinoYo) qp['destino'] = 'yo';
+    if (aperturaId != null && aperturaId.isNotEmpty) qp['apertura_id'] = aperturaId;
+    if (desde != null && desde.isNotEmpty) qp['desde'] = desde;
+    if (hasta != null && hasta.isNotEmpty) qp['hasta'] = hasta;
+
+    final res = await _api.get('/api/v1/caja/traspasos', queryParams: qp);
+    if (res is Map<String, dynamic> && res['data'] is List) {
+      return (res['data'] as List).whereType<Map<String, dynamic>>().toList();
+    }
+    if (res is List) {
+      return res.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  // Marca un traspaso como visto por el receptor.
+  Future<void> marcarTraspasoVisto(String traspasoId) async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final qs = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
+    await _api.post('/api/v1/caja/traspasos/$traspasoId/visto$qs');
+  }
+
   // Realiza el traspaso de la caja actual a otro usuario responsable sin cerrarla.
-  Future<void> traspaso({
+  Future<Map<String, dynamic>?> traspaso({
     required String nuevoUsuarioId,
     String? notas,
+    String? motivo,
   }) async {
     final sedeId = AuthService.instance.currentUser?.sedeId;
     final qs = (sedeId != null && sedeId.isNotEmpty) ? '?sede_id=$sedeId' : '';
-    await _api.post(
+    final res = await _api.post(
       '/api/v1/caja/traspaso$qs',
       body: {
         'nuevo_usuario_id': nuevoUsuarioId,
         if ((notas ?? '').trim().isNotEmpty) 'notas': notas!.trim(),
+        if ((motivo ?? '').trim().isNotEmpty) 'motivo': motivo!.trim(),
       },
     );
     await cargarEstado();
+    if (res is Map<String, dynamic> && res['traspaso'] is Map<String, dynamic>) {
+      return res['traspaso'] as Map<String, dynamic>;
+    }
+    return null;
   }
 
   // Cierra la caja con lo declarado. El monto inicial sale de la apertura; solo

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import '../services/caja_service.dart';
+import '../widgets/traspaso_caja_dialog.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -55,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
     null,
   );
   final ValueNotifier<String> _busquedaProductos = ValueNotifier('');
+  StreamSubscription? _traspasoCajaSub;
 
   @override
   void initState() {
@@ -77,12 +81,44 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pedirCambioDePin();
       _avisarCajaCerrada();
+      _revisarTraspasosCaja();
+    });
+    _traspasoCajaSub = EventosService.instance.alTraspasarCaja.listen((data) {
+      final yo = widget.usuario.id;
+      final destinoId = data['usuario_destino_id']?.toString();
+      if (yo.isNotEmpty && destinoId == yo && mounted) {
+        AvisoTraspasoCajaDialog.mostrar(
+          context,
+          traspaso: data,
+          onIrACaja: _puedeAbrirCaja ? () => _irA('caja') : null,
+        );
+      }
     });
   }
 
   // Quien tiene la vista de Caja puede abrirla desde el aviso.
   bool get _puedeAbrirCaja =>
       navItems.any((i) => i.clave == 'caja' && i.tieneAcceso(widget.usuario));
+
+  Future<void> _revisarTraspasosCaja() async {
+    if (!mounted || !_puedeAbrirCaja) return;
+    try {
+      final noVistos = await CajaService.instance.cargarTraspasos(
+        visto: false,
+        destinoYo: true,
+      );
+      if (noVistos.isNotEmpty && mounted) {
+        for (final t in noVistos) {
+          if (!mounted) break;
+          await AvisoTraspasoCajaDialog.mostrar(
+            context,
+            traspaso: t,
+            onIrACaja: _puedeAbrirCaja ? () => _irA('caja') : null,
+          );
+        }
+      }
+    } catch (_) {}
+  }
 
   // Al entrar al sistema: si la caja está cerrada, se avisa (con "Ir a abrir"
   // para cajero y administrador).
@@ -120,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _traspasoCajaSub?.cancel();
     EventosService.instance.detener();
     _categoriaProductos.dispose();
     _busquedaProductos.dispose();
