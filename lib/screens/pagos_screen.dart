@@ -1929,25 +1929,24 @@ class _CajaScreenState extends State<CajaScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
                       children: [
-                        Flexible(
-                          child: Text(
-                            '${m.categoriaNombre} · ${m.medioPagoNombre}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: m.anulado
-                                  ? Colors.grey.shade500
-                                  : Colors.black87,
-                              decoration: m.anulado
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
+                        Text(
+                          '${m.categoriaNombre} · ${m.medioPagoNombre}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: m.anulado
+                                ? Colors.grey.shade500
+                                : Colors.black87,
+                            decoration: m.anulado
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                         ),
                         if (m.anulado) ...[
-                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 6,
