@@ -8,6 +8,7 @@ import '../data/insumos_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
 import '../data/cargos_extra_store.dart';
+import '../data/cartas_store.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../data/promociones_store.dart';
@@ -40,6 +41,7 @@ import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
 import 'boton_imprimir_whatsapp.dart';
 import 'agregar_producto_dialog.dart';
+import 'producto_opciones_dialog.dart';
 import 'app_tag.dart';
 import 'descuento_dialog.dart';
 import 'menu_flotante.dart';
@@ -1130,6 +1132,65 @@ class DetallePedidoPanel extends StatelessWidget {
     }
   }
 
+  bool get _esAdmin => AuthService.instance.currentUser?.esAdmin ?? false;
+
+  // Edita un producto ya registrado en el pedido (cambio de plato, extras, notas, cantidad)
+  Future<void> _editarProducto(BuildContext context, PedidoLine l) async {
+    if (!_puedeModificar(context)) return;
+    if (l.promocion != null) {
+      _cambiarProductosPromocion(context, l);
+      return;
+    }
+    var item = cartasNotifier.value.where((c) => c.id == l.cartaId).firstOrNull;
+    if (item == null) {
+      final todos = await CatalogService.instance.cargarCarta();
+      item = todos.where((c) => c.id == l.cartaId).firstOrNull;
+    }
+    if (item == null) {
+      if (context.mounted) {
+        showAppToast(context, 'No se encontró el plato en la carta', type: ToastType.error);
+      }
+      return;
+    }
+
+    final resultado = await showBlurDialog<ProductoConfigurado>(
+      context: context,
+      builder: (_) => ProductoOpcionesDialog(
+        item: item!,
+        esAdmin: _esAdmin,
+        enCarrito: detallesPorPedido[pedido.id] ?? const [],
+        tipoEntregaInicial: l.tipoEntrega,
+        permitePrecioManual: true,
+        lineaInicial: l,
+      ),
+    );
+    if (resultado == null || !context.mounted) return;
+
+    final lineaActualizada = l.copyWith(
+      cantidad: resultado.cantidad,
+      variante: resultado.variante,
+      presentacion: resultado.presentacion,
+      modificadores: resultado.modificadores,
+      comentario: resultado.comentario,
+      precioUnitario: resultado.precioUnitario,
+      precioTotalLinea: resultado.totalLinea,
+      tipoEntrega: resultado.tipoEntrega,
+      precioManual: resultado.precioManual,
+      motivoPrecio: resultado.motivoPrecio,
+    );
+
+    if (_api && PedidoMozoService.instance.puedeOperar(pedido)) {
+      await _ejecutar(
+        context,
+        () => PedidoMozoService.instance.editarProductoFila(pedido.id, lineaActualizada),
+        exito: 'Producto actualizado',
+      );
+    } else {
+      reemplazarLineaDePedido(pedido.id, lineaActualizada);
+      onCambio();
+    }
+  }
+
   // El cliente pide cambiar un producto de la promoción: solo entre las
   // opciones que registró el admin.
   Future<void> _cambiarProductosPromocion(
@@ -1865,6 +1926,7 @@ class DetallePedidoPanel extends StatelessWidget {
         ? incidenciaDeLinea(l.id)
         : null;
     final entregado = esProducto && lineasEntregadas.contains(l.id);
+    final puedeEditar = esProducto && !esCargo && pedido.abierto && l.estado != 'anulado' && l.estado != 'devuelto' && pagadoLinea == 0 && !entregado;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
@@ -1934,20 +1996,40 @@ class DetallePedidoPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        l.nombrePlato,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          decoration: entregado
-                              ? TextDecoration.lineThrough
-                              : null,
-                          color: entregado
-                              ? Colors.grey.shade500
-                              : Colors.black87,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: puedeEditar ? () => _editarProducto(context, l) : null,
+                        child: Text(
+                          l.nombrePlato,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            decoration: entregado
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: entregado
+                                ? Colors.grey.shade500
+                                : Colors.black87,
+                          ),
                         ),
                       ),
                     ),
+                    if (puedeEditar)
+                      Tooltip(
+                        message: 'Editar producto (cambio de plato, extras, precio)',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _editarProducto(context, l),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Icon(
+                              Icons.edit_outlined,
+                              size: 15,
+                              color: AppColors.naranja,
+                            ),
+                          ),
+                        ),
+                      ),
                     if (!esCargo && !esAjusteDeDevolucion(l))
                       _botonCirculoRojo(
                         tooltip: esProducto

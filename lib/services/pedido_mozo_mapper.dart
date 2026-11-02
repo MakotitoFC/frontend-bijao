@@ -10,6 +10,7 @@ import '../models/promocion.dart';
 import '../models/promocion_componente.dart';
 import '../utils/json_num.dart';
 import '../utils/uuid_helper.dart';
+import '../utils/motivo_precio.dart';
 
 // Traducción entre el carrito de la app y `/api/v1/mozo/pedidos`.
 //
@@ -159,8 +160,12 @@ List<Map<String, dynamic>> itemsDeLinea(
       if (l.presentacion != null && _esUuid(l.presentacion!.id))
         'carta_presentacion_id': l.presentacion!.id,
       if (precioPersonal) 'precio_personal': l.precioUnitario,
-      // Precio escrito a mano para este pedido (el motivo va en el comentario).
+      // Precio escrito a mano para este pedido
       if (l.precioManual && !precioPersonal) 'precio_manual': l.precioUnitario,
+      if (l.motivoPrecio != null && l.motivoPrecio!.isNotEmpty)
+        'motivo_precio': l.motivoPrecio
+      else if (motivoDePrecio(l.comentario) case final m? when m.isNotEmpty)
+        'motivo_precio': m,
       'cantidad': l.cantidad,
       'tipo_entrega': entrega,
       'comentario': ?comentario,
@@ -342,6 +347,8 @@ void _lineasDeItem(
         ),
     ];
 
+    final precioManualRaw = jsonDouble(it['precio_manual']) ?? jsonDouble(it['precio_personal']);
+    final motivoPrecioRaw = _texto(it['motivo_precio']);
     final anulada = estado == 'anulado' || estado == 'devuelto';
     (anulada ? anuladas : destino).add(
       PedidoLine(
@@ -367,6 +374,8 @@ void _lineasDeItem(
         esLibre: esLibre,
         nombreLibre: esLibre ? nombre : null,
         precioBase: unitario,
+        precioManual: precioManualRaw != null,
+        motivoPrecio: motivoPrecioRaw,
         estado: (estado == null || estado == 'pendiente' || estado == 'servido')
             ? null
             : estado,

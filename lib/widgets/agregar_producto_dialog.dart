@@ -99,6 +99,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
       cantidadTaper: r.cantidadTaper,
       precioBase: r.variante?.precioCliente ?? item.precioCliente ?? 0.0,
       precioManual: r.precioManual,
+      motivoPrecio: r.motivoPrecio,
     );
     final lineas = [
       linea,

@@ -43,6 +43,7 @@ typedef ProductoConfigurado = ({
   // carta antes del cambio.
   bool precioManual,
   double precioOriginal,
+  String? motivoPrecio,
 });
 
 // Modal "Agregar al pedido": presentación, extras opcionales y nota.
@@ -151,8 +152,8 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     }
     // La nota y, aparte, el motivo del precio.
     _comentarioController.text = notaSinMotivoDePrecio(l.comentario);
-    final motivo = motivoDePrecio(l.comentario) ?? '';
-    if (l.precioManual && motivo.isNotEmpty) {
+    final motivo = l.motivoPrecio ?? motivoDePrecio(l.comentario) ?? '';
+    if ((l.precioManual || motivo.isNotEmpty) && motivo.isNotEmpty) {
       _precioManual = l.precioUnitario;
       _motivoPrecio = motivo;
       final regex = RegExp(r'^Cambio por (.+) \(\+S/ ([0-9.]+)\)$');
@@ -312,6 +313,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       tapersAdicionales: const [],
       precioManual: _precioManual != null,
       precioOriginal: _precioCalculado,
+      motivoPrecio: _motivoPrecio,
     ));
   }
 

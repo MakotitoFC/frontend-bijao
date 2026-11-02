@@ -178,6 +178,34 @@ class PedidoMozoService {
 
   // ---------------------------------------------------------------- filas
 
+  // Edita una fila completa de producto ya enviada al backend
+  Future<PedidoMozoDetalle> editarProductoFila(
+    String pedidoId,
+    PedidoLine linea, {
+    String tipoEntrega = 'mesa',
+  }) async {
+    final p = _pedido(pedidoId);
+    final items = itemsDeLinea(
+      linea,
+      tipoEntrega: tipoEntrega,
+      conDelivery: p?.tipoPedido == 'delivery',
+    );
+    if (items.isEmpty) {
+      throw Exception('Este producto no se puede editar');
+    }
+    final it = items.first;
+    return _enviar(
+      pedidoId,
+      () => _api.patch(
+        '$_base/$pedidoId/items/${linea.id}',
+        body: {
+          'version': linea.version,
+          ...it,
+        },
+      ),
+    );
+  }
+
   Future<PedidoMozoDetalle> cambiarCantidad(
     String pedidoId,
     PedidoLine linea,

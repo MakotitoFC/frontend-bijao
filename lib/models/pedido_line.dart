@@ -36,6 +36,8 @@ class PedidoLine {
   // El precio de esta línea se escribió a mano en el pedido (no es el de la
   // carta): el servidor debe respetarlo para este pedido solamente.
   final bool precioManual;
+  // Motivo del precio manual o detalle de platos cambiados/extras
+  final String? motivoPrecio;
   // Estado de la línea (pedidos_detalle.estado): null = normal, 'incidencia'
   // = tiene una devolución/reclamo reportado (ver incidencias_store.dart).
   final String? estado;
@@ -64,6 +66,7 @@ class PedidoLine {
     this.descripcionLibre,
     this.precioBase = 0.0,
     this.precioManual = false,
+    this.motivoPrecio,
     this.estado,
     this.variante,
     this.componentes = const [],
@@ -104,6 +107,10 @@ class PedidoLine {
       nombreLibre: json['nombre_libre']?.toString(),
       descripcionLibre: json['descripcion_libre']?.toString(),
       precioBase: pUnit,
+      precioManual: (json['precio_manual'] != null) ||
+          (json['precio_personal'] != null) ||
+          json['precio_manual'] == true,
+      motivoPrecio: json['motivo_precio']?.toString(),
       estado: json['estado']?.toString(),
       version: (json['version'] as num?)?.toInt() ?? 1,
     );
@@ -135,6 +142,7 @@ class PedidoLine {
       descripcionLibre: descripcionLibre,
       precioBase: precioBase,
       precioManual: precioManual,
+      motivoPrecio: motivoPrecio,
       estado: estado,
     );
   }
@@ -164,6 +172,7 @@ class PedidoLine {
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
     precioManual: manual ?? precioManual,
+    motivoPrecio: motivoPrecio,
     estado: estado,
   );
 
@@ -191,6 +200,7 @@ class PedidoLine {
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
     precioManual: precioManual,
+    motivoPrecio: motivoPrecio,
     estado: nuevo,
     version: version,
   );
@@ -227,21 +237,30 @@ class PedidoLine {
     String? estado,
     CartaPresentacion? presentacion,
     CartaVariante? variante,
+    int? cantidad,
+    List<Modificador>? modificadores,
+    String? comentario,
+    double? precioUnitario,
+    double? precioTotalLinea,
+    String? tipoEntrega,
+    bool? precioManual,
+    String? motivoPrecio,
+    int? version,
   }) => PedidoLine(
     id: id,
     cartaId: cartaId,
     nombrePlato: nombrePlato,
-    cantidad: cantidad,
-    modificadores: modificadores,
+    cantidad: cantidad ?? this.cantidad,
+    modificadores: modificadores ?? this.modificadores,
     presentacion: presentacion ?? this.presentacion,
     variante: variante ?? this.variante,
     componentes: componentes,
     promocion: promocion,
-    comentario: comentario,
-    precioUnitario: precioUnitario,
+    comentario: comentario ?? this.comentario,
+    precioUnitario: precioUnitario ?? this.precioUnitario,
     descuentoAplicado: descuentoAplicado,
-    precioTotalLinea: precioTotalLinea,
-    tipoEntrega: tipoEntrega,
+    precioTotalLinea: precioTotalLinea ?? this.precioTotalLinea,
+    tipoEntrega: tipoEntrega ?? this.tipoEntrega,
     aplicaTaper: aplicaTaper,
     taperId: taperId,
     precioTaper: precioTaper,
@@ -250,9 +269,10 @@ class PedidoLine {
     nombreLibre: nombreLibre,
     descripcionLibre: descripcionLibre,
     precioBase: precioBase,
-    precioManual: precioManual,
+    precioManual: precioManual ?? this.precioManual,
+    motivoPrecio: motivoPrecio ?? this.motivoPrecio,
     estado: estado ?? this.estado,
-    version: version,
+    version: version ?? this.version,
   );
 
   // Cambia los productos de una promoción (a pedido del cliente): actualiza los
