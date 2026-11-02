@@ -326,8 +326,11 @@ void establecerTupperPedido(
 
 // Fija la propina del pedido (reemplaza la anterior); un monto 0 la quita.
 void establecerPropinaPedido(String pedidoId, double monto) {
-  final lineas = detallesPorPedido[pedidoId];
-  if (lineas == null) return;
+  var lineas = detallesPorPedido[pedidoId];
+  if (lineas == null) {
+    lineas = [];
+    detallesPorPedido[pedidoId] = lineas;
+  }
   lineas.removeWhere(esLineaPropina);
   if (monto <= 0) return;
   lineas.add(

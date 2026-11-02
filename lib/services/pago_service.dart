@@ -122,8 +122,10 @@ class PagoService {
     // táper de la app no cuentan. Se manda lo que el cajero cobra de cuenta y,
     // aparte, la propina pendiente (solo en el primer pago que la lleva).
     final saldoCuenta = saldoCuentaDePedido(pedido.id);
-    final abono = montoAbonado > saldoCuenta + 0.01
-        ? saldoCuenta
+    final cargosTotal = cargosExtra?.fold(0.0, (s, c) => s + c.monto) ?? 0.0;
+    final saldoMaximo = saldoCuenta + cargosTotal;
+    final abono = montoAbonado > saldoMaximo + 0.01
+        ? saldoMaximo
         : montoAbonado;
     // Nunca se registra un cobro en cero por un error de cálculo del saldo
     // (por ejemplo, si el pedido aún no cargó sus productos): se pide

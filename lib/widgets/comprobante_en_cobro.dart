@@ -438,7 +438,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
           });
         }
       } else {
-        extrasBase += totalCargosExtra(pedido.id);
+        // En backend facturacion_repository ya se leen directamente los pedido_cargo_extra de la BD
       }
     }
     final double? extrasParaEnviar = extrasBase > 0 ? extrasBase : null;
