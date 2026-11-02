@@ -267,7 +267,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         ? _filas
               .where((f) => f.medio.grupo == 'efectivo')
               .fold(0.0, (s, f) => s + leerMonto(f.monto.text))
-        : (_medio.grupo == 'efectivo' ? _montoCobroUnico : 0.0);
+        : (_medio.grupo == 'efectivo' ? _saldo : 0.0);
     return enEfectivo > 0.005
         ? enEfectivo + _propina + _taper + _totalCargos
         : 0.0;
@@ -301,9 +301,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // Suma de lo asignado a las cuentas en las filas.
   double get _asignado =>
       _filas.fold(0.0, (s, f) => s + leerMonto(f.monto.text));
-  double get _faltante => _saldo - _asignado;
-  // Puede ser el total de la cuenta o un abono parcial (siempre que no sobrepase el saldo)
-  bool get _repartoValido => _asignado > 0.005 && _asignado <= _saldo + 0.01;
+  double get _totalOrden => _saldo + _totalCargos;
+  double get _faltante => _totalOrden - _asignado;
+  // Puede ser el total de la cuenta o un abono parcial (siempre que no sobrepase el total)
+  bool get _repartoValido => _asignado > 0.005 && _asignado <= _totalOrden + 0.01;
   bool get _repartoCompleto => _faltante.abs() < 0.01;
 
   void _alternarDividir(bool v) {
@@ -314,7 +315,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       }
       _filas.clear();
       if (v) {
-        _filas.add(_FilaMedio(_medio)..monto.text = _saldo.toStringAsFixed(2));
+        _filas.add(_FilaMedio(_medio)..monto.text = _totalOrden.toStringAsFixed(2));
       }
     });
   }
@@ -341,12 +342,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // La cuenta que cobra el servidor (sin la propina ni el táper de la app).
   double get _saldo => saldoCuentaDePedido(widget.pedido.id);
   // Abono a cuenta (pago parcial o total de la cuenta):
-  // Con un solo método se paga toda la cuenta; el pago parcial se hace en
-  // "Por montos" (las filas pueden sumar menos que el saldo).
-  double get _montoCobroUnico => _saldo;
+  // Con un solo método se paga toda la cuenta más los cargos extra registrados ahora.
+  double get _montoCobroUnico => _saldo + _totalCargos;
 
   // Propina y táper: el cliente los paga además de la cuenta, sin recargo.
-  double get _propina => propinaPendienteDePedido(widget.pedido.id);
+  double get _propina => _conPropina ? leerMonto(_propinaCtrl.text) : 0.0;
   double get _taper => taperPendienteDePedido(widget.pedido.id);
   // Recargo del método elegido (p. ej. tarjeta): se suma al total del cliente.
   double get _recargo => _dividir
@@ -453,6 +453,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           pedido: widget.pedido,
           medio: c.medio,
           montoAbonado: c.monto,
+          propina: registrados == 0 ? _propina : 0,
           categoriaMovimientoId: _categoriaSeleccionada?.id,
           montoRecibido: esEfectivo && _recibido > 0.005 ? _recibido : null,
           vuelto: esEfectivo && _vuelto > 0.005 ? _vuelto : null,
@@ -722,7 +723,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   }
 
   void _cambiarPropina(String texto) {
-    establecerPropinaPedido(widget.pedido.id, leerMonto(texto));
+    setState(() {
+      establecerPropinaPedido(widget.pedido.id, _propina);
+    });
   }
 
   void _alternarPropina(bool v) {
@@ -731,6 +734,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       if (!v) {
         _propinaCtrl.clear();
         establecerPropinaPedido(widget.pedido.id, 0);
+      } else {
+        establecerPropinaPedido(widget.pedido.id, _propina);
       }
     });
   }
@@ -937,7 +942,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                 onPressed:
                     saldo > 0.01 &&
                         !_guardando &&
-                        (_dividir ? _repartoValido : _saldo > 0.005) &&
+                        (_dividir ? _repartoValido : _totalOrden > 0.005) &&
                         _recibidoValido &&
                         (_comprobante?.completo ?? true)
                     ? _pagar
@@ -964,8 +969,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final propina = _propina;
     final taper = _taper;
     final cargos = _totalCargos;
-    final montoBase = _dividir ? _asignado : _montoCobroUnico;
-    final total = montoBase + _recargo + propina + taper + cargos;
+    final montoBase = _dividir ? _asignado : _saldo;
+    final total = (_dividir ? _asignado : (_saldo + cargos)) + _recargo + propina + taper;
     return ModalPago(
       titulo: 'Pagar',
       anchoEscritorio:
