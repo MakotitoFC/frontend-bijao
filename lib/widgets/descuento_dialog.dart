@@ -147,9 +147,10 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
     );
   }
 
-  Widget _ticket(DescuentoGuardado t) {
+  // [fijo]: descuento del sistema; se puede editar (queda guardado con lo que
+  // se escriba) pero no se elimina.
+  Widget _ticket(DescuentoGuardado t, {bool fijo = false}) {
     final aplicado = widget.aplicados.contains(t.nombre);
-    final ahorro = t.esPorcentaje ? widget.base * t.monto / 100 : t.monto;
     return _MarcoTicket(
       icono: LucideIcons.tag,
       lateral: t.esPorcentaje ? 'PORCENTAJE' : 'SOLES',
@@ -192,10 +193,6 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
               ),
             ],
           ),
-          Text(
-            'Ahorras S/ ${ahorro.toStringAsFixed(2)}',
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-          ),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -228,16 +225,17 @@ class _DescuentoDialogState extends State<DescuentoDialog> {
                   color: Colors.grey.shade700,
                 ),
               ),
-              IconButton(
-                tooltip: 'Eliminar',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _eliminar(t),
-                icon: const Icon(
-                  LucideIcons.trash2,
-                  size: 16,
-                  color: AppColors.error,
+              if (!fijo)
+                IconButton(
+                  tooltip: 'Eliminar',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _eliminar(t),
+                  icon: const Icon(
+                    LucideIcons.trash2,
+                    size: 16,
+                    color: AppColors.error,
+                  ),
                 ),
-              ),
             ],
           ),
         ],

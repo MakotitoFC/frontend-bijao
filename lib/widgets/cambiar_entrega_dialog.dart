@@ -5,6 +5,7 @@ import '../models/pedido.dart';
 import '../services/pedido_mozo_mapper.dart';
 import '../theme/app_theme.dart';
 import 'dialogo_app.dart';
+import 'icono_mesa.dart';
 import 'campo_texto.dart';
 
 // Cómo queda el pedido tras el cambio.
@@ -84,10 +85,9 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
     final ancho = MediaQuery.sizeOf(context).width;
-    final destinos = [
-      for (final m in mesas)
-        if (m.numero != widget.pedido.mesaNumero) m,
-    ]..sort((a, b) => a.numero.compareTo(b.numero));
+    // Todas las mesas; la actual sale marcada y no se puede elegir de nuevo.
+    final destinos = [...mesas]..sort((a, b) => a.numero.compareTo(b.numero));
+    final actual = widget.pedido.mesaNumero;
     return Material(
       color: Colors.white,
       borderRadius: esMobile
@@ -96,8 +96,8 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          minWidth: esMobile ? ancho : 440,
-          maxWidth: esMobile ? ancho : 440,
+          minWidth: esMobile ? ancho : 600,
+          maxWidth: esMobile ? ancho : 600,
         ),
         child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
@@ -129,16 +129,17 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
               const SeparadorDialogo(),
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (final (valor, texto) in const [
                     ('mesa', 'Mesa'),
                     ('llevar', 'Para llevar'),
                     ('delivery', 'Delivery'),
                   ])
-                    ChoiceChip(
-                      label: Text(texto),
-                      selected: _tipo == valor,
-                      onSelected: (_) => setState(() {
+                    _PildoraTipo(
+                      texto: texto,
+                      activa: _tipo == valor,
+                      onTap: () => setState(() {
                         _tipo = valor;
                         _error = null;
                       }),
@@ -147,29 +148,42 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
               ),
               const SizedBox(height: 14),
               if (_tipo == 'mesa') ...[
-                const Text(
-                  'Mesa de destino',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                Text(
+                  actual > 0
+                      ? 'Mesa de destino (ahora en la mesa $actual)'
+                      : 'Mesa de destino',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final m in destinos)
-                      ChoiceChip(
-                        label: Text(
-                          m.estaOcupada
-                              ? '${m.numero} · ocupada'
-                              : '${m.numero}',
-                        ),
-                        selected: _mesaId == m.id,
-                        onSelected: (_) => setState(() {
-                          _mesaId = m.id;
-                          _error = null;
-                        }),
-                      ),
-                  ],
+                // La grilla reparte todo el ancho: sin hueco a la derecha.
+                LayoutBuilder(
+                  builder: (context, c) {
+                    const hueco = 10.0;
+                    const minimo = 62.0;
+                    final columnas = ((c.maxWidth + hueco) / (minimo + hueco))
+                        .floor()
+                        .clamp(1, 50);
+                    final ancho =
+                        (c.maxWidth - hueco * (columnas - 1)) / columnas;
+                    return Wrap(
+                      spacing: hueco,
+                      runSpacing: 12,
+                      children: [
+                        for (final m in destinos)
+                          IconoMesa(
+                            ancho: ancho,
+                            numero: m.numero,
+                            ocupada: m.estaOcupada,
+                            actual: m.numero == actual && actual > 0,
+                            seleccionada: _mesaId == m.id,
+                            onTap: () => setState(() {
+                              _mesaId = m.id;
+                              _error = null;
+                            }),
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 if (_mesaId != null &&
                     destinos.any((m) => m.id == _mesaId && m.estaOcupada))
@@ -237,6 +251,46 @@ class _CambiarEntregaDialogState extends State<CambiarEntregaDialog> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Tipo de entrega: píldora negra con texto blanco al elegirla.
+class _PildoraTipo extends StatelessWidget {
+  final String texto;
+  final bool activa;
+  final VoidCallback onTap;
+
+  const _PildoraTipo({
+    required this.texto,
+    required this.activa,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(100),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+        decoration: BoxDecoration(
+          color: activa ? AppColors.navbar : Colors.white,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: activa ? AppColors.navbar : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          texto,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: activa ? Colors.white : Colors.grey.shade700,
           ),
         ),
       ),

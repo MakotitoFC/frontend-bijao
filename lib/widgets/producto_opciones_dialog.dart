@@ -863,7 +863,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
         },
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: activo
@@ -880,19 +880,19 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
             children: [
               Icon(
                 icono,
-                size: 14,
+                size: 16,
                 color: activo
                     ? AppColors.primaryGreenDark
                     : Colors.grey.shade700,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  etiqueta,
+                  etiqueta.toUpperCase(),
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 13.5,
+                    fontWeight: activo ? FontWeight.w800 : FontWeight.w600,
                     color: activo
                         ? AppColors.primaryGreenDark
                         : Colors.grey.shade700,

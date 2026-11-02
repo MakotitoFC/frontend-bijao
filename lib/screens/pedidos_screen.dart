@@ -32,9 +32,11 @@ import '../services/caja_service.dart';
 import '../widgets/dialogo_app.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/icono_mesa.dart';
 import '../widgets/indicador_abajo.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
+import '../widgets/elegir_destinatario_dialog.dart';
 import '../widgets/elegir_tipo_pedido_dialog.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
 import '../widgets/tabs_desplazables.dart';
@@ -168,6 +170,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   final _busqueda = TextEditingController();
   String? _seleccionId; // pedido mostrado en el detalle
   bool _armandoPedido = false; // true = la vista muestra "Nuevo pedido"
+  String _destinatarioNuevo = 'cliente'; // 'cliente' | 'familia' | 'empleado'
   String? _tipoNuevoPedido; // 'mesa' | 'delivery', elegido en el modal
   Timer? _pollingTimer;
 
@@ -347,31 +350,33 @@ class _PedidosScreenState extends State<PedidosScreen> {
     final cobradas = mesasPorLiberar();
     if (cobradas.isEmpty) return const SizedBox.shrink();
 
-    Widget chip(Mesa m) => Container(
-      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadii.tag),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Mesa ${m.numero}',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    // La mesa como icono (con su número en el respaldar) y, al lado, el botón
+    // azul para liberarla.
+    Widget chip(Mesa m) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconoMesa(
+          numero: m.numero,
+          colorPropio: AppColors.primaryGreen,
+          ocupada: false,
+          actual: false,
+          seleccionada: false,
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          onPressed: () => _liberarMesa(m),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
           ),
-          const SizedBox(width: 10),
-          OutlinedButton(
-            onPressed: () => _liberarMesa(m),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 30),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-            child: const Text('Liberar'),
+          child: const Text(
+            'Liberar',
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
           ),
-        ],
-      ),
+        ),
+      ],
     );
 
     Widget grupo(String texto, List<Mesa> lista) => Column(
@@ -385,33 +390,27 @@ class _PedidosScreenState extends State<PedidosScreen> {
           ),
         ),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 18,
+          runSpacing: 12,
           children: [for (final m in lista) chip(m)],
         ),
       ],
     );
 
+    // Sin color de fondo, solo con trazo azul.
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.primaryGreen.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.primaryGreen.withValues(alpha: 0.25),
-        ),
+        border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
-              Icon(
-                LucideIcons.armchair,
-                size: 15,
-                color: AppColors.primaryGreenDark,
-              ),
+              Icon(LucideIcons.armchair, size: 15, color: Color(0xFF2563EB)),
               SizedBox(width: 8),
               Text(
                 'Mesas por liberar',
@@ -442,7 +441,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
     final total = totalDePedido(p.id);
     if (total > 0.005 && saldoPendienteDePedido(p.id) <= 0.005) {
       final tienePagos = pagos.any(
-        (x) => x.pedidoId == p.id && !x.esReembolso && !x.anulado && x.estado != 'anulado',
+        (x) =>
+            x.pedidoId == p.id &&
+            !x.esReembolso &&
+            !x.anulado &&
+            x.estado != 'anulado',
       );
       if (tienePagos) return true;
     }
@@ -535,12 +538,24 @@ class _PedidosScreenState extends State<PedidosScreen> {
       return;
     }
     if (!mounted) return;
+    // Primero, para quién es (cliente, familia o empleado); el mozo solo
+    // registra pedidos de clientes.
+    var destinatario = 'cliente';
+    if (_esAdmin) {
+      final d = await showBlurDialog<String>(
+        context: context,
+        builder: (_) => const ElegirDestinatarioDialog(),
+      );
+      if (d == null || !mounted) return;
+      destinatario = d;
+    }
     final tipo = await showBlurDialog<String>(
       context: context,
       builder: (_) => const ElegirTipoPedidoDialog(),
     );
     if (tipo == null || !mounted) return;
     setState(() {
+      _destinatarioNuevo = destinatario;
       _tipoNuevoPedido = tipo;
       _armandoPedido = true;
     });
@@ -579,7 +594,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   tipo: _tipoNuevoPedido!,
                   onTerminar: _terminarNuevoPedido,
                   onVolver: _volverATipo,
-                  inicioPersonal: _vistaId == 'empleados',
+                  inicioPersonal: _destinatarioNuevo == 'empleado',
+                  esFamilia: _destinatarioNuevo == 'familia',
                 ),
               )
             : Padding(

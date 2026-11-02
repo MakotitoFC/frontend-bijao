@@ -39,6 +39,8 @@ import '../data/traspasos_store.dart';
 import '../services/traspaso_service.dart';
 import 'pin_supervisor_dialog.dart';
 import 'boleta_pedido_dialog.dart';
+import 'comprobante_en_cobro.dart' show ComprobanteEmitidoDialog;
+import '../services/facturacion_service.dart';
 import 'boton_imprimir_whatsapp.dart';
 import 'agregar_producto_dialog.dart';
 import 'producto_opciones_dialog.dart';
@@ -1486,8 +1488,9 @@ class DetallePedidoPanel extends StatelessWidget {
     // En pantallas bajas (mobile) los totales y botones van dentro del scroll,
     // para que los productos no queden aplastados.
     final pieEnLista = MediaQuery.sizeOf(context).height < 520;
+    // Los totales van dentro del scroll (que ya tiene su propio margen).
     final pieTotales = Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      padding: const EdgeInsets.fromLTRB(4, 0, 0, 0),
       child: Column(
         children: [
           _filaTotal('Subtotal', subtotal),
@@ -1569,9 +1572,19 @@ class DetallePedidoPanel extends StatelessWidget {
         ],
       ),
     );
+    // Imprimir y Devolución se desplazan con el resto; solo Servido y Pagar
+    // quedan fijos.
+    final botonesSecundarios = _esCajero
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 0, 8),
+            child: _botonesSecundarios(context, productos.isNotEmpty),
+          );
     final pieBotones = Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-      child: _botones(context, productos.isNotEmpty, puedePagar),
+      padding: pieEnLista
+          ? const EdgeInsets.fromLTRB(4, 12, 0, 20)
+          : const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      child: _botonesFijos(context, puedePagar),
     );
 
     return Container(
@@ -1622,18 +1635,16 @@ class DetallePedidoPanel extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (pieEnLista) ...[
-                    Divider(height: 24, color: Colors.grey.shade200),
-                    pieTotales,
-                    pieBotones,
-                  ],
+                  Divider(height: 24, color: Colors.grey.shade200),
+                  pieTotales,
+                  botonesSecundarios,
+                  if (pieEnLista) pieBotones,
                 ],
               ),
             ),
           ),
           if (!pieEnLista) ...[
             Divider(height: 1, color: Colors.grey.shade200),
-            pieTotales,
             pieBotones,
           ],
         ],
@@ -2428,7 +2439,8 @@ class DetallePedidoPanel extends StatelessWidget {
   // acciones recortadas para él.
   bool get _esCajero => false;
 
-  Widget _botones(BuildContext context, bool hayProductos, bool puedePagar) {
+  // Imprimir / WhatsApp y Devolución: van dentro del scroll.
+  Widget _botonesSecundarios(BuildContext context, bool hayProductos) {
     const texto = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2468,8 +2480,53 @@ class DetallePedidoPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
         ],
+      ],
+    );
+  }
+
+  // Servido y Pagar: son los únicos botones fijos abajo.
+  // Pedido con productos y total en cero (por ejemplo, con Cuenta cero).
+  bool get _esCuentaCero {
+    final lineas = detallesPorPedido[pedido.id] ?? const <PedidoLine>[];
+    return lineas.any(esLineaDeProducto) &&
+        totalDePedido(pedido.id).abs() < 0.005 &&
+        abonadoDePedido(pedido.id) < 0.005;
+  }
+
+  // Emite el ticket de venta por S/ 0.00 y lo manda a imprimir.
+  Future<void> _ticketCuentaCero(BuildContext context) async {
+    try {
+      final c = await FacturacionService.instance.emitir(
+        pedidoId: pedido.id,
+        tipoDocumento: 'ticket_venta',
+        imprimir: true,
+      );
+      if (!context.mounted) return;
+      await showBlurDialog<void>(
+        context: context,
+        builder: (_) =>
+            ComprobanteEmitidoDialog(comprobante: c, pedido: pedido),
+      );
+      onCambio();
+    } catch (e) {
+      if (!context.mounted) return;
+      showAppToast(
+        context,
+        e is ApiException
+            ? e.message
+            : e.toString().replaceFirst('Exception: ', ''),
+        type: ToastType.error,
+        titulo: 'Ticket no emitido',
+      );
+    }
+  }
+
+  Widget _botonesFijos(BuildContext context, bool puedePagar) {
+    const texto = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         // Servido y Pagar en la misma fila.
         Row(
           children: [
@@ -2511,12 +2568,27 @@ class DetallePedidoPanel extends StatelessWidget {
             if (_veCaja) ...[
               if (!_esCajero) const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: puedePagar ? () => _elegirPago(context) : null,
-                  icon: const Icon(LucideIcons.banknote, size: 16),
-                  label: const Text('Pagar', style: texto),
-                  style: FilledButton.styleFrom(backgroundColor: _naranjaPago),
-                ),
+                child: _esCuentaCero
+                    // Cuenta en S/ 0.00 (descuento del 100 %): no hay nada que
+                    // cobrar, pero se puede emitir e imprimir el ticket.
+                    ? FilledButton.icon(
+                        onPressed: () => _ticketCuentaCero(context),
+                        icon: const Icon(LucideIcons.printer, size: 16),
+                        label: const Text('Ticket S/ 0.00', style: texto),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _naranjaPago,
+                        ),
+                      )
+                    : FilledButton.icon(
+                        onPressed: puedePagar
+                            ? () => _elegirPago(context)
+                            : null,
+                        icon: const Icon(LucideIcons.banknote, size: 16),
+                        label: const Text('Pagar', style: texto),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _naranjaPago,
+                        ),
+                      ),
               ),
             ],
           ],

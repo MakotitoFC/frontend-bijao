@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/pedidos_store.dart';
 import '../data/promociones_store.dart';
@@ -12,6 +13,7 @@ import '../utils/uuid_helper.dart';
 import 'app_toast.dart';
 import 'pago_dialogs.dart';
 import 'campo_texto.dart';
+import 'cumpleanos_dialog.dart';
 
 // Promoción lista para agregar al pedido: la promoción tal como la configuró el
 // admin (con los cambios que pidió el cliente, si los hubo).
@@ -49,6 +51,40 @@ Future<PromocionConfigurada?> elegirPromocion(BuildContext context) async {
   );
 }
 
+// Lo que se eligió en Promociones del registro: una promoción del admin o los
+// productos de cumpleaños (cada uno con su precio, por defecto S/ 0.00).
+typedef EleccionDePromocion = ({
+  PromocionConfigurada? promocion,
+  List<PedidoLine> cumpleanos,
+});
+
+const _eleccionCumpleanos = 'cumpleanos';
+
+// Promociones del registro de pedido: la lista incluye siempre "Cumpleaños".
+Future<EleccionDePromocion?> elegirPromocionOCumpleanos(
+  BuildContext context,
+) async {
+  final elegido = await showBlurDialog<Object>(
+    context: context,
+    builder: (_) => const PromocionesDisponiblesDialog(conCumpleanos: true),
+  );
+  if (elegido == null || !context.mounted) return null;
+  if (elegido == _eleccionCumpleanos) {
+    final lineas = await showBlurDialog<List<PedidoLine>>(
+      context: context,
+      builder: (_) => const CumpleanosDialog(),
+    );
+    if (lineas == null || lineas.isEmpty) return null;
+    return (promocion: null, cumpleanos: lineas);
+  }
+  final r = await showBlurDialog<PromocionConfigurada>(
+    context: context,
+    builder: (_) => PromocionOpcionesDialog(promocion: elegido as Promocion),
+  );
+  if (r == null) return null;
+  return (promocion: r, cumpleanos: const <PedidoLine>[]);
+}
+
 // Línea de pedido de una promoción (`pedidos_detalle` con `promocion_id`).
 PedidoLine lineaDePromocion(PromocionConfigurada r) => PedidoLine(
   id: UuidHelper.v7(),
@@ -76,7 +112,10 @@ String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
 // ---------------------------------------------------------------------------
 
 class PromocionesDisponiblesDialog extends StatelessWidget {
-  const PromocionesDisponiblesDialog({super.key});
+  // Con true, la lista empieza con la promoción de cumpleaños.
+  final bool conCumpleanos;
+
+  const PromocionesDisponiblesDialog({super.key, this.conCumpleanos = false});
 
   @override
   Widget build(BuildContext context) {
@@ -88,11 +127,52 @@ class PromocionesDisponiblesDialog extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (conCumpleanos) ...[
+            _tarjetaCumpleanos(context),
+            const SizedBox(height: 10),
+          ],
+          if (promos.isEmpty && !conCumpleanos)
+            const Text('No hay promociones disponibles.'),
           for (final p in promos) ...[
             _tarjeta(context, p),
             const SizedBox(height: 10),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _tarjetaCumpleanos(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.of(context).pop(_eleccionCumpleanos),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.naranja.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.cake, color: AppColors.naranja),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Cumpleaños',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                  Text(
+                    'Elige los productos y su precio (por defecto S/ 0.00)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

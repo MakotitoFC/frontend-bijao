@@ -31,6 +31,7 @@ import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../services/disponibilidad_service.dart';
+import '../services/pedido_mozo_service.dart';
 import '../services/pedido_service.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/error_disponibilidad.dart';
@@ -62,6 +63,8 @@ class NuevoPedidoDialog extends StatefulWidget {
   final VoidCallback onVolver;
   // Si viene activo (por ejemplo, al crear desde la pestaña "Empleados"):
   final bool inicioPersonal;
+  // Familia de los dueños: cuenta cero (se aplica un descuento del 100 %).
+  final bool esFamilia;
 
   const NuevoPedidoDialog({
     super.key,
@@ -70,6 +73,7 @@ class NuevoPedidoDialog extends StatefulWidget {
     required this.onTerminar,
     required this.onVolver,
     this.inicioPersonal = false,
+    this.esFamilia = false,
   });
 
   @override
@@ -356,9 +360,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   // Agrega una promoción tal como la configuró el admin; el mozo solo cambia un
   // producto si el cliente lo pide.
   Future<void> _abrirPromocion() async {
-    final r = await elegirPromocion(context);
-    if (r == null || !mounted) return;
-    setState(() => _carrito.add(lineaDePromocion(r)));
+    final e = await elegirPromocionOCumpleanos(context);
+    if (e == null || !mounted) return;
+    setState(() {
+      final promo = e.promocion;
+      if (promo != null) _carrito.add(lineaDePromocion(promo));
+      _carrito.addAll(e.cumpleanos);
+    });
   }
 
   // Cambia productos de una promoción del carrito (a pedido del cliente).
@@ -476,8 +484,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     // Datos que pide cada tipo: para llevar, el nombre; delivery, nombre,
     // celular, dirección y monto del delivery.
     final faltan = <String>[
-      if ((!esMesa || _esPersonal) && _nombreController.text.trim().isEmpty)
-        _esPersonal ? 'Nombre del empleado' : 'Nombre del cliente',
+      if ((!esMesa || _esPersonal || widget.esFamilia) &&
+          _nombreController.text.trim().isEmpty)
+        _esPersonal
+            ? 'Nombre del empleado'
+            : (widget.esFamilia ? 'Nombre del familiar' : 'Nombre del cliente'),
       if (esDelivery && _telefonoController.text.trim().isEmpty)
         'Celular / WhatsApp',
       if (esDelivery && _direccionController.text.trim().isEmpty)
@@ -521,7 +532,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           ? null
           : _notasController.text.trim(),
       clienteNombre:
-          (esMesa && !_esPersonal) || _nombreController.text.trim().isEmpty
+          (esMesa && !_esPersonal && !widget.esFamilia) ||
+              _nombreController.text.trim().isEmpty
           ? null
           : _nombreController.text.trim(),
       clienteCelular: esDelivery && _telefonoController.text.trim().isNotEmpty
@@ -584,6 +596,26 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       // Con el servidor nuevo el id lo asigna el backend.
       final pedidoId = creado.id;
       DisponibilidadService.instance.cargarHoy();
+      // Familia: cuenta cero, con descuento del 100 % desde el inicio.
+      if (widget.esFamilia) {
+        try {
+          await PedidoMozoService.instance.aplicarDescuento(
+            pedidoId,
+            motivo: 'Cuenta cero',
+            porcentaje: true,
+            valor: 100,
+          );
+        } catch (_) {
+          if (mounted) {
+            showAppToast(
+              context,
+              'El pedido se creó, pero no se pudo aplicar la cuenta cero. '
+              'Aplícala desde Descuento.',
+              type: ToastType.error,
+            );
+          }
+        }
+      }
       establecerPropinaPedido(pedidoId, _propina);
       if (_tupperTotal > 0) {
         establecerTupperPedido(
@@ -1476,12 +1508,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       children: [
         // En una mesa el nombre del cliente no se pide; en un pedido de empleado
         // sí, siempre.
-        if (widget.tipo != 'mesa' || _esPersonal)
+        if (widget.tipo != 'mesa' || _esPersonal || widget.esFamilia)
           _campoTexto(
             controller: _nombreController,
             hint: _esPersonal
                 ? 'Nombre del empleado * Obligatorio'
-                : 'Nombre del cliente * Obligatorio',
+                : (widget.esFamilia
+                      ? 'Nombre del familiar * Obligatorio'
+                      : 'Nombre del cliente * Obligatorio'),
             icono: Icons.person_outline,
             contentPaddingVertical: 16,
           ),
@@ -1518,7 +1552,8 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             contentPaddingVertical: 16,
           ),
         ],
-        if (widget.tipo != 'mesa' || _esPersonal) const SizedBox(height: 14),
+        if (widget.tipo != 'mesa' || _esPersonal || widget.esFamilia)
+          const SizedBox(height: 14),
         if (_carrito.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
