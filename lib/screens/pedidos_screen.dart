@@ -8,7 +8,6 @@ import '../data/mesas_por_liberar_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
-import '../models/app_role.dart';
 import '../models/mesa.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
@@ -246,7 +245,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
             '${t.destinoNombre.isEmpty ? 'El mozo' : t.destinoNombre} '
             'rechazó el pedido #${numPedido.isEmpty ? 's/n' : numPedido} '
             '(${ubicacion.isEmpty ? 'Salón' : ubicacion}). Sigue a tu nombre: elige a otro mozo '
-
             'para traspasarlo.',
           ),
           actions: [
@@ -262,7 +260,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
         ),
       );
       if (elegir != true || !mounted) continue;
-      final pedidoObj = pedido ?? pedidos.where((p) => p.id == t.pedidoId).firstOrNull;
+      final pedidoObj =
+          pedido ?? pedidos.where((p) => p.id == t.pedidoId).firstOrNull;
       if (pedidoObj == null) continue;
       final destino = await showBlurDialog<String>(
         context: context,
@@ -429,7 +428,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   // ---------- datos ----------
 
-  bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
+  bool get _esAdmin => widget.usuario.administraPedidos;
 
   // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
   // Un pedido ya cobrado por completo (aunque falte servirlo) va solo en
@@ -718,7 +717,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
               ],
             ),
           ),
-          if (_esAdmin || widget.usuario.rol == AppRole.cajero) ...[
+          if (_esAdmin) ...[
             const SizedBox(width: 10),
             FilledButton.icon(
               onPressed: _abrirCajaDialog,

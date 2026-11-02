@@ -232,3 +232,111 @@ Solo hay rutas para cambiar una cosa a la vez: `PATCH /api/v1/mozo/pedidos/:id/i
 - Devuelve el pedido actualizado, como las demás rutas de filas.
 
 La app ya tiene el modal listo para reutilizar (`ProductoOpcionesDialog` con `lineaInicial`): al tener la ruta, solo hay que conectar el toque de la card del detalle.
+
+---
+
+# 40. Ticket de venta con S/ 0.00 en pagos por partes (empleados)
+
+## Síntoma
+
+Al pagar un pedido por abonos (por ejemplo 3.50 en 1.50 y 1.00), el modal "Comprobante emitido" muestra `Ticket de venta · Interno · S/ 0.00`.
+
+## Causas (revisado en el backend)
+
+1. **`ExisteComprobanteActivo` devuelve el comprobante incompleto** (`facturacion_repository.go`). Su `SELECT` solo trae `id, sede_id, pedidos_id, tipo_documento, serie, numero, estado_sunat`: no lee `total`, `total_gravado`, `total_igv`, cliente ni fechas. Cuando ya existe un ticket de venta del pedido, `EmitirComprobante` devuelve esa estructura (`return compActivo, nil`) y la app ve `total = 0`. Pasa en el 2.º abono y en cualquier reemisión.
+2. **Un solo ticket por pedido.** Con `pago_id` vacío, el 2.º abono no genera un ticket nuevo: reimprime el primero. Un ticket "de lo que se va pagando" necesita uno por pago (`pago_id`).
+3. **Descuento aplicado dos veces.** `ObtenerDatosPedidoParaFacturacion` (pedido completo) ya prorratea el descuento en los ítems, y `EmitirComprobante` vuelve a restar `datosPedido.Descuento` a `baseItemsTotal`. Con un descuento (por ejemplo de empleado) el total puede quedar en 0.
+
+## Qué se pide
+
+- Que `ExisteComprobanteActivo` lea todas las columnas del comprobante (o que `EmitirComprobante` recargue el comprobante completo por id antes de devolverlo).
+- No restar `Descuento` otra vez en `EmitirComprobante` cuando los ítems ya vienen prorrateados.
+- Mantener un ticket por `pago_id` (la app ya lo pide así en los abonos parciales).
+
+## Lado de la app (ya hecho)
+
+En un abono parcial (queda saldo) la app emite el comprobante con el `pago_id` del abono, así el ticket muestra lo que se paga en ese momento; al saldar la cuenta emite el de toda la cuenta.
+
+---
+
+# 41. Ya existe en el backend: editar un producto del pedido (reemplaza al punto 39)
+
+Se encontró `PATCH /api/v1/mozo/pedidos/:id/items/:detalle_id` (`UpdateItemFila`, permiso `UPDATE.PEDIDO_DETALLE`). La app aún no lo usa: falta conectar el toque de la card del detalle con esa ruta (el modal ya se puede reabrir con lo que tenía el producto).
+
+---
+
+# 42. Rol CAJERO: las mismas acciones del administrador en pedidos
+
+## Qué hace la app (ya hecho)
+
+El cajero entra solo a **Pedidos, Ventas y Caja**, y en Pedidos usa la misma pantalla del administrador: crear pedidos (incluidos los de empleado), agregar y quitar productos, descuentos, traspasos y reasignaciones, cobrar y anular.
+
+## Qué falta en el backend (revisado)
+
+1. **Ve solo sus pedidos.** `GetPedidosMozo` y `GetPedidoMozoDetalle` filtran por `usuario_id` salvo para el administrador (`r.esAdmin`). El cajero debería ver los de todos los mozos, igual que el administrador.
+2. **Mesas por liberar y liberar mesa:** `GetMesasPorLiberar` y `LiberarMesa` distinguen solo `esAdmin`; el cajero debería contar igual.
+3. **Reasignar un pedido** (`POST /api/v1/mozo/pedidos/:id/reasignar`) es solo `ADMINISTRADOR`.
+4. **Permisos del rol CAJERO.** La migración 00012 le dio `CREAR.PEDIDO` y `CREAR.PEDIDO_DETALLE`. Para igualar al administrador en pedidos faltan, como mínimo: `UPDATE.PEDIDO`, `UPDATE.PEDIDO_DETALLE`, `CREAR.PEDIDO_ANULADO`, `CREAR.DESCUENTO_APLICADO` y `LEER.MESA` (para elegir la mesa al crear).
+5. **Anulación sin PIN:** si el administrador anula sin PIN de supervisor, el cajero debería poder igual.
+
+---
+
+# 43. Traspaso de responsable de caja: aviso al receptor y registro para seguimiento
+
+## Cómo funciona hoy (revisado en el backend)
+
+`POST /api/v1/caja/traspaso` (`TraspasoCaja` en `caja_repository.go`) solo cambia `apertura_caja.usuario_id` por el nuevo responsable y agrega una línea de texto a `apertura_caja.notas`:
+
+```
+[Traspaso 21:45:10 01/11/2026: de Alexis a María] - Motivo: cambio de turno
+```
+
+- La caja es de la sede (una apertura abierta por sede), no de cada usuario: el receptor **no necesita tener caja abierta**.
+- **No se avisa al receptor**: no se emite ningún evento. Se entera solo si recarga Caja y ve otro nombre como responsable.
+- **No hay registro estructurado**: el traspaso solo existe como texto dentro de las notas de la apertura. No se puede listar ni consultar (quién, a quién, cuándo, por qué), y si se hacen varios traspasos las líneas se acumulan en el mismo texto.
+
+## Qué se pide
+
+### 1. Registro de cada traspaso (para seguimiento)
+
+Una tabla propia, por ejemplo `caja_traspaso`, con una fila por traspaso:
+
+| Campo | Contenido |
+|-------|-----------|
+| `id` | uuid |
+| `sede_id` | sede |
+| `apertura_caja_id` | apertura (turno) sobre la que se traspasó |
+| `usuario_origen_id` | quien entregó la caja |
+| `usuario_destino_id` | quien la recibe |
+| `fecha_hora` | momento del traspaso |
+| `motivo` | texto opcional escrito por quien traspasa |
+| `efectivo_esperado` | efectivo esperado en caja al momento (si se puede calcular), para cuadrar entre responsables |
+| `visto_por_destino` | `false` al crear; pasa a `true` cuando el receptor lo ve |
+| `visto_at` | cuándo lo vio |
+
+Se sigue actualizando `apertura_caja.usuario_id` y, si se quiere, la línea en `notas`, pero la fuente de verdad pasa a ser esta tabla.
+
+### 2. Evento en vivo
+
+Al traspasar, emitir `CAJA_TRASPASADA` (a la sede, como los demás eventos) con el mismo objeto del registro: `id`, `apertura_caja_id`, `usuario_origen_id` y su nombre, `usuario_destino_id` y su nombre, `fecha_hora` y `motivo`.
+
+### 3. Aviso que no se pierde
+
+- `GET /api/v1/caja/traspasos?visto=false` (o `?destino=yo`): los traspasos recibidos por el usuario que aún no vio, para mostrar el aviso al abrir la app si estaba desconectado.
+- `POST /api/v1/caja/traspasos/:id/visto`: marca el traspaso como visto (igual que `POST /api/v1/mozo/traspasos/:id/visto`).
+
+### 4. Consulta del historial
+
+`GET /api/v1/caja/traspasos?desde=&hasta=&apertura_id=` para ver los traspasos de un turno o de un rango de fechas (administración), y que el reporte detallado del día y el cierre de caja puedan listar quién tuvo la caja y en qué horario.
+
+### 5. Lista de destinatarios para el cajero
+
+El modal de traspaso lista a los otros administradores y cajeros activos con `GET /api/usuarios`, que exige `LEER.USUARIO`: el administrador lo tiene, el **cajero no**, y a un cajero le sale "No se encontraron otros usuarios".
+
+**Se pide:** una ruta liviana para `ADMINISTRADOR` y `CAJERO`, por ejemplo `GET /api/v1/caja/responsables`, que devuelva `id`, `nombre` y `rol` de los administradores y cajeros activos de la sede (como ya existe `/api/v1/mozo/mozos` para los traspasos entre mozos).
+
+## Qué hará la app con esto
+
+- Al nuevo responsable le sale un modal "Te traspasaron la caja": quién, a qué hora, el motivo y el botón **Ir a Caja** (en vivo por el evento, o al abrir la app por la lista de no vistos).
+- A quien traspasa se le confirma con el nombre del receptor.
+- En Caja se podrá ver el historial de traspasos del turno.

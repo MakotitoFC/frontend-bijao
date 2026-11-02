@@ -97,7 +97,8 @@ void main() {
     expect(find.text('Recargo tarjeta (4.0%)'), findsOneWidget);
     expect(find.text('+S/ 4.00'), findsOneWidget);
     expect(find.text('Total a cobrar'), findsOneWidget);
-    expect(find.text('S/ 104.00'), findsOneWidget);
+    // El total grande de arriba y la fila "Total a cobrar" del resumen.
+    expect(find.text('S/ 104.00'), findsNWidgets(2));
     expect(find.text('Pagar · S/ 104.00'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });

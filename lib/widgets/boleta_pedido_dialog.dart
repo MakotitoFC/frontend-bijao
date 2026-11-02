@@ -58,8 +58,9 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
   Widget build(BuildContext context) {
     final pedido = widget.pedido;
     final lineas = detallesPorPedido[pedido.id] ?? const [];
-    final total = totalDePedido(pedido.id);
-    final pagado = total - saldoPendienteDePedido(pedido.id);
+    // Lo abonado de verdad (sus pagos), más la propina que viajó con ellos.
+    final pagado =
+        abonadoDePedido(pedido.id) + propinaCobradaDePedido(pedido.id);
     final efectivo = efectivoRecibidoPorPedido[pedido.id];
     final metodo = widget.metodoPago == 'Sin pago' ? '' : widget.metodoPago;
     final ticket = switch (_tab) {
@@ -76,6 +77,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
         pagos: pagosPorMedioDe(pedido.id),
         metodoPago: metodo,
         pagado: pagado > 0.001 ? pagado : 0,
+        abonos: abonosDePedido(pedido.id),
         recargo: recargoCobradoDePedido(pedido.id),
         recibido: efectivo?.recibido ?? 0,
         vuelto: efectivo?.vuelto ?? 0,
@@ -95,22 +97,23 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
                 ImpresionService.instance
                     .reimprimirPedido(pedido.id, tipo: 'cuenta')
                     .then((_) {
-                  if (context.mounted) {
-                    showAppToast(
-                      context,
-                      'Cuenta del pedido #${pedido.numeroPedido} enviada a la impresora de caja.',
-                      type: ToastType.success,
-                    );
-                  }
-                }).catchError((e) {
-                  if (context.mounted) {
-                    showAppToast(
-                      context,
-                      'No se pudo imprimir la cuenta: $e',
-                      type: ToastType.error,
-                    );
-                  }
-                });
+                      if (context.mounted) {
+                        showAppToast(
+                          context,
+                          'Cuenta del pedido #${pedido.numeroPedido} enviada a la impresora de caja.',
+                          type: ToastType.success,
+                        );
+                      }
+                    })
+                    .catchError((e) {
+                      if (context.mounted) {
+                        showAppToast(
+                          context,
+                          'No se pudo imprimir la cuenta: $e',
+                          type: ToastType.error,
+                        );
+                      }
+                    });
                 Navigator.of(context).pop();
               }
             },

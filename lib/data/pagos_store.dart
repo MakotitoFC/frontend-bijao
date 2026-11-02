@@ -109,6 +109,35 @@ double saldoPendienteDePedido(String pedidoId) {
   return pendiente > 0.01 ? pendiente : 0.0;
 }
 
+// Lo abonado a la cuenta de un pedido, sumando sus pagos vigentes (sin la
+// comisión del medio). No depende de cómo se repartió entre las líneas.
+double abonadoDePedido(String pedidoId) => pagos
+    .where((x) => x.pedidoId == pedidoId && !x.anulado)
+    .fold(0.0, (s, x) => s + x.montoAbonado);
+
+// Lo que aún falta pagar de la cuenta (cuenta menos lo abonado). Es lo que
+// sale en rojo en Ventas cuando hubo abonos parciales.
+double faltaPorPagarDePedido(String pedidoId) {
+  final p = pedidos.where((x) => x.id == pedidoId).firstOrNull;
+  if (p != null && (p.estado == 'anulado' || p.estado == 'cancelado')) {
+    return 0.0;
+  }
+  final cuenta = (detallesPorPedido[pedidoId] ?? [])
+      .where((l) => lineaDeCuenta(pedidoId, l))
+      .fold(0.0, (s, l) => s + l.precioTotalLinea);
+  final falta = cuenta - abonadoDePedido(pedidoId);
+  return falta > 0.01 ? falta : 0.0;
+}
+
+// Cada pago de un pedido, del primero al último (para listar los abonos).
+List<({DateTime fecha, String medio, double monto})> abonosDePedido(
+  String pedidoId,
+) => [
+  for (final x in pagos.reversed)
+    if (x.pedidoId == pedidoId && !x.esReembolso && !x.anulado)
+      (fecha: x.fechaPago, medio: x.medioPago.medioPago, monto: x.montoAbonado),
+]..sort((a, b) => a.fecha.compareTo(b.fecha));
+
 // Líneas que solo existen en la app: el servidor no las conoce y no las cuenta
 // en el saldo del pedido. La propina se manda aparte al cobrar (campo `propina`
 // de POST /api/pagos); el táper todavía no se registra en el servidor.
@@ -122,6 +151,10 @@ bool lineaDeCuenta(String pedidoId, PedidoLine l) =>
 // Lo que falta cobrar de la cuenta, sin la propina ni el táper de la app. Es lo
 // único que el servidor acepta abonar: si se manda más, rechaza el cobro.
 double saldoCuentaDePedido(String pedidoId) {
+  // Con pagos ya hechos, el saldo es la cuenta menos lo abonado: no depende de
+  // cómo el servidor repartió cada abono entre las líneas (un abono parcial mal
+  // repartido dejaba el saldo en 0 y el siguiente abono salía como S/ 0).
+  if (abonadoDePedido(pedidoId) > 0.005) return faltaPorPagarDePedido(pedidoId);
   final lineas = detallesPorPedido[pedidoId] ?? [];
   return lineas
       .where((l) => lineaDeCuenta(pedidoId, l))

@@ -11,12 +11,13 @@ import '../data/cierres_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
+import '../services/auth_service.dart';
+import '../services/catalog_service.dart';
 import '../services/caja_service.dart';
 import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../models/caja_servidor.dart';
-import '../models/app_role.dart';
 import '../models/cierre_caja.dart';
 import '../models/movimiento_caja.dart';
 import '../models/usuario.dart';
@@ -29,6 +30,7 @@ import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/indicador_abajo.dart';
 import '../widgets/menu_flotante.dart';
+import '../widgets/reportes_otra_fecha_dialog.dart';
 import '../widgets/boton_icono_expandible.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/comprobante_en_cobro.dart';
@@ -37,7 +39,6 @@ import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/emitir_comprobante_dialog.dart';
 import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/app_select.dart';
-import '../widgets/selector_dia.dart';
 import '../widgets/selector_rango_fechas.dart';
 import '../widgets/tabla_app.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
@@ -83,8 +84,8 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
   String _tipoFiltro = 'todos'; // todos | mesa | llevar | delivery
   String _mozoFiltro = 'todos'; // id del mozo, o 'todos'
-  // Día de los pedidos mostrados (por defecto, hoy); se cambia con las flechas
-  // o el calendario.
+  // Fechas de los pedidos mostrados (por defecto, hoy); se cambia con el selector
+  // de fechas.
   DateTimeRange? _rango = DateTimeRange(
     start: DateUtils.dateOnly(DateTime.now()),
     end: DateUtils.dateOnly(DateTime.now()),
@@ -244,7 +245,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
               child: DetallePedidoPanel(
                 key: ValueKey('cobro-${p.id}'),
                 pedido: actual,
-                esAdmin: widget.usuario.rol == AppRole.administrador,
+                esAdmin: widget.usuario.administraPedidos,
                 onVolver: () => Navigator.of(dialogContext).pop(),
                 onCambio: () {
                   setDialogo(() {});
@@ -297,10 +298,14 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                     _pastilla('Todos', 'todos'),
                     _pastilla('Pagados', 'pagados'),
                     _pastilla('Por cobrar', 'por_cobrar'),
-                    SelectorDia(
-                      dia: _rango?.start ?? DateTime.now(),
-                      onChanged: (d) =>
-                          _cambiarRango(DateTimeRange(start: d, end: d)),
+                    // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
+                    // calendario para un día o un rango. Sin fechas = hoy.
+                    SelectorRangoFechas(
+                      valor: _rango,
+                      onChanged: (r) {
+                        final hoy = DateUtils.dateOnly(DateTime.now());
+                        _cambiarRango(r ?? DateTimeRange(start: hoy, end: hoy));
+                      },
                     ),
                     SizedBox(
                       width: 220,
@@ -521,7 +526,30 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
           titulo: 'Total',
           ancho: 100,
           ordenarPor: (p) => totalCobradoDePedido(p.id),
-          celda: (p) => TablaApp.texto(_soles(totalCobradoDePedido(p.id))),
+          celda: (p) {
+            final cobrado = TablaApp.texto(_soles(totalCobradoDePedido(p.id)));
+            // Solo en pedidos de consumo de personal (se pagan por abonos): el
+            // total del pedido y, debajo en rojo, lo que aún falta pagar.
+            if (!esPedidoDeEmpleado(p)) return cobrado;
+            final falta = faltaPorPagarDePedido(p.id);
+            final total = TablaApp.texto(_soles(totalDePedido(p.id)));
+            if (falta <= 0.01) return total;
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                total,
+                Text(
+                  'Falta ${_soles(falta)}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.error,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         ColumnaTabla(
           titulo: 'Método de pago',
@@ -685,17 +713,18 @@ class _CajaScreenState extends State<CajaScreen> {
 
   Future<void> _traspasoCaja() async {
     final notasCtrl = TextEditingController();
-    List<Map<String, dynamic>> usuarios = [];
-    try {
-      final res = await ApiClient.instance.get('/api/v1/usuarios');
-      if (res is List) {
-        usuarios = res.whereType<Map<String, dynamic>>().where((u) {
-          final rol = (u['rol'] ?? '').toString().toUpperCase();
-          final activo = u['activo'] == true || u['estado'] == true;
-          return activo && (rol.contains('ADMIN') || rol.contains('CAJ'));
-        }).toList();
-      }
-    } catch (_) {}
+    // Otros administradores y cajeros activos (nunca el usuario actual). La
+    // lista sale de la gestión de usuarios (`GET /api/usuarios`).
+    final yo = AuthService.instance.currentUser?.id;
+    final candidatos = await CatalogService.instance.cargarUsuariosRBAC();
+    final usuarios = <Map<String, dynamic>>[
+      for (final u in candidatos)
+        if (u.estado &&
+            u.id != yo &&
+            (u.rolNombre.toUpperCase().contains('ADMIN') ||
+                u.rolNombre.toUpperCase().contains('CAJ')))
+          {'id': u.id, 'nombre': u.usuario, 'rol': u.rolNombre},
+    ];
 
     String? nuevoUsuarioId = usuarios.firstOrNull?['id']?.toString();
 
@@ -854,60 +883,19 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
+  // Un modal con el selector de fechas de la app y, dentro, los reportes del
+  // día elegido.
   Future<void> _reportesDeOtraFecha() async {
-    final picked = await showDatePicker(
+    final pedido = await showBlurDialog<PedidoDeReporte>(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      builder: (_) => const ReportesOtraFechaDialog(),
     );
-    if (picked == null || !mounted) return;
-    final fStr = picked.toIso8601String().split('T')[0];
-
-    if (!mounted) return;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Reportes del día: $fStr',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(LucideIcons.printer, color: Colors.green),
-              title: const Text('Imprimir Consolidado del Día (Ticket)'),
-              subtitle: const Text('Desglose de turnos y métodos de pago'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _imprimirReporteDiaConsolidado(fechaOperativa: fStr);
-              },
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.fileText, color: Colors.purple),
-              title: const Text(
-                'Ver / Descargar Súper Reporte Detallado (PDF/HTML)',
-              ),
-              subtitle: const Text(
-                'Pedidos, mesas, mozos, anulaciones y rectificaciones',
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _abrirReporteDiaDetallado(fechaOperativa: fStr);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    if (pedido == null || !mounted) return;
+    if (pedido.accion == 'consolidado') {
+      await _imprimirReporteDiaConsolidado(fechaOperativa: pedido.fecha);
+    } else {
+      await _abrirReporteDiaDetallado(fechaOperativa: pedido.fecha);
+    }
   }
 
   // Cierre con el servidor: solo se declara el efectivo contado en caja y se valida cuadre exacto.
@@ -1167,18 +1155,21 @@ class _CajaScreenState extends State<CajaScreen> {
             tooltip: 'Reportes de Caja',
             anchoMinimo: 250,
             opciones: const [
-              OpcionMenu(valor: 'turno', etiqueta: '1. Resumen Turno (Ticket)'),
+              OpcionMenu(
+                valor: 'turno',
+                etiqueta: 'Resumen del turno (ticket)',
+              ),
               OpcionMenu(
                 valor: 'dia_print',
-                etiqueta: '2. Consolidado Día (Ticket)',
+                etiqueta: 'Consolidado del día (ticket)',
               ),
               OpcionMenu(
                 valor: 'dia_pdf',
-                etiqueta: '3. Detallado Día (PDF/HTML)',
+                etiqueta: 'Detallado del día (PDF/HTML)',
               ),
               OpcionMenu(
                 valor: 'otra_fecha',
-                etiqueta: '4. Reportes de otra fecha...',
+                etiqueta: 'Reportes de otra fecha…',
               ),
             ],
             onSeleccionar: (val) {

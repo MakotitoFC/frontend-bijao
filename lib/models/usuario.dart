@@ -42,6 +42,10 @@ class Usuario {
   bool get esCajero => rol == AppRole.cajero;
   bool get esCocina => rol == AppRole.trabajador;
 
+  /// Administra los pedidos de cualquier mozo (crear, modificar, anular,
+  /// cobrar...): el administrador y el cajero.
+  bool get administraPedidos => esAdmin || esCajero;
+
   /// Verifica si el usuario cuenta con un permiso específico.
   /// Si el usuario tiene rol ADMINISTRADOR, tiene bypass automático (acceso total).
   bool tienePermiso(String? permiso) {

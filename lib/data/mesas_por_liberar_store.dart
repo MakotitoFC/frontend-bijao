@@ -67,7 +67,8 @@ Future<void> recargarMesasPorLiberar() async {
       if (mesaId.isEmpty) continue;
       // El mozo solo ve las mesas de sus pedidos.
       final mozoId = item['mozo_id']?.toString();
-      if (!usuario.esAdmin && mozoId != null && mozoId != usuario.id) continue;
+      if (!usuario.administraPedidos && mozoId != null && mozoId != usuario.id)
+        continue;
       final numero = (item['mesa_numero'] as num?)?.toInt() ?? 0;
       // Una mesa con un pedido abierto (que la app conoce) no está lista para
       // liberarse.

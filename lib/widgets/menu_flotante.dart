@@ -138,6 +138,7 @@ class _MenuFlotanteState<T> extends State<MenuFlotante<T>> {
         children: [
           for (final o in widget.opciones)
             InkWell(
+              hoverColor: AppColors.primaryGreen.withValues(alpha: 0.08),
               onTap: () {
                 _cerrar();
                 widget.onSeleccionar(o.valor);

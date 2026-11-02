@@ -99,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _pedirCambioDePin() async {
     final u = widget.usuario;
     if (!u.debeCambiarPin) return;
-    if (!(u.esAdmin || u.tienePermiso('OTORGAR.DESCUENTO'))) return;
+    if (!(u.administraPedidos || u.tienePermiso('OTORGAR.DESCUENTO'))) return;
     // Solo se avisa una vez por usuario en este dispositivo; después, el PIN se
     // cambia desde Configuración.
     final clave = 'aviso_pin_${u.id}';
@@ -193,13 +193,6 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'mesas':
         return MesasScreen(usuario: widget.usuario);
       case 'pedidos':
-        // El cajero ve las comandas con el detalle y los botones de cobro.
-        if (widget.usuario.esCajero) {
-          return DeferredWidget(
-            loader: cocina.loadLibrary,
-            builder: () => cocina.CocinaScreen(modoCaja: true),
-          );
-        }
         return PedidosScreen(
           usuario: widget.usuario,
           onIrACaja: _puedeAbrirCaja ? () => _irA('caja') : null,

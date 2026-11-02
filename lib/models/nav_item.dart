@@ -31,6 +31,13 @@ class NavItem {
   bool tieneAcceso(Usuario usuario) {
     if (usuario.esAdmin) return true;
 
+    // Un rol oculto nunca ve el ítem, aunque tenga el permiso.
+    if (rolesOcultos.contains(usuario.rol)) return false;
+    // El cajero solo entra a lo que su rol lista (Pedidos, Ventas y Caja).
+    if (usuario.esCajero && !rolesPermitidos.contains(AppRole.cajero)) {
+      return false;
+    }
+
     // Si el ítem exige un permiso RBAC específico, ese permiso es la regla de oro:
     // si el usuario lo tiene (asignado directamente o por su rol), entra; si se le revocó, no entra.
     if (permisoRequerido != null) {

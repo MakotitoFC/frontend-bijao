@@ -120,7 +120,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   final _envioController = TextEditingController();
   final _notasController = TextEditingController();
 
-  bool get _esAdmin => widget.usuario.rol == AppRole.administrador;
+  bool get _esAdmin => widget.usuario.administraPedidos;
 
   @override
   void initState() {

@@ -299,6 +299,8 @@ List<LineaTicket> ticketBoleta({
   // el ticket lista todos los medios con su monto.
   List<({String medio, double monto})> pagos = const [],
   double pagado = 0,
+  // Cada abono, en orden: se listan cuando el pedido se paga en partes.
+  List<({DateTime fecha, String medio, double monto})> abonos = const [],
   double recargo = 0,
   // Efectivo que entregó el cliente y vuelto que se le dio (0 si pagó justo).
   double recibido = 0,
@@ -353,9 +355,9 @@ List<LineaTicket> ticketBoleta({
     LineaTicket(
       'Forma de pago: ${metodoPago.isEmpty ? 'Pendiente de pago' : metodoPago}',
     ),
-    // En un pedido de empleado la línea dice "Empleado: Nombre".
+    // En un pedido de empleado, el cliente es el empleado, marcado "(Mozo)".
     if (pedido.esEmpleado)
-      LineaTicket('Empleado: ${cliente.isEmpty ? 'SIN NOMBRE' : cliente}')
+      LineaTicket('Cliente: ${cliente.isEmpty ? 'SIN NOMBRE' : cliente} (Mozo)')
     else
       LineaTicket('Cliente: ${cliente.isEmpty ? 'CLIENTES VARIOS' : cliente}'),
     LineaTicket('Atendido por: $mozo'),
@@ -420,6 +422,20 @@ List<LineaTicket> ticketBoleta({
     ),
   );
   if (pagado > 0.001 && saldo > 0.01) {
+    // La lista de abonos solo sale en pedidos de empleado (consumo del personal).
+    if (abonos.isNotEmpty && esPedidoDeEmpleado(pedido)) {
+      salida.add(LineaTicket.separador('-'));
+      salida.add(const LineaTicket('ABONOS', negrita: true));
+      for (var i = 0; i < abonos.length; i++) {
+        final a = abonos[i];
+        final hora =
+            '${a.fecha.hour.toString().padLeft(2, '0')}:'
+            '${a.fecha.minute.toString().padLeft(2, '0')}';
+        salida.add(
+          LineaTicket(padLinea('${i + 1}. $hora ${a.medio}', soles(a.monto))),
+        );
+      }
+    }
     salida.add(LineaTicket(padLinea('PAGADO', soles(pagado))));
     salida.add(
       LineaTicket(padLinea('SALDO PENDIENTE', soles(saldo)), negrita: true),

@@ -149,6 +149,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
   Widget _opcion(AppSelectItem<T> item) {
     final seleccionado = item.value == widget.value;
     return InkWell(
+      hoverColor: AppColors.primaryGreen.withValues(alpha: 0.08),
       onTap: () {
         widget.onChanged(item.value);
         _cerrar();

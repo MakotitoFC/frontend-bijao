@@ -50,7 +50,9 @@ class PedidoService {
   }) async {
     final user = AuthService.instance.currentUser;
     if (AppConfig.usarApiPedidosMozo &&
-        (user?.rol == AppRole.mesero || user?.rol == AppRole.administrador)) {
+        (user?.rol == AppRole.mesero ||
+            user?.rol == AppRole.administrador ||
+            user?.rol == AppRole.cajero)) {
       return _crearPedidoMozo(
         pedido: pedido,
         lineas: lineas,
@@ -273,8 +275,13 @@ class PedidoService {
 
         for (final item in res) {
           if (item is Map<String, dynamic>) {
-            final previo = pedidos.where((x) => x.id == item['id']?.toString()).firstOrNull;
-            final p = Pedido.fromJson(item, fallbackNumero: previo?.numeroPedido);
+            final previo = pedidos
+                .where((x) => x.id == item['id']?.toString())
+                .firstOrNull;
+            final p = Pedido.fromJson(
+              item,
+              fallbackNumero: previo?.numeroPedido,
+            );
             listaPedidos.add(p);
 
             final detList = item['detalles'];

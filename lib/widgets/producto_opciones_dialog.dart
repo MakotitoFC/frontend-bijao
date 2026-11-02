@@ -448,7 +448,21 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
           ? const TextInputType.numberWithOptions(decimal: true)
           : null,
       onChanged: (_) => _recalcularManual(),
-      decoration: InputDecoration(hintText: hint, prefixText: prefijo),
+      // El prefijo va como icono para quedar centrado en el alto del campo (con
+      // prefixText salía arriba y el campo se veía más alto que el select).
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: prefijo == null
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(left: 12, right: 4),
+                child: Text(
+                  prefijo.trim(),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+              ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+      ),
     ),
   );
 
@@ -562,7 +576,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: esMobile ? tam.width : 400,
+          maxWidth: esMobile ? tam.width : 500,
           maxHeight: esMobile
               ? tam.height * 0.9
               : (tam.height * 0.85).clamp(420.0, 680.0),

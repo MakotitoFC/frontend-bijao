@@ -422,7 +422,10 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
     // Roturas o alquiler cobrados con el pedido: van como ítems del comprobante
     // y, si no se mandan ítems, como extra para que entren en el total.
-    final cargos = cargosExtraDe(pedido.id);
+    // Un comprobante de un solo pago no lleva las roturas de la cuenta.
+    final cargos = pagoId == null
+        ? cargosExtraDe(pedido.id)
+        : const <CargoExtra>[];
     var extrasBase = otrosExtras ?? (otrosExtrasVal > 0 ? otrosExtrasVal : 0.0);
     if (cargos.isNotEmpty) {
       if (itemsParaEnviar.isNotEmpty) {
@@ -491,17 +494,25 @@ class ComprobanteEnCobro extends ChangeNotifier {
   }
 }
 
+// Qué parte de la sección "Comprobante" se dibuja: todo junto, solo el tipo
+// (título y botones) o solo el detalle (datos del cliente, ítems y desglose).
+// El modal de pagar las separa: el tipo va en el pie fijo y el detalle, que
+// puede ser largo, en la parte con scroll.
+enum ParteComprobante { todo, tipo, detalle }
+
 // Sección "Comprobante" del diálogo de cobro.
 class SelectorComprobante extends StatelessWidget {
   final ComprobanteEnCobro control;
   final Pedido? pedido;
   final double? recargoActual;
+  final ParteComprobante parte;
 
   const SelectorComprobante({
     super.key,
     required this.control,
     this.pedido,
     this.recargoActual,
+    this.parte = ParteComprobante.todo,
   });
 
   Widget _campo(
@@ -660,6 +671,9 @@ class SelectorComprobante extends StatelessWidget {
     }
   }
 
+  // Ancho de la columna P. Unit.: cabe un monto de cuatro cifras con decimales.
+  static const double _anchoPrecioUnitario = 96;
+
   Widget _construirSeccionItems(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -782,7 +796,7 @@ class SelectorComprobante extends StatelessWidget {
                   ),
                   SizedBox(width: 6),
                   SizedBox(
-                    width: 70,
+                    width: _anchoPrecioUnitario,
                     child: Text(
                       'P. Unit.',
                       style: TextStyle(
@@ -854,16 +868,32 @@ class SelectorComprobante extends StatelessWidget {
                         ),
                         const SizedBox(width: 6),
                         SizedBox(
-                          width: 70,
+                          width: _anchoPrecioUnitario,
                           child: CampoTexto(
                             controller: it.precioUnitario,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: const InputDecoration(
+                            textAlign: TextAlign.right,
+                            decoration: InputDecoration(
                               isDense: true,
-                              prefixText: 'S/ ',
-                              contentPadding: EdgeInsets.symmetric(
+                              // El "S/" va como prefijo pequeño para dejar
+                              // sitio al monto (antes lo cortaba).
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Text(
+                                  'S/',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                              prefixIconConstraints: const BoxConstraints(
+                                minWidth: 0,
+                                minHeight: 0,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 6,
                                 vertical: 6,
                               ),
@@ -1020,29 +1050,31 @@ class SelectorComprobante extends StatelessWidget {
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Comprobante',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 8,
-            children: [
-              for (final t in [
-                ('ticket_venta', 'Ticket de venta'),
-                ('boleta', 'Boleta'),
-                ('factura', 'Factura'),
-              ])
-                AppTag(
-                  etiqueta: t.$2,
-                  activo: control.tipo == t.$1,
-                  onTap: () => control.elegir(t.$1),
-                ),
-            ],
-          ),
-          if (control.emite) ...[
-            const SizedBox(height: 14),
+          if (parte != ParteComprobante.detalle) ...[
+            const Text(
+              'Comprobante',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 8,
+              children: [
+                for (final t in [
+                  ('ticket_venta', 'Ticket de venta'),
+                  ('boleta', 'Boleta'),
+                  ('factura', 'Factura'),
+                ])
+                  AppTag(
+                    etiqueta: t.$2,
+                    activo: control.tipo == t.$1,
+                    onTap: () => control.elegir(t.$1),
+                  ),
+              ],
+            ),
+          ],
+          if (control.emite && parte != ParteComprobante.tipo) ...[
+            if (parte == ParteComprobante.todo) const SizedBox(height: 14),
             _formulario(),
             if (control.tipo != 'ticket_venta') ...[
               Row(
@@ -1152,7 +1184,7 @@ class SelectorComprobante extends StatelessWidget {
               ],
             ),
           ],
-          if (control.error != null) ...[
+          if (control.error != null && parte != ParteComprobante.tipo) ...[
             const SizedBox(height: 8),
             Text(
               control.error!,

@@ -1132,7 +1132,8 @@ class DetallePedidoPanel extends StatelessWidget {
     }
   }
 
-  bool get _esAdmin => AuthService.instance.currentUser?.esAdmin ?? false;
+  bool get _esAdmin =>
+      AuthService.instance.currentUser?.administraPedidos ?? false;
 
   // Edita un producto ya registrado en el pedido (cambio de plato, extras, notas, cantidad)
   Future<void> _editarProducto(BuildContext context, PedidoLine l) async {
@@ -1148,7 +1149,11 @@ class DetallePedidoPanel extends StatelessWidget {
     }
     if (item == null) {
       if (context.mounted) {
-        showAppToast(context, 'No se encontró el plato en la carta', type: ToastType.error);
+        showAppToast(
+          context,
+          'No se encontró el plato en la carta',
+          type: ToastType.error,
+        );
       }
       return;
     }
@@ -1182,7 +1187,10 @@ class DetallePedidoPanel extends StatelessWidget {
     if (_api && PedidoMozoService.instance.puedeOperar(pedido)) {
       await _ejecutar(
         context,
-        () => PedidoMozoService.instance.editarProductoFila(pedido.id, lineaActualizada),
+        () => PedidoMozoService.instance.editarProductoFila(
+          pedido.id,
+          lineaActualizada,
+        ),
         exito: 'Producto actualizado',
       );
     } else {
@@ -1926,7 +1934,14 @@ class DetallePedidoPanel extends StatelessWidget {
         ? incidenciaDeLinea(l.id)
         : null;
     final entregado = esProducto && lineasEntregadas.contains(l.id);
-    final puedeEditar = esProducto && !esCargo && pedido.abierto && l.estado != 'anulado' && l.estado != 'devuelto' && pagadoLinea == 0 && !entregado;
+    final puedeEditar =
+        esProducto &&
+        !esCargo &&
+        pedido.abierto &&
+        l.estado != 'anulado' &&
+        l.estado != 'devuelto' &&
+        pagadoLinea == 0 &&
+        !entregado;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
@@ -1998,7 +2013,9 @@ class DetallePedidoPanel extends StatelessWidget {
                     Expanded(
                       child: InkWell(
                         borderRadius: BorderRadius.circular(4),
-                        onTap: puedeEditar ? () => _editarProducto(context, l) : null,
+                        onTap: puedeEditar
+                            ? () => _editarProducto(context, l)
+                            : null,
                         child: Text(
                           l.nombrePlato,
                           style: TextStyle(
@@ -2016,12 +2033,16 @@ class DetallePedidoPanel extends StatelessWidget {
                     ),
                     if (puedeEditar)
                       Tooltip(
-                        message: 'Editar producto (cambio de plato, extras, precio)',
+                        message:
+                            'Editar producto (cambio de plato, extras, precio)',
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12),
                           onTap: () => _editarProducto(context, l),
                           child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
                             child: Icon(
                               Icons.edit_outlined,
                               size: 15,
@@ -2403,9 +2424,9 @@ class DetallePedidoPanel extends StatelessWidget {
   // Pagar e imprimir son de administración y caja: el mozo no los ve.
   bool get _veCaja => !(AuthService.instance.currentUser?.esMozo ?? false);
 
-  // El cajero solo cobra: no sirve, no devuelve, no marca entregas ni agrega
-  // promoción, propina o táper. Imprimir y WhatsApp están en su comanda.
-  bool get _esCajero => AuthService.instance.currentUser?.esCajero ?? false;
+  // El cajero hace lo mismo que el administrador en los pedidos: ya no hay
+  // acciones recortadas para él.
+  bool get _esCajero => false;
 
   Widget _botones(BuildContext context, bool hayProductos, bool puedePagar) {
     const texto = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);

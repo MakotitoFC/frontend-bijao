@@ -58,7 +58,9 @@ class PedidoMozoService {
   // ¿Los pedidos de esta sesión se manejan con la API del mozo?
   bool get activo {
     final rol = AuthService.instance.currentUser?.rol;
-    return rol == AppRole.mesero || rol == AppRole.administrador;
+    return rol == AppRole.mesero ||
+        rol == AppRole.administrador ||
+        rol == AppRole.cajero;
   }
 
   // El mozo opera solo sus pedidos; el administrador, cualquiera.
@@ -67,7 +69,7 @@ class PedidoMozoService {
     return u != null &&
         activo &&
         UuidHelper.isValid(p.id) &&
-        (u.esAdmin || p.usuarioId == u.id);
+        (u.administraPedidos || p.usuarioId == u.id);
   }
 
   // ---------------------------------------------------------------- lectura
@@ -198,10 +200,7 @@ class PedidoMozoService {
       pedidoId,
       () => _api.patch(
         '$_base/$pedidoId/items/${linea.id}',
-        body: {
-          'version': linea.version,
-          ...it,
-        },
+        body: {'version': linea.version, ...it},
       ),
     );
   }
