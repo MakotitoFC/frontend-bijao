@@ -64,6 +64,11 @@ class ItemFacturacionEditable {
   double get pu => double.tryParse(precioUnitario.text.trim()) ?? 0.0;
   double get subtotal => cant * pu;
 
+  // Boleta y factura no admiten líneas en cero: se marcan en rojo.
+  bool get cantidadEnCero => (int.tryParse(cantidad.text.trim()) ?? 0) <= 0;
+  bool get precioEnCero => pu <= 0;
+  bool get enCero => cantidadEnCero || precioEnCero;
+
   Map<String, dynamic> toMap() => {
     'nombre': nombre.text.trim(),
     'cantidad': cant,
@@ -329,8 +334,27 @@ class ComprobanteEnCobro extends ChangeNotifier {
   bool get dniValido => RegExp(r'^\d{8}$').hasMatch(dni.text.trim());
   bool get rucValido => RegExp(r'^\d{11}$').hasMatch(ruc.text.trim());
 
+  // Solo boleta y factura validan el detalle; el ticket de venta es interno.
+  bool get validaDetalle => tipo == 'boleta' || tipo == 'factura';
+  int get lineasEnCero =>
+      validaDetalle ? itemsEditables.where((i) => i.enCero).length : 0;
+
+  // Por qué no se puede emitir (para el tooltip del botón); null si se puede.
+  String? get motivoBloqueo {
+    final n = lineasEnCero;
+    if (n > 0) {
+      return n == 1
+          ? 'Hay 1 producto con precio o cantidad en cero. Corrígelo o quítalo '
+                'del comprobante.'
+          : 'Hay $n productos con precio o cantidad en cero. Corrígelos o '
+                'quítalos del comprobante.';
+    }
+    return null;
+  }
+
   // ¿Están los datos que pide el tipo elegido?
   bool get completo {
+    if (lineasEnCero > 0) return false;
     switch (tipo) {
       case 'factura':
         return rucValido &&
@@ -674,7 +698,12 @@ class SelectorComprobante extends StatelessWidget {
   // Ancho de la columna P. Unit.: cabe un monto de cuatro cifras con decimales.
   static const double _anchoPrecioUnitario = 96;
 
+  // El aviso ocupa 0 de alto: solo se ve el borde rojo del campo.
+  static const _sinTextoError = TextStyle(fontSize: 0, height: 0);
+
   Widget _construirSeccionItems(BuildContext context) {
+    final avisar = control.validaDetalle;
+    final enCero = control.lineasEnCero;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -814,6 +843,46 @@ class SelectorComprobante extends StatelessWidget {
                 ],
               ),
             ),
+            if (enCero > 0) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      LucideIcons.triangleAlert,
+                      size: 14,
+                      color: AppColors.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        enCero == 1
+                            ? '1 producto con precio o cantidad en cero. '
+                                  'Ingresa otro valor o quítalo.'
+                            : '$enCero productos con precio o cantidad en '
+                                  'cero. Ingresa otro valor o quítalos.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 4),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),
@@ -833,9 +902,13 @@ class SelectorComprobante extends StatelessWidget {
                           child: CampoTexto(
                             controller: it.cantidad,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(
+                              errorText: avisar && it.cantidadEnCero
+                                  ? ' '
+                                  : null,
+                              errorStyle: _sinTextoError,
+                              contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 6,
                                 vertical: 6,
                               ),
@@ -869,6 +942,8 @@ class SelectorComprobante extends StatelessWidget {
                             textAlign: TextAlign.right,
                             decoration: InputDecoration(
                               isDense: true,
+                              errorText: avisar && it.precioEnCero ? ' ' : null,
+                              errorStyle: _sinTextoError,
                               // El "S/" va como prefijo pequeño para dejar
                               // sitio al monto (antes lo cortaba).
                               prefixIcon: Padding(

@@ -4,6 +4,7 @@ import 'package:frontend_bijao/widgets/app_switch.dart';
 import 'package:frontend_bijao/widgets/comprobante_en_cobro.dart';
 
 void main() {
+  validacionEnCero();
   Future<ComprobanteEnCobro> abrir(WidgetTester tester, double total) async {
     final control = ComprobanteEnCobro(total);
     addTearDown(control.dispose);
@@ -116,5 +117,43 @@ void main() {
     await tester.pump();
     expect(control.emite, isTrue);
     expect(control.completo, isTrue);
+  });
+}
+
+void validacionEnCero() {
+  group('líneas en cero', () {
+    ItemFacturacionEditable linea(int c, double p) => ItemFacturacionEditable(
+      nombreInicial: 'Plato',
+      cantidadInicial: c,
+      precioUnitarioInicial: p,
+    );
+
+    test('boleta y factura no emiten con precio o cantidad en cero', () {
+      final control = ComprobanteEnCobro(10, tipoInicial: 'boleta');
+      addTearDown(control.dispose);
+      control.itemsEditables.addAll([linea(1, 10), linea(2, 0)]);
+      expect(control.lineasEnCero, 1);
+      expect(control.completo, isFalse);
+      expect(control.motivoBloqueo, isNotNull);
+
+      control.itemsEditables.last.precioUnitario.text = '5.00';
+      expect(control.lineasEnCero, 0);
+      expect(control.completo, isTrue);
+      expect(control.motivoBloqueo, isNull);
+
+      control.itemsEditables.last.cantidad.text = '0';
+      expect(control.completo, isFalse);
+
+      control.elegir('factura');
+      expect(control.lineasEnCero, 1);
+    });
+
+    test('el ticket de venta no valida el detalle', () {
+      final control = ComprobanteEnCobro(0);
+      addTearDown(control.dispose);
+      control.itemsEditables.add(linea(1, 0));
+      expect(control.lineasEnCero, 0);
+      expect(control.completo, isTrue);
+    });
   });
 }
