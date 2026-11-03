@@ -341,7 +341,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       ? _filas.any((f) => f.medio.grupo == 'efectivo')
       : _medio.grupo == 'efectivo';
   // Extras: propina (con su campo) y roturas o alquiler de menaje.
-  late final double _propinaInicial = propinaPendienteDePedido(widget.pedido.id);
+  late final double _propinaInicial = propinaPendienteDePedido(
+    widget.pedido.id,
+  );
   late bool _conPropina = _propinaInicial > 0.005;
   late final _propinaCtrl = TextEditingController(
     text: _propinaInicial > 0.005 ? _propinaInicial.toStringAsFixed(2) : '',
@@ -409,7 +411,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   double get _totalOrden => _saldo + _totalCargos;
   double get _faltante => _totalOrden - _asignado;
   // Puede ser el total de la cuenta o un abono parcial (siempre que no sobrepase el total)
-  bool get _repartoValido => _asignado > 0.005 && _asignado <= _totalOrden + 0.01;
+  bool get _repartoValido =>
+      _asignado > 0.005 && _asignado <= _totalOrden + 0.01;
   bool get _repartoCompleto => _faltante.abs() < 0.01;
 
   void _alternarDividir(bool v) {
@@ -420,7 +423,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       }
       _filas.clear();
       if (v) {
-        _filas.add(_FilaMedio(_medio)..monto.text = _totalOrden.toStringAsFixed(2));
+        _filas.add(
+          _FilaMedio(_medio)..monto.text = _totalOrden.toStringAsFixed(2),
+        );
       }
     });
   }
@@ -632,7 +637,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         await PagoService.instance.cargarDePedido(widget.pedido);
       } catch (_) {}
       final saldoRestante = faltaPorPagarDePedido(widget.pedido.id);
-      final abonosPrevios = abonosDePedido(widget.pedido.id).length - registrados;
+      final abonosPrevios =
+          abonosDePedido(widget.pedido.id).length - registrados;
       final parcial = saldoRestante > 0.01 || abonosPrevios > 0;
       await emitirComprobanteTrasCobro(
         context,
@@ -1029,43 +1035,66 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ),
           const SizedBox(height: 12),
         ],
-        Row(
-          children: [
-            if (widget.permiteVolver)
-              OutlinedButton.icon(
-                onPressed: _volver,
-                icon: const Icon(LucideIcons.chevronLeft, size: 16),
-                label: const Text('Regresar'),
+        Builder(
+          builder: (context) {
+            final puedePagar =
+                saldo > 0.01 &&
+                !_guardando &&
+                (_dividir ? _repartoValido : _totalOrden > 0.005) &&
+                _recibidoValido &&
+                (_comprobante?.completo ?? true);
+            final pagar = FilledButton.icon(
+              onPressed: puedePagar ? _pagar : null,
+              icon: const Icon(LucideIcons.banknote, size: 18),
+              label: Text(
+                (_dividir && !_repartoCompleto)
+                    ? 'Pagar abono · S/ ${total.toStringAsFixed(2)}'
+                    : 'Pagar · S/ ${total.toStringAsFixed(2)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-            const Spacer(),
-            OutlinedButton(
+              style: FilledButton.styleFrom(backgroundColor: naranjaPago),
+            );
+            final cancelar = OutlinedButton(
               onPressed: _guardando ? null : () => Navigator.of(context).pop(),
               child: const Text('Cancelar'),
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: FilledButton.icon(
-                onPressed:
-                    saldo > 0.01 &&
-                        !_guardando &&
-                        (_dividir ? _repartoValido : _totalOrden > 0.005) &&
-                        _recibidoValido &&
-                        (_comprobante?.completo ?? true)
-                    ? _pagar
-                    : null,
-                icon: const Icon(LucideIcons.banknote, size: 18),
-                label: Text(
-                  (_dividir && !_repartoCompleto)
-                      ? 'Pagar abono · S/ ${total.toStringAsFixed(2)}'
-                      : 'Pagar · S/ ${total.toStringAsFixed(2)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                style: FilledButton.styleFrom(backgroundColor: naranjaPago),
-              ),
-            ),
-          ],
+            );
+            final regresar = OutlinedButton.icon(
+              onPressed: _volver,
+              icon: const Icon(LucideIcons.chevronLeft, size: 16),
+              label: const Text('Regresar'),
+            );
+            // Celular: Pagar a todo el ancho y, debajo, Regresar y Cancelar
+            // repartidos por igual.
+            if (AppBreakpoints.esMobile(context)) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  pagar,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (widget.permiteVolver) ...[
+                        Expanded(child: regresar),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(child: cancelar),
+                    ],
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                if (widget.permiteVolver) regresar,
+                const Spacer(),
+                cancelar,
+                const SizedBox(width: 10),
+                Flexible(child: pagar),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -1075,7 +1104,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // qué se paga y el monto grande a la derecha.
   Widget _tarjetaTotal(double total, double saldo) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 12 : 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.primaryGreen, width: 1.5),
@@ -1083,8 +1112,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: AppBreakpoints.esMobile(context) ? 42 : 52,
+            height: AppBreakpoints.esMobile(context) ? 42 : 52,
             decoration: BoxDecoration(
               color: AppColors.primaryGreen.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
@@ -1095,7 +1124,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               color: AppColors.primaryGreen,
             ),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: AppBreakpoints.esMobile(context) ? 10 : 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1113,12 +1142,17 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             ),
           ),
           const SizedBox(width: 10),
-          Text(
-            'S/ ${total.toStringAsFixed(2)}',
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: AppColors.primaryGreen,
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'S/ ${total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primaryGreen,
+                ),
+              ),
             ),
           ),
         ],
@@ -1133,7 +1167,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final taper = _taper;
     final cargos = _totalCargos;
     final montoBase = _dividir ? _asignado : _saldo;
-    final total = (_dividir ? _asignado : (_saldo + cargos)) + _recargo + propina + taper;
+    final total =
+        (_dividir ? _asignado : (_saldo + cargos)) + _recargo + propina + taper;
     return ModalPago(
       titulo: 'Pagar',
       anchoEscritorio:
@@ -1193,10 +1228,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _titulo('Efectivo recibido'),
-                    _campoSoles(
-                      _recibidoCtrl,
-                      hint: 'S/. con cuánto paga el cliente',
-                    ),
+                    _campoSoles(_recibidoCtrl, hint: 'S/.'),
                   ],
                 ),
               ),

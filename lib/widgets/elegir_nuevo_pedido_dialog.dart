@@ -38,8 +38,9 @@ class _ElegirNuevoPedidoDialogState extends State<ElegirNuevoPedidoDialog> {
     setState(() => _paso = paso);
     _paginas.animateToPage(
       paso,
-      duration: const Duration(milliseconds: 340),
-      curve: Curves.easeInOutCubic,
+      // Lenta y con arranque y frenada suaves: se nota el deslizamiento.
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeInOutQuart,
     );
   }
 
@@ -56,7 +57,7 @@ class _ElegirNuevoPedidoDialogState extends State<ElegirNuevoPedidoDialog> {
     // Ancho amplio, sin pasarse de la pantalla; con menos ancho las tarjetas
     // necesitan más alto para el texto.
     final ancho = esMobile ? anchoPantalla : min(780.0, anchoPantalla - 32);
-    final alto = esMobile ? 360.0 : (ancho >= 740 ? 224.0 : 276.0);
+    final alto = esMobile ? 376.0 : (ancho >= 740 ? 224.0 : 276.0);
     final conAtras = widget.conDestinatario && _paso == 1;
     return Material(
       color: Colors.white,
@@ -75,7 +76,7 @@ class _ElegirNuevoPedidoDialogState extends State<ElegirNuevoPedidoDialog> {
               Row(
                 children: [
                   AnimatedSize(
-                    duration: const Duration(milliseconds: 220),
+                    duration: const Duration(milliseconds: 400),
                     curve: Curves.easeOut,
                     child: conAtras
                         ? Padding(
@@ -106,7 +107,7 @@ class _ElegirNuevoPedidoDialogState extends State<ElegirNuevoPedidoDialog> {
               ),
               const SizedBox(height: 6),
               AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+                duration: const Duration(milliseconds: 450),
                 child: Align(
                   key: ValueKey(_paso),
                   alignment: Alignment.centerLeft,
@@ -258,7 +259,7 @@ class _Pagina extends StatelessWidget {
           children: [
             for (var i = 0; i < tarjetas.length; i++) ...[
               if (i > 0) const SizedBox(height: 12),
-              _Tarjeta(dato: tarjetas[i]),
+              _Tarjeta(dato: tarjetas[i], compacta: true),
             ],
           ],
         ),
@@ -279,8 +280,11 @@ class _Pagina extends StatelessWidget {
 // Tarjeta que se sombrea de verde al pasar el cursor por encima.
 class _Tarjeta extends StatefulWidget {
   final _DatoTarjeta dato;
+  // En celular: ícono a la izquierda y el texto al lado, para que las tres
+  // tarjetas quepan sin desplazarse.
+  final bool compacta;
 
-  const _Tarjeta({required this.dato});
+  const _Tarjeta({required this.dato, this.compacta = false});
 
   @override
   State<_Tarjeta> createState() => _TarjetaState();
@@ -312,33 +316,83 @@ class _TarjetaState extends State<_Tarjeta> {
               width: _hover ? 1.5 : 1,
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                d.icono,
-                size: 26,
-                color: _hover
-                    ? AppColors.primaryGreenDark
-                    : Colors.grey.shade700,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                d.titulo,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _hover ? AppColors.primaryGreenDark : Colors.black87,
+          child: widget.compacta
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        d.icono,
+                        size: 22,
+                        color: _hover
+                            ? AppColors.primaryGreenDark
+                            : Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            d.titulo,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            d.descripcion,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      d.icono,
+                      size: 26,
+                      color: _hover
+                          ? AppColors.primaryGreenDark
+                          : Colors.grey.shade700,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      d.titulo,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _hover
+                            ? AppColors.primaryGreenDark
+                            : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      d.descripcion,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                d.descripcion,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-            ],
-          ),
         ),
       ),
     );

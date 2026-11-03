@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/boton_actualizar.dart';
 import '../widgets/config_widgets.dart';
 import '../widgets/inventario/pagina_catalogos.dart';
@@ -12,7 +11,6 @@ import '../widgets/inventario/pagina_tapers.dart';
 import '../widgets/inventario/pagina_utensilios.dart';
 import '../widgets/inventario/pagina_anulaciones.dart';
 import '../widgets/submenu_lateral.dart';
-import '../widgets/tabs_desplazables.dart';
 
 // import '../widgets/tamanos_tab.dart'; // página Tamaños oculta (ver _paginas)
 
@@ -117,42 +115,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
       child: actual.contenido(),
     );
 
-    // Celular: no hay lugar para dos columnas; las páginas van en pestañas.
-    if (AppBreakpoints.esMobile(context)) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TabsDesplazables(
-                      child: Row(
-                        children: [
-                          for (final p in paginas)
-                            AppTag(
-                              etiqueta: p.etiqueta,
-                              activo: p.clave == actual.clave,
-                              onTap: () => _irA(p.clave),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _botonActualizar(),
-                ],
-              ),
-            ),
-            Expanded(child: contenido),
-          ],
-        ),
-      );
-    }
-
     final entradas = <SubmenuEntrada>[];
     String? ultimaSeccion;
     for (final p in paginas) {
@@ -163,8 +125,34 @@ class _InventarioScreenState extends State<InventarioScreen> {
       entradas.add(SubmenuEntrada.item(p.clave, p.etiqueta));
     }
 
+    // Celular: no hay lugar para dos columnas; las subvistas van en la barra
+    // oscura de arriba.
+    if (AppBreakpoints.esMobile(context)) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SubmenuSuperior(
+              entradas: entradas,
+              seleccionada: actual.clave,
+              onSeleccionar: _irA,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _botonActualizar(),
+              ),
+            ),
+            Expanded(child: contenido),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       // Las subvistas van en una barra horizontal bajo el header, como en
       // Ventas.
       body: Column(
@@ -213,17 +201,49 @@ class _PaginaAlmacen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(margen, 8, margen, 0),
-          child: TabsDesplazables(
-            child: Row(
-              children: [
-                for (final s in subvistas)
-                  AppTag(
-                    etiqueta: s.$2,
-                    activo: s.$1 == sub,
-                    onTap: () => onSub(s.$1),
-                  ),
-              ],
+          padding: EdgeInsets.fromLTRB(margen, 8, margen, 4),
+          // Las tres subvistas de Almacén son un control segmentado, para que
+          // no se confundan con los filtros de cada lista.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final s in subvistas)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () => onSub(s.$1),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        height: 30,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: s.$1 == sub
+                              ? AppColors.primaryGreen
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          s.$2,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: s.$1 == sub
+                                ? Colors.white
+                                : Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

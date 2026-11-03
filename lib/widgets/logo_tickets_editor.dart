@@ -127,6 +127,30 @@ class _LogoTicketsEditorState extends State<LogoTicketsEditor> {
       valueListenable: logoTicketLocal,
       builder: (context, local, _) {
         final vista = elegido ?? local;
+        final acciones = <Widget>[
+          if (elegido != null) ...[
+            TextButton(
+              onPressed: _subiendo
+                  ? null
+                  : () => setState(() {
+                      _elegido = null;
+                      _nombre = null;
+                    }),
+              child: const Text('Descartar'),
+            ),
+            FilledButton(
+              onPressed: _subiendo ? null : _subir,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+              ),
+              child: const Text('Subir logo'),
+            ),
+          ] else
+            OutlinedButton(
+              onPressed: _subiendo ? null : _elegir,
+              child: Text(_rutaActual.isEmpty ? 'Elegir imagen' : 'Cambiar'),
+            ),
+        ];
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(
@@ -180,34 +204,19 @@ class _LogoTicketsEditorState extends State<LogoTicketsEditor> {
                         color: Colors.grey.shade600,
                       ),
                     ),
+                    // En celular los botones van debajo del texto.
+                    if (AppBreakpoints.esMobile(context)) ...[
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 8, runSpacing: 8, children: acciones),
+                    ],
                   ],
                 ),
               ),
-              if (elegido != null) ...[
-                TextButton(
-                  onPressed: _subiendo
-                      ? null
-                      : () => setState(() {
-                          _elegido = null;
-                          _nombre = null;
-                        }),
-                  child: const Text('Descartar'),
-                ),
-                const SizedBox(width: 6),
-                FilledButton(
-                  onPressed: _subiendo ? null : _subir,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primaryGreen,
-                  ),
-                  child: const Text('Subir logo'),
-                ),
-              ] else
-                OutlinedButton(
-                  onPressed: _subiendo ? null : _elegir,
-                  child: Text(
-                    _rutaActual.isEmpty ? 'Elegir imagen' : 'Cambiar',
-                  ),
-                ),
+              if (!AppBreakpoints.esMobile(context))
+                for (final (i, a) in acciones.indexed) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  a,
+                ],
             ],
           ),
         );

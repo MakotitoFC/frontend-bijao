@@ -77,7 +77,7 @@ class _ReportesScreenState extends State<ReportesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: LayoutBuilder(
         builder: (context, c) {
           final angosto = c.maxWidth < 900;
@@ -969,9 +969,16 @@ class _ReportesScreenState extends State<ReportesScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text(
-              '$pedidos pedido(s) · S/ ${ventas.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            const SizedBox(width: 8),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '$pedidos pedido(s) · S/ ${ventas.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ),
             ),
           ],
         ),

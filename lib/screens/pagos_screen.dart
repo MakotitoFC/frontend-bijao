@@ -61,11 +61,9 @@ String _fecha(DateTime d) =>
 
 String _soles(double v) => 'S/ ${v.toStringAsFixed(2)}';
 
-BoxDecoration get _panel => BoxDecoration(
-  color: Colors.white,
-  borderRadius: BorderRadius.circular(16),
-  border: Border.all(color: Colors.grey.shade200),
-);
+// Los bloques de Caja ya no van en una tarjeta con borde: se apoyan
+// directamente sobre el fondo blanco de la vista.
+BoxDecoration get _panel => const BoxDecoration();
 
 // ---------------------------------------------------------------------------
 // Historial de pedidos
@@ -280,181 +278,187 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   @override
   Widget build(BuildContext context) {
     final filas = _filas;
+    // Sin tarjeta alrededor: la vista ocupa todo el espacio, sobre fondo blanco.
+    final margen = AppBreakpoints.esMobile(context) ? 16.0 : 24.0;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Container(
-          decoration: _panel,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // En pantallas bajas los filtros se desplazan en vez de desbordar.
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.45,
-                ),
-                child: SingleChildScrollView(
-                  child: LayoutBuilder(
-                    builder: (context, c) {
-                      const titulo = Text(
-                        'Historial de ventas',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      );
+        padding: EdgeInsets.fromLTRB(margen, 20, margen, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // En pantallas bajas los filtros se desplazan en vez de desbordar.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+              ),
+              child: SingleChildScrollView(
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    const titulo = Text(
+                      'Historial de ventas',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    );
 
-                      // Los filtros tipo botón van a la derecha de la fila.
-                      final filtros = [
-                        FiltroMenu(
-                          ancho: 190,
-                          tooltip: 'Filtrar por medio de pago',
-                          texto: _medioFiltro == 'todos'
-                              ? 'Medio de pago'
-                              : _medioFiltro,
-                          seleccionada: _medioFiltro,
-                          opciones: [
-                            const OpcionMenu(
-                              valor: 'todos',
-                              etiqueta: 'Todos los medios de pago',
-                            ),
-                            for (final n in _nombresMedios)
-                              OpcionMenu(valor: n, etiqueta: n),
-                          ],
-                          onSeleccionar: (v) =>
-                              setState(() => _medioFiltro = v),
-                        ),
-                        FiltroMenu(
-                          ancho: 160,
-                          tooltip: 'Filtrar por tipo de pedido',
-                          texto: switch (_tipoFiltro) {
-                            'mesa' => 'Mesa',
-                            'llevar' => 'Para llevar',
-                            'delivery' => 'Delivery',
-                            _ => 'Tipo de pedido',
-                          },
-                          seleccionada: _tipoFiltro,
-                          opciones: const [
-                            OpcionMenu(
-                              valor: 'todos',
-                              etiqueta: 'Todos los tipos',
-                            ),
-                            OpcionMenu(valor: 'mesa', etiqueta: 'Mesa'),
-                            OpcionMenu(
-                              valor: 'llevar',
-                              etiqueta: 'Para llevar',
-                            ),
-                            OpcionMenu(valor: 'delivery', etiqueta: 'Delivery'),
-                          ],
-                          onSeleccionar: (v) => setState(() => _tipoFiltro = v),
-                        ),
-                        FiltroMenu(
-                          ancho: 150,
-                          tooltip: 'Filtrar por mozo',
-                          texto: _mozoFiltro == 'todos'
-                              ? 'Mozo'
-                              : (_mozos
-                                        .where((m) => m.id == _mozoFiltro)
-                                        .firstOrNull
-                                        ?.nombre ??
-                                    'Mozo'),
-                          seleccionada: _mozoFiltro,
-                          opciones: [
-                            const OpcionMenu(
-                              valor: 'todos',
-                              etiqueta: 'Todos los mozos',
-                            ),
-                            for (final m in _mozos)
-                              OpcionMenu(valor: m.id, etiqueta: m.nombre),
-                          ],
-                          onSeleccionar: (v) => setState(() => _mozoFiltro = v),
-                        ),
-                      ];
-                      final controles = [
-                        _grupoEstado(),
-                        // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
-                        // calendario para un día o un rango. Sin fechas = hoy.
-                        SelectorRangoFechas(
-                          valor: _rango,
-                          onChanged: (r) {
-                            final hoy = DateUtils.dateOnly(DateTime.now());
-                            _cambiarRango(
-                              r ?? DateTimeRange(start: hoy, end: hoy),
-                            );
-                          },
-                        ),
-                        AppSearchField(
-                          controller: _busqueda,
-                          hint: 'Buscar pedido o cliente...',
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ];
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          titulo,
-                          const SizedBox(height: 10),
-                          // Con espacio, los filtros tipo botón van a la derecha;
-                          // en pantallas angostas pasan debajo.
-                          if (c.maxWidth >= 1000)
+                    // Los filtros tipo botón van a la derecha de la fila.
+                    // En celular los tres van en una sola fila, con nombres
+                    // cortos.
+                    final movil = AppBreakpoints.esMobile(context);
+                    final filtros = [
+                      FiltroMenu(
+                        ancho: movil ? null : 190,
+                        tooltip: 'Filtrar por medio de pago',
+                        texto: _medioFiltro == 'todos'
+                            ? (movil ? 'Pago' : 'Medio de pago')
+                            : _medioFiltro,
+                        seleccionada: _medioFiltro,
+                        opciones: [
+                          const OpcionMenu(
+                            valor: 'todos',
+                            etiqueta: 'Todos los medios de pago',
+                          ),
+                          for (final n in _nombresMedios)
+                            OpcionMenu(valor: n, etiqueta: n),
+                        ],
+                        onSeleccionar: (v) => setState(() => _medioFiltro = v),
+                      ),
+                      FiltroMenu(
+                        ancho: movil ? null : 160,
+                        tooltip: 'Filtrar por tipo de pedido',
+                        texto: switch (_tipoFiltro) {
+                          'mesa' => 'Mesa',
+                          'llevar' => 'Para llevar',
+                          'delivery' => 'Delivery',
+                          _ => movil ? 'Tipo' : 'Tipo de pedido',
+                        },
+                        seleccionada: _tipoFiltro,
+                        opciones: const [
+                          OpcionMenu(
+                            valor: 'todos',
+                            etiqueta: 'Todos los tipos',
+                          ),
+                          OpcionMenu(valor: 'mesa', etiqueta: 'Mesa'),
+                          OpcionMenu(valor: 'llevar', etiqueta: 'Para llevar'),
+                          OpcionMenu(valor: 'delivery', etiqueta: 'Delivery'),
+                        ],
+                        onSeleccionar: (v) => setState(() => _tipoFiltro = v),
+                      ),
+                      FiltroMenu(
+                        ancho: movil ? null : 150,
+                        tooltip: 'Filtrar por mozo',
+                        texto: _mozoFiltro == 'todos'
+                            ? 'Mozo'
+                            : (_mozos
+                                      .where((m) => m.id == _mozoFiltro)
+                                      .firstOrNull
+                                      ?.nombre ??
+                                  'Mozo'),
+                        seleccionada: _mozoFiltro,
+                        opciones: [
+                          const OpcionMenu(
+                            valor: 'todos',
+                            etiqueta: 'Todos los mozos',
+                          ),
+                          for (final m in _mozos)
+                            OpcionMenu(valor: m.id, etiqueta: m.nombre),
+                        ],
+                        onSeleccionar: (v) => setState(() => _mozoFiltro = v),
+                      ),
+                    ];
+                    final controles = [
+                      _grupoEstado(),
+                      // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
+                      // calendario para un día o un rango. Sin fechas = hoy.
+                      SelectorRangoFechas(
+                        valor: _rango,
+                        // El botón ya dice "Hoy" cuando es el día de hoy:
+                        // no lleva otro botón "Hoy" al lado.
+                        conAtajos: false,
+                        onChanged: (r) {
+                          final hoy = DateUtils.dateOnly(DateTime.now());
+                          _cambiarRango(
+                            r ?? DateTimeRange(start: hoy, end: hoy),
+                          );
+                        },
+                      ),
+                      AppSearchField(
+                        controller: _busqueda,
+                        hint: 'Buscar pedido o cliente...',
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titulo,
+                        const SizedBox(height: 10),
+                        // Con espacio, los filtros tipo botón van a la derecha;
+                        // en pantallas angostas pasan debajo.
+                        if (c.maxWidth >= 1000)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: controles,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Flexible(
+                                child: Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: filtros,
+                                ),
+                              ),
+                            ],
+                          )
+                        else ...[
+                          Wrap(spacing: 8, runSpacing: 8, children: controles),
+                          const SizedBox(height: 8),
+                          if (movil)
                             Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: controles,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Flexible(
-                                  child: Wrap(
-                                    alignment: WrapAlignment.end,
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: filtros,
-                                  ),
-                                ),
+                                for (final (i, f) in filtros.indexed) ...[
+                                  if (i > 0) const SizedBox(width: 8),
+                                  Expanded(child: f),
+                                ],
                               ],
                             )
-                          else ...[
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: controles,
-                            ),
-                            const SizedBox(height: 8),
+                          else
                             Wrap(spacing: 8, runSpacing: 8, children: filtros),
-                          ],
                         ],
-                      );
-                    },
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ),
-              if (_errorPagos != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'No se pudieron leer los pagos del servidor: $_errorPagos',
-                  style: const TextStyle(fontSize: 12, color: AppColors.error),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Expanded(
-                child: filas.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Sin pedidos',
-                          style: TextStyle(color: Colors.grey.shade500),
-                        ),
-                      )
-                    : _tabla(filas),
+            ),
+            if (_errorPagos != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'No se pudieron leer los pagos del servidor: $_errorPagos',
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
               ),
             ],
-          ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: filas.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Sin pedidos',
+                        style: TextStyle(color: Colors.grey.shade500),
+                      ),
+                    )
+                  : _tabla(filas),
+            ),
+          ],
         ),
       ),
     );
@@ -1295,7 +1299,7 @@ class _CajaScreenState extends State<CajaScreen> {
                 c,
           ];
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1332,7 +1336,7 @@ class _CajaScreenState extends State<CajaScreen> {
         if (CajaService.instance.enServidor)
           MenuFlotante<String>(
             tooltip: 'Reportes de Caja',
-            anchoMinimo: 250,
+            anchoMinimo: 300,
             opciones: const [
               OpcionMenu(
                 valor: 'turno',
@@ -1344,19 +1348,19 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
               OpcionMenu(
                 valor: 'turno_pdf',
-                etiqueta: '3. Detalle Turno Actual (PDF/HTML)',
+                etiqueta: 'Detalle del turno (PDF/HTML)',
               ),
               OpcionMenu(
                 valor: 'dia_pdf',
-                etiqueta: '4. Detallado Día Completo (PDF/HTML)',
+                etiqueta: 'Detalle del día completo (PDF/HTML)',
               ),
               OpcionMenu(
                 valor: 'otra_fecha',
-                etiqueta: '5. Reportes de otra fecha...',
+                etiqueta: 'Reportes de otra fecha',
               ),
               OpcionMenu(
                 valor: 'traspasos_historial',
-                etiqueta: '6. Historial Traspasos de Caja',
+                etiqueta: 'Historial de traspasos de caja',
               ),
             ],
             onSeleccionar: (val) {
@@ -2392,33 +2396,18 @@ class _CajaScreenState extends State<CajaScreen> {
       ),
     ];
     if (mini) {
+      // Dos columnas fijas: todas las tarjetas a la vista, sin deslizar.
       return LayoutBuilder(
         builder: (context, c) {
           const espacio = 8.0;
-          // Un poco menos de la mitad: se asoma la siguiente columna.
-          final ancho = (c.maxWidth - espacio) / 2 - 14;
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < tarjetas.length; i += 2) ...[
-                  if (i > 0) const SizedBox(width: espacio),
-                  SizedBox(
-                    width: ancho,
-                    child: Column(
-                      children: [
-                        tarjetas[i],
-                        if (i + 1 < tarjetas.length) ...[
-                          const SizedBox(height: espacio),
-                          tarjetas[i + 1],
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          final ancho = (c.maxWidth - espacio) / 2;
+          return Wrap(
+            spacing: espacio,
+            runSpacing: espacio,
+            children: [
+              for (final tarjeta in tarjetas)
+                SizedBox(width: ancho, child: tarjeta),
+            ],
           );
         },
       );
@@ -2610,7 +2599,7 @@ class _CajaScreenState extends State<CajaScreen> {
               children: [
                 Text(
                   titulo,
-                  maxLines: 1,
+                  maxLines: mini ? 2 : 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: mini ? 11 : 13,

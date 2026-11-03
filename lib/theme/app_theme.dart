@@ -100,7 +100,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.background,
+      scaffoldBackgroundColor: Colors.white,
       textTheme: baseTextTheme,
       cardTheme: CardThemeData(
         elevation: 0,

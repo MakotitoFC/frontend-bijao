@@ -75,23 +75,12 @@ class CabeceraSeccion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                titulo,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            ?accion,
-          ],
+        Text(
+          titulo,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         if (descripcion != null) ...[
           const SizedBox(height: 4),
@@ -101,6 +90,28 @@ class CabeceraSeccion extends StatelessWidget {
           ),
         ],
       ],
+    );
+    if (accion == null) return textos;
+    // El botón tiene su propio lugar: a la derecha, centrado con el bloque de
+    // título y descripción (que no pasa por debajo de él). En pantallas
+    // angostas baja debajo del texto.
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [textos, const SizedBox(height: 12), accion!],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: textos),
+            const SizedBox(width: 24),
+            accion!,
+          ],
+        );
+      },
     );
   }
 }
@@ -114,12 +125,15 @@ class TarjetaFilas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      // Sin tarjeta: las filas se apoyan sobre el fondo blanco, entre dos
+      // líneas finas.
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade200),
+          bottom: BorderSide(color: Colors.grey.shade200),
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -457,7 +457,19 @@ class _PedidosScreenState extends State<PedidosScreen> {
   void _terminarNuevoPedido(bool creado) {
     setState(() {
       _armandoPedido = false;
-      if (creado && pedidos.isNotEmpty) _seleccionId = pedidos.first.id;
+      if (creado) {
+        // El pedido nuevo se ve en la vista de su destinatario (clientes,
+        // empleados o familia) y sin filtros que lo escondan.
+        _vistaId = switch (_destinatarioNuevo) {
+          'empleado' => 'empleados',
+          'familia' => 'familia',
+          _ => 'clientes',
+        };
+        _tipoFiltro = null;
+        _medioFiltro = 'todos';
+        _busqueda.clear();
+        if (pedidos.isNotEmpty) _seleccionId = pedidos.first.id;
+      }
     });
   }
 

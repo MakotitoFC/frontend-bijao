@@ -10,12 +10,11 @@ import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
 import '../ajustar_stock_dialog.dart';
 import '../app_search_field.dart';
-import '../app_tag.dart';
+import '../filtro_menu.dart';
 import '../app_toast.dart';
 import '../dialogo_app.dart';
 import '../menu_flotante.dart';
 import '../producto_inventario_form_dialog.dart';
-import '../tabs_desplazables.dart';
 import 'inventario_comun.dart';
 
 // Abre el ajuste de stock de un producto (entrada, salida o merma) y lo registra
@@ -221,36 +220,39 @@ class _PaginaProductosState extends State<PaginaProductos> {
               'Todo lo que llevas en stock. Toca un producto para ver sus '
               'movimientos.',
           accion: BotonNuevo(etiqueta: 'Producto', onPressed: _crear),
-          barra: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          // Un solo renglón de herramientas: buscador y filtro por tipo.
+          barra: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppSearchField(
-                  hint: 'Buscar producto...',
-                  onChanged: (v) => setState(() => _busqueda = v),
-                ),
+              AppSearchField(
+                hint: 'Buscar producto...',
+                onChanged: (v) => setState(() => _busqueda = v),
               ),
-              if (tiposProducto.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                TabsDesplazables(
-                  child: Row(
-                    children: [
-                      AppTag(
-                        etiqueta: 'Todos',
-                        activo: _filtroTipo == null,
-                        onTap: () => setState(() => _filtroTipo = null),
-                      ),
-                      for (final t in tiposProducto)
-                        AppTag(
-                          etiqueta: t.tipoProducto,
-                          activo: _filtroTipo == t.id,
-                          onTap: () => setState(() => _filtroTipo = t.id),
-                        ),
-                    ],
-                  ),
+              if (tiposProducto.isNotEmpty)
+                FiltroMenu(
+                  ancho: 190,
+                  tooltip: 'Filtrar por tipo de producto',
+                  texto: _filtroTipo == null
+                      ? 'Tipo de producto'
+                      : (tiposProducto
+                                .where((t) => t.id == _filtroTipo)
+                                .firstOrNull
+                                ?.tipoProducto ??
+                            'Tipo de producto'),
+                  seleccionada: _filtroTipo ?? 'todos',
+                  opciones: [
+                    const OpcionMenu(
+                      valor: 'todos',
+                      etiqueta: 'Todos los tipos',
+                    ),
+                    for (final t in tiposProducto)
+                      OpcionMenu(valor: t.id, etiqueta: t.tipoProducto),
+                  ],
+                  onSeleccionar: (v) =>
+                      setState(() => _filtroTipo = v == 'todos' ? null : v),
                 ),
-              ],
             ],
           ),
           mensajeVacio: _cargando && sinDatos

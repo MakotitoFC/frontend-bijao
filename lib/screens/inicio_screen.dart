@@ -76,7 +76,8 @@ class _InicioScreenState extends State<InicioScreen> {
 
   AppRole get _rol => widget.usuario.rol;
   bool get _esMozo => _rol == AppRole.mesero;
-  bool get _puedeLiberarMesas => _rol == AppRole.mesero || _rol == AppRole.administrador;
+  bool get _puedeLiberarMesas =>
+      _rol == AppRole.mesero || _rol == AppRole.administrador;
   bool get _esCocina => _rol == AppRole.trabajador;
   bool get _veMesas => _rol == AppRole.administrador || _rol == AppRole.cajero;
 
@@ -148,7 +149,7 @@ class _InicioScreenState extends State<InicioScreen> {
     final ancho = MediaQuery.sizeOf(context).width;
     final esMobile = ancho < 700;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: SingleChildScrollView(
         padding: EdgeInsets.all(esMobile ? 16 : 32),
         child: Align(

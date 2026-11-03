@@ -549,7 +549,13 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
                   ),
                   if (estado != null) ...[
                     const SizedBox(width: 8),
-                    estado.celda(fila),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: estado.celda(fila),
+                      ),
+                    ),
                   ],
                 ],
               ),

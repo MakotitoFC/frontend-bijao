@@ -29,6 +29,7 @@ import '../widgets/deferred_loader.dart';
 import '../widgets/menu_flotante.dart';
 import '../widgets/punto_aviso.dart';
 import '../widgets/submenu_lateral.dart';
+import '../widgets/tabs_desplazables.dart';
 import 'carta_screen.dart' deferred as carta;
 import 'inicio_screen.dart';
 import 'cocina_screen.dart' deferred as cocina;
@@ -304,17 +305,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final items = navItems.where((i) => i.tieneAcceso(widget.usuario)).toList();
 
     if (AppBreakpoints.esMobile(context)) {
-      // Mobile: navbar inferior en vez de lateral (ver _BottomNav).
-      final individuales = items.where((i) => !i.esGrupo).toList();
-      final grupos = items.where((i) => i.esGrupo).toList();
-      final caben = grupos.isEmpty && individuales.length <= 4;
-      final principales = caben ? individuales : individuales.take(3).toList();
-      final restantes = <NavItem>[
-        if (!caben) ...individuales.skip(3),
-        ...grupos,
+      // Mobile: navbar inferior oscura en vez de lateral (ver _BottomNav). Se
+      // desliza de lado con "<" y ">"; los módulos van por sus subvistas.
+      final planos = <NavItem>[
+        for (final i in items)
+          if (i.esGrupo)
+            ...i.hijos.where((h) => h.tieneAcceso(widget.usuario))
+          else
+            i,
       ];
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.white,
         body: Column(
           children: [
             _GlobalHeader(
@@ -331,8 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         bottomNavigationBar: _BottomNav(
-          principales: principales,
-          restantes: restantes,
+          items: planos,
           seleccionado: _seleccionado,
           onSeleccionar: (clave) => setState(() => _seleccionado = clave),
         ),
@@ -360,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final colapsado = _colapsadoManual ?? contraerAuto;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Row(
         children: [
           _Sidebar(
@@ -592,74 +592,52 @@ class _MenuUsuario extends StatelessWidget {
   }
 }
 
-// Navbar inferior (mobile): vistas principales + "Más" con el resto.
+// Barra inferior del celular: fondo oscuro como el menú lateral, se desliza de
+// lado con "<" y ">" cuando las vistas no caben.
 class _BottomNav extends StatelessWidget {
-  final List<NavItem> principales;
-  final List<NavItem> restantes;
+  final List<NavItem> items;
   final String seleccionado;
   final ValueChanged<String> onSeleccionar;
 
   const _BottomNav({
-    required this.principales,
-    required this.restantes,
+    required this.items,
     required this.seleccionado,
     required this.onSeleccionar,
   });
-
-  bool get _masActivo => restantes.any(
-    (i) =>
-        i.clave == seleccionado || i.hijos.any((h) => h.clave == seleccionado),
-  );
-
-  Future<void> _abrirMas(BuildContext context) async {
-    final elegido = await showBlurDialog<String>(
-      context: context,
-      builder: (_) => _HojaMas(items: restantes, seleccionado: seleccionado),
-    );
-    if (elegido != null) onSeleccionar(elegido);
-  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            for (final item in principales)
-              Expanded(
-                child: _botonNav(
-                  icono: item.icono,
-                  etiqueta: item.label,
-                  activo: seleccionado == item.clave,
-                  conAviso:
-                      item.clave == 'pedidos' && seleccionado != 'pedidos',
-                  onTap: () => onSeleccionar(item.clave),
-                ),
+        color: AppColors.navbar,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            // Si caben, se reparten el ancho; si no, cada una mide lo mismo y
+            // la barra se desliza (con "<" y ">").
+            final ancho = (c.maxWidth / items.length).clamp(78.0, 400.0);
+            return TabsDesplazables(
+              oscuro: true,
+              child: Row(
+                children: [
+                  for (final item in items)
+                    SizedBox(
+                      width: ancho,
+                      child: _botonNav(
+                        icono: item.icono,
+                        etiqueta: item.label,
+                        activo: seleccionado == item.clave,
+                        conAviso:
+                            item.clave == 'pedidos' &&
+                            seleccionado != 'pedidos',
+                        onTap: () => onSeleccionar(item.clave),
+                      ),
+                    ),
+                ],
               ),
-            if (restantes.isNotEmpty)
-              Expanded(
-                child: _botonNavMas(
-                  activo: _masActivo,
-                  // El pedido sin confirmar está dentro de "Más".
-                  conAviso:
-                      restantes.any((i) => i.clave == 'pedidos') &&
-                      seleccionado != 'pedidos',
-                  onTap: () => _abrirMas(context),
-                ),
-              ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -672,11 +650,19 @@ class _BottomNav extends StatelessWidget {
     required VoidCallback onTap,
     bool conAviso = false,
   }) {
-    final color = activo ? AppColors.primaryGreen : Colors.grey.shade500;
+    final color = activo ? AppColors.primaryGreen : Colors.white70;
     return InkWell(
+      borderRadius: BorderRadius.circular(12),
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: activo
+              ? AppColors.primaryGreen.withValues(alpha: 0.16)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -692,156 +678,6 @@ class _BottomNav extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _botonNavMas({
-    required bool activo,
-    required VoidCallback onTap,
-    bool conAviso = false,
-  }) {
-    final color = activo ? AppColors.primaryGreen : Colors.grey.shade500;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _IconoConAviso(
-              conAviso: conAviso,
-              icono: Icon(Icons.more_horiz, size: 22, color: color),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Más',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Hoja inferior con las vistas que no caben en la barra inferior.
-class _HojaMas extends StatelessWidget {
-  final List<NavItem> items;
-  final String seleccionado;
-
-  const _HojaMas({required this.items, required this.seleccionado});
-
-  @override
-  Widget build(BuildContext context) {
-    final sueltos = items.where((i) => !i.esGrupo).toList();
-    final grupos = items.where((i) => i.esGrupo).toList();
-    return Material(
-      color: Colors.white,
-      borderRadius: const BorderRadius.vertical(
-        top: Radius.circular(AppRadii.sheet),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SafeArea(
-        top: false,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 28, 16, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 0, 4, 14),
-                  child: Text(
-                    'Más opciones',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                if (sueltos.isNotEmpty) _grilla(context, sueltos),
-                for (final g in grupos) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
-                    child: Text(
-                      g.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ),
-                  _grilla(context, g.hijos),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Tarjetas en dos columnas.
-  Widget _grilla(BuildContext context, List<NavItem> lista) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        const espacio = 12.0;
-        final ancho = (c.maxWidth - espacio) / 2;
-        return Wrap(
-          spacing: espacio,
-          runSpacing: espacio,
-          children: [
-            for (final item in lista)
-              SizedBox(width: ancho, child: _tarjeta(context, item)),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _tarjeta(BuildContext context, NavItem item) {
-    final activo =
-        seleccionado == item.clave ||
-        item.hijos.any((h) => h.clave == seleccionado);
-    final color = activo ? AppColors.primaryGreen : Colors.black87;
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () => Navigator.of(context).pop(item.clave),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
-        decoration: BoxDecoration(
-          color: activo
-              ? AppColors.primaryGreen.withValues(alpha: 0.08)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: activo ? AppColors.primaryGreen : Colors.grey.shade200,
-            width: activo ? 1.4 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(item.icono, size: 24, color: color),
-            const SizedBox(height: 10),
-            Text(
-              item.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: activo ? FontWeight.w700 : FontWeight.w600,
                 color: color,
               ),
             ),

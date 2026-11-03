@@ -802,8 +802,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                         ),
                       )
                     else
-                      Flexible(child: _buscador()),
-                    if (!enPasoMesa) const Spacer(),
+                      Expanded(child: _buscador(soloIcono: true)),
                     const SizedBox(width: 12),
                     _botonVolver(),
                     const SizedBox(width: 8),
@@ -832,8 +831,9 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
-  // El buscador de productos, con "Plato rápido" al lado.
-  Widget _buscador() => ConstrainedBox(
+  // El buscador de productos, con "Plato rápido" al lado. Con [soloIcono]
+  // (celular) el botón es solo el ícono, para dejar todo el ancho al buscador.
+  Widget _buscador({bool soloIcono = false}) => ConstrainedBox(
     constraints: const BoxConstraints(maxWidth: 640),
     child: Row(
       children: [
@@ -847,21 +847,37 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         ),
         const SizedBox(width: 10),
         // Mismo alto que los demás botones (Servido, Pagar...).
-        OutlinedButton.icon(
-          onPressed: _abrirPlatoLibre,
-          icon: const Icon(LucideIcons.zap, size: 17),
-          label: const Text(
-            'Plato rápido',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        if (soloIcono)
+          Tooltip(
+            message: 'Plato rápido',
+            child: OutlinedButton(
+              onPressed: _abrirPlatoLibre,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryGreenDark,
+                side: const BorderSide(color: AppColors.primaryGreen),
+                minimumSize: const Size(AppSizes.boton, AppSizes.boton),
+                maximumSize: const Size(AppSizes.boton, AppSizes.boton),
+                padding: EdgeInsets.zero,
+              ),
+              child: const Icon(LucideIcons.zap, size: 18),
+            ),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: _abrirPlatoLibre,
+            icon: const Icon(LucideIcons.zap, size: 17),
+            label: const Text(
+              'Plato rápido',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryGreenDark,
+              side: const BorderSide(color: AppColors.primaryGreen),
+              minimumSize: const Size(0, AppSizes.boton),
+              maximumSize: const Size(double.infinity, AppSizes.boton),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
           ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.primaryGreenDark,
-            side: const BorderSide(color: AppColors.primaryGreen),
-            minimumSize: const Size(0, AppSizes.boton),
-            maximumSize: const Size(double.infinity, AppSizes.boton),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-        ),
       ],
     ),
   );
@@ -1159,9 +1175,10 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               : Center(child: vacio);
         }
         const espacio = 12.0;
+        // En celular, dos columnas (tarjeta vertical: imagen arriba).
         final columnas = c.maxWidth >= 620
             ? 4
-            : (c.maxWidth >= 520 ? 3 : (c.maxWidth >= 400 ? 2 : 1));
+            : (c.maxWidth >= 520 ? 3 : (c.maxWidth >= 280 ? 2 : 1));
         final util = todoEnScroll ? c.maxWidth : c.maxWidth - 14;
         final ancho = (util - espacio * (columnas - 1)) / columnas;
         final tarjetas = Wrap(

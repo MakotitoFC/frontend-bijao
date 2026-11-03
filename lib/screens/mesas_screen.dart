@@ -916,7 +916,7 @@ class MesasScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: MesasPlano(
         usuario: usuario,
         onSeleccionarMesa: (mesa) => _mostrarOpcionesMesa(context, mesa),
@@ -970,9 +970,7 @@ class MesasScreen extends StatelessWidget {
                       : 'Desbloquear / Restablecer mesa',
                 ),
                 subtitle: Text(
-                  mesa.estaOcupada
-                      ? 'Marcar la mesa como disponible'
-                      : 'Cerrar cualquier pedido previo y asegurar disponibilidad',
+                  mesa.estaOcupada ? 'Marcar la mesa como disponible' : 'Cerrar cualquier pedido previo y asegurar disponibilidad',
                 ),
                 onTap: () async {
                   Navigator.of(sheetCtx).pop();
@@ -996,7 +994,9 @@ class MesasScreen extends StatelessWidget {
                         ),
                         FilledButton(
                           onPressed: () => Navigator.of(dCtx).pop(true),
-                          child: Text(mesa.estaOcupada ? 'Liberar' : 'Restablecer'),
+                          child: Text(
+                            mesa.estaOcupada ? 'Liberar' : 'Restablecer',
+                          ),
                         ),
                       ],
                     ),

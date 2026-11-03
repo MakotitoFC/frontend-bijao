@@ -144,24 +144,35 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: CampoTexto(
-                  onChanged: (v) => setState(() => _busqueda = v),
-                  decoration: const InputDecoration(
-                    hintText: 'Buscar plato...',
-                    prefixIcon: Icon(Icons.search, size: 20),
-                  ),
+          // En celular el botón baja debajo del buscador, a todo el ancho.
+          Builder(
+            builder: (context) {
+              final buscador = CampoTexto(
+                onChanged: (v) => setState(() => _busqueda = v),
+                decoration: const InputDecoration(
+                  hintText: 'Buscar plato...',
+                  prefixIcon: Icon(Icons.search, size: 20),
                 ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
+              );
+              final base = OutlinedButton.icon(
                 onPressed: _trabajando ? null : _cargarBase,
                 icon: const Icon(Icons.download_outlined, size: 18),
                 label: const Text('Usar cantidades base'),
-              ),
-            ],
+              );
+              if (AppBreakpoints.esMobile(context)) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [buscador, const SizedBox(height: 8), base],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: buscador),
+                  const SizedBox(width: 8),
+                  base,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           const Padding(
@@ -204,28 +215,36 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              OutlinedButton(
-                onPressed: _trabajando
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
+              Flexible(
+                child: OutlinedButton(
+                  onPressed: _trabajando
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _trabajando ? null : _guardar,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                ),
-                child: _trabajando
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+              Flexible(
+                child: FilledButton(
+                  onPressed: _trabajando ? null : _guardar,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: _trabajando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Guardar apertura',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      )
-                    : const Text('Guardar apertura'),
+                ),
               ),
             ],
           ),

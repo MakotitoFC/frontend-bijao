@@ -199,21 +199,25 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              OutlinedButton(
-                onPressed: _guardando
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
+              Flexible(
+                child: OutlinedButton(
+                  onPressed: _guardando
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: (_guardando || _cargando || _error != null)
-                    ? null
-                    : _guardar,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
+              Flexible(
+                child: FilledButton(
+                  onPressed: (_guardando || _cargando || _error != null)
+                      ? null
+                      : _guardar,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: const Text('Guardar'),
                 ),
-                child: const Text('Guardar'),
               ),
             ],
           ),

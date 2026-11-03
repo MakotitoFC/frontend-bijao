@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 // Fila que se desplaza en horizontal, con flechas "<"/">" si no caben todos.
 class TabsDesplazables extends StatefulWidget {
   final Widget child;
+  // Para barras oscuras (menú de celular, submenús): flechas claras y
+  // translúcidas en vez de círculos blancos con borde.
+  final bool oscuro;
 
-  const TabsDesplazables({super.key, required this.child});
+  const TabsDesplazables({super.key, required this.child, this.oscuro = false});
 
   @override
   State<TabsDesplazables> createState() => TabsDesplazablesState();
@@ -62,10 +65,16 @@ class TabsDesplazablesState extends State<TabsDesplazables> {
           margin: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white,
-            border: Border.all(color: Colors.grey.shade300),
+            color: widget.oscuro ? Colors.white24 : Colors.white,
+            border: widget.oscuro
+                ? null
+                : Border.all(color: Colors.grey.shade300),
           ),
-          child: Icon(icono, size: 20, color: Colors.grey.shade800),
+          child: Icon(
+            icono,
+            size: 20,
+            color: widget.oscuro ? Colors.white : Colors.grey.shade800,
+          ),
         ),
       ),
     );

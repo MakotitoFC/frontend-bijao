@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/cartas_store.dart';
@@ -206,8 +207,8 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
                           color: _estadoSync.contains('✓')
                               ? AppColors.primaryGreenDark
                               : (_estadoSync.contains('Error')
-                                  ? Colors.red
-                                  : Colors.orange.shade800),
+                                    ? Colors.red
+                                    : Colors.orange.shade800),
                         ),
                       ),
                     ),
@@ -239,14 +240,20 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
               // 2. Encabezado de subcategorías
               Row(
                 children: [
-                  const Icon(Icons.restaurant_menu, size: 20, color: AppColors.primaryGreen),
+                  const Icon(
+                    Icons.restaurant_menu,
+                    size: 20,
+                    color: AppColors.primaryGreen,
+                  ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Subcategorías y platos de la carta',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.grey.shade800,
+                  Expanded(
+                    child: Text(
+                      'Subcategorías y platos de la carta',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.grey.shade800,
+                      ),
                     ),
                   ),
                 ],
@@ -296,7 +303,9 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
             ),
             child: Icon(
               Icons.takeout_dining_outlined,
-              color: imprime ? AppColors.primaryGreenDark : Colors.grey.shade600,
+              color: imprime
+                  ? AppColors.primaryGreenDark
+                  : Colors.grey.shade600,
               size: 26,
             ),
           ),
@@ -307,20 +316,14 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
               children: [
                 const Text(
                   'Imprimir tápers en comanda de cocina',
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   imprime
                       ? 'Los empaques/tápers agregados se imprimirán en el ticket de cocina.'
                       : 'Ahorro de papel activo: los ítems de tápers no se imprimirán en cocina.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
                 ),
               ],
             ),
@@ -331,7 +334,9 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              color: imprime ? AppColors.primaryGreenDark : Colors.grey.shade600,
+              color: imprime
+                  ? AppColors.primaryGreenDark
+                  : Colors.grey.shade600,
             ),
           ),
           const SizedBox(width: 8),
@@ -363,7 +368,9 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(11),
+              ),
               border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
             ),
             child: Row(
@@ -502,7 +509,10 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
                     padding: const EdgeInsets.all(14),
                     child: Text(
                       'Esta subcategoría no tiene platos asignados en la carta.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
                   ),
                 for (final p in platos)

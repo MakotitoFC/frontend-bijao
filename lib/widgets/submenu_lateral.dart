@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'tabs_desplazables.dart';
 
 // Una entrada del submenú: una opción que se puede elegir o una etiqueta de
 // sección (agrupa las opciones que le siguen en un desplegable).
@@ -81,8 +82,9 @@ class SubmenuSuperior extends StatelessWidget {
       width: double.infinity,
       color: AppColors.navbar,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+      // Con "<" y ">" cuando no caben todas las pestañas.
+      child: TabsDesplazables(
+        oscuro: true,
         child: Row(
           children: [
             for (final p in _pestanas)
