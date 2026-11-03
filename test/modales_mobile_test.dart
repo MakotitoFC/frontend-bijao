@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:frontend_bijao/theme/app_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_bijao/data/cartas_store.dart';
 import 'package:frontend_bijao/models/app_role.dart';
@@ -124,53 +123,47 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('el menú de celular es oscuro y se desliza de lado con flechas', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(_ancho, 812);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final u = _usuario(AppRole.administrador);
-    AuthService.instance.userNotifier.value = u;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomeScreen(
-          sede: const Sede(id: '1', ruc: '1', direccion: 'Av. Principal 123'),
-          usuario: u,
+  testWidgets(
+    '"Más" muestra tarjetas en dos columnas y los grupos con título',
+    (tester) async {
+      tester.view.physicalSize = const Size(_ancho, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final u = _usuario(AppRole.administrador);
+      AuthService.instance.userNotifier.value = u;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            sede: const Sede(id: '1', ruc: '1', direccion: 'Av. Principal 123'),
+            usuario: u,
+          ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(milliseconds: 300));
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Más'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
 
-    // Ya no hay "Más": todas las vistas van en la barra, que se desliza.
-    expect(find.text('Más'), findsNothing);
-    expect(find.text('Inicio'), findsOneWidget);
-    expect(find.byTooltip('Ver más'), findsOneWidget); // flecha ">"
-    expect(find.byTooltip('Ver anteriores'), findsNothing);
+      expect(find.text('Más opciones'), findsOneWidget);
+      // Ventas, Caja y Reportes son tarjetas independientes (sin grupo).
+      expect(find.text('Ventas'), findsOneWidget);
+      final reportes = find.text('Reportes');
+      final caja = find.text('Caja');
+      expect(reportes, findsWidgets);
+      expect(caja, findsWidgets);
 
-    // Fondo oscuro, como el menú lateral de escritorio.
-    final barra = tester.widget<Container>(
-      find
-          .ancestor(
-            of: find.text('Inicio'),
-            matching: find.byWidgetPredicate(
-              (w) => w is Container && w.color == AppColors.navbar,
-            ),
-          )
-          .first,
-    );
-    expect(barra.color, AppColors.navbar);
-
-    // Al deslizar aparece la flecha "<" y se llega a las últimas vistas.
-    await tester.tap(find.byTooltip('Ver más'));
-    for (var i = 0; i < 4; i++) {
-      await tester.pump(const Duration(milliseconds: 200));
-    }
-    expect(find.byTooltip('Ver anteriores'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
+      // Dos columnas: dos tarjetas por fila con el mismo ancho, que juntas
+      // llenan el ancho de la hoja menos el margen.
+      final hijos = find.text('Ventas');
+      expect(hijos, findsOneWidget);
+      final a = tester.getTopLeft(find.text('Ventas')).dy;
+      final b = tester.getTopLeft(find.text('Caja').last).dy;
+      expect(a, b); // misma fila
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('Carta: el admin ve el botón de foto y todos los productos; el '
       'mozo no ve los inhabilitados', (tester) async {

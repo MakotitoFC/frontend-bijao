@@ -1950,18 +1950,32 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
             )
           else
-            // Se ven 4 registros; el resto se desplaza.
+            // Se ven 4 registros; el resto se desplaza. En el celular (APK) no
+            // se dibuja la barra de desplazamiento.
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 320),
-              child: Scrollbar(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(right: 16),
-                  children: [
-                    for (final m in movimientosFiltrados) _filaMovimiento(m),
-                  ],
-                ),
-              ),
+              child: AppBreakpoints.esMobile(context)
+                  ? ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(context)
+                          .copyWith(scrollbars: false),
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          for (final m in movimientosFiltrados)
+                            _filaMovimiento(m),
+                        ],
+                      ),
+                    )
+                  : Scrollbar(
+                      child: ListView(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          for (final m in movimientosFiltrados)
+                            _filaMovimiento(m),
+                        ],
+                      ),
+                    ),
             ),
         ],
       ),
