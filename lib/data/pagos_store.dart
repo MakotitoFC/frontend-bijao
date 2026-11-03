@@ -5,6 +5,7 @@ import '../models/pago.dart';
 import '../models/pago_detalle.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
+import 'cargos_extra_store.dart';
 import 'configuracion_store.dart';
 import 'mesas_por_liberar_store.dart';
 import 'mesas_store.dart';
@@ -22,8 +23,11 @@ import '../utils/uuid_helper.dart';
 final List<Pago> pagos = [];
 final List<PagoDetalle> pagoDetalles = [];
 
-double totalDePedido(String pedidoId) => (detallesPorPedido[pedidoId] ?? [])
-    .fold(0.0, (sum, l) => sum + l.precioTotalLinea);
+double totalDePedido(String pedidoId) {
+  final platos = (detallesPorPedido[pedidoId] ?? [])
+      .fold(0.0, (sum, l) => sum + l.precioTotalLinea);
+  return platos + totalCargosExtra(pedidoId);
+}
 
 // Total cobrado final al cliente, incluyendo recargos por comisión (ej. tarjeta).
 // Si el pedido tiene pagos activos, suma el montoCobrado real de dichos pagos.
@@ -117,9 +121,10 @@ double faltaPorPagarDePedido(String pedidoId) {
   if (p != null && (p.estado == 'anulado' || p.estado == 'cancelado')) {
     return 0.0;
   }
-  final cuenta = (detallesPorPedido[pedidoId] ?? [])
+  final cuenta = ((detallesPorPedido[pedidoId] ?? [])
       .where((l) => lineaDeCuenta(pedidoId, l))
-      .fold(0.0, (s, l) => s + l.precioTotalLinea);
+      .fold(0.0, (s, l) => s + l.precioTotalLinea)) +
+      totalCargosExtra(pedidoId);
   final falta = cuenta - abonadoDePedido(pedidoId);
   return falta > 0.01 ? falta : 0.0;
 }
@@ -151,12 +156,13 @@ double saldoCuentaDePedido(String pedidoId) {
   // repartido dejaba el saldo en 0 y el siguiente abono salía como S/ 0).
   if (abonadoDePedido(pedidoId) > 0.005) return faltaPorPagarDePedido(pedidoId);
   final lineas = detallesPorPedido[pedidoId] ?? [];
-  return lineas
+  final platos = lineas
       .where((l) => lineaDeCuenta(pedidoId, l))
       .fold(
         0.0,
         (sum, l) => sum + (l.precioTotalLinea - montoPagadoDeLinea(l.id)),
       );
+  return platos + totalCargosExtra(pedidoId);
 }
 
 // Propina que falta cobrar: la del pedido menos la que ya viajó con algún pago.

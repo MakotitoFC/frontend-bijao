@@ -1510,10 +1510,8 @@ class DetallePedidoPanel extends StatelessWidget {
         (recargo > 0.01 ? totalCobrado : totalCuenta) +
         (propina - propinaLinea);
     final saldo = saldoPendienteDePedido(pedido.id);
-    // Las roturas se cobran junto con el pago: cuentan como pagadas si ya no
-    // queda saldo.
-    final pagado = totalBase - saldo + (saldo <= 0.01 ? totalCargos : 0);
-    final total = totalBase + totalCargos;
+    final pagado = totalBase - saldo;
+    final total = totalBase;
     final puedePagar = saldoCuentaDePedido(pedido.id) > 0.01;
 
     // En pantallas bajas (mobile) los totales y botones van dentro del scroll,
