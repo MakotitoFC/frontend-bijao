@@ -237,9 +237,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       ? _filas.any((f) => f.medio.grupo == 'efectivo')
       : _medio.grupo == 'efectivo';
   // Extras: propina (con su campo) y roturas o alquiler de menaje.
-  late bool _conPropina = _propina > 0.005;
+  late final double _propinaInicial = propinaPendienteDePedido(widget.pedido.id);
+  late bool _conPropina = _propinaInicial > 0.005;
   late final _propinaCtrl = TextEditingController(
-    text: _propina > 0.005 ? _propina.toStringAsFixed(2) : '',
+    text: _propinaInicial > 0.005 ? _propinaInicial.toStringAsFixed(2) : '',
   );
   bool _conRoturas = false;
   final List<CargoExtra> _cargos = [];
