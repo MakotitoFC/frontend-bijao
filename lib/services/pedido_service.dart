@@ -1,3 +1,4 @@
+import '../data/cargos_extra_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pedidos_store.dart';
 import '../data/presentaciones_store.dart';
@@ -325,6 +326,25 @@ class PedidoService {
               );
             }
             mapDetalles[p.id] = lineas;
+
+            final ceList = item['cargos_extra'];
+            if (ceList is List) {
+              final listaCE = <CargoExtra>[];
+              for (final ce in ceList.whereType<Map<String, dynamic>>()) {
+                final concepto = ce['concepto']?.toString() ?? '';
+                final prod = ce['producto']?.toString() ?? '';
+                final nom = concepto.isNotEmpty && prod.isNotEmpty
+                    ? '${concepto.toUpperCase()}: $prod'
+                    : (ce['nombre']?.toString() ?? 'Cargo extra');
+                final m = (ce['monto'] as num?)?.toDouble() ?? 0.0;
+                if (m > 0) {
+                  listaCE.add(CargoExtra(nombre: nom, monto: m));
+                }
+              }
+              if (listaCE.isNotEmpty) {
+                cargosExtraPorPedido[p.id] = listaCE;
+              }
+            }
           }
         }
 
