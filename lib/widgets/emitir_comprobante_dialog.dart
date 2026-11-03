@@ -10,6 +10,7 @@ import '../models/pedido.dart';
 import '../services/api_client.dart';
 import '../services/facturacion_service.dart';
 import '../services/pago_service.dart';
+import '../services/pedido_mozo_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/monto_letras.dart';
@@ -70,7 +71,11 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   }
 
   Comprobante? get _comprobanteFiscalActivo => _comprobantes
-      .where((c) => c.esFiscal && c.estadoSunat != 'ANULADO')
+      .where((c) => c.esFiscal && c.estadoSunat != 'ANULADO' && c.estadoSunat != 'RECHAZADO')
+      .firstOrNull;
+
+  Comprobante? get _comprobanteRechazado => _comprobantes
+      .where((c) => c.esFiscal && c.estadoSunat == 'RECHAZADO')
       .firstOrNull;
 
   Comprobante? get _ticketVentaActivo => _comprobantes
@@ -215,6 +220,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   Widget build(BuildContext context) {
     final fiscal = _comprobanteFiscalActivo;
     final ticket = _ticketVentaActivo;
+    final rechazado = _comprobanteRechazado;
 
     return DialogoApp(
       titulo: 'Emitir comprobante · Pedido #${widget.pedido.numeroPedido}',
@@ -404,6 +410,64 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // 1.5. Aviso si el comprobante anterior fue rechazado por SUNAT
+        if (rechazado != null && fiscal == null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.red.shade300),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  LucideIcons.xCircle,
+                  size: 18,
+                  color: Colors.red.shade800,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Comprobante anterior rechazado por SUNAT: ${rechazado.tipoEtiqueta.toUpperCase()} ${rechazado.numeroComprobante}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.red.shade900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        rechazado.mensaje?.isNotEmpty == true
+                            ? rechazado.mensaje!
+                            : 'Rechazado por validación SUNAT',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.red.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Puedes corregir los datos o ítems y emitir un nuevo comprobante.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1129,6 +1193,9 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
 Future<void> emitirComprobanteDePedido(BuildContext context, Pedido p) async {
   try {
     await PagoService.instance.cargarDePedido(p);
+    if ((detallesPorPedido[p.id] ?? const []).isEmpty) {
+      await PedidoMozoService.instance.obtener(p.id);
+    }
   } catch (_) {}
   if (!context.mounted) return;
   final hecha = await showBlurDialog<EmisionHecha>(

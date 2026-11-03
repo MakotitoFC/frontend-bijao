@@ -145,11 +145,17 @@ class ComprobanteEnCobro extends ChangeNotifier {
 
   bool _inicializado = false;
   String? _pedidoIdInicializado;
+  bool get inicializado => _inicializado;
+  String? get pedidoIdInicializado => _pedidoIdInicializado;
 
-  void asegurarInicializado(Pedido pedido, {double recargoActual = 0.0}) {
+  void asegurarInicializado(Pedido pedido, {double? recargoActual}) {
+    final recargoObjetivo = (recargoActual != null && recargoActual > 0)
+        ? recargoActual
+        : recargoCobradoDePedido(pedido.id);
+
     if (_inicializado &&
         _pedidoIdInicializado == pedido.id &&
-        (recargoActual - recargoTarjeta).abs() < 0.001) {
+        (recargoObjetivo - recargoTarjeta).abs() < 0.001) {
       return;
     }
     _pedidoIdInicializado = pedido.id;
@@ -164,9 +170,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
         ? deliveryLinea.precioTotalLinea
         : pedido.costoDelivery;
 
-    recargoTarjeta = recargoActual > 0
-        ? recargoActual
-        : recargoCobradoDePedido(pedido.id);
+    recargoTarjeta = recargoObjetivo;
 
     final productos = lineas.where((l) {
       if (l.cartaId == cartaIdCargoDelivery) return false;
@@ -189,7 +193,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
         )
         .toList();
 
-    recalcularItemsInflados();
+    recalcularItemsInflados(notificar: false);
   }
 
   void actualizarRecargo(double nuevo) {
@@ -199,7 +203,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
     }
   }
 
-  void recalcularItemsInflados() {
+  void recalcularItemsInflados({bool notificar = true}) {
     if (itemsOriginales.isEmpty) return;
 
     double baseTotal = 0.0;
@@ -286,16 +290,18 @@ class ComprobanteEnCobro extends ChangeNotifier {
         }
       }
     }
-    actualizarTotalReportado();
+    actualizarTotalReportado(notificar: notificar);
   }
 
-  void actualizarTotalReportado() {
+  void actualizarTotalReportado({bool notificar = true}) {
     double t = 0.0;
     for (final it in itemsEditables) {
       t += it.subtotal;
     }
     total = t;
-    notifyListeners();
+    if (notificar) {
+      notifyListeners();
+    }
   }
 
   void agregarItemLibre() {
@@ -1103,10 +1109,10 @@ class SelectorComprobante extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (pedido != null) {
+    if (pedido != null && (!control.inicializado || control.pedidoIdInicializado != pedido!.id)) {
       control.asegurarInicializado(
         pedido!,
-        recargoActual: recargoActual ?? 0.0,
+        recargoActual: recargoActual,
       );
     }
     return ListenableBuilder(
