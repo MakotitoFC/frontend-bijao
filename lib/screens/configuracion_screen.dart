@@ -270,7 +270,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         clave: 'turnos_caja',
         etiqueta: 'Turnos de Caja',
         seccion: 'Negocio',
-        contenido: () => const TurnosConfigWidget(),
+        contenido: () => _pagina([const TurnosConfigWidget()]),
       ),
     (
       clave: 'negocio',

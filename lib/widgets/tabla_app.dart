@@ -107,9 +107,24 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
   int? _orden;
   bool _asc = true;
   int _pagina = 0;
+  // Filas por página elegidas por el usuario (null = las que pide la tabla).
+  int? _porPaginaElegido;
+  late final TextEditingController _ctlPorPagina = TextEditingController(
+    text: '${widget.porPagina ?? 10}',
+  );
+  final TextEditingController _ctlIrA = TextEditingController();
+
+  int? get _n => _porPaginaElegido ?? widget.porPagina;
+
+  @override
+  void dispose() {
+    _ctlPorPagina.dispose();
+    _ctlIrA.dispose();
+    super.dispose();
+  }
 
   int get _paginas {
-    final n = widget.porPagina;
+    final n = _n;
     if (n == null || widget.filas.isEmpty) return 1;
     return (widget.filas.length / n).ceil();
   }
@@ -117,15 +132,15 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
   // Las filas de la página actual, ya ordenadas.
   List<T> get _filasPagina {
     final todas = _filas;
-    final n = widget.porPagina;
+    final n = _n;
     if (n == null) return todas;
     final pagina = _pagina.clamp(0, _paginas - 1);
     final ini = pagina * n;
     return todas.sublist(ini, (ini + n).clamp(0, todas.length));
   }
 
-  // Selector de páginas: píldora flotante como en las demás listas.
-  Widget _paginador() {
+  // Selector de páginas en celular y tablet: píldora flotante.
+  Widget _paginadorFlotante() {
     final paginas = _paginas;
     if (paginas <= 1) return const SizedBox.shrink();
     final actual = _pagina.clamp(0, paginas - 1);
@@ -194,6 +209,169 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Números de página con puntos suspensivos: 1 2 3 … 8.
+  List<int?> _numerosDePagina(int paginas, int actual) {
+    if (paginas <= 7) return [for (var i = 0; i < paginas; i++) i];
+    final vistos = <int>{0, paginas - 1, actual - 1, actual, actual + 1}
+      ..removeWhere((i) => i < 0 || i >= paginas);
+    final orden = vistos.toList()..sort();
+    final r = <int?>[];
+    for (var i = 0; i < orden.length; i++) {
+      if (i > 0 && orden[i] - orden[i - 1] > 1) r.add(null);
+      r.add(orden[i]);
+    }
+    return r;
+  }
+
+  // Paginador de escritorio: una barra fija bajo la tabla, con filas por
+  // página, el rango que se ve, las páginas y "Ir a".
+  Widget _paginador() {
+    final n = _n;
+    if (n == null || widget.filas.isEmpty) return const SizedBox.shrink();
+    if (AppBreakpoints.esMenorATablet(context)) return _paginadorFlotante();
+    final total = widget.filas.length;
+    final paginas = _paginas;
+    final actual = _pagina.clamp(0, paginas - 1);
+    final desde = actual * n + 1;
+    final hasta = ((actual + 1) * n).clamp(0, total);
+    const texto = TextStyle(fontSize: 12.5, color: Color(0xFF374151));
+    InputDecoration campo(String hint) => InputDecoration(
+      isDense: true,
+      hintText: hint,
+      hintStyle: TextStyle(fontSize: 12.5, color: Colors.grey.shade400),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(color: TablaApp.colorBorde),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: const BorderSide(color: AppColors.primaryGreen),
+      ),
+    );
+    Widget boton(
+      String etiqueta,
+      VoidCallback? onTap, {
+      bool seleccionado = false,
+    }) => Padding(
+      padding: const EdgeInsets.only(right: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 34),
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: seleccionado ? AppColors.primaryGreen : Colors.white,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: seleccionado
+                  ? AppColors.primaryGreen
+                  : TablaApp.colorBorde,
+            ),
+          ),
+          child: Text(
+            etiqueta,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: seleccionado
+                  ? Colors.white
+                  : (onTap == null
+                        ? Colors.grey.shade400
+                        : const Color(0xFF111827)),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 8,
+        spacing: 16,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Filas por página:', style: texto),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 54,
+                child: TextField(
+                  controller: _ctlPorPagina,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: texto,
+                  decoration: campo('10'),
+                  onSubmitted: (v) {
+                    final x = int.tryParse(v.trim());
+                    setState(() {
+                      if (x != null && x > 0) {
+                        _porPaginaElegido = x.clamp(1, 200);
+                        _pagina = 0;
+                      }
+                      _ctlPorPagina.text = '${_n ?? 10}';
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text('Mostrando $desde-$hasta de $total', style: texto),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              boton(
+                '‹ Anterior',
+                actual > 0 ? () => setState(() => _pagina = actual - 1) : null,
+              ),
+              for (final i in _numerosDePagina(paginas, actual))
+                i == null
+                    ? boton('…', null)
+                    : boton(
+                        '${i + 1}',
+                        () => setState(() => _pagina = i),
+                        seleccionado: i == actual,
+                      ),
+              boton(
+                'Siguiente ›',
+                actual < paginas - 1
+                    ? () => setState(() => _pagina = actual + 1)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              const Text('Ir a:', style: texto),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 70,
+                child: TextField(
+                  controller: _ctlIrA,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: texto,
+                  decoration: campo('Página'),
+                  onSubmitted: (v) {
+                    final x = int.tryParse(v.trim());
+                    if (x != null) {
+                      setState(() => _pagina = (x - 1).clamp(0, paginas - 1));
+                    }
+                    _ctlIrA.clear();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -432,8 +610,28 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
     Widget envolver(Widget contenido) {
       if (!interno) return contenido;
       final hayPaginas = _paginas > 1;
+      final escritorio = !AppBreakpoints.esMenorATablet(context);
       return LayoutBuilder(
         builder: (context, c) {
+          // Escritorio: el paginador es una barra fija bajo la tabla (no
+          // flota) y solo la tabla se desplaza.
+          if (escritorio && c.hasBoundedHeight) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: IndicadorAbajo(
+                    builder: (ctl) => SingleChildScrollView(
+                      controller: ctl,
+                      padding: const EdgeInsets.only(right: 16),
+                      child: contenido,
+                    ),
+                  ),
+                ),
+                _paginador(),
+              ],
+            );
+          }
           // Con alto acotado (dentro de un Expanded) el paginador flota sobre
           // el borde de abajo. Sin alto acotado (dentro de otra página con
           // scroll) la tabla se limita a [altoMaximo] y el paginador queda
@@ -471,7 +669,7 @@ class _TablaAppState<T> extends State<TablaApp<T>> {
                     ),
                   ),
                 ),
-                if (hayPaginas) _paginador(),
+                if (hayPaginas || escritorio) _paginador(),
               ],
             ),
           );

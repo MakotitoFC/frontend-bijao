@@ -1,15 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/borrador_pedido_store.dart';
-import '../data/mesas_por_liberar_store.dart';
 import '../data/configuracion_store.dart';
+import '../data/mesas_por_liberar_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
-import '../models/mesa.dart';
 import '../models/usuario.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
@@ -25,22 +23,20 @@ import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/nota_pedido.dart';
 import '../widgets/app_search_field.dart';
+import '../widgets/menu_flotante.dart';
+import '../widgets/app_tag.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
-import '../widgets/app_select.dart';
 import '../widgets/aviso_caja_cerrada.dart';
 import '../data/cierres_store.dart';
 import '../models/turno.dart';
 import '../services/caja_service.dart';
 import '../widgets/dialogo_app.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/icono_mesa.dart';
 import '../widgets/indicador_abajo.dart';
 import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/elegir_nuevo_pedido_dialog.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
-import '../widgets/tabs_desplazables.dart';
 
 // Vista de Pedidos en dos secciones: cola de pedidos activos (`pedidos`,
 // `pedidos_detalle`) a la izquierda y detalle del pedido elegido a la derecha.
@@ -65,6 +61,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   static const _vistas = <_VistaCola>[
     _VistaCola(id: 'clientes', nombre: 'Clientes', filtro: 'clientes'),
     _VistaCola(id: 'empleados', nombre: 'Empleados', filtro: 'empleados'),
+    _VistaCola(id: 'familia', nombre: 'Familia', filtro: 'familia'),
   ];
   String _vistaId = 'clientes';
 
@@ -86,8 +83,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
   bool _enVistaDe(_VistaCola v, Pedido p) =>
       _esDelPeriodo(p) &&
       switch (v.filtro) {
-        'clientes' => !esPedidoDeEmpleado(p),
+        'clientes' => !esPedidoDeEmpleado(p) && !esPedidoDeFamilia(p.id),
         'empleados' => esPedidoDeEmpleado(p),
+        'familia' => esPedidoDeFamilia(p.id),
         _ => true,
       };
 
@@ -95,75 +93,55 @@ class _PedidosScreenState extends State<PedidosScreen> {
   int _cantidadDeVista(_VistaCola v) =>
       pedidos.where((p) => _esActivo(p) && _enVistaDe(v, p)).length;
 
-  // Pestañas de la cola, tipo carpeta: la vista abierta va en verde.
+  // Subheader con las vistas (Clientes, Empleados, Familia): rectangulares y
+  // solo la elegida va en verde, con la cantidad de pedidos de cada una.
   Widget _pestanasVistas() {
-    // Cada pestaña es una flecha ">" con la punta como pieza de rompecabezas:
-    // la siguiente encaja en la muesca de la anterior.
-    Widget pestana(_VistaCola v, int i) {
+    Widget pestana(_VistaCola v) {
       final activa = v.id == _vistaId;
-      const punta = 14.0;
-      return Padding(
-        padding: EdgeInsets.zero,
-        child: Transform.translate(
-          offset: Offset(i == 0 ? 0 : -punta, 0),
-          child: InkWell(
-            customBorder: const _FormaFlecha(punta),
-            onTap: () => setState(() => _vistaId = v.id),
-            child: Container(
-              height: 38,
-              padding: EdgeInsets.fromLTRB(
-                i == 0 ? 16 : punta + 10,
-                0,
-                punta + 12,
-                0,
-              ),
-              decoration: ShapeDecoration(
-                color: activa ? AppColors.primaryGreen : Colors.white,
-                shape: _FormaFlecha(
-                  punta,
-                  lado: BorderSide(
-                    color: activa
-                        ? AppColors.primaryGreen
-                        : Colors.grey.shade400,
-                  ),
-                  plana: i == 0,
+      return InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => setState(() => _vistaId = v.id),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: activa ? AppColors.primaryGreen : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                v.nombre,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: activa ? Colors.white : Colors.grey.shade700,
                 ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    v.nombre,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: activa ? Colors.white : Colors.grey.shade700,
-                    ),
+              const SizedBox(width: 6),
+              Container(
+                constraints: const BoxConstraints(minWidth: 18),
+                height: 18,
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: activa ? Colors.white : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${_cantidadDeVista(v)}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: activa
+                        ? AppColors.primaryGreen
+                        : Colors.grey.shade700,
                   ),
-                  const SizedBox(width: 6),
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 18),
-                    height: 18,
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: activa ? Colors.white : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${_cantidadDeVista(v)}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: activa
-                            ? AppColors.primaryGreen
-                            : Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       );
@@ -171,11 +149,16 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < _vistas.length; i++) pestana(_vistas[i], i),
-        ],
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [for (final v in _vistas) pestana(v)],
+        ),
       ),
     );
   }
@@ -201,10 +184,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
     } else if (borrador != null) {
       descartarBorradorYEsperar();
     }
-    _cargarPagadosOcultos();
     mesasPorLiberarNotifier.addListener(_alCambiarEnVivo);
     traspasosRevision.addListener(_alCambiarEnVivo);
     _cargar();
+    cargarCuentasCeroCerradas().then((_) {
+      if (mounted) setState(() {});
+    });
     EventosService.instance.revision.addListener(_alCambiarEnVivo);
     // Con la conexión en vivo activa, la consulta periódica es solo un respaldo
     // (cada 32 s); sin ella, cada 4 s.
@@ -322,7 +307,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         await CajaService.instance.cargarEstado();
       } catch (_) {}
     }
-    // Para saber qué mesas siguen ocupadas (franja "Mesas por liberar").
+    // Para saber qué mesas siguen ocupadas (notificación "Mesas por liberar").
     if (PedidoMozoService.instance.activo) {
       await TraspasoService.instance.cargar();
       await CatalogService.instance.cargarMesas();
@@ -334,117 +319,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
     _avisarRechazos();
   }
 
-  Future<void> _liberarMesa(Mesa mesa) async {
-    try {
-      await PedidoService.instance.liberarMesa(mesa.id, mesa.numero);
-      quitarMesaPorLiberar(mesa.id);
-      if (!mounted) return;
-      setState(() {});
-      showAppToast(
-        context,
-        'Mesa ${mesa.numero} liberada.',
-        type: ToastType.success,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showAppToast(
-        context,
-        'No se pudo liberar la mesa ${mesa.numero}: '
-        '${e.toString().replaceFirst('Exception: ', '')}',
-        type: ToastType.error,
-      );
-    }
-  }
-
-  // Mesas que el mozo debe liberar: el pago no las libera, las libera él cuando
-  // los clientes se retiran. La lista la da el backend: al mozo solo le salen
-  // las mesas que atendió; al administrador, todas las de la sede.
-  Widget _mesasPorLiberar() {
-    if (!PedidoMozoService.instance.activo) return const SizedBox.shrink();
-    final cobradas = mesasPorLiberar();
-    if (cobradas.isEmpty) return const SizedBox.shrink();
-
-    // La mesa como icono (con su número en el respaldar) y, al lado, el botón
-    // azul para liberarla.
-    Widget chip(Mesa m) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconoMesa(
-          numero: m.numero,
-          colorPropio: const Color(0xFF2563EB),
-          ocupada: false,
-          actual: false,
-          seleccionada: false,
-        ),
-        const SizedBox(width: 8),
-        FilledButton(
-          onPressed: () => _liberarMesa(m),
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF2563EB),
-            foregroundColor: Colors.white,
-            minimumSize: const Size(0, 32),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-          ),
-          child: const Text(
-            'Liberar',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
-    );
-
-    Widget grupo(String texto, List<Mesa> lista) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            texto,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-        ),
-        Wrap(
-          spacing: 18,
-          runSpacing: 12,
-          children: [for (final m in lista) chip(m)],
-        ),
-      ],
-    );
-
-    // Sin color de fondo, solo con trazo azul.
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(LucideIcons.armchair, size: 15, color: Color(0xFF2563EB)),
-              SizedBox(width: 8),
-              Text(
-                'Mesas por liberar',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          grupo('Ya pagaron. Libera la mesa cuando se retiren.', cobradas),
-        ],
-      ),
-    );
-  }
-
   // ---------- datos ----------
 
   bool get _esAdmin => widget.usuario.administraPedidos;
 
   // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
-  // Un pedido ya cobrado por completo va solo en "Pagados", no en la cola.
+  // Un pedido ya cobrado por completo sale de la vista de pedidos: queda en
+  // Ventas y en Caja.
   bool _esCobrado(Pedido p) {
     if (p.estado == 'anulado' || p.estado == 'devuelto') return false;
     // Si está en 'pagado', pero por anulación de pagos/movimientos en caja ahora tiene saldo pendiente:
@@ -452,7 +333,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
       return saldoPendienteDePedido(p.id) <= 0.005;
     }
     // Cuenta en cero a propósito (familia, empleado o cumpleaños): al "pagarse"
-    // queda con un pago en cero y pasa a Pagados. Solo si su total es cero: un
+    // queda con un pago en cero y sale de la vista. Solo si su total es cero: un
     // pedido de empleado con abonos y saldo sigue en la cola.
     if (motivoCuentaCero(p) != null &&
         totalDePedido(p.id).abs() < 0.005 &&
@@ -482,67 +363,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   // En la cola solo salen pedidos abiertos, no cobrados y con sus productos ya
   // cargados: sin ellos el total se ve en cero y la tarjeta aparecía unos
-  // segundos hasta que llegaba el detalle y se movía a Pagados.
+  // segundos hasta que llegaba el detalle y desaparecía.
   bool _esActivo(Pedido p) =>
       p.abierto &&
+      !cuentasCeroCerradas.contains(p.id) &&
       !_esCobrado(p) &&
       (detallesPorPedido[p.id] ?? const <PedidoLine>[]).isNotEmpty;
-
-  // Pedidos pagados que se quitaron de la vista con "Borrar". Solo limpia la
-  // pantalla (en este dispositivo): los registros siguen en Ventas y reportes.
-  Set<String> _pagadosOcultos = {};
-  static const _clavePagadosOcultos = 'pagados_ocultos';
-
-  Future<void> _cargarPagadosOcultos() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final ids = prefs.getStringList(_clavePagadosOcultos);
-      if (ids != null && mounted) setState(() => _pagadosOcultos = ids.toSet());
-    } catch (_) {}
-  }
-
-  Future<void> _borrarPagadosDeLaVista() async {
-    final visibles = pedidos
-        .where(
-          (p) =>
-              _esCobrado(p) && _enVista(p) && !_pagadosOcultos.contains(p.id),
-        )
-        .map((p) => p.id)
-        .toList();
-    if (visibles.isEmpty) return;
-    final ok = await showBlurDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertaApp(
-        title: const Text('Limpiar pagados'),
-        content: const Text(
-          'Se quitan de esta vista los pedidos pagados. No se borra ningún '
-          'registro: siguen en Ventas y en los reportes.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Borrar de la vista'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    setState(() => _pagadosOcultos = {..._pagadosOcultos, ...visibles});
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_clavePagadosOcultos, _pagadosOcultos.toList());
-    } catch (_) {}
-  }
-
-  String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
-
-  // Pedidos cobrados (aunque sea en parte) con el medio elegido.
-  bool _conMedio(Pedido p) =>
-      _medioFiltro == 'todos' || mediosDePagoDe(p.id).contains(_medioFiltro);
 
   // Texto del buscador: coincide con la mesa, el mozo, el número del pedido o
   // el cliente (sin distinguir mayúsculas ni tildes).
@@ -571,22 +397,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
   }
 
   List<Pedido> get _cola {
-    // "Pagados": los ya cobrados. En "Todos" y en los demás filtros solo están
-    // los pedidos abiertos, para que lo cobrado no estorbe.
-    if (_tipoFiltro == 'pagados') {
-      return pedidos
-          .where(
-            (p) =>
-                _esCobrado(p) &&
-                _enVista(p) &&
-                !_pagadosOcultos.contains(p.id) &&
-                _conMedio(p) &&
-                _coincide(p),
-          )
-          .toList();
-    }
+    // Solo los pedidos abiertos: lo ya cobrado no se muestra.
     final base = pedidos.where(
-      (p) => _esActivo(p) && _enVista(p) && _coincide(p),
+      (p) => _esActivo(p) && _enVista(p) && _coincide(p) && _conMedio(p),
     );
     if (_tipoFiltro == null) return base.toList();
     return base.where((p) => p.tipoPedido == _tipoFiltro).toList();
@@ -595,12 +408,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   // Pedido elegido, o null si ya no está activo (pagado/cancelado/devuelto).
   Pedido? get _seleccionado {
     for (final p in pedidos) {
-      if (p.id == _seleccionId &&
-          _esDelPeriodo(p) &&
-          (_esActivo(p) ||
-              (_tipoFiltro == 'pagados' &&
-                  _esCobrado(p) &&
-                  !_pagadosOcultos.contains(p.id)))) {
+      if (p.id == _seleccionId && _esDelPeriodo(p) && _esActivo(p)) {
         return p;
       }
     }
@@ -608,22 +416,10 @@ class _PedidosScreenState extends State<PedidosScreen> {
   }
 
   int _contarTipo(String? tipo) {
-    if (tipo == 'pagados') {
-      return pedidos
-          .where(
-            (p) =>
-                _esCobrado(p) && _enVista(p) && !_pagadosOcultos.contains(p.id),
-          )
-          .length;
-    }
     final base = pedidos.where((p) => _esActivo(p) && _enVista(p));
     if (tipo == null) return base.length;
     return base.where((p) => p.tipoPedido == tipo).length;
   }
-
-  String _fecha(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}, '
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   // ---------- acciones ----------
 
@@ -975,12 +771,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
           _bannerCajaCerrada(),
           _bannerTraspasos(),
           _pestanasVistas(),
-          const SizedBox(height: 12),
-          _filtroEstado(),
+          const SizedBox(height: 8),
+          _barraFiltros(),
           const SizedBox(height: 10),
-          _buscador(),
-          const SizedBox(height: 14),
-          _mesasPorLiberar(),
           Expanded(
             child: cola.isEmpty
                 ? Center(
@@ -1041,95 +834,158 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
-  // Tabs por tipo de pedido (mesa, delivery, para llevar), cada una con su
-  // cantidad.
-  Widget _filtroEstado() {
-    const opciones = <(String?, String)>[
-      (null, 'Todos'),
-      ('mesa', 'Mesa'),
-      ('delivery', 'Delivery'),
-      ('llevar', 'Para llevar'),
-      ('pagados', 'Pagados'),
-    ];
-    // Tabs y "Nuevo Pedido" en la misma fila; si los tabs no caben aparecen las
-    // flechas para desplazarlos.
-    return Row(
-      children: [
-        Expanded(
-          child: TabsDesplazables(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [for (final o in opciones) _pastillaTipo(o.$1, o.$2)],
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        _botonNuevoPedido(),
-      ],
-    );
-  }
+  String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
 
-  // Buscador y, solo en "Pagados", filtro por medio de pago (por ejemplo, cada
-  // número de Yape).
-  Widget _buscador() {
+  // Pedidos con algún cobro (por ejemplo, abonos) con el medio elegido.
+  bool _conMedio(Pedido p) =>
+      _medioFiltro == 'todos' || mediosDePagoDe(p.id).contains(_medioFiltro);
+
+  // Buscador, filtros por medio de pago y por tipo de pedido, y "Nuevo Pedido"
+  // junto a los filtros. En pantallas angostas los filtros pasan debajo del
+  // buscador.
+  Widget _barraFiltros() {
     final nombres = <String>{
       for (final m in mediosPagoActivos) m.medioPago,
       for (final p in pagos) p.medioPago.medioPago,
     }.toList()..sort();
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        AppSearchField(
-          controller: _busqueda,
-          hint: 'Buscar mesa, mozo o pedido...',
-          onChanged: (_) => setState(() {}),
-        ),
-        if (_tipoFiltro == 'pagados')
-          SizedBox(
-            width: 240,
-            child: AppSelect<String>(
-              compacto: true,
-              value: _medioFiltro,
-              hint: 'Medio de pago',
-              items: [
-                const AppSelectItem(
-                  value: 'todos',
-                  label: 'Todos los medios de pago',
+    final buscador = AppSearchField(
+      controller: _busqueda,
+      hint: 'Buscar mesa, mozo o pedido...',
+      compacto: true,
+      ajustarAlTexto: false,
+      onChanged: (_) => setState(() {}),
+    );
+    // Medio de pago: botón de color fijo con la flecha a la derecha, como el
+    // selector de estado del detalle.
+    Widget selectMedio(double ancho) => SizedBox(
+      width: ancho,
+      child: MenuFlotante<String>(
+        tooltip: 'Filtrar por medio de pago',
+        seleccionada: _medioFiltro,
+        onSeleccionar: (v) => setState(() => _medioFiltro = v),
+        opciones: [
+          const OpcionMenu(
+            valor: 'todos',
+            etiqueta: 'Todos los medios de pago',
+          ),
+          for (final n in nombres) OpcionMenu(valor: n, etiqueta: n),
+        ],
+        disparador: (context, abierto) => Container(
+          height: AppSizes.boton,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppColors.navbar,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _medioFiltro == 'todos' ? 'Medio de pago' : _medioFiltro,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                for (final n in nombres) AppSelectItem(value: n, label: n),
-              ],
-              onChanged: (v) => setState(() => _medioFiltro = v ?? 'todos'),
-            ),
+              ),
+              const SizedBox(width: 4),
+              AnimatedRotation(
+                duration: const Duration(milliseconds: 200),
+                turns: abierto ? 0.5 : 0,
+                child: const Icon(
+                  Icons.keyboard_arrow_down,
+                  size: 16,
+                  color: Colors.white70,
+                ),
+              ),
+            ],
           ),
-        if (_tipoFiltro == 'pagados')
-          OutlinedButton.icon(
-            onPressed: _borrarPagadosDeLaVista,
-            icon: const Icon(Icons.cleaning_services_outlined, size: 16),
-            label: const Text('Borrar'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.error,
-              side: const BorderSide(color: AppColors.error),
+        ),
+      ),
+    );
+    // Tipo de pedido: tags naranja, cada uno con su cantidad.
+    Widget tags() => SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final o in const <(String?, String)>[
+            (null, 'Todos'),
+            ('mesa', 'Mesa'),
+            ('delivery', 'Delivery'),
+            ('llevar', 'Para llevar'),
+          ])
+            AppTag(
+              etiqueta: o.$2,
+              activo: _tipoFiltro == o.$1,
+              cantidad: _contarTipo(o.$1),
+              color: AppColors.naranja,
+              colorBorde: Colors.grey.shade300,
+              colorTextoInactivo: Colors.grey.shade800,
+              onTap: () => setState(() => _tipoFiltro = o.$1),
             ),
-          ),
-      ],
+        ],
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Con menos de 760 px el buscador quedaría corto junto a los botones:
+        // pasa a ocupar su propia línea, a todo el ancho.
+        final ancha = c.maxWidth >= 760;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (ancha)
+              Row(
+                children: [
+                  // El buscador llega a 440 px y se achica si falta espacio; los
+                  // botones quedan a la derecha.
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: buscador,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  selectMedio(150),
+                  const SizedBox(width: 8),
+                  _botonNuevoPedido(),
+                ],
+              )
+            else ...[
+              buscador,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: selectMedio(double.infinity)),
+                  const SizedBox(width: 8),
+                  _botonNuevoPedido(),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            tags(),
+          ],
+        );
+      },
     );
   }
 
-  Widget _pastillaTipo(String? valor, String etiqueta) {
-    return AppTag(
-      etiqueta: etiqueta,
-      activo: _tipoFiltro == valor,
-      cantidad: _contarTipo(valor),
-      onTap: () => setState(() {
-        _tipoFiltro = valor;
-        if (valor != 'pagados') _medioFiltro = 'todos';
-      }),
-    );
-  }
+  // Empleado y familia llevan el nombre en su etiqueta.
+  bool _nombreEnEtiqueta(Pedido p) =>
+      esPedidoDeEmpleado(p) || esPedidoDeFamilia(p.id);
 
-  Widget _tipoDePedido(Pedido p) => EtiquetaTipoPedido(pedido: p);
+  Widget _tipoDePedido(Pedido p) =>
+      EtiquetaTipoPedido(pedido: p, colorFijo: Colors.grey.shade800);
+
+  String _hora(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   // Texto de la línea de pago de la tarjeta (null si aún no se cobró).
   String? _lineaDePago(Pedido p) {
@@ -1140,6 +996,17 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   Widget _tarjetaPedido(Pedido p) {
     final tenue = Colors.grey.shade600;
+    final colorEstado = _esCobrado(p)
+        ? paletaEstadoPedido('pagado').color
+        : paletaEstadoPedido(p.estado).color;
+    // Cliente, empleado o familia: va en una franja de color fuerte bajo la
+    // cabecera.
+    final nombreEtiqueta = (nombreClienteDe(p) ?? '').trim();
+    final cliente = esPedidoDeEmpleado(p)
+        ? (nombreEtiqueta.isEmpty ? 'Empleado' : 'Empleado: $nombreEtiqueta')
+        : esPedidoDeFamilia(p.id)
+        ? (nombreEtiqueta.isEmpty ? 'Familia' : 'Familia: $nombreEtiqueta')
+        : p.notas;
     final lineas = (detallesPorPedido[p.id] ?? [])
         .where(esLineaDeProducto)
         .toList();
@@ -1153,7 +1020,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         transform: Matrix4.translationValues(0, seleccionado ? -2 : 0, 0),
-        padding: const EdgeInsets.all(12),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -1172,221 +1039,245 @@ class _PedidosScreenState extends State<PedidosScreen> {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(6),
+            // Cabecera con el color del estado, suave, como una franja.
+            Container(
+              color: colorEstado.withValues(alpha: 0.1),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      // El número va primero, con grosor.
+                      Text(
+                        '#${p.numeroPedido}',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                      // La etiqueta de estado llena el resto de la fila y se pega a
+                      // la esquina derecha.
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (p.estado == 'pagado' || _esCobrado(p))
+                                // Ya cobrado: "Pagado" en rojo con letras blancas.
+                                const _TagPagado(cobrado: true)
+                              else ...[
+                                // Cobrado antes de servir: "Pagado" en naranja.
+                                if (pagadoSinServir(p)) ...[
+                                  const _TagPagado(),
+                                  const SizedBox(width: 6),
+                                ],
+                                BadgeEstadoPedido(p.estado),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: const Icon(
-                    LucideIcons.receipt,
-                    size: 13,
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      // El tipo de pedido (Mesa, Para llevar, Delivery) con su color.
+                      Flexible(child: _tipoDePedido(p)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Solo la hora del pedido.
+                  Text(
+                    _hora(p.fechaPedido),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: tenue,
+                    ),
+                  ),
+                  // Mozo que atiende el pedido (el de esa mesa).
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        LucideIcons.user,
+                        size: 14,
+                        color: Colors.grey.shade800,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Mozo: ${nombreMeseroDe(p)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // En un pedido de empleado o de familia el nombre ya va en la
+                  // franja: aquí solo queda la nota, sin la línea "Cliente: ...".
+                  if (_nombreEnEtiqueta(p) &&
+                      notaGeneralDe(p.notas) != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      notaGeneralDe(p.notas)!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (cliente != null)
+              Container(
+                color: colorEstado,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                child: Text(
+                  cliente,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  '#${p.numeroPedido}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
-                ),
-                const Spacer(),
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (p.estado == 'pagado' || _esCobrado(p))
-                          // Ya cobrado: "Pagado" en rojo con letras blancas.
-                          const _TagPagado(cobrado: true)
-                        else ...[
-                          // Cobrado antes de servir: "Pagado" en naranja.
-                          if (pagadoSinServir(p)) ...[
-                            const _TagPagado(),
-                            const SizedBox(width: 6),
-                          ],
-                          BadgeEstadoPedido(p.estado),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                // El tipo de pedido (Mesa, Para llevar, Delivery) con su color.
-                Flexible(child: _tipoDePedido(p)),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              _fecha(p.fechaPedido),
-              style: TextStyle(fontSize: 11, color: tenue),
-            ),
-            // Mozo que atiende el pedido (el de esa mesa).
-            const SizedBox(height: 3),
-            Row(
-              children: [
-                Icon(LucideIcons.user, size: 12, color: tenue),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Mozo: ${nombreMeseroDe(p)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey.shade800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            // La etiqueta del empleado o de la familia va debajo del mozo.
-            if (esPedidoDeEmpleado(p)) ...[
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TagEmpleado(nombre: nombreClienteDe(p)),
               ),
-            ] else if (esPedidoDeFamilia(p.id)) ...[
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TagFamilia(nombre: nombreClienteDe(p)),
-              ),
-            ],
-            // En un pedido de empleado el nombre ya va en la etiqueta: aquí solo
-            // queda la nota, sin la línea "Cliente: ...".
-            if ((esPedidoDeEmpleado(p) ? notaGeneralDe(p.notas) : p.notas) !=
-                null) ...[
-              const SizedBox(height: 4),
-              Text(
-                (esPedidoDeEmpleado(p) ? notaGeneralDe(p.notas) : p.notas)!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Divider(height: 1, color: Colors.grey.shade200),
-            const SizedBox(height: 8),
-            for (final l in lineas.take(maxItems)) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'x${l.cantidad}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryGreenDark,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Column(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final l in lineas.take(maxItems)) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            l.nombrePlato,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            'x${l.cantidad}',
                             style: const TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primaryGreenDark,
                             ),
                           ),
-                          if (l.comentario != null)
-                            Text(
-                              l.comentario!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey.shade500,
-                              ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l.nombrePlato,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (l.comentario != null)
+                                  Text(
+                                    l.comentario!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                              ],
                             ),
+                          ),
                         ],
                       ),
                     ),
                   ],
-                ),
-              ),
-            ],
-            if (lineas.length > maxItems)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  '+${lineas.length - maxItems} productos más',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryGreen,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: Colors.grey.shade200),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
-                ),
-                const Spacer(),
-                CronometroPedido(pedido: p),
-              ],
-            ),
-            // Con qué medios se cobró, si ya hay cobros.
-            if (_lineaDePago(p) case final linea?) ...[
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 1),
-                    child: Icon(LucideIcons.wallet, size: 15, color: tenue),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      linea,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade800,
+                  if (lineas.length > maxItems)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '+${lineas.length - maxItems} productos más',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryGreen,
+                        ),
                       ),
                     ),
+                  const SizedBox(height: 10),
+                  Divider(height: 1, color: Colors.grey.shade200),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        esPedidoDeFamilia(p.id) &&
+                                totalDePedido(p.id).abs() < 0.005
+                            ? 'Cuenta de familia'
+                            : 'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const Spacer(),
+                      CronometroPedido(pedido: p),
+                    ],
                   ),
+                  // Con qué medios se cobró, si ya hay cobros.
+                  if (_lineaDePago(p) case final linea?) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Icon(
+                            LucideIcons.wallet,
+                            size: 15,
+                            color: tenue,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            linea,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -1434,52 +1325,4 @@ class _VistaCola {
     required this.nombre,
     required this.filtro,
   });
-}
-
-// Pestaña en forma de flecha: punta a la derecha y, salvo la primera, una
-// muesca a la izquierda donde encaja la punta de la anterior.
-class _FormaFlecha extends ShapeBorder {
-  final double punta;
-  final BorderSide lado;
-  final bool plana;
-
-  const _FormaFlecha(
-    this.punta, {
-    this.lado = BorderSide.none,
-    this.plana = false,
-  });
-
-  @override
-  EdgeInsetsGeometry get dimensions => EdgeInsets.all(lado.width);
-
-  Path _camino(Rect r) {
-    final m = r.center.dy;
-    return Path()
-      ..moveTo(r.left, r.top)
-      ..lineTo(r.right - punta, r.top)
-      ..lineTo(r.right, m)
-      ..lineTo(r.right - punta, r.bottom)
-      ..lineTo(r.left, r.bottom)
-      ..lineTo(plana ? r.left : r.left + punta, m)
-      ..close();
-  }
-
-  @override
-  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
-      _camino(rect.deflate(lado.width));
-
-  @override
-  Path getOuterPath(Rect rect, {TextDirection? textDirection}) => _camino(rect);
-
-  @override
-  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    if (lado.style == BorderStyle.none) return;
-    canvas.drawPath(
-      _camino(rect.deflate(lado.width / 2)),
-      lado.toPaint()..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  ShapeBorder scale(double t) => this;
 }

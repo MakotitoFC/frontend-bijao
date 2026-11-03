@@ -11,6 +11,7 @@ import '../data/cargos_extra_store.dart';
 import '../data/cartas_store.dart';
 import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
+import '../data/promociones_destacadas_store.dart';
 import '../data/promociones_store.dart';
 import '../models/incidencia.dart';
 import '../models/pedido.dart';
@@ -44,7 +45,6 @@ import '../services/facturacion_service.dart';
 import 'boton_imprimir_whatsapp.dart';
 import 'agregar_producto_dialog.dart';
 import 'producto_opciones_dialog.dart';
-import 'app_tag.dart';
 import 'descuento_dialog.dart';
 import 'menu_flotante.dart';
 import 'indicador_abajo.dart';
@@ -229,27 +229,51 @@ class TagFamilia extends StatelessWidget {
 class BadgeEstadoPedido extends StatelessWidget {
   final String estado;
   final ValueChanged<String>? onCambiarEstado;
+  // En bloque: más alto y de esquinas poco redondas, para ir sobre los
+  // botones de la cabecera del detalle.
+  final bool bloque;
 
-  const BadgeEstadoPedido(this.estado, {super.key, this.onCambiarEstado});
+  const BadgeEstadoPedido(
+    this.estado, {
+    super.key,
+    this.onCambiarEstado,
+    this.bloque = false,
+  });
 
   Widget _pastilla(Color color, String texto, {bool abierto = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: bloque
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 9)
+          : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: BorderRadius.circular(bloque ? 8 : 100),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        // En bloque la flecha va pegada al extremo derecho.
+        mainAxisSize: bloque ? MainAxisSize.max : MainAxisSize.min,
         children: [
-          Text(
-            texto,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
+          if (bloque)
+            Expanded(
+              child: Text(
+                texto,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            Text(
+              texto,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
           if (onCambiarEstado != null) ...[
             const SizedBox(width: 4),
             AnimatedRotation(
@@ -318,9 +342,6 @@ class DetallePedidoPanel extends StatelessWidget {
   // Abre directo la elección de pago (único o compartido), sin mostrar todo el
   // detalle del pedido: la usa el cajero desde su comanda.
   Future<void> iniciarCobro(BuildContext context) => _elegirPago(context);
-
-  String _hora(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   String _metodoPago() {
     final metodos = <String>{
@@ -1057,19 +1078,17 @@ class DetallePedidoPanel extends StatelessWidget {
 
   Future<void> _agregarProducto(BuildContext context) async {
     if (!_puedeModificar(context)) return;
+    // Solo se cierra con la X: se puede seguir agregando productos.
     final agregado = await showBlurDialog<bool>(
       context: context,
-      builder: (_) => AgregarProductoDialog(pedido: pedido, esAdmin: esAdmin),
+      barrierDismissible: false,
+      builder: (_) => AgregarProductoDialog(
+        pedido: pedido,
+        esAdmin: esAdmin,
+        onAgregado: onCambio,
+      ),
     );
-    if (agregado != true) return;
-    onCambio();
-    if (context.mounted) {
-      showAppToast(
-        context,
-        'Producto agregado al pedido #${pedido.numeroPedido}.',
-        type: ToastType.success,
-      );
-    }
+    if (agregado == true) onCambio();
   }
 
   // Propina para el mesero: se agrega al card de totales y se puede editar.
@@ -1172,27 +1191,35 @@ class DetallePedidoPanel extends StatelessWidget {
     onCambio();
   }
 
-  // Agrega una promoción tal como la configuró el admin al pedido.
+  // Agrega al pedido una promoción tal como la configuró el admin, o los
+  // productos de cumpleaños (como en el registro del pedido).
   Future<void> _agregarPromocion(BuildContext context) async {
     if (!_puedeModificar(context)) return;
-    final r = await elegirPromocion(context);
-    if (r == null || !context.mounted) return;
-    final linea = lineaDePromocion(r);
-    if (_api) {
-      final ok = await _ejecutar(
-        context,
-        () => PedidoMozoService.instance.agregarProducto(pedido.id, linea),
-      );
-      if (!ok) return;
-    } else {
-      agregarLineaAPedido(pedido.id, linea);
-      registrarConsumoAutomaticoDeLinea(linea);
-      onCambio();
+    final e = await elegirPromocionOCumpleanos(context);
+    if (e == null || !context.mounted) return;
+    final lineas = e.promocion != null
+        ? [lineaDePromocion(e.promocion!)]
+        : e.cumpleanos;
+    final nombre =
+        e.promocion?.promocion.nombre ?? configCumpleanos.value.nombre;
+    for (final linea in lineas) {
+      if (_api) {
+        final ok = await _ejecutar(
+          context,
+          () => PedidoMozoService.instance.agregarProducto(pedido.id, linea),
+        );
+        if (!ok) return;
+      } else {
+        agregarLineaAPedido(pedido.id, linea);
+        registrarConsumoAutomaticoDeLinea(linea);
+      }
+      if (!context.mounted) return;
     }
+    if (!_api) onCambio();
     if (context.mounted) {
       showAppToast(
         context,
-        '"${r.promocion.nombre}" se agregó al pedido #${pedido.numeroPedido}.',
+        '"$nombre" se agregó al pedido #${pedido.numeroPedido}.',
         type: ToastType.success,
         titulo: 'Promoción',
       );
@@ -1516,10 +1543,8 @@ class DetallePedidoPanel extends StatelessWidget {
     final total = totalBase + totalCargos;
     final puedePagar = saldoCuentaDePedido(pedido.id) > 0.01;
 
-    // En pantallas bajas (mobile) los totales y botones van dentro del scroll,
-    // para que los productos no queden aplastados.
-    final pieEnLista = MediaQuery.sizeOf(context).height < 520;
-    // Los totales van dentro del scroll (que ya tiene su propio margen).
+    // Totales y botones quedan fijos abajo: solo la lista de productos se
+    // desplaza.
     final pieTotales = Padding(
       padding: const EdgeInsets.fromLTRB(4, 0, 0, 0),
       child: Column(
@@ -1577,32 +1602,6 @@ class DetallePedidoPanel extends StatelessWidget {
             _filaTotal('Saldo pendiente', saldo, color: AppColors.mesaOcupada),
           const SizedBox(height: 4),
           _filaTotal('Total', total, fuerte: true),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              runSpacing: 8,
-              children: [
-                AppTag(
-                  etiqueta: 'Promoción',
-                  icono: LucideIcons.tag,
-                  activo: false,
-                  color: AppColors.naranja,
-                  onTap: () => _agregarPromocion(context),
-                ),
-                if (!_esCajero)
-                  // También aquí: un cliente puede pedir solo un táper.
-                  AppTag(
-                    etiqueta: 'Táper',
-                    icono: LucideIcons.package,
-                    activo: false,
-                    color: Colors.black87,
-                    colorBorde: Colors.grey.shade300,
-                    onTap: () => _editarTupper(context),
-                  ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1615,10 +1614,32 @@ class DetallePedidoPanel extends StatelessWidget {
             child: _botonesSecundarios(context, productos.isNotEmpty),
           );
     final pieBotones = Padding(
-      padding: pieEnLista
-          ? const EdgeInsets.fromLTRB(4, 12, 0, 20)
-          : const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
       child: _botonesFijos(context, puedePagar),
+    );
+    // Pie fijo: totales, acciones (Imprimir, WhatsApp, Devolución, Promoción,
+    // Táper) y Servido/Pagar. En pantallas muy bajas se desplaza aparte para
+    // no tapar los productos.
+    final pieFijo = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.6,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: pieTotales,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: botonesSecundarios,
+            ),
+            pieBotones,
+          ],
+        ),
+      ),
     );
 
     return Container(
@@ -1669,18 +1690,12 @@ class DetallePedidoPanel extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Divider(height: 24, color: Colors.grey.shade200),
-                  pieTotales,
-                  botonesSecundarios,
-                  if (pieEnLista) pieBotones,
                 ],
               ),
             ),
           ),
-          if (!pieEnLista) ...[
-            Divider(height: 1, color: Colors.grey.shade200),
-            pieBotones,
-          ],
+          Divider(height: 1, color: Colors.grey.shade200),
+          pieFijo,
         ],
       ),
     );
@@ -1688,7 +1703,8 @@ class DetallePedidoPanel extends StatelessWidget {
 
   Widget _cabecera(BuildContext context) {
     final cliente = pedido.clienteNombre;
-    return Padding(
+    return Container(
+      color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1710,21 +1726,6 @@ class DetallePedidoPanel extends StatelessWidget {
                 ),
               ),
             ),
-          Container(
-            width: 30,
-            height: 30,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              LucideIcons.receipt,
-              size: 16,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1733,40 +1734,54 @@ class DetallePedidoPanel extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        'Pedido #${pedido.numeroPedido}',
+                        '#${pedido.numeroPedido}',
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: 19,
+                          height: 1.1,
                           fontWeight: FontWeight.w800,
+                          color: Colors.black,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
-                  '${tituloPedido(pedido)} · ${_hora(pedido.fechaPedido)} · ${nombreMeseroDe(pedido)}',
+                  'Mozo: ${nombreMeseroDe(pedido)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-                // La etiqueta del empleado va debajo de la descripción.
-                if (esPedidoDeEmpleado(pedido))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: TagEmpleado(nombre: nombreClienteDe(pedido)),
-                  )
-                else if (esPedidoDeFamilia(pedido.id))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: TagFamilia(nombre: nombreClienteDe(pedido)),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade600,
                   ),
-                if (cliente != null && !esPedidoDeEmpleado(pedido))
+                ),
+                // Empleado o familia: una línea como la del cliente, sin etiqueta.
+                if (esPedidoDeEmpleado(pedido) || esPedidoDeFamilia(pedido.id))
                   Text(
-                    cliente,
+                    '${esPedidoDeEmpleado(pedido) ? 'Empleado' : 'Familia'}'
+                    '${(nombreClienteDe(pedido) ?? '').trim().isEmpty ? '' : ': ${nombreClienteDe(pedido)!.trim()}'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                if (cliente != null &&
+                    !esPedidoDeEmpleado(pedido) &&
+                    !esPedidoDeFamilia(pedido.id))
+                  Text(
+                    'Cliente: $cliente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
                 if (traspasoPendienteDe(pedido.id) case final t?)
                   Text(
@@ -1783,106 +1798,114 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          BadgeEstadoPedido(
-            pedido.estado,
-            onCambiarEstado: (nuevo) async {
-              if (!_puedeModificar(context)) return;
-              if (_api && nuevo == 'anulado') {
-                await _cancelar(context);
-                return;
-              }
-              await _ejecutar(
-                context,
-                () => PedidoService.instance.cambiarEstadoPedido(
-                  pedido.id,
-                  nuevo,
+          // El selector de estado va arriba y, debajo, los botones (cancelar,
+          // traspaso y cambio de mesa) repartidos en el mismo ancho.
+          IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                BadgeEstadoPedido(
+                  pedido.estado,
+                  bloque: true,
+                  onCambiarEstado: (nuevo) async {
+                    if (!_puedeModificar(context)) return;
+                    if (_api && nuevo == 'anulado') {
+                      await _cancelar(context);
+                      return;
+                    }
+                    await _ejecutar(
+                      context,
+                      () => PedidoService.instance.cambiarEstadoPedido(
+                        pedido.id,
+                        nuevo,
+                      ),
+                      exito: 'Estado del pedido actualizado.',
+                    );
+                  },
                 ),
-                exito: 'Estado del pedido actualizado.',
-              );
-            },
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _botonCabecera(
+                      icono: LucideIcons.trash2,
+                      tooltip: 'Cancelar pedido',
+                      color: Colors.white,
+                      fondo: AppColors.error,
+                      onTap: () => _cancelar(context),
+                    ),
+                    if (_api && pedido.abierto && esAdmin) ...[
+                      const SizedBox(width: 6),
+                      _botonCabecera(
+                        icono: LucideIcons.users,
+                        tooltip: 'Reasignar a otro mozo',
+                        onTap: () => _reasignar(context),
+                      ),
+                    ] else if (_api &&
+                        pedido.abierto &&
+                        PedidoMozoService.instance.puedeOperar(pedido)) ...[
+                      const SizedBox(width: 6),
+                      _botonCabecera(
+                        icono: LucideIcons.users,
+                        tooltip: traspasoPendienteDe(pedido.id) == null
+                            ? 'Traspasar a otro mozo'
+                            : 'Traspaso pendiente: ver o cancelar',
+                        color: traspasoPendienteDe(pedido.id) == null
+                            ? null
+                            : AppColors.naranja,
+                        fondo: traspasoPendienteDe(pedido.id) == null
+                            ? null
+                            : AppColors.naranja.withValues(alpha: 0.18),
+                        onTap: () => _traspasar(context),
+                      ),
+                    ],
+                    if (_api) ...[
+                      const SizedBox(width: 6),
+                      _botonCabecera(
+                        icono: LucideIcons.arrowLeftRight,
+                        tooltip: 'Cambiar mesa o entrega',
+                        onTap: () => _cambiarEntrega(context),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 6),
-          _botonCirculoRojo(
-            tooltip: 'Cancelar pedido',
-            onTap: () => _cancelar(context),
-          ),
-          if (_api && pedido.abierto && esAdmin) ...[
-            const SizedBox(width: 6),
-            Tooltip(
-              message: 'Reasignar a otro mozo',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _reasignar(context),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.grey.shade100,
-                  ),
-                  child: Icon(
-                    LucideIcons.users,
-                    size: 13,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ),
-          ] else if (_api &&
-              pedido.abierto &&
-              PedidoMozoService.instance.puedeOperar(pedido)) ...[
-            const SizedBox(width: 6),
-            Tooltip(
-              message: traspasoPendienteDe(pedido.id) == null
-                  ? 'Traspasar a otro mozo'
-                  : 'Traspaso pendiente: ver o cancelar',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _traspasar(context),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: traspasoPendienteDe(pedido.id) == null
-                        ? Colors.grey.shade100
-                        : AppColors.naranja.withValues(alpha: 0.18),
-                  ),
-                  child: Icon(
-                    LucideIcons.users,
-                    size: 13,
-                    color: traspasoPendienteDe(pedido.id) == null
-                        ? Colors.grey.shade700
-                        : AppColors.naranja,
-                  ),
-                ),
-              ),
-            ),
-          ],
-          if (_api) ...[
-            const SizedBox(width: 6),
-            Tooltip(
-              message: 'Cambiar mesa o entrega',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _cambiarEntrega(context),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.grey.shade100,
-                  ),
-                  child: Icon(
-                    LucideIcons.arrowLeftRight,
-                    size: 13,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ),
-          ],
         ],
+      ),
+    );
+  }
+
+  // Botón de la cabecera: más alto y de esquinas poco redondas; varios se
+  // reparten el ancho de la fila.
+  Widget _botonCabecera({
+    required IconData icono,
+    required String tooltip,
+    required VoidCallback onTap,
+    Color? color,
+    Color? fondo,
+  }) {
+    return SizedBox(
+      width: 38,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: fondo ?? Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onTap,
+            child: SizedBox(
+              height: 34,
+              child: Icon(
+                icono,
+                size: 15,
+                color: color ?? Colors.grey.shade700,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2487,47 +2510,92 @@ class DetallePedidoPanel extends StatelessWidget {
   bool get _esCajero => false;
 
   // Imprimir / WhatsApp y Devolución: van dentro del scroll.
+  // Botón circular de la fila de acciones: solo el ícono, con su nombre al
+  // dejar el cursor encima.
+  Widget _circulo({
+    required String tooltip,
+    required Widget icono,
+    required VoidCallback? onTap,
+    Color? fondo,
+    Color? borde,
+  }) {
+    final activo = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: Opacity(
+        opacity: activo ? 1 : 0.45,
+        child: Material(
+          color: fondo ?? Colors.white,
+          shape: CircleBorder(
+            side: BorderSide(color: borde ?? Colors.transparent),
+          ),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(width: 40, height: 40, child: Center(child: icono)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Imprimir, WhatsApp, Devolución, Promoción y Táper: una sola fila de
+  // botones circulares.
   Widget _botonesSecundarios(BuildContext context, bool hayProductos) {
-    const texto = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final gris = Colors.grey.shade300;
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
       children: [
-        if (!_esCajero) ...[
-          Row(
-            children: [
-              // El mozo no imprime ni manda la cuenta por WhatsApp.
-              if (_veCaja) ...[
-                Expanded(
-                  flex: 3,
-                  child: BotonImprimirWhatsapp(
-                    onImprimir: () => _imprimir(context),
-                    onWhatsapp: () => _enviarWhatsapp(context),
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: hayProductos && pedido.tipoPedido != 'delivery'
-                      ? () => _devolucion(context)
-                      : null,
-                  icon: const Icon(LucideIcons.undo2, size: 15),
-                  label: const Text(
-                    'Devolución',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: texto,
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black87,
-                    side: BorderSide(color: Colors.grey.shade300),
-                  ),
-                ),
-              ),
-            ],
+        // El mozo no imprime ni manda la cuenta por WhatsApp.
+        if (_veCaja) ...[
+          _circulo(
+            tooltip: 'Imprimir',
+            fondo: AppColors.navbar,
+            icono: const Icon(
+              LucideIcons.printer,
+              size: 18,
+              color: Colors.white,
+            ),
+            onTap: () => _imprimir(context),
+          ),
+          _circulo(
+            tooltip: 'Enviar la cuenta por WhatsApp',
+            fondo: AppColors.navbar,
+            icono: const IconoWhatsapp(tamano: 19),
+            onTap: () => _enviarWhatsapp(context),
           ),
         ],
+        _circulo(
+          tooltip: 'Devolución',
+          borde: gris,
+          icono: const Icon(LucideIcons.undo2, size: 18, color: Colors.black87),
+          onTap: hayProductos && pedido.tipoPedido != 'delivery'
+              ? () => _devolucion(context)
+              : null,
+        ),
+        _circulo(
+          tooltip: 'Promoción',
+          borde: AppColors.naranja,
+          icono: const Icon(
+            LucideIcons.tag,
+            size: 18,
+            color: AppColors.naranja,
+          ),
+          onTap: () => _agregarPromocion(context),
+        ),
+        if (!_esCajero)
+          // Un cliente puede pedir solo un táper.
+          _circulo(
+            tooltip: 'Táper',
+            borde: gris,
+            icono: const Icon(
+              LucideIcons.package,
+              size: 18,
+              color: Colors.black87,
+            ),
+            onTap: () => _editarTupper(context),
+          ),
       ],
     );
   }
@@ -2545,6 +2613,8 @@ class DetallePedidoPanel extends StatelessWidget {
         totalDePedido(pedido.id).abs() < 0.005 &&
         abonadoDePedido(pedido.id) < 0.005;
   }
+
+  bool get _esFamilia => esPedidoDeFamilia(pedido.id);
 
   String _textoCuentaCero(String? m) => switch (m) {
     'empleado' => 'un consumo de empleado',
@@ -2565,10 +2635,11 @@ class DetallePedidoPanel extends StatelessWidget {
     final imprimir = await showBlurDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertaApp(
-        title: const Text('Cuenta cero'),
+        title: Text(_esFamilia ? 'Cerrar cuenta' : 'Cuenta cero'),
         content: Text(
           'Es ${_textoCuentaCero(motivoCuentaCero(pedido))} por S/ 0.00. '
-          'Quedará registrado en el sistema. ¿Deseas imprimir el ticket?',
+          'Saldrá de Pedidos y quedará registrado en Ventas. '
+          '¿Deseas imprimir el ticket?',
         ),
         actions: [
           TextButton(
@@ -2611,13 +2682,9 @@ class DetallePedidoPanel extends StatelessWidget {
           montoAbonado: 0,
         );
       } catch (_) {
-        if (context.mounted) {
-          showAppToast(
-            context,
-            'El ticket quedó registrado, pero no se pudo cerrar la cuenta.',
-            type: ToastType.info,
-          );
-        }
+        // El servidor no acepta cobros en cero: la cuenta se quita de la cola
+        // en este dispositivo (el ticket ya quedó registrado).
+        await marcarCuentaCeroCerrada(pedido.id);
       }
       if (!context.mounted) return;
       if (imprimir) {
@@ -2687,6 +2754,11 @@ class DetallePedidoPanel extends StatelessWidget {
                   label: const Text('Servido', style: texto),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0284C7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 36),
                   ),
                 ),
               ),
@@ -2694,14 +2766,34 @@ class DetallePedidoPanel extends StatelessWidget {
               if (!_esCajero) const SizedBox(width: 12),
               Expanded(
                 child: FilledButton.icon(
-                  // Una cuenta en cero (familia) también se "paga": pregunta si
-                  // se imprime el ticket y deja el registro en el sistema.
+                  // La cuenta de familia (toda en cero) se cierra al terminar de
+                  // servir: sale de Pedidos y queda el registro en Ventas.
+                  // Empleado y cumpleaños solo llegan aquí si su total quedó en
+                  // cero; ahí el botón sigue siendo Pagar. Ambos preguntan si
+                  // se imprime el ticket.
                   onPressed: _esCuentaCero
-                      ? () => _pagarCuentaCero(context)
+                      ? (_esFamilia && pedido.estado != 'servido'
+                            ? null
+                            : () => _pagarCuentaCero(context))
                       : (puedePagar ? () => _elegirPago(context) : null),
-                  icon: const Icon(LucideIcons.banknote, size: 16),
-                  label: const Text('Pagar', style: texto),
-                  style: FilledButton.styleFrom(backgroundColor: _naranjaPago),
+                  icon: Icon(
+                    _esCuentaCero && _esFamilia
+                        ? LucideIcons.circleCheck
+                        : LucideIcons.banknote,
+                    size: 16,
+                  ),
+                  label: Text(
+                    _esCuentaCero && _esFamilia ? 'Cerrar cuenta' : 'Pagar',
+                    style: texto,
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _naranjaPago,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 36),
+                  ),
                 ),
               ),
             ],

@@ -23,16 +23,20 @@ import 'producto_opciones_dialog.dart';
 import 'taper_catalogo_dialog.dart';
 import 'dialogo_app.dart';
 
-// Agrega productos de la carta a un pedido ya registrado. Devuelve true si se
-// agregó algo.
+// Agrega productos de la carta a un pedido ya registrado. Se queda abierto
+// para seguir agregando y solo se cierra con la X; devuelve true si se agregó
+// algo.
 class AgregarProductoDialog extends StatefulWidget {
   final Pedido pedido;
   final bool esAdmin;
+  // Se avisa cada vez que se agrega un producto, para refrescar el detalle.
+  final VoidCallback? onAgregado;
 
   const AgregarProductoDialog({
     super.key,
     required this.pedido,
     required this.esAdmin,
+    this.onAgregado,
   });
 
   @override
@@ -43,6 +47,20 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   final _busqueda = TextEditingController();
   // Categoría elegida para filtrar (null = todas).
   String? _categoriaId;
+  // true en cuanto se agregó al menos un producto.
+  bool _agregados = false;
+
+  void _terminarAgregado(CartaItem item) {
+    _agregados = true;
+    widget.onAgregado?.call();
+    if (!mounted) return;
+    setState(() {});
+    showAppToast(
+      context,
+      '${item.nombrePlato} agregado al pedido #${widget.pedido.numeroPedido}.',
+      type: ToastType.success,
+    );
+  }
 
   @override
   void initState() {
@@ -124,14 +142,14 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
         );
         return;
       }
-      if (mounted) Navigator.of(context).pop(true);
+      _terminarAgregado(item);
       return;
     }
     for (final l in lineas) {
       agregarLineaAPedido(widget.pedido.id, l);
     }
     registrarConsumoAutomaticoDeLinea(linea);
-    Navigator.of(context).pop(true);
+    _terminarAgregado(item);
   }
 
   @override
@@ -174,18 +192,17 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
                     ),
                   ),
                   BotonCerrarCircular(
-                    onPressed: () => Navigator.of(context).pop(false),
+                    onPressed: () => Navigator.of(context).pop(_agregados),
                   ),
                 ],
               ),
               const SeparadorDialogo(),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppSearchField(
-                  controller: _busqueda,
-                  hint: 'Buscar producto...',
-                  onChanged: (_) => setState(() {}),
-                ),
+              // El buscador ocupa toda la fila.
+              AppSearchField(
+                controller: _busqueda,
+                hint: 'Buscar producto...',
+                ajustarAlTexto: false,
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 10),
               // Filtro por categoría.

@@ -9,7 +9,7 @@ import 'package:frontend_bijao/data/pedidos_store.dart';
 import 'package:frontend_bijao/models/app_role.dart';
 import 'package:frontend_bijao/models/mesa.dart';
 import 'package:frontend_bijao/models/usuario.dart';
-import 'package:frontend_bijao/screens/pedidos_screen.dart';
+import 'package:frontend_bijao/widgets/campana_notificaciones.dart';
 import 'package:frontend_bijao/services/api_client.dart';
 import 'package:frontend_bijao/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -90,57 +90,116 @@ void main() {
     final u = _usuario(rol);
     AuthService.instance.userNotifier.value = u;
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: PedidosScreen(usuario: u)),
+      const MaterialApp(
+        home: Scaffold(body: Center(child: CampanaNotificaciones())),
       ),
     );
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('el mozo ve la franja con la mesa que el backend informa', (
+  Future<void> abrirPanel(WidgetTester tester) async {
+    await tester.tap(find.byType(CampanaNotificaciones));
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  testWidgets('el mozo ve en la campana la mesa que el backend informa', (
     tester,
   ) async {
     // El backend informó solo su mesa cobrada (las llamadas HTTP de las
     // pruebas de widgets no salen, por eso se siembra la lista).
     fijarMesasPorLiberar('u1', [mesas.first]);
     await abrir(tester, AppRole.mesero);
+    expect(find.text('1'), findsOneWidget); // contador de la campana
 
-    expect(find.text('Mesas por liberar'), findsOneWidget);
-    expect(find.text('Mesa 3'), findsOneWidget);
+    await abrirPanel(tester);
+    expect(find.text('Notificaciones'), findsOneWidget);
+    expect(find.text('Mesa 3 por liberar'), findsOneWidget);
     // La mesa 5 (de otro mozo) no se le ofrece: el backend no la informa.
-    expect(find.text('Mesa 5'), findsNothing);
+    expect(find.text('Mesa 5 por liberar'), findsNothing);
     expect(find.text('Liberar'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('sin mesas cobradas el mozo no ve la franja', (tester) async {
+  testWidgets('sin mesas cobradas la campana no cuenta nada', (tester) async {
     await abrir(tester, AppRole.mesero);
-    expect(find.text('Mesas por liberar'), findsNothing);
+    expect(find.text('1'), findsNothing);
+    await abrirPanel(tester);
+    expect(find.text('No hay notificaciones.'), findsOneWidget);
+    expect(find.text('Liberar'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
-
-  testWidgets(
-    'un pedido pendiente ocupa la mesa pero no sale como por liberar',
-    (tester) async {
-      // Mesas ocupadas pero el backend no informa ninguna como cobrada.
-      await abrir(tester, AppRole.mesero);
-      expect(find.text('Mesas por liberar'), findsNothing);
-      expect(
-        find.text('Ya pagaron. Libera la mesa cuando se retiren.'),
-        findsNothing,
-      );
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
 
   testWidgets('el administrador ve todas las que el backend informa', (
     tester,
   ) async {
     fijarMesasPorLiberar('u1', [...mesas]);
     await abrir(tester, AppRole.administrador);
-    expect(find.text('Mesas por liberar'), findsOneWidget);
-    expect(find.text('Mesa 3'), findsOneWidget);
-    expect(find.text('Mesa 5'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    await abrirPanel(tester);
+    expect(find.text('Mesa 3 por liberar'), findsOneWidget);
+    expect(find.text('Mesa 5 por liberar'), findsOneWidget);
+    expect(find.text('Liberar'), findsNWidgets(2));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'una mesa nueva por liberar se avisa en pantalla (con x) y queda en la campana',
+    (tester) async {
+      await abrir(tester, AppRole.mesero);
+      expect(find.text('Mesa 3 por liberar'), findsNothing);
+
+      // Llega la notificación (como si el servidor la informara).
+      fijarMesasPorLiberar('u1', [mesas.first]);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Mesa 3 por liberar'), findsOneWidget); // en pantalla
+      expect(find.byTooltip('Cerrar aviso'), findsOneWidget); // la "x" gris
+      expect(find.text('1'), findsOneWidget); // contador de la campana
+
+      // El aviso no se va solo: queda hasta cerrarlo.
+      await tester.pump(const Duration(seconds: 20));
+      expect(find.text('Mesa 3 por liberar'), findsOneWidget);
+
+      // Con la "x" se cierra, pero la notificación sigue en la campana.
+      await tester.tap(find.byTooltip('Cerrar aviso'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Mesa 3 por liberar'), findsNothing);
+      expect(find.text('1'), findsOneWidget);
+      await abrirPanel(tester);
+      expect(find.text('Mesa 3 por liberar'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('al liberarse la mesa el aviso en pantalla desaparece', (
+    tester,
+  ) async {
+    await abrir(tester, AppRole.mesero);
+    fijarMesasPorLiberar('u1', [mesas.first]);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byTooltip('Cerrar aviso'), findsOneWidget);
+    quitarMesaPorLiberar(mesas.first.id);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byTooltip('Cerrar aviso'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Liberar intenta liberar la mesa; si falla, avisa y la deja', (
+    tester,
+  ) async {
+    // En las pruebas de widgets las llamadas HTTP no salen (responden 400):
+    // sirve para ver que el botón lanza la acción y que, si el servidor no la
+    // acepta, la mesa sigue en la lista. La liberación exitosa se prueba en
+    // pedido_mozo_service_test.
+    fijarMesasPorLiberar('u1', [mesas.first]);
+    await abrir(tester, AppRole.mesero);
+    await abrirPanel(tester);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Liberar'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('No se pudo liberar la mesa 3'), findsOneWidget);
+    expect(mesasPorLiberar(), hasLength(1));
     await tester.pumpWidget(const SizedBox());
   });
 }

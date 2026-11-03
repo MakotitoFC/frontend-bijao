@@ -108,23 +108,6 @@ class _StockDiarioConfigState extends State<StockDiarioConfig> {
                         'plato. Así el sistema te avisa cuando se acaban.',
                     filas: [
                       Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: ayudaApertura(
-                          pasos: const [
-                            (
-                              'Cantidades base (una sola vez):',
-                              'define cuántas porciones sueles preparar de '
-                                  'cada plato.',
-                            ),
-                            (
-                              'Abrir el día (cada día):',
-                              'revisa o ajusta las porciones de hoy y guarda. '
-                                  'Con "Usar cantidades base" se llenan solas.',
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Align(
                           alignment: Alignment.centerLeft,

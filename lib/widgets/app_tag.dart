@@ -17,6 +17,8 @@ class AppTag extends StatelessWidget {
   final Color? color;
   // Trazo propio cuando no está seleccionado (por defecto el del color).
   final Color? colorBorde;
+  // Color del texto cuando no está seleccionado (por defecto el del color).
+  final Color? colorTextoInactivo;
 
   const AppTag({
     super.key,
@@ -29,12 +31,15 @@ class AppTag extends StatelessWidget {
     this.tooltipQuitar = 'Quitar',
     this.color,
     this.colorBorde,
+    this.colorTextoInactivo,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorBase = color ?? AppColors.navbar;
-    final colorTexto = activo ? Colors.white : (color ?? Colors.grey.shade400);
+    final colorTexto = activo
+        ? Colors.white
+        : (colorTextoInactivo ?? color ?? Colors.grey.shade400);
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(

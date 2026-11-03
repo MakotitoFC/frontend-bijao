@@ -59,7 +59,8 @@ String etiquetaRangoFechas(
 }
 
 // Botón que abre una tarjeta flotante (no un modal) para elegir un rango de
-// fechas: accesos rápidos y un calendario donde se marca el inicio y el fin.
+// fechas: un calendario donde se marca el inicio y el fin (y, al lado, un
+// botón "Hoy").
 // Con [permiteTodas] se puede dejar sin filtro ("Todas las fechas").
 class SelectorRangoFechas extends StatefulWidget {
   final DateTimeRange? valor;
@@ -182,8 +183,50 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
     setState(() {});
   }
 
+  // "Hoy" va como un botón aparte, al lado del selector y no dentro del
+  // calendario.
+  Widget _botonHoy() {
+    final hoy = DateUtils.dateOnly(DateTime.now());
+    final v = widget.valor;
+    final activo =
+        v != null &&
+        DateUtils.dateOnly(v.start) == hoy &&
+        DateUtils.dateOnly(v.end) == hoy;
+    return OutlinedButton(
+      onPressed: () {
+        if (_abierto) _cerrar();
+        widget.onChanged(DateTimeRange(start: hoy, end: hoy));
+      },
+      style: OutlinedButton.styleFrom(
+        foregroundColor: activo ? AppColors.primaryGreen : Colors.black87,
+        backgroundColor: Colors.white,
+        side: BorderSide(
+          color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
+        ),
+        minimumSize: const Size(0, AppSizes.control),
+      ),
+      child: const Text(
+        'Hoy',
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selector = _selector();
+    if (!widget.conAtajos) return selector;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: selector),
+        const SizedBox(width: 6),
+        _botonHoy(),
+      ],
+    );
+  }
+
+  Widget _selector() {
     return CompositedTransformTarget(
       link: _enlace,
       child: OutlinedButton.icon(
@@ -191,6 +234,8 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
         icon: const Icon(LucideIcons.calendarDays, size: 16),
         label: Text(
           etiquetaRangoFechas(widget.valor, vacio: widget.textoVacio),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
         style: OutlinedButton.styleFrom(
@@ -199,7 +244,7 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
           side: BorderSide(
             color: _abierto ? AppColors.primaryGreen : Colors.grey.shade300,
           ),
-          minimumSize: const Size(0, AppSizes.boton - 6),
+          minimumSize: const Size(0, AppSizes.control),
         ),
       ),
     );
@@ -251,9 +296,6 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
     final base = _fin ?? _hoy;
     _mes = DateTime(base.year, base.month);
   }
-
-  void _aplicarRapido(DateTime ini, DateTime fin) =>
-      widget.onAplicar(DateTimeRange(start: ini, end: fin));
 
   void _tocarDia(DateTime d) => setState(() {
     if (_inicio == null || _fin != null) {
@@ -609,8 +651,6 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
 
   @override
   Widget build(BuildContext context) {
-    final hoy = _hoy;
-    final ayer = hoy.subtract(const Duration(days: 1));
     final seleccion = _inicio == null
         ? 'Elige el día de inicio'
         : etiquetaRangoFechas(
@@ -632,47 +672,17 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                if (widget.conAtajos) ...[
-                  _rapido('Hoy', () => _aplicarRapido(hoy, hoy)),
-                  if (!widget.soloHoy) ...[
-                    _rapido('Ayer', () => _aplicarRapido(ayer, ayer)),
-                    _rapido(
-                      'Últimos 7 días',
-                      () => _aplicarRapido(
-                        hoy.subtract(const Duration(days: 6)),
-                        hoy,
-                      ),
-                    ),
-                    _rapido(
-                      'Este mes',
-                      () => _aplicarRapido(DateTime(hoy.year, hoy.month), hoy),
-                    ),
-                    _rapido(
-                      'Mes pasado',
-                      () => _aplicarRapido(
-                        DateTime(hoy.year, hoy.month - 1),
-                        DateTime(hoy.year, hoy.month, 0),
-                      ),
-                    ),
-                  ],
-                ],
-                if (widget.permiteTodas)
-                  _rapido(widget.textoTodas, () => widget.onAplicar(null)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: Colors.grey.shade200),
-            const SizedBox(height: 6),
             _calendario(),
             const SizedBox(height: 8),
             Divider(height: 1, color: Colors.grey.shade200),
             const SizedBox(height: 10),
             Row(
               children: [
+                // Quitar las fechas (solo donde se permite) sigue disponible.
+                if (widget.permiteTodas) ...[
+                  _rapido(widget.textoTodas, () => widget.onAplicar(null)),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: Text(
                     seleccion,

@@ -676,10 +676,10 @@ class SelectorComprobante extends StatelessWidget {
 
   Widget _construirSeccionItems(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(10),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
@@ -687,90 +687,82 @@ class SelectorComprobante extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 LucideIcons.receiptText,
                 size: 16,
-                color: AppColors.primaryGreen,
+                color: Colors.grey.shade700,
               ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'DETALLE A REPORTAR A SUNAT',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
+                  'Detalle a reportar a SUNAT',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                 ),
               ),
               if (!control.soloConsumo) ...[
-                TextButton.icon(
+                OutlinedButton.icon(
                   onPressed: control.agregarItemLibre,
                   icon: const Icon(LucideIcons.plus, size: 14),
                   label: const Text(
                     'Agregar plato',
-                    style: TextStyle(fontSize: 11),
+                    style: TextStyle(fontSize: 12),
                   ),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black87,
+                    side: BorderSide(color: Colors.grey.shade300),
+                    minimumSize: const Size(0, 30),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Restablecer platos originales',
-                  icon: const Icon(LucideIcons.rotateCcw, size: 15),
-                  onPressed: control.restablecerOriginales,
-                  visualDensity: VisualDensity.compact,
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Restablecer platos originales',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: control.restablecerOriginales,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Icon(
+                        LucideIcons.rotateCcw,
+                        size: 14,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ],
           ),
           if (!control.soloConsumo) ...[
             const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: CampoTexto(
-                    controller: control.otrosExtrasCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText:
-                          'Otros extras a absorber (ej. mantel, rotura vasos)',
-                      prefixText: 'S/ ',
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (_) => control.recalcularItemsInflados(),
-                  ),
+            CampoTexto(
+              controller: control.otrosExtrasCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Otros extras a absorber (ej. mantel, rotura vasos)',
+                prefixText: 'S/ ',
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: control.recalcularItemsInflados,
-                  icon: const Icon(LucideIcons.calculator, size: 14),
-                  label: const Text(
-                    'Distribuir',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                  ),
-                ),
-              ],
+              ),
+              // Al cambiarlo, los extras se reparten solos en el precio de los
+              // platos.
+              onChanged: (_) => control.recalcularItemsInflados(),
             ),
             const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(6),
+                border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
               ),
               child: const Row(
                 children: [
@@ -965,20 +957,18 @@ class SelectorComprobante extends StatelessWidget {
     final igvPorc = control.igvPorcentaje;
     final igvLabel = (igvPorc % 1 == 0) ? '${igvPorc.toInt()}%' : '$igvPorc%';
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primaryGreen.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColors.primaryGreen.withValues(alpha: 0.25),
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('OP. GRAVADA:', style: TextStyle(fontSize: 12)),
+              const Text('Op. gravada', style: TextStyle(fontSize: 12)),
               Text(
                 'S/ ${control.totalOpGravada.toStringAsFixed(2)}',
                 style: const TextStyle(
@@ -993,7 +983,7 @@ class SelectorComprobante extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'I.G.V. ($igvLabel Sede):',
+                'I.G.V. ($igvLabel Sede)',
                 style: const TextStyle(fontSize: 12),
               ),
               Text(
@@ -1010,15 +1000,14 @@ class SelectorComprobante extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'TOTAL A REPORTAR A SUNAT:',
+                'Total a reportar a SUNAT',
                 style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
               ),
               Text(
                 'S/ ${control.total.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.primaryGreenDark,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],

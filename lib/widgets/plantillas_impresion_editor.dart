@@ -3,8 +3,9 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../models/plantilla_impresion.dart';
 import '../services/impresion_service.dart';
-import '../theme/app_theme.dart';
 import 'app_select.dart';
+import 'app_switch.dart';
+import 'app_tag.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 
@@ -12,7 +13,8 @@ class PlantillasImpresionEditor extends StatefulWidget {
   const PlantillasImpresionEditor({super.key});
 
   @override
-  State<PlantillasImpresionEditor> createState() => _PlantillasImpresionEditorState();
+  State<PlantillasImpresionEditor> createState() =>
+      _PlantillasImpresionEditorState();
 }
 
 class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
@@ -71,7 +73,11 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
       });
     } catch (e) {
       if (mounted) {
-        showAppToast(context, 'Error cargando plantilla: $e', type: ToastType.error);
+        showAppToast(
+          context,
+          'Error cargando plantilla: $e',
+          type: ToastType.error,
+        );
       }
     } finally {
       if (mounted) setState(() => _cargando = false);
@@ -85,20 +91,37 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
     try {
       final actual = _plantillaActual!.copyWith(
         nombrePlantilla: _nombreCtrl.text.trim(),
-        encabezadoPersonalizado: _encabezadoCtrl.text.trim().isEmpty ? null : _encabezadoCtrl.text.trim(),
-        piePaginaPersonalizado: _pieCtrl.text.trim().isEmpty ? null : _pieCtrl.text.trim(),
-        mensajeFiscal: _mensajeFiscalCtrl.text.trim().isEmpty ? null : _mensajeFiscalCtrl.text.trim(),
+        encabezadoPersonalizado: _encabezadoCtrl.text.trim().isEmpty
+            ? null
+            : _encabezadoCtrl.text.trim(),
+        piePaginaPersonalizado: _pieCtrl.text.trim().isEmpty
+            ? null
+            : _pieCtrl.text.trim(),
+        mensajeFiscal: _mensajeFiscalCtrl.text.trim().isEmpty
+            ? null
+            : _mensajeFiscalCtrl.text.trim(),
       );
 
-      final res = await _servicio.actualizarPlantilla(_tipoSeleccionado, actual.toJson());
+      final res = await _servicio.actualizarPlantilla(
+        _tipoSeleccionado,
+        actual.toJson(),
+      );
       if (!mounted) return;
       setState(() {
         _plantillaActual = PlantillaImpresion.fromJson(res);
       });
-      showAppToast(context, 'Plantilla guardada correctamente', type: ToastType.success);
+      showAppToast(
+        context,
+        'Plantilla guardada correctamente',
+        type: ToastType.success,
+      );
     } catch (e) {
       if (mounted) {
-        showAppToast(context, 'Error al guardar plantilla: $e', type: ToastType.error);
+        showAppToast(
+          context,
+          'Error al guardar plantilla: $e',
+          type: ToastType.error,
+        );
       }
     } finally {
       if (mounted) setState(() => _guardando = false);
@@ -107,114 +130,140 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.fileText, color: AppColors.primaryGreen, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Diseño y Partes de Documentos (Low-Code)',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'Personaliza qué bloques, textos y tamaños de fuente se imprimen en cada tipo de comanda o comprobante.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ),
-              if (_guardando)
-                const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                ElevatedButton.icon(
-                  onPressed: _guardarCambios,
-                  icon: const Icon(LucideIcons.save, size: 16),
-                  label: const Text('Guardar Plantilla'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryGreen,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    // Misma estructura que las demás secciones de Configuración: título,
+    // descripción en gris y el contenido en una tarjeta blanca.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Diseño y partes de documentos',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Elige qué bloques, textos y tamaños de letra se imprimen en cada comanda o comprobante.',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (_guardando)
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              FilledButton.icon(
+                onPressed: _guardarCambios,
+                icon: const Icon(LucideIcons.save, size: 16),
+                label: const Text('Guardar plantilla'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Tipo de documento
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final td in _tiposDocumento)
+                AppTag(
+                  etiqueta: td['nombre']!,
+                  activo: td['tipo'] == _tipoSeleccionado,
+                  onTap: () => _cargarPlantilla(td['tipo']!),
                 ),
             ],
           ),
-          const SizedBox(height: 20),
+        ),
+        const SizedBox(height: 12),
 
-          // Pestañas / Selector de Tipo de Documento
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _tiposDocumento.map((td) {
-                final sel = td['tipo'] == _tipoSeleccionado;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(td['nombre']!),
-                    selected: sel,
-                    onSelected: (v) {
-                      if (v) _cargarPlantilla(td['tipo']!);
-                    },
-                    selectedColor: AppColors.primaryGreen.withValues(alpha: 0.15),
-                    labelStyle: TextStyle(
-                      color: sel ? AppColors.primaryGreen : Colors.black87,
-                      fontWeight: sel ? FontWeight.bold : FontWeight.normal,
-                    ),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: _cargando
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(),
                   ),
-                );
-              }).toList(),
+                )
+              : _plantillaActual == null
+              ? const Text(
+                  'No se pudo cargar la configuración de esta plantilla',
+                )
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final esAncho = constraints.maxWidth > 760;
+                    if (!esAncho) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildFormularioConfig(context),
+                          const SizedBox(height: 24),
+                          _buildVistaPreviaTicket(context),
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 6,
+                          child: _buildFormularioConfig(context),
+                        ),
+                        const SizedBox(width: 24),
+                        Expanded(
+                          flex: 5,
+                          child: _buildVistaPreviaTicket(context),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _subtitulo(String texto) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      texto,
+      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+    ),
+  );
+
+  // Un bloque del documento: nombre y un interruptor, en una fila con borde.
+  Widget _bloque(String etiqueta, bool valor, ValueChanged<bool> onChanged) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              etiqueta,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ),
-          const SizedBox(height: 20),
-
-          if (_cargando)
-            const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
-          else if (_plantillaActual == null)
-            const Text('No se pudo cargar la configuración de esta plantilla')
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final esAncho = constraints.maxWidth > 850;
-                if (!esAncho) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildFormularioConfig(context),
-                      const SizedBox(height: 28),
-                      _buildVistaPreviaTicket(context),
-                    ],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Columna 1: Controles de Configuración
-                    Expanded(
-                      flex: 6,
-                      child: _buildFormularioConfig(context),
-                    ),
-                    const SizedBox(width: 24),
-                    // Columna 2: Vista Previa en Vivo (Simulador de Papel Térmico)
-                    Expanded(
-                      flex: 5,
-                      child: _buildVistaPreviaTicket(context),
-                    ),
-                  ],
-                );
-              },
-            ),
+          AppSwitch(value: valor, onChanged: onChanged),
         ],
       ),
     );
@@ -244,7 +293,9 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
               flex: 2,
               child: AppSelect<String>(
                 label: 'Lugar de Impresión',
-                value: (p.configExtra['lugar_impresion']?.toString() ?? (p.tipoDocumento == 'COMANDA_COCINA' ? 'cocina' : 'caja')),
+                value:
+                    (p.configExtra['lugar_impresion']?.toString() ??
+                    (p.tipoDocumento == 'COMANDA_COCINA' ? 'cocina' : 'caja')),
                 items: const [
                   AppSelectItem(value: 'caja', label: 'Caja (USB por defecto)'),
                   AppSelectItem(value: 'cocina', label: 'Cocina (Red/LAN)'),
@@ -254,7 +305,9 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                   if (v != null) {
                     final extra = Map<String, dynamic>.from(p.configExtra);
                     extra['lugar_impresion'] = v;
-                    setState(() => _plantillaActual = p.copyWith(configExtra: extra));
+                    setState(
+                      () => _plantillaActual = p.copyWith(configExtra: extra),
+                    );
                   }
                 },
               ),
@@ -263,62 +316,80 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
         ),
         const SizedBox(height: 16),
 
-        Text(
-          'Partes y Bloques Visibles',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children: [
-            FilterChip(
-              label: const Text('Logotipo'),
-              selected: p.imprimirLogo,
-              onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirLogo: v)),
-            ),
-            if (p.tipoDocumento != 'COMANDA_COCINA')
-              FilterChip(
-                label: const Text('Código QR'),
-                selected: p.imprimirQr,
-                onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirQr: v)),
-              ),
-            if (p.tipoDocumento != 'COMANDA_COCINA')
-              FilterChip(
-                label: const Text('Monto en Letras'),
-                selected: p.imprimirMontoLetras,
-                onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirMontoLetras: v)),
-              ),
-            if (p.tipoDocumento != 'COMANDA_COCINA')
-              FilterChip(
-                label: const Text('Datos Fiscales / RUC'),
-                selected: p.imprimirDatosFiscales,
-                onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirDatosFiscales: v)),
-              ),
-            FilterChip(
-              label: const Text('Nombre del Mozo'),
-              selected: p.imprimirMozo,
-              onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirMozo: v)),
-            ),
-            FilterChip(
-              label: const Text('Modalidad / Táper'),
-              selected: p.imprimirTaper,
-              onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirTaper: v)),
-            ),
-            FilterChip(
-              label: const Text('Mesa / Zona'),
-              selected: p.imprimirMesaZona,
-              onSelected: (v) => setState(() => _plantillaActual = p.copyWith(imprimirMesaZona: v)),
-            ),
-          ],
+        _subtitulo('Partes del documento'),
+        LayoutBuilder(
+          builder: (context, c) {
+            final dos = c.maxWidth >= 420;
+            final ancho = dos ? (c.maxWidth - 10) / 2 : c.maxWidth;
+            final comanda = p.tipoDocumento == 'COMANDA_COCINA';
+            Widget item(String e, bool v, ValueChanged<bool> f) =>
+                SizedBox(width: ancho, child: _bloque(e, v, f));
+            return Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                item(
+                  'Logotipo',
+                  p.imprimirLogo,
+                  (v) => setState(
+                    () => _plantillaActual = p.copyWith(imprimirLogo: v),
+                  ),
+                ),
+                if (!comanda)
+                  item(
+                    'Código QR',
+                    p.imprimirQr,
+                    (v) => setState(
+                      () => _plantillaActual = p.copyWith(imprimirQr: v),
+                    ),
+                  ),
+                if (!comanda)
+                  item(
+                    'Monto en letras',
+                    p.imprimirMontoLetras,
+                    (v) => setState(
+                      () =>
+                          _plantillaActual = p.copyWith(imprimirMontoLetras: v),
+                    ),
+                  ),
+                if (!comanda)
+                  item(
+                    'Datos fiscales / RUC',
+                    p.imprimirDatosFiscales,
+                    (v) => setState(
+                      () => _plantillaActual = p.copyWith(
+                        imprimirDatosFiscales: v,
+                      ),
+                    ),
+                  ),
+                item(
+                  'Nombre del mozo',
+                  p.imprimirMozo,
+                  (v) => setState(
+                    () => _plantillaActual = p.copyWith(imprimirMozo: v),
+                  ),
+                ),
+                item(
+                  'Modalidad / Táper',
+                  p.imprimirTaper,
+                  (v) => setState(
+                    () => _plantillaActual = p.copyWith(imprimirTaper: v),
+                  ),
+                ),
+                item(
+                  'Mesa / Zona',
+                  p.imprimirMesaZona,
+                  (v) => setState(
+                    () => _plantillaActual = p.copyWith(imprimirMesaZona: v),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 20),
 
-        Text(
-          'Tamaños de Fuente ESC/POS (Low-Code)',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
+        _subtitulo('Tamaños de letra'),
         Row(
           children: [
             Expanded(
@@ -332,7 +403,10 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                   AppSelectItem(value: 'grande', label: 'Grande (2x2)'),
                 ],
                 onChanged: (v) {
-                  if (v != null) setState(() => _plantillaActual = p.copyWith(tamanioTitulo: v));
+                  if (v != null)
+                    setState(
+                      () => _plantillaActual = p.copyWith(tamanioTitulo: v),
+                    );
                 },
               ),
             ),
@@ -348,7 +422,11 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                   AppSelectItem(value: 'grande', label: 'Grande (2x2)'),
                 ],
                 onChanged: (v) {
-                  if (v != null) setState(() => _plantillaActual = p.copyWith(tamanioCodigoOrden: v));
+                  if (v != null)
+                    setState(
+                      () =>
+                          _plantillaActual = p.copyWith(tamanioCodigoOrden: v),
+                    );
                 },
               ),
             ),
@@ -363,7 +441,10 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                   AppSelectItem(value: 'grande', label: 'Grande (2x2)'),
                 ],
                 onChanged: (v) {
-                  if (v != null) setState(() => _plantillaActual = p.copyWith(tamanioPlato: v));
+                  if (v != null)
+                    setState(
+                      () => _plantillaActual = p.copyWith(tamanioPlato: v),
+                    );
                 },
               ),
             ),
@@ -408,7 +489,8 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
     }
 
     double fontSizeOrden = 14;
-    if (p.tamanioCodigoOrden == 'grande' || p.tamanioCodigoOrden == 'doble_alto') {
+    if (p.tamanioCodigoOrden == 'grande' ||
+        p.tamanioCodigoOrden == 'doble_alto') {
       fontSizeOrden = 18;
     }
 
@@ -417,7 +499,7 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
       fontSizePlato = 15;
     }
 
-    return Container(
+    final papel = Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -456,7 +538,11 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.black26),
                 ),
-                child: const Icon(LucideIcons.store, color: Colors.black87, size: 28),
+                child: const Icon(
+                  LucideIcons.store,
+                  color: Colors.black87,
+                  size: 28,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -467,17 +553,30 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
             const Text(
               'RESTAURANTE BIJAO S.A.C.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: Colors.black,
+              ),
             ),
             const Text(
               'RUC: 20608543211',
               textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Colors.black,
+              ),
             ),
             const Text(
               'CAL. Los Brillantes 421B - Trujillo',
               textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Colors.black,
+              ),
             ),
             const SizedBox(height: 6),
           ],
@@ -487,7 +586,11 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
             Text(
               _encabezadoCtrl.text.trim(),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black54),
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(height: 4),
           ],
@@ -497,10 +600,12 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
             p.tipoDocumento == 'COMANDA_COCINA'
                 ? '*** COMANDA COCINA ***'
                 : (p.tipoDocumento == 'FACTURA_ELECTRONICA'
-                    ? 'FACTURA ELECTRONICA'
-                    : (p.tipoDocumento == 'BOLETA_ELECTRONICA'
-                        ? 'BOLETA ELECTRONICA'
-                        : (p.tipoDocumento == 'CUENTA_CONSUMO' ? 'CUENTA DE CONSUMO\nNo es comprobante de pago' : 'TICKET DE VENTA'))),
+                      ? 'FACTURA ELECTRONICA'
+                      : (p.tipoDocumento == 'BOLETA_ELECTRONICA'
+                            ? 'BOLETA ELECTRONICA'
+                            : (p.tipoDocumento == 'CUENTA_CONSUMO'
+                                  ? 'CUENTA DE CONSUMO\nNo es comprobante de pago'
+                                  : 'TICKET DE VENTA'))),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'monospace',
@@ -515,8 +620,10 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
             p.tipoDocumento == 'COMANDA_COCINA'
                 ? 'ORDEN #0004'
                 : (p.tipoDocumento == 'FACTURA_ELECTRONICA'
-                    ? 'FA01-00000004'
-                    : (p.tipoDocumento == 'BOLETA_ELECTRONICA' ? 'BA01-00000012' : 'TA01-00000028')),
+                      ? 'FA01-00000004'
+                      : (p.tipoDocumento == 'BOLETA_ELECTRONICA'
+                            ? 'BA01-00000012'
+                            : 'TA01-00000028')),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'monospace',
@@ -525,48 +632,166 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
               color: Colors.black,
             ),
           ),
-          const Text('------------------------------------------------', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'monospace', color: Colors.black54)),
+          const Text(
+            '------------------------------------------------',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'monospace', color: Colors.black54),
+          ),
 
           // Metadatos
           if (p.imprimirMesaZona)
-            const Text('MESA: 04 (SALON)', style: TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+            const Text(
+              'MESA: 04 (SALON)',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
           if (p.imprimirMozo)
-            const Text('Mozo: Jose Alva', style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black)),
-          const Text('Fecha: 26/10/2026 12:45:10', style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black)),
+            const Text(
+              'Mozo: Jose Alva',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Colors.black,
+              ),
+            ),
+          const Text(
+            'Fecha: 26/10/2026 12:45:10',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 11,
+              color: Colors.black,
+            ),
+          ),
 
-          const Text('================================================', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'monospace', color: Colors.black54)),
+          const Text(
+            '================================================',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'monospace', color: Colors.black54),
+          ),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('CANT  DESCRIPCION', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black)),
-              Text('TOTAL', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black)),
+              Text(
+                'CANT  DESCRIPCION',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  color: Colors.black,
+                ),
+              ),
+              Text(
+                'TOTAL',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  color: Colors.black,
+                ),
+              ),
             ],
           ),
-          const Text('------------------------------------------------', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'monospace', color: Colors.black54)),
+          const Text(
+            '------------------------------------------------',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'monospace', color: Colors.black54),
+          ),
 
           // Platos simulados
-          Text('[1x] 1/2 chaufa especial', style: TextStyle(fontFamily: 'monospace', fontSize: fontSizePlato, fontWeight: FontWeight.bold, color: Colors.black)),
+          Text(
+            '[1x] 1/2 chaufa especial',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: fontSizePlato,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
           if (p.imprimirTaper)
-            const Text('      > [PARA LLEVAR / TAPER] <', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: Colors.black87)),
+            const Text(
+              '      > [PARA LLEVAR / TAPER] <',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: Colors.black87,
+              ),
+            ),
           const SizedBox(height: 4),
 
-          Text('[2x] Aguajina - Jarra', style: TextStyle(fontFamily: 'monospace', fontSize: fontSizePlato, fontWeight: FontWeight.bold, color: Colors.black)),
+          Text(
+            '[2x] Aguajina - Jarra',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: fontSizePlato,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
           const SizedBox(height: 6),
 
-          const Text('================================================', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'monospace', color: Colors.black54)),
+          const Text(
+            '================================================',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: 'monospace', color: Colors.black54),
+          ),
 
           // Totales si no es comanda
           if (p.tipoDocumento != 'COMANDA_COCINA') ...[
-            const Text('OP. GRAVADA: S/   89.83', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black)),
-            const Text('IGV (18%):   S/   16.17', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black)),
-            const Text('TOTAL: S/ 106.00', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'monospace', fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black)),
-            const Text('------------------------------------------------', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'monospace', color: Colors.black54)),
+            const Text(
+              'OP. GRAVADA: S/   89.83',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Colors.black,
+              ),
+            ),
+            const Text(
+              'IGV (18%):   S/   16.17',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: Colors.black,
+              ),
+            ),
+            const Text(
+              'TOTAL: S/ 106.00',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+            const Text(
+              '------------------------------------------------',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'monospace', color: Colors.black54),
+            ),
           ],
 
           // Monto en letras
           if (p.imprimirMontoLetras && p.tipoDocumento != 'COMANDA_COCINA') ...[
-            const Text('SON: CIENTO SEIS Y 00/100 SOLES', style: TextStyle(fontFamily: 'monospace', fontSize: 10, fontStyle: FontStyle.italic, color: Colors.black)),
-            const Text('------------------------------------------------', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'monospace', color: Colors.black54)),
+            const Text(
+              'SON: CIENTO SEIS Y 00/100 SOLES',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+                color: Colors.black,
+              ),
+            ),
+            const Text(
+              '------------------------------------------------',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'monospace', color: Colors.black54),
+            ),
           ],
 
           // QR simulado
@@ -577,7 +802,11 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                 width: 70,
                 height: 70,
                 color: Colors.black12,
-                child: const Icon(LucideIcons.qrCode, size: 50, color: Colors.black87),
+                child: const Icon(
+                  LucideIcons.qrCode,
+                  size: 50,
+                  color: Colors.black87,
+                ),
               ),
             ),
             const SizedBox(height: 6),
@@ -585,13 +814,48 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
 
           // Mensajes legales y pie
           if (_mensajeFiscalCtrl.text.trim().isNotEmpty)
-            Text(_mensajeFiscalCtrl.text.trim(), textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Colors.black54)),
+            Text(
+              _mensajeFiscalCtrl.text.trim(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: Colors.black54,
+              ),
+            ),
           if (_pieCtrl.text.trim().isNotEmpty)
-            Text(_pieCtrl.text.trim(), textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'monospace', fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black)),
+            Text(
+              _pieCtrl.text.trim(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
 
           const SizedBox(height: 12),
-          const Center(child: Text('- - -  Corte  - - -', style: TextStyle(fontSize: 10, color: Colors.grey))),
+          const Center(
+            child: Text(
+              '- - -  Corte  - - -',
+              style: TextStyle(fontSize: 10, color: Colors.grey),
+            ),
+          ),
         ],
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: papel,
+        ),
       ),
     );
   }
