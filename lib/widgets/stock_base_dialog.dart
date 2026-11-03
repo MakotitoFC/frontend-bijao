@@ -5,7 +5,6 @@ import '../models/carta_item.dart';
 import '../services/disponibilidad_service.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
-import 'apertura_diaria_dialog.dart' show ayudaApertura;
 import 'pago_dialogs.dart';
 import 'campo_texto.dart';
 
@@ -142,21 +141,6 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ayudaApertura(
-            pasos: const [
-              (
-                'Esto se define una sola vez',
-                'y no abre el día: solo guarda cuántas porciones sueles '
-                    'preparar de cada plato.',
-              ),
-              (
-                'Cada mañana, en "Abrir el día",',
-                'puedes pulsar "Usar cantidades base" para llenar todo de '
-                    'golpe y luego ajustar lo que cambie.',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           CampoTexto(
             onChanged: (v) => setState(() => _busqueda = v),
             decoration: const InputDecoration(
@@ -215,21 +199,25 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              OutlinedButton(
-                onPressed: _guardando
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
+              Flexible(
+                child: OutlinedButton(
+                  onPressed: _guardando
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: (_guardando || _cargando || _error != null)
-                    ? null
-                    : _guardar,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
+              Flexible(
+                child: FilledButton(
+                  onPressed: (_guardando || _cargando || _error != null)
+                      ? null
+                      : _guardar,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: const Text('Guardar'),
                 ),
-                child: const Text('Guardar'),
               ),
             ],
           ),

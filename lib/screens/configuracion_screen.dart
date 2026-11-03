@@ -270,7 +270,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         clave: 'turnos_caja',
         etiqueta: 'Turnos de Caja',
         seccion: 'Negocio',
-        contenido: () => const TurnosConfigWidget(),
+        contenido: () => _pagina([const TurnosConfigWidget()]),
       ),
     (
       clave: 'negocio',
@@ -290,7 +290,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     // Celular: no hay lugar para dos columnas; se mantienen las pestañas.
     if (AppBreakpoints.esMobile(context)) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.white,
         body: PestanasVista(
           pestanas: [
             for (final p in paginas)
@@ -312,7 +312,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

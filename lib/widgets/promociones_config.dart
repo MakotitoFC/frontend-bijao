@@ -413,12 +413,16 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
                           color: Color(0xFFA16207),
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          p.nombre,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF713F12),
+                        Flexible(
+                          child: Text(
+                            p.nombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF713F12),
+                            ),
                           ),
                         ),
                       ],

@@ -52,12 +52,15 @@ class SeccionConfig extends StatelessWidget {
         ],
         const SizedBox(height: 14),
         Container(
+          // Sin tarjeta: las filas se apoyan sobre el fondo blanco, entre dos
+          // líneas finas.
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border(
+              top: BorderSide(color: Colors.grey.shade200),
+              bottom: BorderSide(color: Colors.grey.shade200),
+            ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

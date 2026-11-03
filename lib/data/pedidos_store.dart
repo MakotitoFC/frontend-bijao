@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../utils/motivo_precio.dart';
@@ -9,6 +11,33 @@ import 'mesas_store.dart';
 // servidor local.
 final List<Pedido> pedidos = [];
 final Map<String, List<PedidoLine>> detallesPorPedido = {};
+
+// Cuentas en cero (familia) cerradas desde la app. El servidor no acepta un
+// cobro de S/ 0.00, así que el pedido no queda como pagado allá: en este
+// dispositivo se quita de la cola con esta lista. Solo limpia la vista;
+// el ticket y el consumo quedan registrados.
+final Set<String> cuentasCeroCerradas = {};
+const _claveCuentasCeroCerradas = 'cuentas_cero_cerradas';
+
+Future<void> cargarCuentasCeroCerradas() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    cuentasCeroCerradas.addAll(
+      prefs.getStringList(_claveCuentasCeroCerradas) ?? const <String>[],
+    );
+  } catch (_) {}
+}
+
+Future<void> marcarCuentaCeroCerrada(String pedidoId) async {
+  cuentasCeroCerradas.add(pedidoId);
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _claveCuentasCeroCerradas,
+      cuentasCeroCerradas.toList(),
+    );
+  } catch (_) {}
+}
 
 // Líneas anuladas o devueltas de cada pedido. No son parte de la cuenta (no
 // suman en ningún total ni en el pago): solo se guardan para que el

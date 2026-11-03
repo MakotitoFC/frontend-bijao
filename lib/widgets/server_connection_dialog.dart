@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../services/api_client.dart';
+import '../theme/app_theme.dart';
 import '../services/network_discovery_service.dart';
 import 'app_toast.dart';
 import 'dialogo_app.dart';
@@ -196,7 +197,7 @@ class _ServerConnectionDialogState extends State<ServerConnectionDialog> {
             const SizedBox(height: 16),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(40),
+                minimumSize: const Size.fromHeight(AppSizes.boton),
               ),
               onPressed: _isSearching ? null : _runAutoDiscovery,
               icon: _isSearching

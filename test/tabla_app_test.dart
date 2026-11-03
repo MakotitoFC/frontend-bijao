@@ -95,4 +95,60 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
+
+  // Tabla de 20 filas, con scroll interno y paginación de 8 en 8, dentro de
+  // un espacio de alto fijo (como las vistas de la app).
+  Future<void> abrirPaginada(WidgetTester tester, double ancho) async {
+    tester.view.physicalSize = Size(ancho, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              Expanded(
+                child: TablaApp<int>(
+                  scrollInterno: true,
+                  porPagina: 8,
+                  filas: [for (var i = 1; i <= 20; i++) i],
+                  columnas: [
+                    ColumnaTabla(
+                      titulo: 'N.º',
+                      celda: (f) => TablaApp.texto('Fila $f'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  testWidgets('en celular la paginación flota sobre el borde de abajo', (
+    tester,
+  ) async {
+    await abrirPaginada(tester, 375);
+    expect(find.text('3'), findsOneWidget); // los números de página
+    // Flota: queda en el borde inferior de la vista, no pegada a la tabla.
+    final y = tester.getCenter(find.text('3')).dy;
+    expect(y, greaterThan(700));
+    // Y no es el pie de escritorio.
+    expect(find.textContaining('Mostrando'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('en escritorio la paginación es una barra fija con el rango', (
+    tester,
+  ) async {
+    await abrirPaginada(tester, 1200);
+    expect(find.text('Mostrando 1-8 de 20'), findsOneWidget);
+    await tester.tap(find.text('Siguiente ›'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Mostrando 9-16 de 20'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

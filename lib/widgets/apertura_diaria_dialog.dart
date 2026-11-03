@@ -10,62 +10,6 @@ import 'pago_dialogs.dart';
 import 'app_switch.dart';
 import 'campo_texto.dart';
 
-// Cuadro con los pasos de la apertura del día, en palabras simples.
-Widget ayudaApertura({required List<(String, String)> pasos}) => Container(
-  padding: const EdgeInsets.all(12),
-  decoration: BoxDecoration(
-    color: const Color(0xFFF0F9FF),
-    borderRadius: BorderRadius.circular(12),
-    border: Border.all(color: const Color(0xFFBAE6FD)),
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      for (var i = 0; i < pasos.length; i++)
-        Padding(
-          padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 20,
-                height: 20,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0284C7),
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '${i + 1}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${pasos[i].$1} ',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      TextSpan(text: pasos[i].$2),
-                    ],
-                  ),
-                  style: const TextStyle(fontSize: 12.5, height: 1.35),
-                ),
-              ),
-            ],
-          ),
-        ),
-    ],
-  ),
-);
-
 const _estiloColumna = TextStyle(
   fontSize: 10.5,
   fontWeight: FontWeight.w700,
@@ -200,39 +144,35 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ayudaApertura(
-            pasos: const [
-              (
-                'Escribe las porciones de hoy',
-                'en cada plato. Si lo dejas vacío, se vende sin límite.',
-              ),
-              ('Marca "Agotado"', 'en los platos que hoy no se van a vender.'),
-              (
-                'Pulsa "Guardar apertura"',
-                'para que los mozos vean lo que hay. Con "Usar cantidades '
-                    'base" se llenan solas las que definiste antes.',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: CampoTexto(
-                  onChanged: (v) => setState(() => _busqueda = v),
-                  decoration: const InputDecoration(
-                    hintText: 'Buscar plato...',
-                    prefixIcon: Icon(Icons.search, size: 20),
-                  ),
+          // En celular el botón baja debajo del buscador, a todo el ancho.
+          Builder(
+            builder: (context) {
+              final buscador = CampoTexto(
+                onChanged: (v) => setState(() => _busqueda = v),
+                decoration: const InputDecoration(
+                  hintText: 'Buscar plato...',
+                  prefixIcon: Icon(Icons.search, size: 20),
                 ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
+              );
+              final base = OutlinedButton.icon(
                 onPressed: _trabajando ? null : _cargarBase,
                 icon: const Icon(Icons.download_outlined, size: 18),
                 label: const Text('Usar cantidades base'),
-              ),
-            ],
+              );
+              if (AppBreakpoints.esMobile(context)) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [buscador, const SizedBox(height: 8), base],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: buscador),
+                  const SizedBox(width: 8),
+                  base,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           const Padding(
@@ -275,28 +215,36 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              OutlinedButton(
-                onPressed: _trabajando
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
+              Flexible(
+                child: OutlinedButton(
+                  onPressed: _trabajando
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _trabajando ? null : _guardar,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                ),
-                child: _trabajando
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+              Flexible(
+                child: FilledButton(
+                  onPressed: _trabajando ? null : _guardar,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                  ),
+                  child: _trabajando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Guardar apertura',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      )
-                    : const Text('Guardar apertura'),
+                ),
               ),
             ],
           ),

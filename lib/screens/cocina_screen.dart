@@ -206,7 +206,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (rutaContext) => Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Colors.white,
           body: SafeArea(
             child: NuevoPedidoDialog(
               usuario: usuario,
@@ -225,7 +225,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
   Widget build(BuildContext context) {
     final visibles = _visibles;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -255,7 +255,11 @@ class _CocinaScreenState extends State<CocinaScreen> {
                   FilledButton.icon(
                     onPressed: _nuevoDelivery,
                     icon: const Icon(LucideIcons.bike, size: 16),
-                    label: const Text('Nuevo delivery'),
+                    label: Text(
+                      AppBreakpoints.esMobile(context)
+                          ? 'Delivery'
+                          : 'Nuevo delivery',
+                    ),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primaryGreen,
                     ),

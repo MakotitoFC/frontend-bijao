@@ -65,7 +65,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
+  // Productos, Tipos y unidades y Tápers son pestañas dentro de Almacén.
+  const subvistasAlmacen = {'Productos', 'Tipos y unidades', 'Tápers'};
+
   Future<void> ir(WidgetTester tester, String etiqueta) async {
+    if (subvistasAlmacen.contains(etiqueta)) {
+      await tester.ensureVisible(find.text('Almacén').first);
+      await tester.pump();
+      await tester.tap(find.text('Almacén').first);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    // Compras y Utensilios rotos están bajo la sección Movimientos.
+    if (find.text(etiqueta).evaluate().isEmpty &&
+        find.text('Movimientos').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Movimientos').first);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
     await tester.ensureVisible(find.text(etiqueta).first);
     await tester.pump();
     await tester.tap(find.text(etiqueta).first);

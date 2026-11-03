@@ -54,39 +54,43 @@ void main() {
     );
   });
 
-  testWidgets('abre una tarjeta (no un modal) y un acceso rápido aplica', (
+  testWidgets('la tarjeta es solo el calendario y "Hoy" es un botón aparte', (
     tester,
   ) async {
     final cambios = await abrir(tester);
     expect(find.text('Todas las fechas'), findsOneWidget);
 
-    await tester.tap(find.byType(OutlinedButton));
+    await tester.tap(find.byType(OutlinedButton).first);
     await tester.pump();
-    // Es una tarjeta flotante: no hay diálogo.
+    // Es una tarjeta flotante: no hay diálogo ni accesos rápidos dentro.
     expect(find.byType(Dialog), findsNothing);
-    expect(find.text('Últimos 7 días'), findsOneWidget);
+    expect(find.text('Aplicar'), findsOneWidget);
+    expect(find.text('Últimos 7 días'), findsNothing);
+    expect(find.text('Ayer'), findsNothing);
 
-    await tester.tap(find.text('Ayer'));
+    // Se cierra tocando fuera; "Hoy" está al lado del selector y aplica el día
+    // de hoy.
+    await tester.tapAt(const Offset(40, 700));
+    await tester.pump();
+    expect(find.text('Aplicar'), findsNothing);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Hoy'));
     await tester.pump();
     expect(cambios, hasLength(1));
-    expect(
-      cambios.single!.start,
-      hoy().subtract(const Duration(days: 1)),
-    );
-    // Se cierra al elegir.
-    expect(find.text('Últimos 7 días'), findsNothing);
+    expect(cambios.single!.start, hoy());
+    expect(cambios.single!.end, hoy());
   });
 
   testWidgets('en el calendario se marca inicio y fin y se aplica', (
     tester,
   ) async {
     final cambios = await abrir(tester);
-    await tester.tap(find.byType(OutlinedButton));
+    await tester.tap(find.byType(OutlinedButton).first);
     await tester.pump();
 
     // "Aplicar" está desactivado hasta elegir el día de inicio.
-    FilledButton aplicar() =>
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Aplicar'));
+    FilledButton aplicar() => tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Aplicar'),
+    );
     expect(aplicar().onPressed, isNull);
 
     // Días 1 y 2 del mes actual (siempre ya ocurridos o hoy).
@@ -105,12 +109,12 @@ void main() {
     tester,
   ) async {
     final cambios = await abrir(tester);
-    await tester.tap(find.byType(OutlinedButton));
+    await tester.tap(find.byType(OutlinedButton).first);
     await tester.pump();
-    expect(find.text('Últimos 7 días'), findsOneWidget);
+    expect(find.text('Aplicar'), findsOneWidget);
     await tester.tapAt(const Offset(40, 700));
     await tester.pump();
-    expect(find.text('Últimos 7 días'), findsNothing);
+    expect(find.text('Aplicar'), findsNothing);
     expect(cambios, isEmpty);
   });
 }

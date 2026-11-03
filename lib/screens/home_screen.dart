@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+
 import 'dart:async';
+
 import '../services/caja_service.dart';
 import '../widgets/traspaso_caja_dialog.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/borrador_pedido_store.dart';
 import '../widgets/campana_notificaciones.dart';
+import '../widgets/aviso_actualizacion.dart';
 import '../widgets/aviso_caja_cerrada.dart';
 import '../data/nav_items.dart';
 import '../models/categoria_comida.dart';
@@ -82,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _pedirCambioDePin();
       _avisarCajaCerrada();
       _revisarTraspasosCaja();
+      avisarActualizacion(context);
     });
     _traspasoCajaSub = EventosService.instance.alTraspasarCaja.listen((data) {
       final yo = widget.usuario.id;
@@ -309,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ...grupos,
       ];
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.white,
         body: Column(
           children: [
             _GlobalHeader(
@@ -355,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final colapsado = _colapsadoManual ?? contraerAuto;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Row(
         children: [
           _Sidebar(

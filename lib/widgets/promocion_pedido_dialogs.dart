@@ -124,6 +124,7 @@ class PromocionesDisponiblesDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final promos = promocionesDisponibles();
     return ModalPago(
+      scrollPadding: const EdgeInsets.only(right: 14),
       titulo: 'Promociones',
       subtitulo: 'Elige una promoción para agregar al pedido',
       anchoEscritorio: 480,
@@ -387,6 +388,7 @@ class _PromocionOpcionesDialogState extends State<PromocionOpcionesDialog> {
     final seleccion = _seleccion;
     final total = _precioUnitario;
     return ModalPago(
+      scrollPadding: const EdgeInsets.only(right: 14),
       titulo: p.nombre,
       subtitulo: widget.edicion
           ? 'Cambia un producto si el cliente lo pide'

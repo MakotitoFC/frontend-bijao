@@ -51,6 +51,12 @@ class ModalPago extends StatelessWidget {
   // Si viene, queda fijo abajo (fuera del scroll) y el scroll de [child] lleva
   // un padding a la derecha para que su barra no tape el contenido.
   final Widget? pie;
+  // Diseño de ficha: encabezado con su separador de borde a borde, cuerpo con
+  // scroll y un pie fijo con sus botones, también separado. La "x" va en un
+  // cuadro redondeado a la derecha.
+  final bool ficha;
+  // Aire entre el contenido y la barra de scroll (sin pie fijo).
+  final EdgeInsetsGeometry scrollPadding;
 
   const ModalPago({
     super.key,
@@ -60,12 +66,107 @@ class ModalPago extends StatelessWidget {
     this.anchoEscritorio = 440,
     this.onVolver,
     this.pie,
+    this.ficha = false,
+    this.scrollPadding = EdgeInsets.zero,
   });
+
+  Widget _fichaBuild(BuildContext context, bool esMobile, double ancho) {
+    final divisor = Divider(height: 1, color: Colors.grey.shade200);
+    return Material(
+      color: Colors.white,
+      borderRadius: esMobile
+          ? const BorderRadius.vertical(top: Radius.circular(AppRadii.sheet))
+          : BorderRadius.circular(AppRadii.sheet),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: esMobile ? ancho : anchoEscritorio,
+          maxWidth: esMobile ? ancho : anchoEscritorio,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(24, esMobile ? 30 : 22, 20, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          titulo,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitulo,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Tooltip(
+                    message: 'Cerrar',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 18,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            divisor,
+            Flexible(
+              child: IndicadorAbajo(
+                builder: (ctl) => SingleChildScrollView(
+                  controller: ctl,
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  child: child,
+                ),
+              ),
+            ),
+            if (pie != null) ...[
+              divisor,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                child: pie,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
     final ancho = MediaQuery.sizeOf(context).width;
+    if (ficha) return _fichaBuild(context, esMobile, ancho);
     return Material(
       color: Colors.white,
       borderRadius: esMobile
@@ -148,7 +249,10 @@ class ModalPago extends StatelessWidget {
                           child: child,
                         ),
                       )
-                    : SingleChildScrollView(child: child),
+                    : SingleChildScrollView(
+                        padding: scrollPadding,
+                        child: child,
+                      ),
               ),
               if (pie != null) ...[const SizedBox(height: 12), pie!],
             ],
@@ -237,7 +341,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       ? _filas.any((f) => f.medio.grupo == 'efectivo')
       : _medio.grupo == 'efectivo';
   // Extras: propina (con su campo) y roturas o alquiler de menaje.
-  late final double _propinaInicial = propinaPendienteDePedido(widget.pedido.id);
+  late final double _propinaInicial = propinaPendienteDePedido(
+    widget.pedido.id,
+  );
   late bool _conPropina = _propinaInicial > 0.005;
   late final _propinaCtrl = TextEditingController(
     text: _propinaInicial > 0.005 ? _propinaInicial.toStringAsFixed(2) : '',
@@ -305,7 +411,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   double get _totalOrden => _saldo + _totalCargos;
   double get _faltante => _totalOrden - _asignado;
   // Puede ser el total de la cuenta o un abono parcial (siempre que no sobrepase el total)
-  bool get _repartoValido => _asignado > 0.005 && _asignado <= _totalOrden + 0.01;
+  bool get _repartoValido =>
+      _asignado > 0.005 && _asignado <= _totalOrden + 0.01;
   bool get _repartoCompleto => _faltante.abs() < 0.01;
 
   void _alternarDividir(bool v) {
@@ -316,7 +423,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       }
       _filas.clear();
       if (v) {
-        _filas.add(_FilaMedio(_medio)..monto.text = _totalOrden.toStringAsFixed(2));
+        _filas.add(
+          _FilaMedio(_medio)..monto.text = _totalOrden.toStringAsFixed(2),
+        );
       }
     });
   }
@@ -528,7 +637,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         await PagoService.instance.cargarDePedido(widget.pedido);
       } catch (_) {}
       final saldoRestante = faltaPorPagarDePedido(widget.pedido.id);
-      final abonosPrevios = abonosDePedido(widget.pedido.id).length - registrados;
+      final abonosPrevios =
+          abonosDePedido(widget.pedido.id).length - registrados;
       final parcial = saldoRestante > 0.01 || abonosPrevios > 0;
       await emitirComprobanteTrasCobro(
         context,
@@ -909,7 +1019,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     );
   }
 
-  // Lo que queda fijo abajo: tipo de comprobante y botón Pagar.
+  // Lo que queda fijo abajo: tipo de comprobante y los botones. "Regresar" a
+  // la izquierda; "Cancelar" y "Pagar" a la derecha.
   Widget _pieFijo(double saldo, double total) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -924,43 +1035,128 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ),
           const SizedBox(height: 12),
         ],
-        Row(
-          children: [
-            if (widget.permiteVolver) ...[
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: _volver,
-                  icon: const Icon(LucideIcons.chevronLeft, size: 16),
-                  label: const Text('Regresar'),
-                ),
+        Builder(
+          builder: (context) {
+            final puedePagar =
+                saldo > 0.01 &&
+                !_guardando &&
+                (_dividir ? _repartoValido : _totalOrden > 0.005) &&
+                _recibidoValido &&
+                (_comprobante?.completo ?? true);
+            final pagar = FilledButton.icon(
+              onPressed: puedePagar ? _pagar : null,
+              icon: const Icon(LucideIcons.banknote, size: 18),
+              label: Text(
+                (_dividir && !_repartoCompleto)
+                    ? 'Pagar abono · S/ ${total.toStringAsFixed(2)}'
+                    : 'Pagar · S/ ${total.toStringAsFixed(2)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              flex: 3,
-              child: FilledButton.icon(
-                onPressed:
-                    saldo > 0.01 &&
-                        !_guardando &&
-                        (_dividir ? _repartoValido : _totalOrden > 0.005) &&
-                        _recibidoValido &&
-                        (_comprobante?.completo ?? true)
-                    ? _pagar
-                    : null,
-                icon: const Icon(LucideIcons.banknote, size: 18),
-                label: Text(
-                  (_dividir && !_repartoCompleto)
-                      ? 'Pagar abono · S/ ${total.toStringAsFixed(2)}'
-                      : 'Pagar · S/ ${total.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                style: FilledButton.styleFrom(backgroundColor: naranjaPago),
-              ),
-            ),
-          ],
+              style: FilledButton.styleFrom(backgroundColor: naranjaPago),
+            );
+            final cancelar = OutlinedButton(
+              onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            );
+            final regresar = OutlinedButton.icon(
+              onPressed: _volver,
+              icon: const Icon(LucideIcons.chevronLeft, size: 16),
+              label: const Text('Regresar'),
+            );
+            // Celular: Pagar a todo el ancho y, debajo, Regresar y Cancelar
+            // repartidos por igual.
+            if (AppBreakpoints.esMobile(context)) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  pagar,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (widget.permiteVolver) ...[
+                        Expanded(child: regresar),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(child: cancelar),
+                    ],
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                if (widget.permiteVolver) regresar,
+                const Spacer(),
+                cancelar,
+                const SizedBox(width: 10),
+                Flexible(child: pagar),
+              ],
+            );
+          },
         ),
       ],
+    );
+  }
+
+  // Tarjeta destacada con el total a pagar, como la ficha de resumen: ícono,
+  // qué se paga y el monto grande a la derecha.
+  Widget _tarjetaTotal(double total, double saldo) {
+    return Container(
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 12 : 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primaryGreen, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: AppBreakpoints.esMobile(context) ? 42 : 52,
+            height: AppBreakpoints.esMobile(context) ? 42 : 52,
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              LucideIcons.receipt,
+              size: 24,
+              color: AppColors.primaryGreen,
+            ),
+          ),
+          SizedBox(width: AppBreakpoints.esMobile(context) ? 10 : 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Total a pagar',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Saldo de la cuenta: S/ ${saldo.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'S/ ${total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primaryGreen,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -971,7 +1167,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final taper = _taper;
     final cargos = _totalCargos;
     final montoBase = _dividir ? _asignado : _saldo;
-    final total = (_dividir ? _asignado : (_saldo + cargos)) + _recargo + propina + taper;
+    final total =
+        (_dividir ? _asignado : (_saldo + cargos)) + _recargo + propina + taper;
     return ModalPago(
       titulo: 'Pagar',
       anchoEscritorio:
@@ -979,25 +1176,13 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ? 600
           : 540,
       subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
-      onVolver: widget.permiteVolver ? _volver : null,
+      ficha: true,
       pie: _pieFijo(saldo, total),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Total a pagar: texto grande, sin tarjeta.
-          Text(
-            'Total a pagar',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-          Text(
-            'S/ ${(total).toStringAsFixed(2)}',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: AppColors.primaryGreen,
-            ),
-          ),
-          const SizedBox(height: 16),
+          _tarjetaTotal(total, saldo),
+          const SizedBox(height: 20),
           _titulo('Método de pago'),
           if (!_dividir)
             Builder(
@@ -1033,29 +1218,61 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           const SizedBox(height: 14),
           const Divider(height: 1),
           const SizedBox(height: 14),
-          // Campo permanente: sin interruptor y siempre a la vista.
-          ...[
-            _subtitulo('Vuelto'),
-            const SizedBox(height: 8),
-            _campoSoles(_recibidoCtrl, hint: 'S/. con cuánto paga el cliente'),
-            if (!_recibidoValido)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Falta: el efectivo a cobrar es '
-                  'S/ ${_efectivoACobrar.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.error),
+          // Efectivo recibido y vuelto, lado a lado.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _titulo('Efectivo recibido'),
+                    _campoSoles(_recibidoCtrl, hint: 'S/.'),
+                  ],
                 ),
               ),
-            if (_vuelto > 0.005)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: _filaMonto('Vuelto', _vuelto, fuerte: true),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _titulo('Vuelto'),
+                    Container(
+                      height: AppSizes.boton,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.centerLeft,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(AppRadii.button),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        'S/ ${_vuelto.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            const SizedBox(height: 14),
-            const Divider(height: 1),
-            const SizedBox(height: 14),
-          ],
+            ],
+          ),
+          if (!_recibidoValido)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Falta: el efectivo a cobrar es '
+                'S/ ${_efectivoACobrar.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
           _conInterruptor('Por montos', _dividir, _alternarDividir),
           if (_dividir) ...[const SizedBox(height: 8), _filasDeMedios()],
           const SizedBox(height: 14),

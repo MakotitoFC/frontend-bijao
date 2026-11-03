@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'app_tag.dart';
-import 'tabs_desplazables.dart';
+import 'submenu_lateral.dart';
 
-// Subvistas de un módulo: una fila de pestañas verdes arriba y, debajo, el
-// contenido de la pestaña elegida (mismo estilo que los tabs de Cocina).
+// Subvistas de un módulo: la barra oscura de subsecciones arriba (con "<" y ">"
+// si no caben) y, debajo, el contenido de la pestaña elegida.
 class PestanasVista extends StatefulWidget {
   final List<({String etiqueta, WidgetBuilder contenido})> pestanas;
 
@@ -22,16 +21,13 @@ class _PestanasVistaState extends State<PestanasVista> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-          child: TabsDesplazables(
-            child: Row(
-              children: [
-                for (var i = 0; i < widget.pestanas.length; i++)
-                  _pastilla(widget.pestanas[i].etiqueta, i),
-              ],
-            ),
-          ),
+        SubmenuSuperior(
+          entradas: [
+            for (var i = 0; i < widget.pestanas.length; i++)
+              SubmenuEntrada.item('$i', widget.pestanas[i].etiqueta),
+          ],
+          seleccionada: '$_indice',
+          onSeleccionar: (c) => setState(() => _indice = int.parse(c)),
         ),
         Expanded(
           child: KeyedSubtree(
@@ -40,14 +36,6 @@ class _PestanasVistaState extends State<PestanasVista> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _pastilla(String etiqueta, int i) {
-    return AppTag(
-      etiqueta: etiqueta,
-      activo: i == _indice,
-      onTap: () => setState(() => _indice = i),
     );
   }
 }
