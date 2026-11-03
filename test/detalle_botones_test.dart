@@ -76,14 +76,14 @@ void main() {
     expect(find.text('Pagar'), findsOneWidget);
     expect(find.text('Pago compartido'), findsNothing);
     // Un cliente puede pedir solo un táper: también se agrega desde el detalle.
-    expect(find.text('Táper'), findsOneWidget);
-    expect(find.text('Promoción'), findsOneWidget);
+    expect(find.byTooltip('Táper'), findsOneWidget);
+    expect(find.byTooltip('Promoción'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('Táper en el detalle abre el diálogo de tápers', (tester) async {
     await abrir(tester, _pedido());
-    await tester.tap(find.text('Táper'));
+    await tester.tap(find.byTooltip('Táper'));
     await tester.pumpAndSettle();
     expect(find.text('Táper grande'), findsOneWidget);
     expect(find.text('Táper mediano'), findsOneWidget);

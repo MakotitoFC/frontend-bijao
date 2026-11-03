@@ -216,6 +216,22 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('modal de nuevo pedido en ${t.key}', (tester) async {
+      for (final conDestinatario in [true, false]) {
+        await dibujar(
+          tester,
+          t.value,
+          () => Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ElegirNuevoPedidoDialog(conDestinatario: conDestinatario),
+            ),
+          ),
+        );
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
     testWidgets('detalle del pedido (cajero) en ${t.key}', (tester) async {
       final p = _pedido();
       await dibujar(
@@ -297,8 +313,8 @@ void main() {
     ) async {
       await abrir(tester);
       expect(find.text('Pagar'), findsOneWidget);
-      expect(find.text('Promoción'), findsOneWidget);
-      expect(find.text('Táper'), findsOneWidget);
+      expect(find.byTooltip('Promoción'), findsOneWidget);
+      expect(find.byTooltip('Táper'), findsOneWidget);
       expect(find.text('Tacacho'), findsWidgets);
       await tester.pumpWidget(const SizedBox());
     });
@@ -316,7 +332,7 @@ void main() {
 
     testWidgets('Táper abre su diálogo', (tester) async {
       await abrir(tester);
-      await tester.tap(find.text('Táper'));
+      await tester.tap(find.byTooltip('Táper'));
       await tester.pumpAndSettle();
       expect(find.text('Táper grande'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
@@ -347,7 +363,7 @@ void main() {
 
     testWidgets('Promoción abre su diálogo', (tester) async {
       await abrir(tester);
-      await tester.tap(find.text('Promoción'));
+      await tester.tap(find.byTooltip('Promoción'));
       await tester.pump(const Duration(milliseconds: 500));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

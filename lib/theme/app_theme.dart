@@ -44,8 +44,9 @@ class AppRadii {
 // Alto común de tags y botones.
 class AppSizes {
   static const double control = 36;
-  // Alto de los botones: mayor que el de tags y selects.
-  static const double boton = 44;
+  // Alto de los botones: el mismo que el de Servido y Pagar en el detalle del
+  // pedido, en todo el sistema.
+  static const double boton = 36;
 }
 
 // Punto de quiebre único para todo el diseño responsive: por debajo de este

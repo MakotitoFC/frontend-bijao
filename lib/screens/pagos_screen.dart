@@ -30,6 +30,7 @@ import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/app_tag.dart';
 import '../widgets/indicador_abajo.dart';
+import '../widgets/filtro_menu.dart';
 import '../widgets/menu_flotante.dart';
 import '../widgets/reportes_otra_fecha_dialog.dart';
 import '../widgets/boton_icono_expandible.dart';
@@ -304,10 +305,75 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       );
+
+                      // Los filtros tipo botón van a la derecha de la fila.
+                      final filtros = [
+                        FiltroMenu(
+                          ancho: 190,
+                          tooltip: 'Filtrar por medio de pago',
+                          texto: _medioFiltro == 'todos'
+                              ? 'Medio de pago'
+                              : _medioFiltro,
+                          seleccionada: _medioFiltro,
+                          opciones: [
+                            const OpcionMenu(
+                              valor: 'todos',
+                              etiqueta: 'Todos los medios de pago',
+                            ),
+                            for (final n in _nombresMedios)
+                              OpcionMenu(valor: n, etiqueta: n),
+                          ],
+                          onSeleccionar: (v) =>
+                              setState(() => _medioFiltro = v),
+                        ),
+                        FiltroMenu(
+                          ancho: 160,
+                          tooltip: 'Filtrar por tipo de pedido',
+                          texto: switch (_tipoFiltro) {
+                            'mesa' => 'Mesa',
+                            'llevar' => 'Para llevar',
+                            'delivery' => 'Delivery',
+                            _ => 'Tipo de pedido',
+                          },
+                          seleccionada: _tipoFiltro,
+                          opciones: const [
+                            OpcionMenu(
+                              valor: 'todos',
+                              etiqueta: 'Todos los tipos',
+                            ),
+                            OpcionMenu(valor: 'mesa', etiqueta: 'Mesa'),
+                            OpcionMenu(
+                              valor: 'llevar',
+                              etiqueta: 'Para llevar',
+                            ),
+                            OpcionMenu(valor: 'delivery', etiqueta: 'Delivery'),
+                          ],
+                          onSeleccionar: (v) => setState(() => _tipoFiltro = v),
+                        ),
+                        FiltroMenu(
+                          ancho: 150,
+                          tooltip: 'Filtrar por mozo',
+                          texto: _mozoFiltro == 'todos'
+                              ? 'Mozo'
+                              : (_mozos
+                                        .where((m) => m.id == _mozoFiltro)
+                                        .firstOrNull
+                                        ?.nombre ??
+                                    'Mozo'),
+                          seleccionada: _mozoFiltro,
+                          opciones: [
+                            const OpcionMenu(
+                              valor: 'todos',
+                              etiqueta: 'Todos los mozos',
+                            ),
+                            for (final m in _mozos)
+                              OpcionMenu(valor: m.id, etiqueta: m.nombre),
+                          ],
+                          onSeleccionar: (v) => setState(() => _mozoFiltro = v),
+                        ),
+                      ];
                       final controles = [
-                        _pastilla('Todos', 'todos'),
-                        _pastilla('Pagados', 'pagados'),
-                        _pastilla('Por cobrar', 'por_cobrar'),
+                        _grupoEstado(),
                         // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
                         // calendario para un día o un rango. Sin fechas = hoy.
                         SelectorRangoFechas(
@@ -318,67 +384,6 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                               r ?? DateTimeRange(start: hoy, end: hoy),
                             );
                           },
-                        ),
-                        SizedBox(
-                          width: 220,
-                          child: AppSelect<String>(
-                            compacto: true,
-                            value: _medioFiltro,
-                            hint: 'Medio de pago',
-                            items: [
-                              const AppSelectItem(
-                                value: 'todos',
-                                label: 'Todos los medios de pago',
-                              ),
-                              for (final n in _nombresMedios)
-                                AppSelectItem(value: n, label: n),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _medioFiltro = v ?? 'todos'),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 170,
-                          child: AppSelect<String>(
-                            compacto: true,
-                            value: _tipoFiltro,
-                            hint: 'Tipo de pedido',
-                            items: const [
-                              AppSelectItem(
-                                value: 'todos',
-                                label: 'Todos los tipos',
-                              ),
-                              AppSelectItem(value: 'mesa', label: 'Mesa'),
-                              AppSelectItem(
-                                value: 'llevar',
-                                label: 'Para llevar',
-                              ),
-                              AppSelectItem(
-                                value: 'delivery',
-                                label: 'Delivery',
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _tipoFiltro = v ?? 'todos'),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 170,
-                          child: AppSelect<String>(
-                            compacto: true,
-                            value: _mozoFiltro,
-                            hint: 'Mozo',
-                            items: [
-                              const AppSelectItem(
-                                value: 'todos',
-                                label: 'Todos los mozos',
-                              ),
-                              for (final m in _mozos)
-                                AppSelectItem(value: m.id, label: m.nombre),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _mozoFiltro = v ?? 'todos'),
-                          ),
                         ),
                         AppSearchField(
                           controller: _busqueda,
@@ -391,7 +396,39 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                         children: [
                           titulo,
                           const SizedBox(height: 10),
-                          Wrap(spacing: 8, runSpacing: 8, children: controles),
+                          // Con espacio, los filtros tipo botón van a la derecha;
+                          // en pantallas angostas pasan debajo.
+                          if (c.maxWidth >= 1000)
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: controles,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Flexible(
+                                  child: Wrap(
+                                    alignment: WrapAlignment.end,
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: filtros,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else ...[
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: controles,
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(spacing: 8, runSpacing: 8, children: filtros),
+                          ],
                         ],
                       );
                     },
@@ -423,11 +460,56 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
     );
   }
 
-  Widget _pastilla(String etiqueta, String valor) {
-    return AppTag(
-      etiqueta: etiqueta,
-      activo: _filtro == valor,
-      onTap: () => setState(() => _filtro = valor),
+  // Todos / Pagados / Por cobrar: segmentos pegados, sin espacio entre ellos;
+  // el elegido va oscuro.
+  Widget _grupoEstado() {
+    const opciones = [
+      ('todos', 'Todos'),
+      ('pagados', 'Pagados'),
+      ('por_cobrar', 'Por cobrar'),
+    ];
+    return Container(
+      height: AppSizes.control,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadii.tag),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < opciones.length; i++) ...[
+            if (i > 0) VerticalDivider(width: 1, color: Colors.grey.shade300),
+            Flexible(
+              child: InkWell(
+                onTap: () => setState(() => _filtro = opciones[i].$1),
+                child: Container(
+                  alignment: Alignment.center,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: AppBreakpoints.esMobile(context) ? 10 : 16,
+                  ),
+                  color: _filtro == opciones[i].$1
+                      ? AppColors.navbar
+                      : Colors.transparent,
+                  child: Text(
+                    opciones[i].$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: _filtro == opciones[i].$1
+                          ? Colors.white
+                          : Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1929,25 +2011,24 @@ class _CajaScreenState extends State<CajaScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
                       children: [
-                        Flexible(
-                          child: Text(
-                            '${m.categoriaNombre} · ${m.medioPagoNombre}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: m.anulado
-                                  ? Colors.grey.shade500
-                                  : Colors.black87,
-                              decoration: m.anulado
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
+                        Text(
+                          '${m.categoriaNombre} · ${m.medioPagoNombre}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: m.anulado
+                                ? Colors.grey.shade500
+                                : Colors.black87,
+                            decoration: m.anulado
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                         ),
                         if (m.anulado) ...[
-                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 6,

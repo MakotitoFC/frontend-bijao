@@ -12,6 +12,8 @@ class AppSearchField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   // false: ocupa todo el ancho disponible en vez del que pide su placeholder.
   final bool ajustarAlTexto;
+  // Más bajo y del ancho de su texto también en el celular.
+  final bool compacto;
 
   const AppSearchField({
     super.key,
@@ -19,6 +21,7 @@ class AppSearchField extends StatelessWidget {
     this.controller,
     this.onChanged,
     this.ajustarAlTexto = true,
+    this.compacto = false,
   });
 
   // Alto y texto del buscador, iguales en los tres dispositivos.
@@ -26,6 +29,8 @@ class AppSearchField extends StatelessWidget {
   // Esquinas más redondeadas que las del resto de campos.
   static const double _radio = 16;
   static const double _tamanoTexto = 14;
+  static const double _altoCompacto = 38;
+  static const double _tamanoTextoCompacto = 13;
 
   // Lupa + márgenes + algo de espacio para escribir.
   static const double _extra = 14 + 24 + 12 + 24;
@@ -38,7 +43,8 @@ class AppSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const estiloHint = TextStyle(fontSize: _tamanoTexto);
+    final tamano = compacto ? _tamanoTextoCompacto : _tamanoTexto;
+    final estiloHint = TextStyle(fontSize: tamano);
     final medida = TextPainter(
       text: TextSpan(text: hint, style: estiloHint),
       textDirection: TextDirection.ltr,
@@ -46,34 +52,34 @@ class AppSearchField extends StatelessWidget {
     )..layout();
     // En el celular el buscador ocupa todo el ancho y es más alto, para verlo
     // y tocarlo con comodidad.
-    final movil = AppBreakpoints.esMobile(context);
+    final movil = AppBreakpoints.esMobile(context) && !compacto;
     return SizedBox(
       width: (ajustarAlTexto && !movil)
           ? medida.width + _extra + 20
           : double.infinity,
-      height: _alto,
+      height: compacto ? _altoCompacto : _alto,
       child: TextField(
         controller: controller,
         onChanged: onChanged,
         cursorColor: AppColors.primaryGreen,
-        style: const TextStyle(fontSize: _tamanoTexto),
+        style: TextStyle(fontSize: tamano),
         decoration: InputDecoration(
           isDense: true,
           filled: true,
           fillColor: Colors.white,
           hintText: hint,
-          hintStyle: TextStyle(
-            fontSize: _tamanoTexto,
-            color: Colors.grey.shade500,
+          hintStyle: TextStyle(fontSize: tamano, color: Colors.grey.shade500),
+          prefixIcon: Padding(
+            padding: EdgeInsets.only(left: compacto ? 8 : 0),
+            child: Icon(Icons.search, size: 20, color: Colors.grey.shade500),
           ),
-          prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey.shade500),
-          prefixIconConstraints: const BoxConstraints(
-            minWidth: 40,
+          prefixIconConstraints: BoxConstraints(
+            minWidth: compacto ? 48 : 40,
             minHeight: 20,
           ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 13,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: compacto ? 16 : 12,
+            vertical: compacto ? 10 : 13,
           ),
           border: _borde(Colors.grey.shade300),
           enabledBorder: _borde(Colors.grey.shade300),

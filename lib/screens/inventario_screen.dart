@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/app_tag.dart';
+import '../widgets/boton_actualizar.dart';
 import '../widgets/config_widgets.dart';
 import '../widgets/inventario/pagina_catalogos.dart';
 import '../widgets/inventario/pagina_compras.dart';
@@ -20,7 +20,7 @@ import '../widgets/tabs_desplazables.dart';
 // con las páginas y, a la derecha, la página elegida. Cada cosa vive en un solo
 // lugar:
 //  - Resumen: cómo está el stock y qué reponer (solo consulta).
-//  - Almacén: Productos, Tipos y unidades, Tápers.
+//  - Almacén: Productos, Tipos y unidades y Tápers, juntos en una sola vista.
 //  - Carta: Tamaños de los platos.
 //  - Movimientos: Compras y Utensilios rotos.
 class InventarioScreen extends StatefulWidget {
@@ -36,7 +36,20 @@ class _InventarioScreenState extends State<InventarioScreen> {
   // leen los datos otra vez.
   int _recarga = 0;
 
-  void _irA(String clave) => setState(() => _clave = clave);
+  // Subvista de Almacén que se ve: 'productos' | 'catalogos' | 'tapers'.
+  String _subAlmacen = 'catalogos';
+
+  static const _subvistasAlmacen = {'productos', 'catalogos', 'tapers'};
+
+  // Las tres subvistas de Almacén viven en una sola página.
+  void _irA(String clave) => setState(() {
+    if (_subvistasAlmacen.contains(clave)) {
+      _subAlmacen = clave;
+      _clave = 'almacen';
+    } else {
+      _clave = clave;
+    }
+  });
 
   List<
     ({
@@ -54,22 +67,13 @@ class _InventarioScreenState extends State<InventarioScreen> {
       contenido: () => PaginaResumen(irA: _irA),
     ),
     (
-      clave: 'productos',
-      etiqueta: 'Productos',
-      seccion: 'Almacén',
-      contenido: () => const PaginaProductos(),
-    ),
-    (
-      clave: 'catalogos',
-      etiqueta: 'Tipos y unidades',
-      seccion: 'Almacén',
-      contenido: () => const PaginaCatalogos(),
-    ),
-    (
-      clave: 'tapers',
-      etiqueta: 'Tápers',
-      seccion: 'Almacén',
-      contenido: () => const PaginaTapers(),
+      clave: 'almacen',
+      etiqueta: 'Almacén',
+      seccion: null,
+      contenido: () => _PaginaAlmacen(
+        sub: _subAlmacen,
+        onSub: (s) => setState(() => _subAlmacen = s),
+      ),
     ),
     // Página "Tamaños" oculta por ahora: los tamaños se crean y editan desde la
     // Carta (interruptor "Tiene tamaños" y botón "+ Tamaño"). Para volver a
@@ -100,28 +104,8 @@ class _InventarioScreenState extends State<InventarioScreen> {
     ),
   ];
 
-  Widget _botonActualizar() {
-    return Tooltip(
-      message: 'Actualizar datos',
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: () => setState(() => _recarga++),
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Icon(
-            LucideIcons.refreshCw,
-            size: 16,
-            color: Colors.grey.shade700,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _botonActualizar() =>
+      BotonActualizar(onTap: () => setState(() => _recarga++));
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +189,52 @@ class _InventarioScreenState extends State<InventarioScreen> {
           Expanded(child: contenido),
         ],
       ),
+    );
+  }
+}
+
+// Almacén: Productos, Tipos y unidades y Tápers en una sola vista, con las tres
+// subvistas como pestañas arriba.
+class _PaginaAlmacen extends StatelessWidget {
+  final String sub;
+  final ValueChanged<String> onSub;
+
+  const _PaginaAlmacen({required this.sub, required this.onSub});
+
+  @override
+  Widget build(BuildContext context) {
+    const subvistas = [
+      ('catalogos', 'Tipos y unidades'),
+      ('productos', 'Productos'),
+      ('tapers', 'Tápers'),
+    ];
+    final margen = AppBreakpoints.esMobile(context) ? 16.0 : 32.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(margen, 8, margen, 0),
+          child: TabsDesplazables(
+            child: Row(
+              children: [
+                for (final s in subvistas)
+                  AppTag(
+                    etiqueta: s.$2,
+                    activo: s.$1 == sub,
+                    onTap: () => onSub(s.$1),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: switch (sub) {
+            'catalogos' => const PaginaCatalogos(),
+            'tapers' => const PaginaTapers(),
+            _ => const PaginaProductos(),
+          },
+        ),
+      ],
     );
   }
 }

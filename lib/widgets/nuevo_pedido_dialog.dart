@@ -53,7 +53,7 @@ import 'campo_texto.dart';
 import 'indicador_abajo.dart';
 import 'pago_dialogs.dart' show ModalPago;
 
-// Arma un pedido nuevo (tipo ya elegido en ElegirTipoPedidoDialog): mesa
+// Arma un pedido nuevo (tipo ya elegido en ElegirNuevoPedidoDialog): mesa
 // (si aplica), galería de productos y resumen (`pedidos` + `pedidos_detalle`).
 class NuevoPedidoDialog extends StatefulWidget {
   final Usuario usuario;
@@ -835,41 +835,34 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   // El buscador de productos, con "Plato rápido" al lado.
   Widget _buscador() => ConstrainedBox(
     constraints: const BoxConstraints(maxWidth: 640),
-    // El botón se estira al alto del buscador: siempre miden lo mismo.
-    child: IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: AppSearchField(
-              controller: _busquedaController,
-              hint: 'Buscar producto...',
-              onChanged: (_) => setState(() {}),
-              ajustarAlTexto: false,
-            ),
+    child: Row(
+      children: [
+        Expanded(
+          child: AppSearchField(
+            controller: _busquedaController,
+            hint: 'Buscar producto...',
+            onChanged: (_) => setState(() {}),
+            ajustarAlTexto: false,
           ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
-            onPressed: _abrirPlatoLibre,
-            icon: const Icon(LucideIcons.zap, size: 17),
-            label: const Text(
-              'Plato rápido',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primaryGreenDark,
-              side: const BorderSide(color: AppColors.primaryGreen),
-              minimumSize: Size.zero,
-              maximumSize: const Size(double.infinity, double.infinity),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
+        ),
+        const SizedBox(width: 10),
+        // Mismo alto que los demás botones (Servido, Pagar...).
+        OutlinedButton.icon(
+          onPressed: _abrirPlatoLibre,
+          icon: const Icon(LucideIcons.zap, size: 17),
+          label: const Text(
+            'Plato rápido',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
-        ],
-      ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primaryGreenDark,
+            side: const BorderSide(color: AppColors.primaryGreen),
+            minimumSize: const Size(0, AppSizes.boton),
+            maximumSize: const Size(double.infinity, AppSizes.boton),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+        ),
+      ],
     ),
   );
 

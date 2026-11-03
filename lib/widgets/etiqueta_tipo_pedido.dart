@@ -16,12 +16,20 @@ import '../models/pedido.dart';
 class EtiquetaTipoPedido extends StatelessWidget {
   final Pedido pedido;
   final double tamano;
+  // Si se da, reemplaza el color propio del tipo.
+  final Color? colorFijo;
 
-  const EtiquetaTipoPedido({super.key, required this.pedido, this.tamano = 16});
+  const EtiquetaTipoPedido({
+    super.key,
+    required this.pedido,
+    this.tamano = 16,
+    this.colorFijo,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final (color, icono) = estiloDeTipoPedido(pedido.tipoPedido);
+    final (colorTipo, icono) = estiloDeTipoPedido(pedido.tipoPedido);
+    final color = colorFijo ?? colorTipo;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: tamano * 0.6,

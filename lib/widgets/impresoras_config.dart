@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
+import 'boton_actualizar.dart';
 import 'config_widgets.dart';
 import 'logo_tickets_editor.dart';
 import 'plantillas_impresion_editor.dart';
@@ -325,7 +326,9 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: etiqueta,
-                hintText: cocina ? '192.168.0.40:9100' : 'POS-80 (USB) o 192.168.0.52:9100',
+                hintText: cocina
+                    ? '192.168.0.40:9100'
+                    : 'POS-80 (USB) o 192.168.0.52:9100',
               ),
             ),
           ),
@@ -470,18 +473,7 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       descripcion:
           'Las comandas salen solas a cocina al tomar el pedido y al agregarle '
           'productos. Aquí ves si cada impresora responde en la red.',
-      // En el celular, solo el ícono.
-      accion: AppBreakpoints.esMobile(context)
-          ? IconButton.outlined(
-              tooltip: 'Actualizar',
-              onPressed: _cargarEstadoYCola,
-              icon: const Icon(LucideIcons.refreshCw, size: 16),
-            )
-          : OutlinedButton.icon(
-              onPressed: _cargarEstadoYCola,
-              icon: const Icon(LucideIcons.refreshCw, size: 15),
-              label: const Text('Actualizar'),
-            ),
+      accion: BotonActualizar(onTap: _cargarEstadoYCola),
       filas: [
         _filaImpresora(
           nombre: 'Cocina',
@@ -658,8 +650,126 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
             ),
           )
         else
-          for (final t in trabajos.take(15)) _filaTrabajo(t),
+          _ListaTrabajos(trabajos: trabajos, fila: _filaTrabajo),
       ],
+    );
+  }
+}
+
+// Trabajos de impresión: lista con scroll interno y paginación de 10 en 10.
+class _ListaTrabajos extends StatefulWidget {
+  final List<TrabajoImpresion> trabajos;
+  final Widget Function(TrabajoImpresion) fila;
+
+  const _ListaTrabajos({required this.trabajos, required this.fila});
+
+  @override
+  State<_ListaTrabajos> createState() => _ListaTrabajosState();
+}
+
+class _ListaTrabajosState extends State<_ListaTrabajos> {
+  static const _porPagina = 10;
+  int _pagina = 0;
+
+  int get _paginas =>
+      (widget.trabajos.length / _porPagina).ceil().clamp(1, 9999);
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.trabajos.length;
+    final actual = _pagina.clamp(0, _paginas - 1);
+    final ini = actual * _porPagina;
+    final fin = (ini + _porPagina).clamp(0, total);
+    final visibles = widget.trabajos.sublist(ini, fin);
+
+    Widget boton(String texto, VoidCallback? onTap, {bool activo = false}) =>
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: onTap,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 32),
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: activo ? AppColors.primaryGreen : Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
+                ),
+              ),
+              child: Text(
+                texto,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: activo
+                      ? Colors.white
+                      : (onTap == null ? Colors.grey.shade400 : Colors.black87),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Scroll interno, con aire a los lados.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: Scrollbar(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                children: [for (final t in visibles) widget.fila(t)],
+              ),
+            ),
+          ),
+          Divider(height: 1, color: Colors.grey.shade200),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Mostrando ${ini + 1}-$fin de $total',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  ),
+                ),
+                boton(
+                  '‹',
+                  actual > 0
+                      ? () => setState(() => _pagina = actual - 1)
+                      : null,
+                ),
+                for (var i = 0; i < _paginas; i++)
+                  boton(
+                    '${i + 1}',
+                    () => setState(() => _pagina = i),
+                    activo: i == actual,
+                  ),
+                boton(
+                  '›',
+                  actual < _paginas - 1
+                      ? () => setState(() => _pagina = actual + 1)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

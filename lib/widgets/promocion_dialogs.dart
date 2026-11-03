@@ -102,6 +102,7 @@ class _PromocionFormDialogState extends State<PromocionFormDialog> {
   @override
   Widget build(BuildContext context) {
     return ModalPago(
+      scrollPadding: const EdgeInsets.only(right: 14),
       titulo: widget.promocion == null ? 'Nueva promoción' : 'Editar promoción',
       subtitulo: 'Luego agregas sus componentes y opciones',
       anchoEscritorio: 480,
@@ -293,6 +294,7 @@ class _ComponenteFormDialogState extends State<ComponenteFormDialog> {
   Widget build(BuildContext context) {
     final disponibles = subcategorias.where((s) => s.estado).toList();
     return ModalPago(
+      scrollPadding: const EdgeInsets.only(right: 14),
       titulo: widget.componente == null
           ? 'Nuevo componente'
           : 'Editar componente',
@@ -505,6 +507,7 @@ class _OpcionFormDialogState extends State<OpcionFormDialog> {
     final borrador = _borrador;
     final preciosPresentacion = _presentacionesDelItem;
     return ModalPago(
+      scrollPadding: const EdgeInsets.only(right: 14),
       titulo: widget.opcion == null ? 'Nueva opción' : 'Editar opción',
       subtitulo:
           '${nombreDeSubcategoria(widget.componente.subcategoriaId)} · '

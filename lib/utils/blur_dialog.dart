@@ -29,6 +29,7 @@ Future<T?> showBlurDialog<T>({
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.35),
       isDismissible: barrierDismissible,
+      enableDrag: barrierDismissible,
       builder: (sheetContext) => Stack(
         alignment: Alignment.topCenter,
         children: [

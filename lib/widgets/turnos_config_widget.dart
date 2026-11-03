@@ -5,6 +5,7 @@ import '../models/turno.dart';
 import '../services/caja_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import 'app_switch.dart';
 import 'app_toast.dart';
 import 'dialogo_app.dart';
 
@@ -49,9 +50,13 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
 
   Future<void> _crearOEditarTurno([Turno? turno]) async {
     final nombreCtrl = TextEditingController(text: turno?.nombre ?? '');
-    final inicioCtrl = TextEditingController(text: turno?.horaInicio ?? '11:00');
+    final inicioCtrl = TextEditingController(
+      text: turno?.horaInicio ?? '11:00',
+    );
     final finCtrl = TextEditingController(text: turno?.horaFin ?? '17:00');
-    final ordenCtrl = TextEditingController(text: (turno?.orden ?? (_turnos.length + 1)).toString());
+    final ordenCtrl = TextEditingController(
+      text: (turno?.orden ?? (_turnos.length + 1)).toString(),
+    );
 
     final confirmado = await showBlurDialog<bool>(
       context: context,
@@ -112,7 +117,9 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryGreen,
+            ),
             child: const Text('Guardar'),
           ),
         ],
@@ -123,7 +130,11 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
 
     final nombre = nombreCtrl.text.trim();
     if (nombre.isEmpty) {
-      showAppToast(context, 'El nombre del turno es obligatorio', type: ToastType.error);
+      showAppToast(
+        context,
+        'El nombre del turno es obligatorio',
+        type: ToastType.error,
+      );
       return;
     }
 
@@ -138,7 +149,11 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
           orden: orden,
         );
         if (mounted) {
-          showAppToast(context, 'Turno creado con éxito', type: ToastType.success);
+          showAppToast(
+            context,
+            'Turno creado con éxito',
+            type: ToastType.success,
+          );
         }
       } else {
         await CajaService.instance.actualizarTurno(
@@ -149,7 +164,11 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
           orden: orden,
         );
         if (mounted) {
-          showAppToast(context, 'Turno actualizado con éxito', type: ToastType.success);
+          showAppToast(
+            context,
+            'Turno actualizado con éxito',
+            type: ToastType.success,
+          );
         }
       }
       _cargar();
@@ -162,7 +181,10 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
 
   Future<void> _toggleEstado(Turno turno) async {
     try {
-      await CajaService.instance.actualizarTurno(turno.id, estado: !turno.estado);
+      await CajaService.instance.actualizarTurno(
+        turno.id,
+        estado: !turno.estado,
+      );
       _cargar();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
@@ -192,7 +214,8 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
 
     try {
       await CajaService.instance.eliminarTurno(turno.id);
-      if (mounted) showAppToast(context, 'Turno eliminado', type: ToastType.success);
+      if (mounted)
+        showAppToast(context, 'Turno eliminado', type: ToastType.success);
       _cargar();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
@@ -202,7 +225,12 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     return Column(
@@ -215,9 +243,10 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Turnos de Caja Operativos',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  'Turnos de caja operativos',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'Configura los turnos diarios de tu local para cierres y reportes independientes.',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
@@ -228,7 +257,9 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
               onPressed: () => _crearOEditarTurno(),
               icon: const Icon(LucideIcons.plus, size: 16),
               label: const Text('Nuevo Turno'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+              ),
             ),
           ],
         ),
@@ -237,8 +268,14 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
           Container(
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
-            child: Text(_error!, style: const TextStyle(color: AppColors.error)),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: AppColors.error),
+            ),
           ),
         if (_turnos.isEmpty)
           Container(
@@ -249,7 +286,9 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
               border: Border.all(color: Colors.grey.shade200),
             ),
             child: const Center(
-              child: Text('No hay turnos registrados. Crea un turno para organizar tus aperturas.'),
+              child: Text(
+                'No hay turnos registrados. Crea un turno para organizar tus aperturas.',
+              ),
             ),
           )
         else
@@ -263,44 +302,76 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _turnos.length,
-              separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade200),
+              separatorBuilder: (_, __) =>
+                  Divider(height: 1, color: Colors.grey.shade200),
               itemBuilder: (context, idx) {
                 final t = _turnos[idx];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: t.estado ? AppColors.primaryGreen.withOpacity(0.12) : Colors.grey.shade100,
-                    child: Icon(
-                      LucideIcons.clock,
-                      size: 20,
-                      color: t.estado ? AppColors.primaryGreen : Colors.grey.shade400,
-                    ),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
                   ),
-                  title: Text(
-                    t.nombre,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: t.estado ? Colors.black87 : Colors.grey.shade500,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Horario: ${t.horaInicio} - ${t.horaFin} · Orden #${t.orden}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Row(
                     children: [
-                      Switch(
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: t.estado
+                              ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          LucideIcons.clock,
+                          size: 17,
+                          color: t.estado
+                              ? AppColors.primaryGreen
+                              : Colors.grey.shade400,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              t.nombre,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: t.estado
+                                    ? Colors.black87
+                                    : Colors.grey.shade500,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Horario: ${t.horaInicio} - ${t.horaFin} · Orden #${t.orden}',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      AppSwitch(
                         value: t.estado,
-                        activeColor: AppColors.primaryGreen,
                         onChanged: (_) => _toggleEstado(t),
                       ),
+                      const SizedBox(width: 6),
                       IconButton(
-                        icon: const Icon(LucideIcons.edit2, size: 18),
+                        icon: const Icon(LucideIcons.pencil, size: 16),
                         onPressed: () => _crearOEditarTurno(t),
                         tooltip: 'Editar turno',
                       ),
                       IconButton(
-                        icon: const Icon(LucideIcons.trash2, size: 18, color: AppColors.error),
+                        icon: const Icon(
+                          LucideIcons.trash2,
+                          size: 16,
+                          color: AppColors.error,
+                        ),
                         onPressed: () => _eliminarTurno(t),
                         tooltip: 'Eliminar turno',
                       ),
