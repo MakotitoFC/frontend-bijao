@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
+
 import '../data/mesas_store.dart';
 import '../utils/datos_sede.dart';
 import '../data/pagos_store.dart';
@@ -147,7 +148,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '');
+        _error = e is ApiException
+            ? e.message
+            : e.toString().replaceFirst('Exception: ', '');
       });
     } finally {
       if (mounted) setState(() => _emitiendo = false);
@@ -172,7 +175,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '');
+        _error = e is ApiException
+            ? e.message
+            : e.toString().replaceFirst('Exception: ', '');
       });
     } finally {
       if (mounted) setState(() => _emitiendo = false);
@@ -224,22 +229,26 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           onPressed: _emitiendo ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
-          onPressed: _puedeEmitir ? _emitir : null,
-          child: _emitiendo
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
+        Tooltip(
+          message: _eleccion.motivoBloqueo ?? '',
+          triggerMode: TooltipTriggerMode.tap,
+          child: FilledButton(
+            onPressed: _puedeEmitir ? _emitir : null,
+            child: _emitiendo
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    _eleccion.tipo == 'ticket_venta'
+                        ? 'Emitir ticket de venta'
+                        : 'Emitir comprobante',
                   ),
-                )
-              : Text(
-                  _eleccion.tipo == 'ticket_venta'
-                      ? 'Emitir ticket de venta'
-                      : 'Emitir comprobante',
-                ),
+          ),
         ),
       ],
       children: [
@@ -298,8 +307,8 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         color: fiscal.estadoSunat == 'ACEPTADO'
                             ? Colors.green.shade100
                             : (fiscal.estadoSunat == 'ERROR_CONEXION'
-                                ? Colors.red.shade100
-                                : Colors.orange.shade100),
+                                  ? Colors.red.shade100
+                                  : Colors.orange.shade100),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -310,8 +319,8 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                           color: fiscal.estadoSunat == 'ACEPTADO'
                               ? Colors.green.shade800
                               : (fiscal.estadoSunat == 'ERROR_CONEXION'
-                                  ? Colors.red.shade900
-                                  : Colors.orange.shade900),
+                                    ? Colors.red.shade900
+                                    : Colors.orange.shade900),
                         ),
                       ),
                     ),
@@ -341,7 +350,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                   children: [
                     if (fiscal.estadoSunat == 'ERROR_CONEXION') ...[
                       FilledButton.icon(
-                        onPressed: _emitiendo ? null : () => _reintentarEnvio(fiscal),
+                        onPressed: _emitiendo
+                            ? null
+                            : () => _reintentarEnvio(fiscal),
                         icon: const Icon(LucideIcons.refreshCw, size: 15),
                         label: const Text('Reintentar Envío a SUNAT'),
                         style: FilledButton.styleFrom(
@@ -353,7 +364,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                       OutlinedButton.icon(
-                        onPressed: _emitiendo ? null : () => _consultarEstado(fiscal),
+                        onPressed: _emitiendo
+                            ? null
+                            : () => _consultarEstado(fiscal),
                         icon: const Icon(LucideIcons.search, size: 15),
                         label: const Text('Consultar Estado'),
                         style: OutlinedButton.styleFrom(
@@ -593,33 +606,51 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
     final recargo = recargoCobradoDePedido(pedido.id);
     final delivery = pedido.costoDelivery;
     final lineas = detallesPorPedido[pedido.id] ?? const [];
-    final horaAtencion = '${pedido.fechaPedido.hour.toString().padLeft(2, '0')}:${pedido.fechaPedido.minute.toString().padLeft(2, '0')}:${pedido.fechaPedido.second.toString().padLeft(2, '0')}';
-    final mesaObj = mesas.where((m) => m.numero == pedido.mesaNumero).firstOrNull;
-    final zonaStr = (mesaObj != null && mesaObj.zona.trim().isNotEmpty) ? mesaObj.zona.trim().toUpperCase() : 'SALÓN';
+    final horaAtencion =
+        '${pedido.fechaPedido.hour.toString().padLeft(2, '0')}:${pedido.fechaPedido.minute.toString().padLeft(2, '0')}:${pedido.fechaPedido.second.toString().padLeft(2, '0')}';
+    final mesaObj = mesas
+        .where((m) => m.numero == pedido.mesaNumero)
+        .firstOrNull;
+    final zonaStr = (mesaObj != null && mesaObj.zona.trim().isNotEmpty)
+        ? mesaObj.zona.trim().toUpperCase()
+        : 'SALÓN';
 
     // Los productos y tápers reales (sin la línea virtual de delivery)
     final productos = lineas
-        .where((x) => esLineaDeProducto(x) || esLineaTupper(x) || esLineaTaper(x))
+        .where(
+          (x) => esLineaDeProducto(x) || esLineaTupper(x) || esLineaTaper(x),
+        )
         .toList();
     final subtotalProductos = productos.fold(
       0.0,
       (s, l) => s + l.precioTotalLinea,
     );
     final cargoDelivery = delivery > 0 ? delivery : pedido.costoDelivery;
-    final conDelivery = (control.tipo == 'ticket_venta' || control.incluirDelivery) && cargoDelivery > 0;
-    final conRecargo = (control.tipo == 'ticket_venta' || control.incluirRecargo) && recargo > 0;
+    final conDelivery =
+        (control.tipo == 'ticket_venta' || control.incluirDelivery) &&
+        cargoDelivery > 0;
+    final conRecargo =
+        (control.tipo == 'ticket_venta' || control.incluirRecargo) &&
+        recargo > 0;
 
-    final igvPorc = FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
+    final igvPorc =
+        FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
     final igvLabel = (igvPorc % 1 == 0) ? '${igvPorc.toInt()}%' : '$igvPorc%';
-    final serieCodigo = FacturacionService.instance.cachedConfig?.codigoSerie ?? '001';
+    final serieCodigo =
+        FacturacionService.instance.cachedConfig?.codigoSerie ?? '001';
     final serieSufijo = serieCodigo.padLeft(3, '0');
-    final bool usaEditables = itemsEditables != null && itemsEditables!.isNotEmpty;
+    final bool usaEditables =
+        itemsEditables != null && itemsEditables!.isNotEmpty;
 
     double totalCalc;
     if (usaEditables) {
       totalCalc = itemsEditables!.fold(0.0, (s, it) => s + it.subtotal);
     } else {
-      totalCalc = control.soloConsumo ? (subtotalProductos + (conDelivery ? cargoDelivery : 0) + (conRecargo ? recargo : 0)) : subtotalProductos;
+      totalCalc = control.soloConsumo
+          ? (subtotalProductos +
+                (conDelivery ? cargoDelivery : 0) +
+                (conRecargo ? recargo : 0))
+          : subtotalProductos;
       if (!control.soloConsumo) {
         if (conDelivery) totalCalc += cargoDelivery;
         if (conRecargo) totalCalc += recargo;
@@ -705,19 +736,10 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    'RUC: ${sede.ruc}',
-                    textAlign: TextAlign.center,
-                  ),
-                  Text(
-                    sede.direccion,
-                    textAlign: TextAlign.center,
-                  ),
+                  Text('RUC: ${sede.ruc}', textAlign: TextAlign.center),
+                  Text(sede.direccion, textAlign: TextAlign.center),
                   if (sede.telefono.isNotEmpty)
-                    Text(
-                      'Tel: ${sede.telefono}',
-                      textAlign: TextAlign.center,
-                    ),
+                    Text('Tel: ${sede.telefono}', textAlign: TextAlign.center),
                   const SizedBox(height: 6),
                   const Divider(thickness: 1, height: 10),
                   Text(
@@ -735,10 +757,13 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     'Fecha:   ${DateTime.now().toString().substring(0, 10)} ${DateTime.now().toString().substring(11, 19)}',
                   ),
                   Text('Hora atención:   $horaAtencion'),
-                  Text('Hora impresión:  ${DateTime.now().toString().substring(11, 19)}'),
+                  Text(
+                    'Hora impresión:  ${DateTime.now().toString().substring(11, 19)}',
+                  ),
                   if (pedido.tipoPedido == 'mesa' && pedido.mesaNumero > 0)
                     Text('Mesa:    ${pedido.mesaNumero} ($zonaStr)'),
-                  if (pedido.mozoNombre != null && pedido.mozoNombre!.trim().isNotEmpty)
+                  if (pedido.mozoNombre != null &&
+                      pedido.mozoNombre!.trim().isNotEmpty)
                     Text('Mozo:    ${pedido.mozoNombre!.trim()}'),
                   if (pedido.tipoPedido == 'delivery')
                     const Text('TIPO:    >> DELIVERY <<')
@@ -755,9 +780,7 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                       'CLIENTE:  ${control.razon.text.isEmpty ? "—" : control.razon.text}',
                     ),
                     if (control.direccion.text.isNotEmpty)
-                      Text(
-                        'DIR:      ${control.direccion.text}',
-                      ),
+                      Text('DIR:      ${control.direccion.text}'),
                   ] else if (control.tipo == 'boleta') ...[
                     if (control.conDni && control.dni.text.isNotEmpty)
                       Text('DNI:      ${control.dni.text}'),
@@ -768,7 +791,8 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     Text(
                       'CLIENTE:  ${pedido.clienteNombre ?? "CLIENTES VARIOS"}',
                     ),
-                    if (pedido.direccionDelivery != null && pedido.direccionDelivery!.isNotEmpty)
+                    if (pedido.direccionDelivery != null &&
+                        pedido.direccionDelivery!.isNotEmpty)
                       Text('DIR:      ${pedido.direccionDelivery}'),
                   ],
                   const Text('MONEDA:   SOLES (S/)'),
@@ -778,8 +802,14 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('CANT DESCRIPCION', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        'CANT DESCRIPCION',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'TOTAL',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ),
                   const Divider(thickness: 1, height: 10),
@@ -787,7 +817,9 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     for (final it in itemsEditables!)
                       _filaItem(
                         '${it.cant} NIU',
-                        it.nombre.text.trim().isEmpty ? 'Plato' : it.nombre.text.trim(),
+                        it.nombre.text.trim().isEmpty
+                            ? 'Plato'
+                            : it.nombre.text.trim(),
                         it.subtotal,
                       ),
                   ] else if (control.soloConsumo) ...[
@@ -846,9 +878,13 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   ),
 
                   // Medios de pago y vuelto
-                  if (pagosPorMedioDe(pedido.id) case final pagosLista when pagosLista.isNotEmpty) ...[
+                  if (pagosPorMedioDe(pedido.id) case final pagosLista
+                      when pagosLista.isNotEmpty) ...[
                     const Divider(thickness: 1, height: 14),
-                    const Text('MEDIO(S) DE PAGO:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      'MEDIO(S) DE PAGO:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     for (final p in pagosLista)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -857,7 +893,8 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                           Text('S/ ${p.monto.toStringAsFixed(2)}'),
                         ],
                       ),
-                    if (efectivoRecibidoPorPedido[pedido.id] case final e? when e.recibido > 0) ...[
+                    if (efectivoRecibidoPorPedido[pedido.id] case final e?
+                        when e.recibido > 0) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [

@@ -102,6 +102,7 @@ class CampoTexto extends StatelessWidget {
       helperMaxLines: base.helperMaxLines,
       helperStyle: base.helperStyle,
       errorText: base.errorText,
+      errorStyle: base.errorStyle,
       counterText: base.counterText,
       prefixIcon: base.prefixIcon,
       prefixIconConstraints:

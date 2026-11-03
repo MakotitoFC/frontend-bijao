@@ -1043,7 +1043,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                 (_dividir ? _repartoValido : _totalOrden > 0.005) &&
                 _recibidoValido &&
                 (_comprobante?.completo ?? true);
-            final pagar = FilledButton.icon(
+            final bloqueo = _comprobante?.motivoBloqueo;
+            final pagarBoton = FilledButton.icon(
               onPressed: puedePagar ? _pagar : null,
               icon: const Icon(LucideIcons.banknote, size: 18),
               label: Text(
@@ -1056,6 +1057,13 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               ),
               style: FilledButton.styleFrom(backgroundColor: naranjaPago),
             );
+            final pagar = bloqueo == null
+                ? pagarBoton
+                : Tooltip(
+                    message: bloqueo,
+                    triggerMode: TooltipTriggerMode.tap,
+                    child: pagarBoton,
+                  );
             final cancelar = OutlinedButton(
               onPressed: _guardando ? null : () => Navigator.of(context).pop(),
               child: const Text('Cancelar'),
