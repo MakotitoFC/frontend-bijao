@@ -1461,19 +1461,35 @@ class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
   }
 
   Future<void> _whatsapp(Comprobante c) async {
-    final url = c.pdfTicketUrl ?? c.pdfA4Url;
-    if (url == null) return;
+    final urlTicket = c.urlPublicaTicket;
+    final urlA4 = c.urlPublicaA4;
+    final urlXml = c.urlPublicaXml;
+    if (urlTicket == null && urlA4 == null && urlXml == null) return;
+
     final numero = await showBlurDialog<String>(
       context: context,
       builder: (_) =>
           WhatsappCuentaDialog(celularInicial: widget.pedido.clienteCelular),
     );
     if (numero == null || !mounted) return;
-    final texto =
-        'Hola, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} '
-        '${c.numeroComprobante} de ${nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio()}. '
-        'Total: S/ ${c.total.toStringAsFixed(2)}. Descárgala aquí: $url';
-    final abierto = await abrirWhatsapp(numero, texto);
+
+    final negocio = nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio();
+    final buf = StringBuffer()
+      ..writeln('Hola, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
+      ..writeln('Total: S/ ${c.total.toStringAsFixed(2)}')
+      ..writeln();
+
+    if (urlA4 != null) {
+      buf.writeln('📄 PDF A4: $urlA4');
+    }
+    if (urlTicket != null) {
+      buf.writeln('🧾 PDF Ticket: $urlTicket');
+    }
+    if (urlXml != null) {
+      buf.writeln('📦 XML: $urlXml');
+    }
+
+    final abierto = await abrirWhatsapp(numero, buf.toString().trim());
     if (!abierto && mounted) {
       showAppToast(
         context,
@@ -1575,24 +1591,30 @@ class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (c.pdfTicketUrl != null)
+                if (c.ticketUrl != null)
                   OutlinedButton.icon(
-                    onPressed: () => abrirEnlace(c.pdfTicketUrl!),
+                    onPressed: () => abrirEnlace(c.ticketUrl!),
                     icon: const Icon(LucideIcons.fileText, size: 16),
                     label: const Text('PDF ticket'),
                   ),
-                if (c.pdfA4Url != null)
+                if (c.a4Url != null)
                   OutlinedButton.icon(
-                    onPressed: () => abrirEnlace(c.pdfA4Url!),
+                    onPressed: () => abrirEnlace(c.a4Url!),
                     icon: const Icon(LucideIcons.fileText, size: 16),
                     label: const Text('PDF A4'),
+                  ),
+                if (c.xmlDescargaUrl != null)
+                  OutlinedButton.icon(
+                    onPressed: () => abrirEnlace(c.xmlDescargaUrl!),
+                    icon: const Icon(LucideIcons.code, size: 16),
+                    label: const Text('XML'),
                   ),
                 OutlinedButton.icon(
                   onPressed: c.pendiente ? null : () => _reimprimir(c),
                   icon: const Icon(LucideIcons.printer, size: 16),
                   label: const Text('Reimprimir'),
                 ),
-                if (c.pdfTicketUrl != null || c.pdfA4Url != null)
+                if (c.ticketUrl != null || c.a4Url != null || c.xmlDescargaUrl != null)
                   FilledButton.icon(
                     onPressed: () => _whatsapp(c),
                     icon: const Icon(LucideIcons.messageCircle, size: 16),

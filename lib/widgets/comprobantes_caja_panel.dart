@@ -253,11 +253,23 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
             child: Wrap(
               spacing: 4,
               children: [
-                if (c.pdfTicketUrl != null || c.pdfA4Url != null)
+                if (c.ticketUrl != null)
                   TextButton.icon(
-                    onPressed: () => abrirEnlace(c.pdfTicketUrl ?? c.pdfA4Url!),
+                    onPressed: () => abrirEnlace(c.ticketUrl!),
                     icon: const Icon(LucideIcons.fileText, size: 14),
-                    label: const Text('PDF'),
+                    label: const Text('Ticket'),
+                  ),
+                if (c.a4Url != null)
+                  TextButton.icon(
+                    onPressed: () => abrirEnlace(c.a4Url!),
+                    icon: const Icon(LucideIcons.fileText, size: 14),
+                    label: const Text('PDF A4'),
+                  ),
+                if (c.xmlDescargaUrl != null)
+                  TextButton.icon(
+                    onPressed: () => abrirEnlace(c.xmlDescargaUrl!),
+                    icon: const Icon(LucideIcons.code, size: 14),
+                    label: const Text('XML'),
                   ),
                 if (c.puedeAnularse)
                   TextButton.icon(

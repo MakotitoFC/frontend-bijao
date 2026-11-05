@@ -18,6 +18,12 @@ class Comprobante {
   final String estadoSunat;
   final String? pdfTicketUrl;
   final String? pdfA4Url;
+  final String? xmlUrl;
+  final String? cdrUrl;
+  final String? r2XmlUrl;
+  final String? r2CdrUrl;
+  final String? r2PdfTicketUrl;
+  final String? r2PdfA4Url;
   final String? mensaje;
   final String? usuarioNombre;
 
@@ -36,6 +42,12 @@ class Comprobante {
     required this.estadoSunat,
     this.pdfTicketUrl,
     this.pdfA4Url,
+    this.xmlUrl,
+    this.cdrUrl,
+    this.r2XmlUrl,
+    this.r2CdrUrl,
+    this.r2PdfTicketUrl,
+    this.r2PdfA4Url,
     this.mensaje,
     this.usuarioNombre,
   });
@@ -70,6 +82,12 @@ class Comprobante {
       estadoSunat: j['estado_sunat']?.toString() ?? '',
       pdfTicketUrl: texto('pdf_ticket_url'),
       pdfA4Url: texto('pdf_a4_url'),
+      xmlUrl: texto('xml_url'),
+      cdrUrl: texto('cdr_url'),
+      r2XmlUrl: texto('r2_xml_url'),
+      r2CdrUrl: texto('r2_cdr_url'),
+      r2PdfTicketUrl: texto('r2_pdf_ticket_url'),
+      r2PdfA4Url: texto('r2_pdf_a4_url'),
       mensaje: texto('pse_mensaje'),
       usuarioNombre: texto('usuario_nombre'),
     );
@@ -100,6 +118,16 @@ class Comprobante {
     'NO_APLICA' => 'Interno',
     _ => estadoSunat,
   };
+
+  /// URLs locales o directas para visualización y descarga en el POS
+  String? get ticketUrl => pdfTicketUrl ?? r2PdfTicketUrl;
+  String? get a4Url => pdfA4Url ?? r2PdfA4Url;
+  String? get xmlDescargaUrl => xmlUrl ?? r2XmlUrl;
+
+  /// URLs públicas y seguras de R2 para compartir con clientes (evita enumeración IDOR)
+  String? get urlPublicaTicket => r2PdfTicketUrl ?? pdfTicketUrl;
+  String? get urlPublicaA4 => r2PdfA4Url ?? pdfA4Url;
+  String? get urlPublicaXml => r2XmlUrl ?? xmlUrl;
 }
 
 // Datos de un RUC consultados en SUNAT.
