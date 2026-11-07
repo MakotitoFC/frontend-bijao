@@ -8,7 +8,7 @@ import '../app_search_field.dart';
 import '../app_tag.dart';
 import '../dialogo_app.dart';
 import '../tabla_app.dart';
-import '../tabs_desplazables.dart';
+import '../tabs_texto.dart';
 
 class PaginaAnulaciones extends StatefulWidget {
   const PaginaAnulaciones({super.key});
@@ -158,30 +158,31 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
             },
           ),
           const SizedBox(height: 12),
-          TabsDesplazables(
-            child: Row(
-              children: [
-                AppTag(
-                  etiqueta: 'Todas (${_anulaciones.length})',
-                  activo: _filtro == 'todas',
-                  onTap: () => setState(() => _filtro = 'todas'),
-                ),
-                AppTag(
-                  etiqueta:
-                      'Servidas (${_anulaciones.where((a) => a['fue_servido'] == true).length})',
-                  activo: _filtro == 'servido',
-                  color: AppColors.naranja,
-                  onTap: () => setState(() => _filtro = 'servido'),
-                ),
-                AppTag(
-                  etiqueta:
-                      'No servidas (${_anulaciones.where((a) => a['fue_servido'] != true).length})',
-                  activo: _filtro == 'no_servido',
-                  color: AppColors.primaryGreen,
-                  onTap: () => setState(() => _filtro = 'no_servido'),
-                ),
-              ],
-            ),
+          TabsTexto(
+            tabs: [
+              TabTexto(
+                etiqueta: 'Todas',
+                cantidad: _anulaciones.length,
+                activa: _filtro == 'todas',
+                onTap: () => setState(() => _filtro = 'todas'),
+              ),
+              TabTexto(
+                etiqueta: 'Servidas',
+                cantidad: _anulaciones
+                    .where((a) => a['fue_servido'] == true)
+                    .length,
+                activa: _filtro == 'servido',
+                onTap: () => setState(() => _filtro = 'servido'),
+              ),
+              TabTexto(
+                etiqueta: 'No servidas',
+                cantidad: _anulaciones
+                    .where((a) => a['fue_servido'] != true)
+                    .length,
+                activa: _filtro == 'no_servido',
+                onTap: () => setState(() => _filtro = 'no_servido'),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           Expanded(

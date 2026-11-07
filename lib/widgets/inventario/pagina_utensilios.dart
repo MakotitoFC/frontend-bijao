@@ -9,10 +9,9 @@ import '../../services/catalog_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
 import '../app_search_field.dart';
-import '../app_tag.dart';
 import '../app_toast.dart';
 import '../pago_cuenta_empleado_dialog.dart';
-import '../tabs_desplazables.dart';
+import '../tabs_texto.dart';
 import '../utensilio_roto_form_dialog.dart';
 import 'inventario_comun.dart';
 
@@ -262,9 +261,9 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
     );
   }
 
-  Widget _filtroChip(String etiqueta, String valor) => AppTag(
+  TabTexto _filtroChip(String etiqueta, String valor) => TabTexto(
     etiqueta: etiqueta,
-    activo: _filtro == valor,
+    activa: _filtro == valor,
     onTap: () => setState(() => _filtro = valor),
   );
 
@@ -324,15 +323,13 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
                 ),
               ),
               const SizedBox(height: 12),
-              TabsDesplazables(
-                child: Row(
-                  children: [
-                    _filtroChip('Todos', 'todos'),
-                    _filtroChip('Por cobrar', 'cobro'),
-                    _filtroChip('Por reponer', 'reposicion'),
-                    _filtroChip('Resueltos', 'resueltos'),
-                  ],
-                ),
+              TabsTexto(
+                tabs: [
+                  _filtroChip('Todos', 'todos'),
+                  _filtroChip('Por cobrar', 'cobro'),
+                  _filtroChip('Por reponer', 'reposicion'),
+                  _filtroChip('Resueltos', 'resueltos'),
+                ],
               ),
             ],
           ),

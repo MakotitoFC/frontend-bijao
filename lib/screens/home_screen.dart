@@ -30,6 +30,7 @@ import '../widgets/menu_flotante.dart';
 import '../widgets/punto_aviso.dart';
 import '../widgets/submenu_lateral.dart';
 import 'carta_screen.dart' deferred as carta;
+import 'comprobantes_screen.dart';
 import 'inicio_screen.dart';
 import 'cocina_screen.dart' deferred as cocina;
 import 'configuracion_screen.dart' deferred as configuracion;
@@ -193,6 +194,10 @@ class _HomeScreenState extends State<HomeScreen> {
       descripcion: 'Historial de ventas y su estado de pago',
     ),
     'caja': (titulo: 'Caja', descripcion: 'Caja actual y cierres de caja'),
+    'comprobantes': (
+      titulo: 'Comprobantes',
+      descripcion: 'Historial de boletas y facturas emitidas',
+    ),
     'reportes': (titulo: 'Reportes', descripcion: 'Ventas y reportes'),
     'finanzas': (
       titulo: 'Finanzas',
@@ -272,6 +277,8 @@ class _HomeScreenState extends State<HomeScreen> {
           loader: pagos.loadLibrary,
           builder: () => pagos.CajaScreen(usuario: widget.usuario),
         );
+      case 'comprobantes':
+        return const ComprobantesScreen();
       case 'reportes':
         return DeferredWidget(
           loader: reportes.loadLibrary,

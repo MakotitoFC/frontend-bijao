@@ -16,10 +16,9 @@ import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'carta_acciones.dart';
 import 'app_search_field.dart';
-import 'app_tag.dart';
 import 'apertura_diaria_dialog.dart';
 import 'categorias_crud_dialog.dart';
-import 'tabs_desplazables.dart';
+import 'tabs_texto.dart';
 
 // Cabecera de Productos: título, buscador, "Nueva categoría" y tabs de categorías.
 class CartaCabecera extends StatefulWidget {
@@ -239,28 +238,25 @@ class _CartaCabeceraState extends State<CartaCabecera> {
             }
           });
         }
-        return TabsDesplazables(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        return TabsTexto(
+          tabs: [
+            _tab(
+              'Todos',
+              cartas.length,
+              actual == null,
+              () => widget.seleccion.value = null,
+            ),
+            for (final cat in categorias)
               _tab(
-                'Todos',
-                cartas.length,
-                actual == null,
-                () => widget.seleccion.value = null,
+                cat.categoria,
+                _contar(cartas, cat),
+                actual?.id == cat.id,
+                () => widget.seleccion.value = cat,
+                onEliminar: widget.esAdmin && actual?.id == cat.id
+                    ? () => _eliminarCategoria(cat)
+                    : null,
               ),
-              for (final cat in categorias)
-                _tab(
-                  cat.categoria,
-                  _contar(cartas, cat),
-                  actual?.id == cat.id,
-                  () => widget.seleccion.value = cat,
-                  onEliminar: widget.esAdmin && actual?.id == cat.id
-                      ? () => _eliminarCategoria(cat)
-                      : null,
-                ),
-            ],
-          ),
+          ],
         );
       },
     );
@@ -368,17 +364,17 @@ class _CartaCabeceraState extends State<CartaCabecera> {
   int _contar(List<CartaItem> cartas, CategoriaComida cat) =>
       cartas.where((c) => c.categoriaId == cat.id).length;
 
-  // Tab de categoría: la activa tiene trazo verde, las demás se ven atenuadas.
-  Widget _tab(
+  // Tab de categoría: la activa va en verde y negrita, las demás en gris.
+  TabTexto _tab(
     String label,
     int cantidad,
     bool activo,
     VoidCallback onTap, {
     VoidCallback? onEliminar,
   }) {
-    return AppTag(
+    return TabTexto(
       etiqueta: label,
-      activo: activo,
+      activa: activo,
       cantidad: cantidad,
       onTap: onTap,
       onQuitar: onEliminar,

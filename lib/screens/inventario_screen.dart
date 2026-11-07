@@ -11,6 +11,7 @@ import '../widgets/inventario/pagina_tapers.dart';
 import '../widgets/inventario/pagina_utensilios.dart';
 import '../widgets/inventario/pagina_anulaciones.dart';
 import '../widgets/submenu_lateral.dart';
+import '../widgets/tabs_texto.dart';
 
 // import '../widgets/tamanos_tab.dart'; // página Tamaños oculta (ver _paginas)
 
@@ -202,49 +203,15 @@ class _PaginaAlmacen extends StatelessWidget {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(margen, 8, margen, 4),
-          // Las tres subvistas de Almacén son un control segmentado, para que
-          // no se confundan con los filtros de cada lista.
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final s in subvistas)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => onSub(s.$1),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
-                        height: 30,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: s.$1 == sub
-                              ? AppColors.primaryGreen
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          s.$2,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: s.$1 == sub
-                                ? Colors.white
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          child: TabsTexto(
+            tabs: [
+              for (final s in subvistas)
+                TabTexto(
+                  etiqueta: s.$2,
+                  activa: s.$1 == sub,
+                  onTap: () => onSub(s.$1),
+                ),
+            ],
           ),
         ),
         Expanded(

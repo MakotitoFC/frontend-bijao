@@ -28,7 +28,6 @@ import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/indicador_abajo.dart';
 import '../widgets/filtro_menu.dart';
 import '../widgets/menu_flotante.dart';
@@ -43,6 +42,7 @@ import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/app_select.dart';
 import '../widgets/selector_rango_fechas.dart';
 import '../widgets/tabla_app.dart';
+import '../widgets/tabs_texto.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
 import '../widgets/campo_texto.dart';
 import '../widgets/descargo_pago_dialog.dart';
@@ -472,48 +472,15 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
       ('pagados', 'Pagados'),
       ('por_cobrar', 'Por cobrar'),
     ];
-    return Container(
-      height: AppSizes.control,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadii.tag),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < opciones.length; i++) ...[
-            if (i > 0) VerticalDivider(width: 1, color: Colors.grey.shade300),
-            Flexible(
-              child: InkWell(
-                onTap: () => setState(() => _filtro = opciones[i].$1),
-                child: Container(
-                  alignment: Alignment.center,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: AppBreakpoints.esMobile(context) ? 10 : 16,
-                  ),
-                  color: _filtro == opciones[i].$1
-                      ? AppColors.navbar
-                      : Colors.transparent,
-                  child: Text(
-                    opciones[i].$2,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: _filtro == opciones[i].$1
-                          ? Colors.white
-                          : Colors.grey.shade700,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+    return TabsTexto(
+      tabs: [
+        for (final o in opciones)
+          TabTexto(
+            etiqueta: o.$2,
+            activa: _filtro == o.$1,
+            onTap: () => setState(() => _filtro = o.$1),
+          ),
+      ],
     );
   }
 
@@ -1855,29 +1822,33 @@ class _CajaScreenState extends State<CajaScreen> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              AppTag(
-                etiqueta: 'Todos',
-                activo: _filtroTipoMovimiento == null,
-                onTap: () => setState(() {
-                  _filtroTipoMovimiento = null;
-                  _filtroCategoriaId = null;
-                }),
-              ),
-              AppTag(
-                etiqueta: 'Ingresos',
-                activo: _filtroTipoMovimiento == TipoMovimiento.ingreso,
-                onTap: () => setState(() {
-                  _filtroTipoMovimiento = TipoMovimiento.ingreso;
-                  _filtroCategoriaId = null;
-                }),
-              ),
-              AppTag(
-                etiqueta: 'Salidas / Egresos',
-                activo: _filtroTipoMovimiento == TipoMovimiento.egreso,
-                onTap: () => setState(() {
-                  _filtroTipoMovimiento = TipoMovimiento.egreso;
-                  _filtroCategoriaId = null;
-                }),
+              TabsTexto(
+                tabs: [
+                  TabTexto(
+                    etiqueta: 'Todos',
+                    activa: _filtroTipoMovimiento == null,
+                    onTap: () => setState(() {
+                      _filtroTipoMovimiento = null;
+                      _filtroCategoriaId = null;
+                    }),
+                  ),
+                  TabTexto(
+                    etiqueta: 'Ingresos',
+                    activa: _filtroTipoMovimiento == TipoMovimiento.ingreso,
+                    onTap: () => setState(() {
+                      _filtroTipoMovimiento = TipoMovimiento.ingreso;
+                      _filtroCategoriaId = null;
+                    }),
+                  ),
+                  TabTexto(
+                    etiqueta: 'Salidas / Egresos',
+                    activa: _filtroTipoMovimiento == TipoMovimiento.egreso,
+                    onTap: () => setState(() {
+                      _filtroTipoMovimiento = TipoMovimiento.egreso;
+                      _filtroCategoriaId = null;
+                    }),
+                  ),
+                ],
               ),
               if (catActivas.isNotEmpty)
                 SizedBox(

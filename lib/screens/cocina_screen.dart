@@ -23,7 +23,6 @@ import '../services/auth_service.dart';
 import '../services/eventos_service.dart';
 import '../services/pedido_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/aviso_caja_cerrada.dart';
 import '../widgets/boton_imprimir_whatsapp.dart';
@@ -31,7 +30,7 @@ import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
 import '../widgets/whatsapp_cuenta_dialog.dart';
-import '../widgets/tabs_desplazables.dart';
+import '../widgets/tabs_texto.dart';
 import '../widgets/campo_texto.dart';
 
 // Vista de cocina: tabs por estado y una tarjeta por pedido
@@ -234,19 +233,12 @@ class _CocinaScreenState extends State<CocinaScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TabsDesplazables(
-                    child: Row(
-                      children: [
-                        _tab('Todos', _contar(null), _filtro == null, null),
-                        for (final (valor, etiqueta) in _estados)
-                          _tab(
-                            etiqueta,
-                            _contar(valor),
-                            _filtro == valor,
-                            valor,
-                          ),
-                      ],
-                    ),
+                  child: TabsTexto(
+                    tabs: [
+                      _tab('Todos', _contar(null), _filtro == null, null),
+                      for (final (valor, etiqueta) in _estados)
+                        _tab(etiqueta, _contar(valor), _filtro == valor, valor),
+                    ],
                   ),
                 ),
                 // Caja registra los pedidos de delivery.
@@ -309,10 +301,10 @@ class _CocinaScreenState extends State<CocinaScreen> {
     );
   }
 
-  Widget _tab(String etiqueta, int cantidad, bool activo, String? valor) {
-    return AppTag(
+  TabTexto _tab(String etiqueta, int cantidad, bool activo, String? valor) {
+    return TabTexto(
       etiqueta: etiqueta,
-      activo: activo,
+      activa: activo,
       cantidad: cantidad,
       onTap: () => setState(() => _filtro = valor),
     );

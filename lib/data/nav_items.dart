@@ -70,6 +70,13 @@ const navItems = [
     permisoRequerido: 'LEER.PAGO',
   ),
   NavItem(
+    clave: 'comprobantes',
+    label: 'Comprobantes',
+    icono: LucideIcons.fileCheck,
+    rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+    permisoRequerido: 'LEER.PAGO',
+  ),
+  NavItem(
     clave: 'reportes',
     label: 'Reportes',
     icono: LucideIcons.newspaper,
