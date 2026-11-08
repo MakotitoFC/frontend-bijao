@@ -19,10 +19,11 @@ import '../services/facturacion_service.dart';
 import '../services/api_client.dart';
 import '../widgets/campo_texto.dart';
 import '../widgets/config_widgets.dart';
+import '../widgets/lista_paginada.dart';
 import '../widgets/dialogo_app.dart';
 import '../widgets/medio_pago_dialog.dart';
 import '../widgets/submenu_lateral.dart';
-import '../widgets/pestanas_vista.dart';
+import '../widgets/indice_subvistas.dart';
 import '../widgets/impresoras_config.dart';
 import '../widgets/reglas_cocina_config.dart';
 import '../widgets/sede_fiscal_config.dart';
@@ -63,6 +64,30 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   final Set<String> _gruposPermisosAbiertos = {};
   // Página elegida en el submenú (escritorio).
   String _paginaClave = 'general';
+  // Celular: subvista abierta desde el índice (null = el índice).
+  String? _abierta;
+
+  // "Editar en Restaurantes →": abre esa página, en celular y en escritorio.
+  void _irA(String clave) => setState(() {
+    _paginaClave = clave;
+    _abierta = clave;
+  });
+
+  // Icono de cada subvista en el índice de celular.
+  static const _iconos = {
+    'general': LucideIcons.store,
+    'servicio': LucideIcons.utensilsCrossed,
+    'restaurantes': LucideIcons.mapPin,
+    'pagos': LucideIcons.creditCard,
+    'usuarios': LucideIcons.users,
+    'promociones': LucideIcons.tag,
+    'stock': LucideIcons.package,
+    'impresoras': LucideIcons.printer,
+    'impresion_cocina': LucideIcons.chefHat,
+    'sede_fiscal': LucideIcons.fileText,
+    'turnos_caja': LucideIcons.clock,
+    'negocio': LucideIcons.settings,
+  };
 
   @override
   void initState() {
@@ -287,14 +312,25 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         paginas.where((p) => p.clave == _paginaClave).firstOrNull ??
         paginas.first;
 
-    // Celular: no hay lugar para dos columnas; se mantienen las pestañas.
+    // Celular: un índice con las páginas (sin la barra oscura); cada fila abre la
+    // suya a pantalla completa.
     if (AppBreakpoints.esMobile(context)) {
       return Scaffold(
         backgroundColor: Colors.white,
-        body: PestanasVista(
-          pestanas: [
+        body: IndiceSubvistas(
+          titulo: 'Configuración',
+          descripcion: 'Ajustes del negocio y del sistema.',
+          abierta: _abierta,
+          onAbrir: (c) => setState(() => _abierta = c),
+          subvistas: [
             for (final p in paginas)
-              (etiqueta: p.etiqueta, contenido: (_) => p.contenido()),
+              (
+                clave: p.clave,
+                etiqueta: p.etiqueta,
+                icono: _iconos[p.clave] ?? LucideIcons.circle,
+                grupo: p.seccion ?? 'Negocio y servicio',
+                contenido: (_) => p.contenido(),
+              ),
           ],
         ),
       );
@@ -374,11 +410,17 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     return [
       SeccionConfig(
         titulo: 'Resumen del negocio',
-        descripcion: 'Datos del local. Se editan en Restaurantes.',
+        descripcion: 'Datos del local.',
+        enlace: (
+          texto: 'Editar en Restaurantes',
+          onTap: () => _irA('restaurantes'),
+        ),
         filas: [
+          const FilaGrupo('Datos fiscales'),
           FilaDato(etiqueta: 'Razón social', valor: sede.razonSocial),
-          FilaDato(etiqueta: 'Dirección', valor: sede.direccion),
           FilaDato(etiqueta: 'RUC', valor: sede.ruc),
+          FilaDato(etiqueta: 'Dirección', valor: sede.direccion),
+          const FilaGrupo('Contacto'),
           FilaDato(etiqueta: 'Teléfono', valor: sede.celular ?? ''),
         ],
       ),
@@ -399,8 +441,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             valor: servicios.isEmpty ? 'Ninguno' : servicios,
           ),
           FilaDato(
-            etiqueta: 'Propina sugerida',
-            valor: '${config.propinaSugerida.toStringAsFixed(0)} %',
+            etiqueta: 'Propina al cobrar',
+            valor: config.propinaHabilitada ? 'Activada' : 'Desactivada',
           ),
           FilaDato(
             etiqueta: 'Métodos de pago activos',
@@ -452,12 +494,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       SeccionConfig(
         titulo: 'Propinas',
         filas: [
-          CampoNumeroConfig(
-            etiqueta: 'Propina sugerida (botón Propina de los pedidos)',
-            valor: config.propinaSugerida,
-            sufijo: '%',
-            onChanged: (n) {
-              config.propinaSugerida = n;
+          FilaSwitch(
+            titulo: 'Propina al cobrar',
+            descripcion:
+                'Muestra la opción de propina en la pantalla de pagar.',
+            valor: config.propinaHabilitada,
+            onChanged: (v) {
+              setState(() => config.propinaHabilitada = v);
               config.guardar();
             },
           ),
@@ -468,25 +511,33 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         filas: [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Código para autorizar descuentos cuando otro usuario lo '
-                    'necesita.',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                OutlinedButton.icon(
+            // Con poco ancho el botón baja debajo del texto.
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final texto = Text(
+                  'Código para autorizar descuentos cuando otro usuario lo '
+                  'necesita.',
+                  style: TextStyle(fontSize: 13.5, color: Colors.grey.shade700),
+                );
+                final boton = OutlinedButton.icon(
                   onPressed: _cambiarPin,
                   icon: const Icon(LucideIcons.keyRound, size: 16),
                   label: const Text('Cambiar mi PIN'),
-                ),
-              ],
+                );
+                if (c.maxWidth < 520) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [texto, const SizedBox(height: 10), boton],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: texto),
+                    const SizedBox(width: 16),
+                    boton,
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -898,7 +949,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               ),
             )
           else
-            for (final m in mediosPago) _filaMedioPago(m),
+            ListaPaginada<MedioPago>(
+              items: mediosPago,
+              porPagina: 8,
+              divisores: true,
+              itemBuilder: _filaMedioPago,
+            ),
         ],
       ),
     ];
@@ -934,7 +990,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               ),
             )
           else
-            for (final u in _usuariosRBAC) _filaUsuario(u),
+            ListaPaginada<UserRBACModel>(
+              items: _usuariosRBAC,
+              porPagina: 8,
+              divisores: true,
+              itemBuilder: _filaUsuario,
+            ),
         ],
       ),
       SeccionConfig(
@@ -958,10 +1019,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               child: LayoutBuilder(
                 builder: (context, c) {
                   final columnas = _rolesRBAC.length * 104.0;
-                  final ancho = (c.maxWidth - columnas - 16).clamp(
-                    c.maxWidth < 220 ? c.maxWidth : 220.0,
-                    c.maxWidth,
-                  );
+                  final ancho = AppBreakpoints.esMobile(context)
+                      ? c.maxWidth
+                      : (c.maxWidth - columnas - 16).clamp(
+                          c.maxWidth < 220 ? c.maxWidth : 220.0,
+                          c.maxWidth,
+                        );
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: SizedBox(
@@ -969,7 +1032,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                       child: CampoTexto(
                         onChanged: (v) => setState(() => _busquedaPermisos = v),
                         decoration: const InputDecoration(
-                          hintText: 'Buscar permiso...',
+                          hintText: 'Buscar...',
                           prefixIcon: Icon(Icons.search, size: 20),
                         ),
                       ),
@@ -1027,6 +1090,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           ),
         ),
       );
+    }
+
+    // Celular: un rol a la vez y los permisos en tarjetas por grupo, en vez de una
+    // tabla con scroll hacia el lado.
+    if (AppBreakpoints.esMobile(context)) {
+      return _permisosMovil(categorias, termino.isNotEmpty);
     }
 
     // En el celular las columnas de roles son más angostas para que quepan más.
@@ -1188,6 +1257,162 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           child: SizedBox(width: minimo, child: tabla),
         );
       },
+    );
+  }
+
+  // Permisos en celular: se elige el rol arriba y cada grupo es una tarjeta con
+  // su avance (n de m) que se despliega para marcar los permisos uno a uno.
+  Widget _permisosMovil(
+    Map<String, List<PermisoModel>> categorias,
+    bool buscando,
+  ) {
+    final rol =
+        _rolesRBAC.where((r) => r.id == _rolSeleccionadoId).firstOrNull ??
+        _rolesRBAC.first;
+    final chips = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final r in _rolesRBAC)
+          InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => setState(() => _rolSeleccionadoId = r.id),
+            child: Container(
+              height: AppSizes.boton,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: r.id == rol.id ? AppColors.primaryGreen : Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: r.id == rol.id
+                      ? AppColors.primaryGreen
+                      : Colors.grey.shade300,
+                ),
+              ),
+              child: Text(
+                r.rol,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: r.id == rol.id ? Colors.white : Colors.grey.shade800,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    Widget grupo(String titulo, List<PermisoModel> lista) {
+      final abierto = buscando || _gruposPermisosAbiertos.contains(titulo);
+      final tiene = lista.where((p) => rol.tienePermiso(p.permiso)).length;
+      return Container(
+        margin: const EdgeInsets.only(top: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: buscando
+                  ? null
+                  : () => setState(() {
+                      if (!_gruposPermisosAbiertos.remove(titulo)) {
+                        _gruposPermisosAbiertos.add(titulo);
+                      }
+                    }),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            titulo,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$tiene de ${lista.length}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        Icon(
+                          abierto ? Icons.expand_less : Icons.expand_more,
+                          size: 22,
+                          color: Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: lista.isEmpty ? 0 : tiene / lista.length,
+                        minHeight: 5,
+                        backgroundColor: Colors.grey.shade200,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (abierto)
+              for (final p in lista) ...[
+                Divider(height: 1, color: Colors.grey.shade200),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        // Sin recortar: el nombre del permiso baja de línea.
+                        child: Text(
+                          p.permiso,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      AppSwitch(
+                        value: rol.tienePermiso(p.permiso),
+                        onChanged: (v) => _togglePermisoRol(rol, p, v),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Rol',
+          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 6),
+        chips,
+        for (final e in categorias.entries)
+          if (e.value.isNotEmpty) grupo(e.key, e.value),
+        const SizedBox(height: 8),
+      ],
     );
   }
 

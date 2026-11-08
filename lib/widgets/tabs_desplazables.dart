@@ -87,18 +87,26 @@ class TabsDesplazablesState extends State<TabsDesplazables> {
         WidgetsBinding.instance.addPostFrameCallback((_) => _actualizar());
         return false;
       },
-      child: Row(
-        children: [
-          if (_izquierda) _flecha(Icons.chevron_left, -240, 'Ver anteriores'),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _controller,
-              scrollDirection: Axis.horizontal,
-              child: widget.child,
-            ),
-          ),
-          if (_derecha) _flecha(Icons.chevron_right, 240, 'Ver más'),
-        ],
+      // Sin ancho para las flechas (menos de 100 px), solo las pestañas.
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final flechas = c.maxWidth >= 100;
+          return Row(
+            children: [
+              if (flechas && _izquierda)
+                _flecha(Icons.chevron_left, -240, 'Ver anteriores'),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _controller,
+                  scrollDirection: Axis.horizontal,
+                  child: widget.child,
+                ),
+              ),
+              if (flechas && _derecha)
+                _flecha(Icons.chevron_right, 240, 'Ver más'),
+            ],
+          );
+        },
       ),
     );
   }

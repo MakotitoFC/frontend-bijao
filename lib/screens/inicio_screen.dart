@@ -258,32 +258,6 @@ class _InicioScreenState extends State<InicioScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        Tooltip(
-          message: 'Actualizar',
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: _cargando ? null : _cargar,
-            child: Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: _cargando
-                  ? const Padding(
-                      padding: EdgeInsets.all(9),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      LucideIcons.refreshCw,
-                      size: 15,
-                      color: Colors.grey.shade700,
-                    ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -647,9 +621,11 @@ class _InicioScreenState extends State<InicioScreen> {
                     color: AppColors.primaryGreen,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Todo en orden.',
-                    style: TextStyle(color: Colors.grey.shade600),
+                  Flexible(
+                    child: Text(
+                      'Todo en orden.',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
                   ),
                 ],
               ),
@@ -747,8 +723,6 @@ class _InicioScreenState extends State<InicioScreen> {
       if (_esCocina) ('Ir a Cocina', LucideIcons.chefHat, 'cocina', true),
       if (_rol == AppRole.administrador || _esMozo)
         ('Carta', LucideIcons.utensilsCrossed, 'productos', false),
-      if (_rol == AppRole.administrador)
-        ('Cocina', LucideIcons.chefHat, 'cocina', false),
       if (_rol == AppRole.administrador)
         ('Inventario', LucideIcons.boxes, 'inventario', false),
       if (_rol == AppRole.cajero) ('Caja', LucideIcons.wallet, 'caja', false),

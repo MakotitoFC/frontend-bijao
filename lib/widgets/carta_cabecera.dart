@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'app_toast.dart';
 import 'dialogo_app.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -65,44 +64,6 @@ class _CartaCabeceraState extends State<CartaCabecera> {
     _busquedaController.dispose();
     super.dispose();
   }
-
-  bool _actualizando = false;
-
-  // Vuelve a leer del servidor las categorías y la carta (platos nuevos que
-  // llegaron desde otro equipo o desde la nube mientras esta pantalla estaba
-  // abierta).
-  Future<void> _actualizar() async {
-    if (_actualizando) return;
-    setState(() => _actualizando = true);
-    try {
-      await CatalogService.instance.recargarCarta();
-      if (!mounted) return;
-      widget.onCambio();
-      showAppToast(context, 'Carta actualizada.', type: ToastType.success);
-    } catch (e) {
-      if (mounted) {
-        showAppToast(
-          context,
-          'No se pudo actualizar la carta: $e',
-          type: ToastType.error,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _actualizando = false);
-    }
-  }
-
-  Widget _botonActualizar() => IconButton.outlined(
-    tooltip: 'Actualizar carta',
-    onPressed: _actualizando ? null : _actualizar,
-    icon: _actualizando
-        ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(LucideIcons.refreshCw),
-  );
 
   Future<void> _abrirDia() async {
     await showBlurDialog<bool>(
@@ -194,7 +155,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         child: AppSearchField(
           ajustarAlTexto: false,
           controller: _busquedaController,
-          hint: 'Buscar en la carta...',
+          hint: 'Buscar...',
           onChanged: (v) => widget.busqueda.value = v,
         ),
       ),
@@ -275,10 +236,8 @@ class _CartaCabeceraState extends State<CartaCabecera> {
                   child: _buscador(),
                 ),
               ),
-              const SizedBox(width: 8),
-              _botonActualizar(),
               if (widget.esAdmin) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 IconButton.outlined(
                   tooltip: 'Apertura del día',
                   onPressed: _abrirDia,
@@ -321,8 +280,6 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         Row(
           children: [
             Expanded(child: tabs),
-            const SizedBox(width: 16),
-            _botonActualizar(),
             if (_puedeAbrirDia) ...[
               const SizedBox(width: 24),
               OutlinedButton.icon(

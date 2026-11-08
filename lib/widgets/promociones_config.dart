@@ -1,3 +1,5 @@
+import 'indice_subvistas.dart';
+
 import 'package:flutter/material.dart';
 
 import 'dialogo_app.dart';
@@ -297,25 +299,30 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
   // ---------- UI ----------
 
   // Registros de promociones: título con el botón "+ Promoción" y una tabla.
+  // En celular, dentro de la subvista "Promociones": sin título ni descripción
+  // (ya van en la cabecera) y el botón "+ Promoción" sube a esa cabecera.
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
-    return SingleChildScrollView(
+    final ctx = esMobile ? ContextoSubvista.de(context) : null;
+    final sinCabecera = ctx != null && ctx.repite('Promociones');
+    final botonNueva = FilledButton.icon(
+      onPressed: _nuevaPromocion,
+      style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+      icon: const Icon(Icons.add, size: 18),
+      label: const Text('Promoción'),
+    );
+    final vista = SingleChildScrollView(
       padding: EdgeInsets.all(esMobile ? 16 : 28),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1100),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+          // Sin tarjeta alrededor: la vista se apoya directo en el fondo blanco.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!sinCabecera)
                 Row(
                   children: [
                     const Expanded(
@@ -327,50 +334,53 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
                         ),
                       ),
                     ),
-                    FilledButton.icon(
-                      onPressed: _nuevaPromocion,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                      ),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Promoción'),
-                    ),
+                    botonNueva,
                   ],
                 ),
+              // En celular las descripciones no se muestran.
+              if (!esMobile) ...[
                 const SizedBox(height: 4),
                 Text(
                   'El mozo vende cada promoción tal como la configuras; solo '
                   'cambia un producto por otra opción registrada aquí.',
                   style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
                 ),
-                if (configCumpleanos.value.eliminada)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: _restaurarCumpleanos,
-                      icon: const Icon(Icons.restore, size: 16),
-                      label: const Text('Restaurar Cumpleaños'),
-                    ),
-                  ),
-                const SizedBox(height: 14),
-                TablaApp<Promocion>(
-                  scrollInterno: true,
-                  porPagina: 10,
-                  filas: [
-                    if (!configCumpleanos.value.eliminada) _cumpleanos,
-                    ...promociones,
-                  ],
-                  onFila: (p) => p.id == idCumpleanos
-                      ? _editarCumpleanos()
-                      : _editarPromocion(p),
-                  columnas: _columnas(),
-                ),
               ],
-            ),
+              if (configCumpleanos.value.eliminada)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _restaurarCumpleanos,
+                    icon: const Icon(Icons.restore, size: 16),
+                    label: const Text('Restaurar Cumpleaños'),
+                  ),
+                ),
+              const SizedBox(height: 14),
+              TablaApp<Promocion>(
+                scrollInterno: true,
+                porPagina: 8,
+                filas: [
+                  if (!configCumpleanos.value.eliminada) _cumpleanos,
+                  ...promociones,
+                ],
+                onFila: (p) => p.id == idCumpleanos
+                    ? _editarCumpleanos()
+                    : _editarPromocion(p),
+                columnas: _columnas(),
+              ),
+            ],
           ),
         ),
       ),
     );
+    if (sinCabecera) {
+      return RegistroAccionSubvista(
+        contexto: ctx,
+        accion: botonNueva,
+        child: vista,
+      );
+    }
+    return vista;
   }
 
   // Cumpleaños: cada producto con el precio que se elija (por defecto S/ 0.00).
@@ -488,7 +498,7 @@ class _PromocionesConfigState extends State<PromocionesConfig> {
     ),
     ColumnaTabla(
       titulo: 'Acciones',
-      ancho: 110,
+      ancho: 120,
       rol: RolTarjeta.acciones,
       celda: (p) => Row(
         mainAxisSize: MainAxisSize.min,

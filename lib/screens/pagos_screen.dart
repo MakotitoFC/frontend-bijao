@@ -36,6 +36,7 @@ import '../widgets/boton_icono_expandible.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/comprobante_en_cobro.dart';
 import '../widgets/comprobantes_caja_panel.dart';
+import '../widgets/lista_paginada.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/emitir_comprobante_dialog.dart';
 import '../widgets/movimiento_caja_dialog.dart';
@@ -199,7 +200,8 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   }
 
   List<Pedido> get _filas {
-    final t = _busqueda.text.trim().toLowerCase();
+    // El número se busca con o sin "#" ("#0007", "0007" o "7").
+    final t = _busqueda.text.trim().toLowerCase().replaceAll('#', '').trim();
     return pedidos.where((p) {
       if (!_enRango(p)) return false;
       if (_medioFiltro != 'todos' &&
@@ -222,9 +224,14 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
         return false;
       }
       if (t.isEmpty) return true;
+      final celular = p.clienteCelular ?? '';
+      final digitos = t.replaceAll(RegExp(r'\D'), '');
       return p.numeroPedido.contains(t) ||
           (p.clienteNombre?.toLowerCase().contains(t) ?? false) ||
-          _mozoDe(p).toLowerCase().contains(t);
+          _mozoDe(p).toLowerCase().contains(t) ||
+          celular.contains(t) ||
+          (digitos.length >= 3 &&
+              celular.replaceAll(RegExp(r'\D'), '').contains(digitos));
     }).toList();
   }
 
@@ -386,7 +393,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                       ),
                       AppSearchField(
                         controller: _busqueda,
-                        hint: 'Buscar pedido o cliente...',
+                        hint: 'Buscar...',
                         onChanged: (_) => setState(() {}),
                       ),
                     ];
@@ -706,6 +713,8 @@ class _CajaScreenState extends State<CajaScreen> {
   // 'movimientos' (ingresos y salidas) o 'comprobantes' (de hoy).
   // Cambia al actualizar para que Comprobantes de hoy se vuelva a leer.
   int _recarga = 0;
+  // Pestaña de abajo en Caja: 'movimientos', 'comprobantes' o 'cierres'.
+  String _pestanaCaja = 'movimientos';
   // Tarjeta de medio elegida (efectivo, tarjeta o digital) para ver su resumen.
   String? _grupoElegido;
 
@@ -1272,14 +1281,98 @@ class _CajaScreenState extends State<CajaScreen> {
         children: [
           _cabeceraCaja(),
           Expanded(child: _vistaCaja(cierres, movimientos)),
+          if (AppBreakpoints.esMobile(context)) _barraAccionesMovil(),
         ],
       ),
     );
   }
 
+  // Menú de reportes de caja. Con [expandido] ocupa todo el ancho que le den
+  // (barra de acciones de celular).
+  Widget _menuReportes({bool expandido = false}) {
+    return MenuFlotante<String>(
+      tooltip: 'Reportes de Caja',
+      anchoMinimo: 300,
+      opciones: const [
+        OpcionMenu(valor: 'turno', etiqueta: 'Resumen del turno (ticket)'),
+        OpcionMenu(
+          valor: 'dia_print',
+          etiqueta: 'Consolidado del día (ticket)',
+        ),
+        OpcionMenu(
+          valor: 'turno_pdf',
+          etiqueta: 'Detalle del turno (PDF/HTML)',
+        ),
+        OpcionMenu(
+          valor: 'dia_pdf',
+          etiqueta: 'Detalle del día completo (PDF/HTML)',
+        ),
+        OpcionMenu(valor: 'otra_fecha', etiqueta: 'Reportes de otra fecha'),
+        OpcionMenu(
+          valor: 'traspasos_historial',
+          etiqueta: 'Historial de traspasos de caja',
+        ),
+      ],
+      onSeleccionar: (val) {
+        if (val == 'turno') _imprimirReporteTurno();
+        if (val == 'dia_print') _imprimirReporteDiaConsolidado();
+        if (val == 'turno_pdf') {
+          _abrirReporteDiaDetallado(
+            aperturaId: estadoCajaServidor?.apertura?.id,
+            fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
+          );
+        }
+        if (val == 'dia_pdf') {
+          _abrirReporteDiaDetallado(
+            fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
+          );
+        }
+        if (val == 'otra_fecha') _reportesDeOtraFecha();
+        if (val == 'traspasos_historial') {
+          HistorialTraspasosCajaDialog.mostrar(
+            context,
+            aperturaId: estadoCajaServidor?.apertura?.id,
+          );
+        }
+      },
+      disparador: (context, abierto) => Container(
+        height: AppSizes.boton,
+        alignment: expandido ? Alignment.center : null,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.primaryGreen),
+          borderRadius: BorderRadius.circular(AppSizes.boton / 2),
+          color: Colors.white,
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              LucideIcons.barChart2,
+              size: 16,
+              color: AppColors.primaryGreen,
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Reportes',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryGreen,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Arriba a la derecha: las acciones del turno (actualizar, traspaso, reportes
-  // y cerrar caja).
+  // y cerrar caja). En celular van de otra forma: actualizar y traspaso junto al
+  // título; Reportes y Cerrar caja en una barra fija abajo.
   Widget _cabeceraCaja() {
+    if (AppBreakpoints.esMobile(context)) return const SizedBox.shrink();
     final acciones = Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1291,96 +1384,7 @@ class _CajaScreenState extends State<CajaScreen> {
             etiqueta: 'Traspaso de Caja',
             onPressed: _traspasoCaja,
           ),
-        BotonIconoExpandible(
-          icono: LucideIcons.refreshCw,
-          etiqueta: 'Actualizar',
-          onPressed: () {
-            setState(() => _recarga++);
-            _cargar();
-            _cargarRangoMov();
-          },
-        ),
-        if (CajaService.instance.enServidor)
-          MenuFlotante<String>(
-            tooltip: 'Reportes de Caja',
-            anchoMinimo: 300,
-            opciones: const [
-              OpcionMenu(
-                valor: 'turno',
-                etiqueta: 'Resumen del turno (ticket)',
-              ),
-              OpcionMenu(
-                valor: 'dia_print',
-                etiqueta: 'Consolidado del día (ticket)',
-              ),
-              OpcionMenu(
-                valor: 'turno_pdf',
-                etiqueta: 'Detalle del turno (PDF/HTML)',
-              ),
-              OpcionMenu(
-                valor: 'dia_pdf',
-                etiqueta: 'Detalle del día completo (PDF/HTML)',
-              ),
-              OpcionMenu(
-                valor: 'otra_fecha',
-                etiqueta: 'Reportes de otra fecha',
-              ),
-              OpcionMenu(
-                valor: 'traspasos_historial',
-                etiqueta: 'Historial de traspasos de caja',
-              ),
-            ],
-            onSeleccionar: (val) {
-              if (val == 'turno') _imprimirReporteTurno();
-              if (val == 'dia_print') _imprimirReporteDiaConsolidado();
-              if (val == 'turno_pdf') {
-                _abrirReporteDiaDetallado(
-                  aperturaId: estadoCajaServidor?.apertura?.id,
-                  fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
-                );
-              }
-              if (val == 'dia_pdf') {
-                _abrirReporteDiaDetallado(
-                  fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
-                );
-              }
-              if (val == 'otra_fecha') _reportesDeOtraFecha();
-              if (val == 'traspasos_historial') {
-                HistorialTraspasosCajaDialog.mostrar(
-                  context,
-                  aperturaId: estadoCajaServidor?.apertura?.id,
-                );
-              }
-            },
-            disparador: (context, abierto) => Container(
-              height: AppSizes.boton,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primaryGreen),
-                borderRadius: BorderRadius.circular(AppSizes.boton / 2),
-                color: Colors.white,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    LucideIcons.barChart2,
-                    size: 16,
-                    color: AppColors.primaryGreen,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Reportes',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryGreen,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        if (CajaService.instance.enServidor) _menuReportes(),
         FilledButton.icon(
           onPressed: _cajaCerrada ? null : _cerrarCaja,
           icon: const Icon(LucideIcons.lock, size: 16),
@@ -1399,6 +1403,52 @@ class _CajaScreenState extends State<CajaScreen> {
         spacing: 12,
         runSpacing: 10,
         children: [acciones],
+      ),
+    );
+  }
+
+  // Actualizar y traspaso, solo con icono, junto al título (celular).
+  Widget _accionesIconoCaja() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!_cajaCerrada && CajaService.instance.enServidor) ...[
+          BotonIconoExpandible(
+            icono: LucideIcons.userCheck,
+            etiqueta: 'Traspaso de Caja',
+            onPressed: _traspasoCaja,
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Barra fija abajo (celular): Reportes y Cerrar caja, con el tamaño estándar de
+  // los botones.
+  Widget _barraAccionesMovil() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Row(
+        children: [
+          if (CajaService.instance.enServidor) ...[
+            Expanded(child: _menuReportes(expandido: true)),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _cajaCerrada ? null : _cerrarCaja,
+              icon: const Icon(LucideIcons.lock, size: 16),
+              label: const Text('Cerrar caja'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1430,7 +1480,9 @@ class _CajaScreenState extends State<CajaScreen> {
     return IndicadorAbajo(
       builder: (ctl) => SingleChildScrollView(
         controller: ctl,
-        padding: const EdgeInsets.fromLTRB(24, 16, 36, 24),
+        padding: AppBreakpoints.esMobile(context)
+            ? const EdgeInsets.fromLTRB(16, 16, 16, 24)
+            : const EdgeInsets.fromLTRB(24, 16, 36, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1471,10 +1523,26 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            const Text(
-              'Caja actual',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
+            if (AppBreakpoints.esMobile(context))
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Caja actual',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  _accionesIconoCaja(),
+                ],
+              )
+            else
+              const Text(
+                'Caja actual',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
             Text(
               _cajaCerrada
                   ? 'No hay turno activo actualmente'
@@ -1492,60 +1560,40 @@ class _CajaScreenState extends State<CajaScreen> {
               salidas: salidas,
             ),
             const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, c) {
-                final cierresPanel = _vistaCierres(cierres);
-                final mediosPanel = _panelMedios(filasVistas);
-                if (c.maxWidth < 1000) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      mediosPanel,
-                      const SizedBox(height: 16),
-                      cierresPanel,
-                    ],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 3, child: cierresPanel),
-                    const SizedBox(width: 16),
-                    Expanded(flex: 2, child: mediosPanel),
-                  ],
-                );
-              },
-            ),
+            _panelMedios(filasVistas),
             const SizedBox(height: 16),
-            // Ingresos y salidas con los comprobantes de hoy (uno debajo del
-            // otro si no caben).
-            LayoutBuilder(
-              builder: (context, c) {
-                final panelMov = _panelMovimientos(movimientos);
-                if (!CajaService.instance.enServidor) return panelMov;
-                final comprobantes = ComprobantesCajaPanel(
-                  key: ValueKey(_recarga),
-                );
-                if (c.maxWidth < 900) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      panelMov,
-                      const SizedBox(height: 16),
-                      comprobantes,
-                    ],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: panelMov),
-                    const SizedBox(width: 16),
-                    Expanded(child: comprobantes),
-                  ],
-                );
-              },
+            // Movimientos, comprobantes de hoy y cierres comparten un solo
+            // lugar, con pestañas.
+            TabsTexto(
+              tabs: [
+                TabTexto(
+                  etiqueta: 'Movimientos',
+                  cantidad: movimientos.length,
+                  activa: _pestanaCaja == 'movimientos',
+                  onTap: () => setState(() => _pestanaCaja = 'movimientos'),
+                ),
+                if (CajaService.instance.enServidor)
+                  TabTexto(
+                    etiqueta: 'Comprobantes de hoy',
+                    activa: _pestanaCaja == 'comprobantes',
+                    onTap: () => setState(() => _pestanaCaja = 'comprobantes'),
+                  ),
+                TabTexto(
+                  etiqueta: 'Cierres de caja',
+                  cantidad: cierres.length,
+                  activa: _pestanaCaja == 'cierres',
+                  onTap: () => setState(() => _pestanaCaja = 'cierres'),
+                ),
+              ],
             ),
+            const SizedBox(height: 12),
+            if (_pestanaCaja == 'comprobantes' &&
+                CajaService.instance.enServidor)
+              ComprobantesCajaPanel(key: ValueKey(_recarga))
+            else if (_pestanaCaja == 'cierres')
+              _vistaCierres(cierres)
+            else
+              _panelMovimientos(movimientos),
           ],
         ),
       ),
@@ -1612,7 +1660,7 @@ class _CajaScreenState extends State<CajaScreen> {
           else
             TablaApp<CierreCaja>(
               scrollInterno: true,
-              porPagina: 10,
+              porPagina: 8,
               filas: cierres,
               columnas: _columnasCierres(),
               // En el celular, la tarjeta muestra lo principal y al tocarla se
@@ -1921,32 +1969,12 @@ class _CajaScreenState extends State<CajaScreen> {
               ),
             )
           else
-            // Se ven 4 registros; el resto se desplaza. En el celular (APK) no
-            // se dibuja la barra de desplazamiento.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: AppBreakpoints.esMobile(context)
-                  ? ScrollConfiguration(
-                      behavior: ScrollConfiguration.of(context)
-                          .copyWith(scrollbars: false),
-                      child: ListView(
-                        shrinkWrap: true,
-                        children: [
-                          for (final m in movimientosFiltrados)
-                            _filaMovimiento(m),
-                        ],
-                      ),
-                    )
-                  : Scrollbar(
-                      child: ListView(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.only(right: 16),
-                        children: [
-                          for (final m in movimientosFiltrados)
-                            _filaMovimiento(m),
-                        ],
-                      ),
-                    ),
+            // De 5 en 5, con las flechas para pasar de página.
+            ListaPaginada<MovimientoCaja>(
+              items: movimientosFiltrados,
+              reiniciarCon:
+                  '$_filtroTipoMovimiento|$_filtroCategoriaId|$_rangoMov',
+              itemBuilder: _filaMovimiento,
             ),
         ],
       ),
@@ -2269,6 +2297,194 @@ class _CajaScreenState extends State<CajaScreen> {
 
   // Tarjetas del resumen de la caja actual (7 métricas clave solicitadas):
   // 1. Monto apertura, 2. Ingresos, 3. Egresos, 4. Neto, 5. Efectivo, 6. Tarjetas/POS, 7. Yape/Plin
+  Widget _resumenCajaMovil({
+    required double apertura,
+    required double ingresos,
+    required double egresos,
+    required double neto,
+    required double efectivo,
+    required double tarjeta,
+    required double digital,
+  }) {
+    Widget cifra(String etiqueta, double v) => Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              etiqueta,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _soles(v),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    // Cada medio es una fila; tocarla filtra "Por medio de pago" de más abajo,
+    // igual que las tarjetas de escritorio.
+    Widget medio(
+      IconData icono,
+      Color color,
+      String nombre,
+      double v,
+      String g,
+    ) {
+      final elegido = _grupoElegido == g;
+      return InkWell(
+        onTap: () => setState(() => _grupoElegido = elegido ? null : g),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          color: elegido
+              ? AppColors.primaryGreen.withValues(alpha: 0.08)
+              : Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            children: [
+              Icon(icono, size: 20, color: color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  nombre,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: elegido ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+              Text(
+                _soles(v),
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.primaryGreen.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Neto de caja',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primaryGreenDark,
+                ),
+              ),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _soles(neto),
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryGreenDark,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Apertura ${_soles(apertura)} + efectivo ${_soles(efectivo)} '
+                '− egresos ${_soles(egresos)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primaryGreenDark.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            cifra('Ingresos', ingresos),
+            const SizedBox(width: 10),
+            cifra('Egresos', egresos),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'INGRESOS POR MEDIO DE PAGO',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+            color: Colors.grey.shade500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              medio(
+                LucideIcons.dollarSign,
+                const Color(0xFF16A34A),
+                'Efectivo',
+                efectivo,
+                'efectivo',
+              ),
+              Divider(height: 1, color: Colors.grey.shade200),
+              medio(
+                LucideIcons.creditCard,
+                const Color(0xFF3B82F6),
+                'Tarjetas / POS',
+                tarjeta,
+                'tarjeta',
+              ),
+              Divider(height: 1, color: Colors.grey.shade200),
+              medio(
+                LucideIcons.smartphone,
+                const Color(0xFFD946EF),
+                'Yape / Plin',
+                digital,
+                'digital',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _tarjetasCaja({
     AperturaCaja? apertura,
     required List<FilaResumenMedio> filas,
@@ -2309,6 +2525,21 @@ class _CajaScreenState extends State<CajaScreen> {
         .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
 
     final neto = montoApertura + totalEfectivo - totalEgresos;
+
+    // Celular: el neto como cifra principal, ingresos y egresos en una fila y los
+    // medios de pago juntos en una sola tarjeta (en vez de siete tarjetas
+    // apiladas).
+    if (AppBreakpoints.esMobile(context)) {
+      return _resumenCajaMovil(
+        apertura: montoApertura,
+        ingresos: totalIngresos,
+        egresos: totalEgresos,
+        neto: neto,
+        efectivo: totalEfectivo,
+        tarjeta: totalTarjeta,
+        digital: totalDigital,
+      );
+    }
 
     // Menos que una tablet: tarjetas en miniatura, 2 columnas por 2 filas, con
     // desplazamiento hacia el lado para ver el resto.

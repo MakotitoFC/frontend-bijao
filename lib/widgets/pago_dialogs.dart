@@ -20,7 +20,6 @@ import '../models/medio_pago.dart';
 import '../models/pedido.dart';
 import '../theme/app_theme.dart';
 import 'app_switch.dart';
-import 'app_tag.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'comprobante_en_cobro.dart';
@@ -368,27 +367,97 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
 
   double get _totalCargos => _cargos.fold(0.0, (s, c) => s + c.monto);
 
+  // Lo que el cliente entrega en efectivo en las filas de "Por montos".
+  double get _efectivoFila => _filas
+      .where((f) => f.medio.grupo == 'efectivo')
+      .fold(0.0, (s, f) => s + leerMonto(f.monto.text));
+
+  // Por montos: lo que las filas suman de más sobre la cuenta. Ese sobrante no
+  // es un pago adicional: es la propina que el cliente ya incluyó (la escrita en
+  // Propina), vuelto (solo de lo que entregó en efectivo) o propina que deja.
+  double get _sobra {
+    if (!_dividir) return 0.0;
+    final s = _asignado - _totalOrden;
+    return s > 0.01 ? s : 0.0;
+  }
+
+  // La parte del sobrante que es la propina escrita: ya viene dentro de las
+  // filas, no se cobra otra vez.
+  double get _propinaDentro =>
+      _sobra < _propinaManual ? _sobra : _propinaManual;
+
+  // Lo que sobra después de esa propina.
+  double get _resto => _sobra - _propinaDentro;
+
+  // El resto que no se puede devolver (supera el efectivo entregado): solo
+  // puede quedar como propina.
+  bool get _restoSoloPropina => _resto > _efectivoFila + 0.005;
+
+  // El resto que sí se puede devolver en efectivo (o dejar como propina).
+  double get _excedente =>
+      (_resto > 0.005 && !_restoSoloPropina) ? _resto : 0.0;
+
+  // El sobrante tiene salida válida: propina escrita, vuelto o propina.
+  bool get _sobraResuelta =>
+      _sobra <= 0.005 ||
+      _resto <= 0.005 ||
+      !_restoSoloPropina ||
+      config.propinaHabilitada;
+
+  // Lo que del sobrante se aplica fuera de la cuenta (no se cobra a la cuenta).
+  double get _sobraAplicable => _sobraResuelta ? _sobra : 0.0;
+
   // Lo que se cobra en efectivo: sin recargo, y con la propina y el táper.
   double get _efectivoACobrar {
     final enEfectivo = _dividir
-        ? _filas
-              .where((f) => f.medio.grupo == 'efectivo')
-              .fold(0.0, (s, f) => s + leerMonto(f.monto.text))
+        ? _efectivoFila - _excedente
         : (_medio.grupo == 'efectivo' ? _saldo : 0.0);
     return enEfectivo > 0.005
-        ? enEfectivo + _propina + _taper + _totalCargos
+        ? enEfectivo + _propinaManual + _taper + _totalCargos
         : 0.0;
   }
 
-  // Lo que escribe el cajero: con cuánto paga el cliente en efectivo.
-  double get _recibido => _hayEfectivo ? leerMonto(_recibidoCtrl.text) : 0.0;
-  double get _vuelto {
+  // Con un solo medio, lo que escribe el cajero: con cuánto paga el cliente en
+  // efectivo. Por montos no hay otra casilla: el efectivo entregado es el de su
+  // fila (más los extras que se pagan en efectivo).
+  double get _recibido {
+    if (!_hayEfectivo) return 0.0;
+    if (_dividir) {
+      return _efectivoFila > 0.005
+          ? _efectivoFila +
+                (_propinaManual - _propinaDentro) +
+                _taper +
+                _totalCargos
+          : 0.0;
+    }
+    return leerMonto(_recibidoCtrl.text);
+  }
+
+  // Lo que el cliente entrega de más en efectivo: puede devolverse o, si quiere,
+  // dejarse como propina.
+  double get _sobraEfectivo {
+    if (_dividir) return _excedente;
     final r = _recibido;
     return r > _efectivoACobrar + 0.005 ? r - _efectivoACobrar : 0.0;
   }
 
+  // Por montos: el sobrante que no se puede devolver pasa a propina solo.
+  double get _propinaForzada =>
+      (_dividir && _restoSoloPropina && config.propinaHabilitada)
+      ? _resto
+      : 0.0;
+
+  // El cliente deja ese sobrante como propina (solo si la propina está activa).
+  bool _vueltoComoPropina = false;
+  bool get _sobranteEsPropina =>
+      _vueltoComoPropina && config.propinaHabilitada && _sobraEfectivo > 0.005;
+  double get _propinaDeVuelto =>
+      _propinaForzada + (_sobranteEsPropina ? _sobraEfectivo : 0.0);
+  double get _vuelto => _sobranteEsPropina ? 0.0 : _sobraEfectivo;
+
   // Vacío = pagó justo; si se escribe, tiene que alcanzar para lo de efectivo.
   bool get _recibidoValido =>
+      _dividir ||
       _recibidoCtrl.text.trim().isEmpty ||
       _efectivoACobrar <= 0.005 ||
       _recibido >= _efectivoACobrar - 0.005;
@@ -409,10 +478,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   double get _asignado =>
       _filas.fold(0.0, (s, f) => s + leerMonto(f.monto.text));
   double get _totalOrden => _saldo + _totalCargos;
-  double get _faltante => _totalOrden - _asignado;
-  // Puede ser el total de la cuenta o un abono parcial (siempre que no sobrepase el total)
-  bool get _repartoValido =>
-      _asignado > 0.005 && _asignado <= _totalOrden + 0.01;
+  double get _faltante => _totalOrden - (_asignado - _sobraAplicable);
+  // Puede ser el total de la cuenta o un abono parcial. Solo se pasa de la
+  // cuenta si lo que sobra es propina o se puede devolver en efectivo.
+  bool get _repartoValido => _asignado > 0.005 && _sobraResuelta;
   bool get _repartoCompleto => _faltante.abs() < 0.01;
 
   void _alternarDividir(bool v) {
@@ -456,7 +525,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   double get _montoCobroUnico => _saldo + _totalCargos;
 
   // Propina y táper: el cliente los paga además de la cuenta, sin recargo.
-  double get _propina => _conPropina ? leerMonto(_propinaCtrl.text) : 0.0;
+  // Con la propina apagada en Configuración no se ofrece al cobrar.
+  double get _propinaManual => (config.propinaHabilitada && _conPropina)
+      ? leerMonto(_propinaCtrl.text)
+      : 0.0;
+  // La propina que se cobra: la escrita más el vuelto que el cliente deja.
+  double get _propina => _propinaManual + _propinaDeVuelto;
   double get _taper => taperPendienteDePedido(widget.pedido.id);
   // Recargo del método elegido (p. ej. tarjeta): se suma al total del cliente.
   double get _recargo => _dividir
@@ -543,13 +617,57 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final recargo = _recargo;
     final extras = _propina + _taper + _totalCargos;
     // Lo que se cobra: un pago con el medio elegido o uno por cada fila.
-    final cobros = _dividir
-        ? [
-            for (final f in _filas)
-              (medio: f.medio, monto: leerMonto(f.monto.text)),
-          ]
-        : [(medio: _medio, monto: _montoCobroUnico)];
+    // Por montos, lo que pasó de la cuenta no se cobra a la cuenta: el vuelto sale
+    // de las filas en efectivo y la propina que ya venía dentro, de las últimas
+    // filas (así la propina queda en el medio con que se pagó).
+    final cobros = <({MedioPago medio, double monto, double propina})>[];
+    if (_dividir) {
+      final montos = [for (final f in _filas) leerMonto(f.monto.text)];
+      var porDevolver = _vuelto;
+      for (var i = 0; i < montos.length; i++) {
+        if (porDevolver > 0.005 && _filas[i].medio.grupo == 'efectivo') {
+          final d = porDevolver < montos[i] ? porDevolver : montos[i];
+          porDevolver -= d;
+          montos[i] -= d;
+        }
+      }
+      var porPropina = _sobraAplicable - _vuelto;
+      final propinas = List<double>.filled(montos.length, 0);
+      for (var i = montos.length - 1; i >= 0 && porPropina > 0.005; i--) {
+        final d = porPropina < montos[i] ? porPropina : montos[i];
+        porPropina -= d;
+        montos[i] -= d;
+        propinas[i] += d;
+      }
+      // Una fila que quedó solo en propina no es un pago a la cuenta: su
+      // propina va con el primer pago que sí lo es.
+      var huerfana = 0.0;
+      for (var i = 0; i < montos.length; i++) {
+        if (montos[i] <= 0.005 && propinas[i] > 0) {
+          huerfana += propinas[i];
+          propinas[i] = 0;
+        }
+      }
+      final primero = montos.indexWhere((m) => m > 0.005);
+      // La propina escrita que no venía dentro de las filas también va con él.
+      final adicional = _propinaManual - _propinaDentro;
+      if (primero >= 0) propinas[primero] += huerfana + adicional;
+      for (var i = 0; i < montos.length; i++) {
+        cobros.add((
+          medio: _filas[i].medio,
+          monto: montos[i],
+          propina: propinas[i],
+        ));
+      }
+    } else {
+      cobros.add((medio: _medio, monto: _montoCobroUnico, propina: _propina));
+    }
+    // El vuelto y lo recibido se anotan en un solo pago en efectivo.
+    var efectivoAnotado = false;
     setState(() => _guardando = true);
+    // Cada pago lleva su parte de la propina: la pendiente del pedido no se
+    // vuelve a mandar con otro pago.
+    establecerPropinaPedido(widget.pedido.id, 0);
     var registrados = 0;
     String? ultimoPagoId;
     try {
@@ -559,14 +677,16 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         final esEfectivo =
             c.medio.grupo == 'efectivo' ||
             c.medio.medioPago.toLowerCase().contains('efectivo');
+        final anotaEfectivo = esEfectivo && !efectivoAnotado;
+        if (esEfectivo) efectivoAnotado = true;
         final pago = await PagoService.instance.registrar(
           pedido: widget.pedido,
           medio: c.medio,
           montoAbonado: c.monto,
-          propina: registrados == 0 ? _propina : 0,
+          propina: c.propina,
           categoriaMovimientoId: _categoriaSeleccionada?.id,
-          montoRecibido: esEfectivo && _recibido > 0.005 ? _recibido : null,
-          vuelto: esEfectivo && _vuelto > 0.005 ? _vuelto : null,
+          montoRecibido: anotaEfectivo && _recibido > 0.005 ? _recibido : null,
+          vuelto: anotaEfectivo && _vuelto > 0.005 ? _vuelto : null,
           cargosExtra: registrados == 0 && _cargos.isNotEmpty ? _cargos : null,
         );
         registrados++;
@@ -595,6 +715,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         return;
       }
       setState(() => _guardando = false);
+      establecerPropinaPedido(widget.pedido.id, _propinaManual);
       showAppToast(
         context,
         'No se pudo registrar el cobro: $texto',
@@ -687,20 +808,86 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     return LucideIcons.wallet;
   }
 
-  // Un método de pago como etiqueta de solo trazo (sin tarjeta).
-  Widget _etiquetaMedio(MedioPago m) {
-    return AppTag(
-      etiqueta: m.aplicaComision
-          ? '${m.medioPago} (+${m.porcentajeComision.toStringAsFixed(1)}%)'
-          : m.medioPago,
-      icono: _icono(m),
-      activo: m.id == _medio.id,
-      color: AppColors.primaryGreen,
+  static String _grupoCorto(String grupo) => switch (grupo) {
+    'efectivo' => 'Efectivo',
+    'digital' => 'Digital',
+    'credito' || 'planilla' => 'Crédito',
+    _ => 'Tarjeta / otros',
+  };
+
+  // Un método de pago como card: icono, nombre y, debajo, su grupo o recargo.
+  Widget _tarjetaMedio(MedioPago m) {
+    final activo = m.id == _medio.id;
+    final color = activo ? AppColors.primaryGreenDark : Colors.grey.shade700;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
       onTap: () {
         setState(() {
           _medio = m;
           _comprobante?.actualizarRecargo(_recargo);
         });
+      },
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 84),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: activo
+              ? AppColors.primaryGreen.withValues(alpha: 0.10)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
+            width: activo ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(_icono(m), size: 20, color: color),
+            const SizedBox(height: 4),
+            Text(
+              m.medioPago,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
+                color: activo ? AppColors.primaryGreenDark : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              m.aplicaComision
+                  ? '+${m.porcentajeComision.toStringAsFixed(1)}% recargo'
+                  : _grupoCorto(m.grupo),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Todos los métodos en una cuadrícula que baja de línea según el ancho
+  // (2 por fila en celular, más en pantallas anchas).
+  Widget _cuadriculaMedios() {
+    final medios = [
+      for (final e in agruparMediosPago(mediosPagoActivos).entries) ...e.value,
+    ];
+    return LayoutBuilder(
+      builder: (context, c) {
+        const espacio = 8.0;
+        final columnas = (c.maxWidth / 130).floor().clamp(2, 5);
+        final ancho = (c.maxWidth - espacio * (columnas - 1)) / columnas;
+        return Wrap(
+          spacing: espacio,
+          runSpacing: espacio,
+          children: [
+            for (final m in medios)
+              SizedBox(width: ancho, child: _tarjetaMedio(m)),
+          ],
+        );
       },
     );
   }
@@ -748,7 +935,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
         ],
         onChanged: (v) {
-          setState(() {});
+          setState(() {
+            if (_sobraEfectivo <= 0.005) _vueltoComoPropina = false;
+          });
           onChanged?.call(v);
         },
         decoration: InputDecoration(hintText: hint),
@@ -813,18 +1002,19 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               label: const Text('Agregar'),
             ),
             const Spacer(),
-            Text(
-              falta.abs() < 0.01
-                  ? 'Cuenta completa'
-                  : (falta > 0
-                        ? 'Abono parcial (restará S/ ${falta.toStringAsFixed(2)})'
-                        : 'Sobra S/ ${(-falta).toStringAsFixed(2)}'),
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: falta.abs() < 0.01
-                    ? AppColors.primaryGreen
-                    : (falta > 0 ? const Color(0xFF2563EB) : AppColors.error),
+            Flexible(
+              child: Text(
+                _textoPieFilas(falta),
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: (_sobra > 0.005 && !_sobraResuelta)
+                      ? AppColors.error
+                      : ((_sobra > 0.005 || falta.abs() < 0.01)
+                            ? AppColors.primaryGreen
+                            : const Color(0xFF2563EB)),
+                ),
               ),
             ),
           ],
@@ -833,9 +1023,91 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     );
   }
 
+  // Qué dice el pie de las filas de "Por montos": si sobra, qué se hace con eso.
+  String _textoPieFilas(double falta) {
+    String s(double v) => v.toStringAsFixed(2);
+    if (_sobra > 0.005) {
+      if (!_sobraResuelta) {
+        return 'Sobra S/ ${s(_sobra)}: solo se devuelve en efectivo';
+      }
+      final propina = _propinaDentro + _propinaDeVuelto;
+      return [
+        if (propina > 0.005) 'Propina S/ ${s(propina)}',
+        if (_vuelto > 0.005) 'Vuelto S/ ${s(_vuelto)}',
+      ].join(' · ');
+    }
+    return falta.abs() < 0.01
+        ? 'Cuenta completa'
+        : 'Abono parcial (restará S/ ${s(falta)})';
+  }
+
+  // Cuando el cliente entrega de más en efectivo: dar el vuelto o dejarlo como
+  // propina (solo con la propina activa en Configuración).
+  Widget _opcionSobrante() {
+    final sobra = _sobraEfectivo;
+    if (!config.propinaHabilitada || sobra <= 0.005) {
+      return const SizedBox.shrink();
+    }
+    Widget boton(String texto, bool activo, VoidCallback onTap) => Expanded(
+      child: SizedBox(
+        height: AppSizes.boton,
+        child: OutlinedButton(
+          onPressed: onTap,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: activo
+                ? AppColors.primaryGreen.withValues(alpha: 0.10)
+                : null,
+            side: BorderSide(
+              color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
+              width: activo ? 1.5 : 1,
+            ),
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              texto,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: activo ? AppColors.primaryGreenDark : Colors.black87,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'El cliente entrega S/ ${sobra.toStringAsFixed(2)} de más',
+            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              boton(
+                'Dar vuelto',
+                !_sobranteEsPropina,
+                () => setState(() => _vueltoComoPropina = false),
+              ),
+              const SizedBox(width: 8),
+              boton(
+                'Dejar como propina',
+                _sobranteEsPropina,
+                () => setState(() => _vueltoComoPropina = true),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   void _cambiarPropina(String texto) {
     setState(() {
-      establecerPropinaPedido(widget.pedido.id, _propina);
+      establecerPropinaPedido(widget.pedido.id, _propinaManual);
     });
   }
 
@@ -846,7 +1118,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         _propinaCtrl.clear();
         establecerPropinaPedido(widget.pedido.id, 0);
       } else {
-        establecerPropinaPedido(widget.pedido.id, _propina);
+        establecerPropinaPedido(widget.pedido.id, _propinaManual);
       }
     });
   }
@@ -1012,8 +1284,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _titulo('Extras'),
-        _columnaPropina(),
-        const SizedBox(height: 14),
+        if (config.propinaHabilitada) ...[
+          _columnaPropina(),
+          const SizedBox(height: 14),
+        ],
         _columnaRoturas(),
       ],
     );
@@ -1174,9 +1448,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final propina = _propina;
     final taper = _taper;
     final cargos = _totalCargos;
-    final montoBase = _dividir ? _asignado : _saldo;
+    final montoBase = _dividir ? _asignado - _sobraAplicable : _saldo;
     final total =
-        (_dividir ? _asignado : (_saldo + cargos)) + _recargo + propina + taper;
+        (_dividir ? _asignado - _sobraAplicable : (_saldo + cargos)) +
+        _recargo +
+        propina +
+        taper;
     return ModalPago(
       titulo: 'Pagar',
       anchoEscritorio:
@@ -1192,97 +1469,75 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           _tarjetaTotal(total, saldo),
           const SizedBox(height: 20),
           _titulo('Método de pago'),
-          if (!_dividir)
-            Builder(
-              builder: (context) {
-                final grupos = agruparMediosPago(mediosPagoActivos);
-                // Con un solo grupo no hace falta el título; con varios, el
-                // tipo va primero y dentro de él cada medio (cada Yape).
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final e in grupos.entries) ...[
-                      if (grupos.length > 1)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4, bottom: 6),
-                          child: Text(
-                            etiquetaGrupoMedioPago(e.key),
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey.shade600,
-                            ),
+          if (!_dividir) _cuadriculaMedios(),
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          // Efectivo recibido y vuelto, lado a lado: solo si se paga en efectivo.
+          // Por montos no hay casilla aparte: el efectivo es el de su fila.
+          if (_hayEfectivo && !_dividir) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _titulo('Efectivo recibido'),
+                      _campoSoles(_recibidoCtrl, hint: 'S/.'),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _titulo('Vuelto'),
+                      Container(
+                        height: AppSizes.boton,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(AppRadii.button),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Text(
+                          'S/ ${_vuelto.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      Wrap(
-                        runSpacing: 8,
-                        children: [for (final m in e.value) _etiquetaMedio(m)],
                       ),
                     ],
-                  ],
-                );
-              },
+                  ),
+                ),
+              ],
             ),
-          const SizedBox(height: 14),
-          const Divider(height: 1),
-          const SizedBox(height: 14),
-          // Efectivo recibido y vuelto, lado a lado.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _titulo('Efectivo recibido'),
-                    _campoSoles(_recibidoCtrl, hint: 'S/.'),
-                  ],
+            _opcionSobrante(),
+            if (!_recibidoValido)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Falta: el efectivo a cobrar es '
+                  'S/ ${_efectivoACobrar.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.error),
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _titulo('Vuelto'),
-                    Container(
-                      height: AppSizes.boton,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      alignment: Alignment.centerLeft,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(AppRadii.button),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: Text(
-                        'S/ ${_vuelto.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (!_recibidoValido)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Falta: el efectivo a cobrar es '
-                'S/ ${_efectivoACobrar.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 12, color: AppColors.error),
-              ),
-            ),
-          const SizedBox(height: 14),
-          const Divider(height: 1),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
+          ],
           _conInterruptor('Por montos', _dividir, _alternarDividir),
-          if (_dividir) ...[const SizedBox(height: 8), _filasDeMedios()],
+          if (_dividir) ...[
+            const SizedBox(height: 8),
+            _filasDeMedios(),
+            _opcionSobrante(),
+          ],
           const SizedBox(height: 14),
           const Divider(height: 1),
           const SizedBox(height: 14),

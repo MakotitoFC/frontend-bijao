@@ -10,11 +10,11 @@ import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
-import 'boton_actualizar.dart';
 import 'config_widgets.dart';
 import 'logo_tickets_editor.dart';
 import 'plantillas_impresion_editor.dart';
 import 'inventario/inventario_comun.dart' show EtiquetaFila, confirmarAccion;
+import 'barra_desplazamiento.dart';
 
 // Configuración > Impresoras (solo administrador): estado de la impresora de
 // cocina y de caja, sus IP, qué datos lleva la comanda, el logo de caja y la
@@ -473,7 +473,6 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
       descripcion:
           'Las comandas salen solas a cocina al tomar el pedido y al agregarle '
           'productos. Aquí ves si cada impresora responde en la red.',
-      accion: BotonActualizar(onTap: _cargarEstadoYCola),
       filas: [
         _filaImpresora(
           nombre: 'Cocina',
@@ -728,7 +727,7 @@ class _ListaTrabajosState extends State<_ListaTrabajos> {
           // Scroll interno, con aire a los lados.
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 420),
-            child: Scrollbar(
+            child: BarraDesplazamiento(
               child: ListView(
                 shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),

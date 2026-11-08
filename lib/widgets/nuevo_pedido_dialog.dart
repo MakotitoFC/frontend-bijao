@@ -19,7 +19,6 @@ import '../data/pedidos_store.dart';
 import 'detalle_pedido_panel.dart' show nombreMeseroDe;
 import '../data/promociones_store.dart';
 import '../data/variantes_store.dart';
-import '../models/app_role.dart';
 import '../models/carta_item.dart';
 import '../models/categoria_comida.dart';
 import '../models/mesa.dart';
@@ -44,6 +43,7 @@ import 'app_toast.dart';
 import 'dotted_divider.dart';
 import 'imagen_plato.dart';
 import 'plato_libre_dialog.dart';
+import 'pin_supervisor_dialog.dart';
 import 'producto_opciones_dialog.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
@@ -98,9 +98,6 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   // Pantallas angostas: el detalle del pedido va en una hoja inferior que se
   // puede expandir.
   bool _carritoExpandido = false;
-  // La lista de productos de la hoja se puede ocultar para ver más la galería.
-  // Empieza oculta: la galería es lo principal; el total ya se ve en la cabecera.
-  bool _listaOculta = true;
 
   CategoriaComida? _categoria;
   final _busquedaController = TextEditingController();
@@ -268,14 +265,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     }).toList();
   }
 
-  // Pedido de personal (solo administrador y caja): el precio de cada plato se
-  // escribe a mano en el cuadro del botón Empleado y es distinto cada vez.
+  // Pedido de personal (también el mozo): el precio de cada plato se escribe a
+  // mano en el cuadro del botón Empleado y es distinto cada vez.
   bool _esPersonal = false;
   final Map<String, double> _preciosPersonal = {};
 
-  bool get _puedePersonal =>
-      widget.usuario.rol == AppRole.administrador ||
-      widget.usuario.rol == AppRole.cajero;
+  bool get _puedePersonal => true;
 
   // Las líneas con el precio que de verdad se cobra: en un pedido de empleado,
   // el que se escribió para cada producto (sin cambio, el de la carta).
@@ -525,6 +520,21 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       return;
     }
 
+    // Familia es cuenta cero (descuento del 100 %): quien no puede otorgar
+    // descuentos, como el mozo, necesita la autorización de un supervisor.
+    String? autorizoFamilia;
+    if (widget.esFamilia &&
+        !(widget.usuario.administraPedidos ||
+            widget.usuario.tienePermiso('OTORGAR.DESCUENTO'))) {
+      autorizoFamilia = await pedirAutorizacionSupervisor(
+        context,
+        motivo:
+            'La cuenta de familia es cuenta cero y necesita la autorización de '
+            'un supervisor.',
+      );
+      if (autorizoFamilia == null || !mounted) return;
+    }
+
     setState(() => _confirmando = true);
 
     final mesaNumero = esMesa ? _mesaNumero! : 0;
@@ -611,6 +621,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             motivo: 'Cuenta cero',
             porcentaje: true,
             valor: 100,
+            autorizoId: autorizoFamilia,
           );
         } catch (_) {
           if (mounted) {
@@ -841,7 +852,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         Expanded(
           child: AppSearchField(
             controller: _busquedaController,
-            hint: 'Buscar producto...',
+            hint: 'Buscar...',
             onChanged: (_) => setState(() {}),
             ajustarAlTexto: false,
           ),
@@ -994,11 +1005,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
-  // Hoja inferior: resumen del pedido que crece con los productos agregados y
-  // se puede abrir por completo con el ícono de expandir.
+  // Barra inferior: una sola fila con el resumen (productos y total) y el botón
+  // "Revisar". No confirma el pedido: así un toque por error no manda nada a
+  // cocina; se confirma desde la vista de revisión (`_detalleExpandido`).
   Widget _hojaPedido(double altoTotal) {
     final cantidad = _carrito.fold<int>(0, (s, l) => s + l.cantidad);
-    final tuTotal = _total;
+    final vacio = _carrito.isEmpty;
+    void revisar() => setState(() => _carritoExpandido = true);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1012,100 +1025,105 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           ),
         ],
       ),
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            InkWell(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
-              ),
-              onTap: () => setState(() => _carritoExpandido = true),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 4, 4),
-                child: Row(
-                  children: [
-                    const Icon(
-                      LucideIcons.shoppingBag,
-                      size: 18,
-                      color: AppColors.primaryGreenDark,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _carrito.isEmpty
-                            ? 'Aún no agregas productos'
-                            : 'Pedido · $cantidad producto${cantidad == 1 ? '' : 's'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: vacio ? null : revisar,
+              child: Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: const Icon(
+                          LucideIcons.shoppingBag,
+                          size: 18,
+                          color: AppColors.primaryGreenDark,
                         ),
                       ),
-                    ),
-                    Text(
-                      'S/ ${tuTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    if (_carrito.isNotEmpty)
-                      Tooltip(
-                        message: _listaOculta
-                            ? 'Mostrar productos'
-                            : 'Ocultar productos',
-                        child: IconButton(
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () =>
-                              setState(() => _listaOculta = !_listaOculta),
-                          icon: Icon(
-                            _listaOculta
-                                ? LucideIcons.chevronUp
-                                : LucideIcons.chevronDown,
-                            size: 18,
+                      if (!vacio)
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 18),
+                            height: 18,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryGreen,
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: Text(
+                              '$cantidad',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    Tooltip(
-                      message: 'Ver detalle completo',
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () =>
-                            setState(() => _carritoExpandido = true),
-                        icon: const Icon(LucideIcons.maximize2, size: 18),
-                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'S/ ${_total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          vacio
+                              ? 'Aún no agregas productos'
+                              : '$cantidad producto${cantidad == 1 ? '' : 's'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            if (_carrito.isNotEmpty && !_listaOculta)
-              ConstrainedBox(
-                // Poca altura: la galería de productos es lo principal.
-                constraints: BoxConstraints(
-                  maxHeight: (altoTotal * 0.2).clamp(96.0, 150.0),
-                ),
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-                  children: [
-                    for (var i = 0; i < _carrito.length; i++)
-                      _filaCarrito(i, compacta: true),
-                  ],
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-              child: _botonesDeAccion(),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: vacio ? null : revisar,
+            style: OutlinedButton.styleFrom(
+              // El tema limita el alto de los botones a 36: sin subir también el
+              // máximo, el mínimo de 44 da un error de restricciones.
+              minimumSize: const Size(0, 44),
+              maximumSize: const Size(double.infinity, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              side: BorderSide(color: Colors.grey.shade400),
+              foregroundColor: Colors.black87,
             ),
-          ],
-        ),
+            child: const Text(
+              'Revisar',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1121,21 +1139,36 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           Row(
             children: [
               const SizedBox(width: 4),
-              const Expanded(
-                child: Text(
-                  'Detalle del pedido',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Revisa el pedido',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Aún no se envía a cocina',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              TextButton.icon(
-                onPressed: () => setState(() => _carritoExpandido = false),
-                icon: const Icon(LucideIcons.minimize2, size: 16),
-                label: const Text('Seguir agregando'),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          Expanded(child: _resumen(fixedFooter: true)),
+          Expanded(
+            child: _resumen(
+              fixedFooter: true,
+              onSeguir: () => setState(() => _carritoExpandido = false),
+            ),
+          ),
         ],
       ),
     );
@@ -1453,7 +1486,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               icon: const Icon(Icons.add, size: 15),
               label: Text(
                 estado.vendible
-                    ? 'Agregar al pedido'
+                    // En celular solo "Agregar" (el texto largo se partía en
+                    // dos líneas).
+                    ? (AppBreakpoints.esMobile(context)
+                          ? 'Agregar'
+                          : 'Agregar al pedido')
                     : (estado.etiqueta ?? 'No disponible'),
                 style: const TextStyle(
                   fontSize: 12,
@@ -1467,7 +1504,11 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
-  Widget _resumen({required bool fixedFooter, bool botonesSalida = false}) {
+  Widget _resumen({
+    required bool fixedFooter,
+    bool botonesSalida = false,
+    VoidCallback? onSeguir,
+  }) {
     final esDelivery = widget.tipo == 'delivery';
     final tituloTipo = switch (widget.tipo) {
       'delivery' => 'Delivery',
@@ -1485,8 +1526,12 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
       children: [
         Row(
           children: [
-            Icon(iconoTipo, size: 16, color: AppColors.primaryGreenDark),
-            const SizedBox(width: 6),
+            // En pantallas muy angostas (o con letra grande) el ícono del tipo
+            // se omite para que quepan Nota y Borrar.
+            if (MediaQuery.sizeOf(context).width >= 360) ...[
+              Icon(iconoTipo, size: 16, color: AppColors.primaryGreenDark),
+              const SizedBox(width: 6),
+            ],
             Expanded(
               child: Text(
                 tituloTipo.toUpperCase(),
@@ -1521,6 +1566,92 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             contentPaddingVertical: 14,
           ),
         ],
+      ],
+    );
+    // Revisión en celular (`onSeguir` solo se pasa ahí): la lista usa todo el
+    // alto libre; "Agregar al pedido" va al final de la lista y abajo queda
+    // fijo solo el total y los botones.
+    final compacto = onSeguir != null;
+    final cantidadTotal = _carrito.fold<int>(0, (s, l) => s + l.cantidad);
+    final hayExtras = _cargoDelivery > 0 || _propina > 0 || _tupperTotal > 0;
+    final agregarAlPedido = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Agregar al pedido',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Alineados a la izquierda; si no caben, bajan a otra línea.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(
+            alignment: WrapAlignment.start,
+            runSpacing: 8,
+            children: [
+              AppTag(
+                etiqueta: 'Promoción',
+                icono: LucideIcons.tag,
+                activo: false,
+                color: AppColors.naranja,
+                onTap: _abrirPromocion,
+              ),
+              AppTag(
+                etiqueta: 'Táper',
+                icono: LucideIcons.package,
+                activo: false,
+                color: Colors.black87,
+                colorBorde: Colors.grey.shade300,
+                onTap: _abrirTupper,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final tarjetaTotales = Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          _filaTotal('Subtotal', _subtotal, fuerte: false),
+          if (_cargoDelivery > 0) ...[
+            const SizedBox(height: 6),
+            _filaTotal('Cargo por delivery', _cargoDelivery, fuerte: false),
+          ],
+          if (_propina > 0) ...[const SizedBox(height: 6), _filaPropina()],
+          if (_tupperTotal > 0) ...[const SizedBox(height: 6), _filaTupper()],
+          const SizedBox(height: 10),
+          _filaTotal('Total', _total, fuerte: true),
+        ],
+      ),
+    );
+    // Sin propina, táper ni delivery el subtotal repite el total: en la
+    // revisión de celular basta una sola línea.
+    final totalEnUnaLinea = Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Expanded(
+          child: Text(
+            'Total · $cantidadTotal producto${cantidadTotal == 1 ? '' : 's'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+        ),
+        Text(
+          'S/ ${_total.toStringAsFixed(2)}',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
       ],
     );
     final contenido = Column(
@@ -1593,75 +1724,33 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
           )
         else
           for (var i = 0; i < _carrito.length; i++) _filaCarrito(i),
+        if (compacto) ...[const SizedBox(height: 12), agregarAlPedido],
       ],
     );
-    final pie = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const DottedDivider(),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
+    final pie = compacto
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _filaTotal('Subtotal', _subtotal, fuerte: false),
-              if (_cargoDelivery > 0) ...[
-                const SizedBox(height: 6),
-                _filaTotal('Cargo por delivery', _cargoDelivery, fuerte: false),
-              ],
-              if (_propina > 0) ...[const SizedBox(height: 6), _filaPropina()],
-              if (_tupperTotal > 0) ...[
-                const SizedBox(height: 6),
-                _filaTupper(),
-              ],
+              const DottedDivider(),
+              const SizedBox(height: 8),
+              hayExtras ? tarjetaTotales : totalEnUnaLinea,
               const SizedBox(height: 10),
-              _filaTotal('Total', _total, fuerte: true),
+              _botonesDeAccion(onSeguir: onSeguir),
             ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Agregar al pedido',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey.shade700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Alineados a la izquierda; si no caben, bajan a otra línea.
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Wrap(
-            alignment: WrapAlignment.start,
-            runSpacing: 8,
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AppTag(
-                etiqueta: 'Promoción',
-                icono: LucideIcons.tag,
-                activo: false,
-                color: AppColors.naranja,
-                onTap: _abrirPromocion,
-              ),
-              AppTag(
-                etiqueta: 'Táper',
-                icono: LucideIcons.package,
-                activo: false,
-                color: Colors.black87,
-                colorBorde: Colors.grey.shade300,
-                onTap: _abrirTupper,
-              ),
+              const DottedDivider(),
+              const SizedBox(height: 10),
+              tarjetaTotales,
+              const SizedBox(height: 12),
+              agregarAlPedido,
+              const SizedBox(height: 12),
+              _botonesDeAccion(onSeguir: onSeguir),
             ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _botonesDeAccion(),
-      ],
-    );
+          );
     final decoracion = BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
@@ -1714,10 +1803,14 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
 
   // Confirmar el pedido. La comanda sale sola a la impresora de cocina al
   // confirmar (la manda el backend), por eso no hay botón de imprimir aquí.
-  Widget _botonesDeAccion() {
-    return FilledButton(
+  Widget _botonesDeAccion({VoidCallback? onSeguir}) {
+    final confirmar = FilledButton(
       onPressed: (_carrito.isEmpty || _confirmando) ? null : _confirmar,
-      style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.primaryGreen,
+        minimumSize: const Size(0, 46),
+        maximumSize: const Size(double.infinity, 46),
+      ),
       child: _confirmando
           ? const SizedBox(
               width: 20,
@@ -1731,6 +1824,26 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               'Confirmar pedido',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
+    );
+    if (onSeguir == null) return confirmar;
+    return Row(
+      children: [
+        Expanded(
+          flex: 10,
+          child: OutlinedButton(
+            onPressed: _confirmando ? null : onSeguir,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 46),
+              maximumSize: const Size(double.infinity, 46),
+            ),
+            child: Text(
+              AppBreakpoints.esMobile(context) ? 'Agregar' : 'Seguir agregando',
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(flex: 14, child: confirmar),
+      ],
     );
   }
 
@@ -2034,18 +2147,15 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                       color: Colors.grey.shade500,
                     ),
                   ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'S/ ${_lineas[index].precioUnitario.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryGreen,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'S/ ${_lineas[index].precioUnitario.toStringAsFixed(2)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryGreen,
+                  ),
                 ),
               ],
             ),

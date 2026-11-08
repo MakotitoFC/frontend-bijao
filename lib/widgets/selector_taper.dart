@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/taper.dart';
 import '../theme/app_theme.dart';
 import 'campo_texto.dart';
+import 'barra_desplazamiento.dart';
 
 // Selector de táper con buscador: se puede escribir para filtrar o desplazarse
 // por la lista. Muestra el stock de cada uno, pero no impide elegir uno que no
@@ -84,7 +85,7 @@ class _SelectorTaperState extends State<SelectorTaper> {
         CampoTexto(
           onChanged: (v) => setState(() => _busqueda = v),
           decoration: InputDecoration(
-            hintText: 'Buscar táper...',
+            hintText: 'Buscar...',
             isDense: true,
             prefixIcon: const Icon(Icons.search, size: 18),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -93,7 +94,7 @@ class _SelectorTaperState extends State<SelectorTaper> {
         const SizedBox(height: 6),
         ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 170),
-          child: Scrollbar(
+          child: BarraDesplazamiento(
             child: ListView(
               shrinkWrap: true,
               children: [

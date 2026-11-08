@@ -56,6 +56,7 @@ import 'taper_catalogo_dialog.dart';
 import 'tupper_dialog.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
+import '../utils/direccion_ticket.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
 const _naranjaPago = Color(0xFFF07F13);
@@ -1640,12 +1641,50 @@ class DetallePedidoPanel extends StatelessWidget {
       ),
     );
 
+    // Celular: la cabecera es una sola fila y el pie fijo se reduce al total en
+    // una línea y a los botones Más, Servido y Pagar; las demás acciones van en
+    // el menú "Más". Así la lista de productos conserva casi todo el alto.
+    final movil = AppBreakpoints.esMobile(context);
+    final cantidadProductos = productos.fold<int>(0, (s, l) => s + l.cantidad);
+    final pieFijoMovil = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: _TotalCompacto(
+            etiqueta:
+                'Total · $cantidadProductos producto${cantidadProductos == 1 ? '' : 's'}',
+            total: total,
+            resumenPago: (pagado > 0.01 && saldo > 0.01)
+                ? 'Pagado S/ ${pagado.toStringAsFixed(2)} · '
+                      'Saldo S/ ${saldo.toStringAsFixed(2)}'
+                : null,
+            detalle: pieTotales,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          child: _botonesFijos(
+            context,
+            puedePagar,
+            alto: 44,
+            antes: _botonMas(
+              context,
+              hayProductos: productos.isNotEmpty,
+              descuento: descExtra,
+            ),
+          ),
+        ),
+      ],
+    );
+
     return Container(
       color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _cabecera(context),
+          movil ? _cabeceraMovil(context) : _cabecera(context),
           Divider(height: 1, color: Colors.grey.shade200),
           Expanded(
             child: IndicadorAbajo(
@@ -1693,7 +1732,7 @@ class DetallePedidoPanel extends StatelessWidget {
             ),
           ),
           Divider(height: 1, color: Colors.grey.shade200),
-          pieFijo,
+          movil ? pieFijoMovil : pieFijo,
         ],
       ),
     );
@@ -1872,6 +1911,283 @@ class DetallePedidoPanel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  // Cabecera de celular: una sola fila (volver, número y mesa, mozo, estado).
+  // Cancelar, mozo y mesa o entrega pasan al menú "Más" del pie.
+  Widget _cabeceraMovil(BuildContext context) {
+    final cliente = pedido.clienteNombre;
+    final estiloLinea = TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w500,
+      color: Colors.grey.shade600,
+    );
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Row(
+        children: [
+          if (onVolver != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: onVolver,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: const Icon(Icons.arrow_back, size: 17),
+                ),
+              ),
+            ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '#${pedido.numeroPedido} · ${pedido.ubicacion}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+                Text(
+                  'Mozo: ${nombreMeseroDe(pedido)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: estiloLinea,
+                ),
+                if (esPedidoDeEmpleado(pedido) || esPedidoDeFamilia(pedido.id))
+                  Text(
+                    '${esPedidoDeEmpleado(pedido) ? 'Empleado' : 'Familia'}'
+                    '${(nombreClienteDe(pedido) ?? '').trim().isEmpty ? '' : ': ${nombreClienteDe(pedido)!.trim()}'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: estiloLinea,
+                  ),
+                if (cliente != null &&
+                    !esPedidoDeEmpleado(pedido) &&
+                    !esPedidoDeFamilia(pedido.id))
+                  Text(
+                    'Cliente: $cliente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: estiloLinea,
+                  ),
+                if (traspasoPendienteDe(pedido.id) case final t?)
+                  Text(
+                    'Traspaso pendiente a ${t.destinoNombre}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.naranja,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          BadgeEstadoPedido(
+            pedido.estado,
+            onCambiarEstado: (nuevo) async {
+              if (!_puedeModificar(context)) return;
+              if (_api && nuevo == 'anulado') {
+                await _cancelar(context);
+                return;
+              }
+              await _ejecutar(
+                context,
+                () => PedidoService.instance.cambiarEstadoPedido(
+                  pedido.id,
+                  nuevo,
+                ),
+                exito: 'Estado del pedido actualizado.',
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Botón "Más" del pie de celular: abre el menú con las demás acciones.
+  Widget _botonMas(
+    BuildContext context, {
+    required bool hayProductos,
+    required double descuento,
+  }) {
+    return Tooltip(
+      message: 'Más acciones',
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.button),
+          side: BorderSide(color: Colors.grey.shade400),
+        ),
+        child: InkWell(
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.button),
+          ),
+          onTap: () => _abrirMasAcciones(
+            context,
+            hayProductos: hayProductos,
+            descuento: descuento,
+          ),
+          child: const SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(LucideIcons.ellipsis, size: 20, color: Colors.black87),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Menú "Más acciones": imprimir, WhatsApp, devolución, promoción, táper,
+  // descuento, mozo, mesa o entrega y, al final y en rojo, anular el pedido.
+  Future<void> _abrirMasAcciones(
+    BuildContext context, {
+    required bool hayProductos,
+    required double descuento,
+  }) {
+    return showBlurDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        Widget accion(
+          IconData icono,
+          String texto,
+          VoidCallback onTap, {
+          String? detalle,
+          bool peligro = false,
+        }) {
+          final color = peligro ? AppColors.error : Colors.black87;
+          return InkWell(
+            onTap: () {
+              Navigator.of(dialogContext).pop();
+              onTap();
+            },
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 48),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 28,
+                    child: Icon(icono, size: 19, color: color),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      texto,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                  if (detalle != null)
+                    Text(
+                      detalle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return DialogoApp(
+          titulo: 'Más acciones',
+          children: [
+            if (_veCaja) ...[
+              accion(
+                LucideIcons.printer,
+                'Imprimir cuenta',
+                () => _imprimir(context),
+              ),
+              accion(
+                LucideIcons.messageCircle,
+                'Enviar la cuenta por WhatsApp',
+                () => _enviarWhatsapp(context),
+              ),
+            ],
+            if (hayProductos && pedido.tipoPedido != 'delivery')
+              accion(
+                LucideIcons.undo2,
+                'Devolución',
+                () => _devolucion(context),
+              ),
+            accion(
+              LucideIcons.tag,
+              'Promoción',
+              () => _agregarPromocion(context),
+            ),
+            if (!_esCajero)
+              accion(
+                LucideIcons.package,
+                'Táper',
+                () => _editarTupper(context),
+              ),
+            if (_veCaja)
+              accion(
+                LucideIcons.percent,
+                'Descuento',
+                () => _agregarAjuste(context),
+                detalle: descuento > 0.004
+                    ? '- S/ ${descuento.toStringAsFixed(2)}'
+                    : null,
+              ),
+            if (_api && pedido.abierto && esAdmin)
+              accion(
+                LucideIcons.users,
+                'Cambiar mozo',
+                () => _reasignar(context),
+              )
+            else if (_api &&
+                pedido.abierto &&
+                PedidoMozoService.instance.puedeOperar(pedido))
+              accion(
+                LucideIcons.users,
+                traspasoPendienteDe(pedido.id) == null
+                    ? 'Traspasar a otro mozo'
+                    : 'Traspaso pendiente: ver o cancelar',
+                () => _traspasar(context),
+              ),
+            if (_api)
+              accion(
+                LucideIcons.arrowLeftRight,
+                'Cambiar mesa o entrega',
+                () => _cambiarEntrega(context),
+              ),
+            accion(
+              LucideIcons.trash2,
+              'Anular pedido',
+              () => _cancelar(context),
+              peligro: true,
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
     );
   }
 
@@ -2662,6 +2978,7 @@ class DetallePedidoPanel extends StatelessWidget {
         pedidoId: pedido.id,
         tipoDocumento: 'ticket_venta',
         imprimir: imprimir,
+        clienteDireccion: direccionConTelefono(pedido),
         clienteDenominacion: nombre.isEmpty
             ? _rotuloCuentaCero(motivoCuentaCero(pedido))
             : '${_rotuloCuentaCero(motivoCuentaCero(pedido))} - '
@@ -2712,7 +3029,12 @@ class DetallePedidoPanel extends StatelessWidget {
     }
   }
 
-  Widget _botonesFijos(BuildContext context, bool puedePagar) {
+  Widget _botonesFijos(
+    BuildContext context,
+    bool puedePagar, {
+    double alto = 36,
+    Widget? antes,
+  }) {
     const texto = TextStyle(fontSize: 12, fontWeight: FontWeight.w700);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2720,6 +3042,7 @@ class DetallePedidoPanel extends StatelessWidget {
         // Servido y Pagar en la misma fila.
         Row(
           children: [
+            if (antes != null) ...[antes, const SizedBox(width: 8)],
             // Siempre visible: queda desactivado cuando el pedido ya no está
             // pendiente (ya se sirvió o se cerró). El cajero no sirve pedidos.
             if (!_esCajero)
@@ -2756,7 +3079,8 @@ class DetallePedidoPanel extends StatelessWidget {
                       horizontal: 12,
                       vertical: 8,
                     ),
-                    minimumSize: const Size(0, 36),
+                    minimumSize: Size(0, alto),
+                    maximumSize: Size(double.infinity, alto),
                   ),
                 ),
               ),
@@ -2790,7 +3114,8 @@ class DetallePedidoPanel extends StatelessWidget {
                       horizontal: 12,
                       vertical: 8,
                     ),
-                    minimumSize: const Size(0, 36),
+                    minimumSize: Size(0, alto),
+                    maximumSize: Size(double.infinity, alto),
                   ),
                 ),
               ),
@@ -3104,6 +3429,99 @@ class _NotaPedidoEnLineaState extends State<_NotaPedidoEnLinea> {
               ),
             ),
         ],
+      ],
+    );
+  }
+}
+
+// Total del pedido en una línea (celular): al tocarlo se despliega el detalle
+// completo (subtotal, descuento, propina, pagos…), que no ocupa lugar mientras
+// no se pide.
+class _TotalCompacto extends StatefulWidget {
+  final String etiqueta;
+  final double total;
+  // Línea corta cuando hay un pago a medias (pagado y saldo).
+  final String? resumenPago;
+  final Widget detalle;
+
+  const _TotalCompacto({
+    required this.etiqueta,
+    required this.total,
+    required this.detalle,
+    this.resumenPago,
+  });
+
+  @override
+  State<_TotalCompacto> createState() => _TotalCompactoState();
+}
+
+class _TotalCompactoState extends State<_TotalCompacto> {
+  bool _abierto = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _abierto = !_abierto),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.etiqueta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      if (widget.resumenPago != null)
+                        Text(
+                          widget.resumenPago!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.mesaOcupada,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Text(
+                  'S/ ${widget.total.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  _abierto ? LucideIcons.chevronDown : LucideIcons.chevronUp,
+                  size: 18,
+                  color: Colors.grey.shade600,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_abierto)
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+            ),
+            child: SingleChildScrollView(child: widget.detalle),
+          ),
       ],
     );
   }

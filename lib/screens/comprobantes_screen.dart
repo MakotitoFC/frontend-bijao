@@ -8,7 +8,6 @@ import '../theme/app_theme.dart';
 import '../utils/abrir_enlace.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/boton_actualizar.dart';
 import '../widgets/selector_rango_fechas.dart';
 import '../widgets/tabla_app.dart';
 import '../widgets/tabs_texto.dart';
@@ -489,7 +488,7 @@ class _ComprobantesScreenState extends State<ComprobantesScreen> {
   Widget _tabla(List<Comprobante> filas) {
     return TablaApp<Comprobante>(
       scrollInterno: true,
-      porPagina: 10,
+      porPagina: 8,
       filas: filas,
       columnas: [
         ColumnaTabla(
@@ -621,10 +620,9 @@ class _ComprobantesScreenState extends State<ComprobantesScreen> {
                 ),
                 AppSearchField(
                   controller: _busqueda,
-                  hint: 'Buscar N°, cliente o documento...',
+                  hint: 'Buscar...',
                   onChanged: (_) => setState(() {}),
                 ),
-                BotonActualizar(onTap: _cargar),
               ],
             ),
             if (_errorCarga != null) ...[

@@ -361,16 +361,29 @@ class _ReportesScreenState extends State<ReportesScreen> {
                     ],
                   ),
                 ),
-                Text(
-                  '#${p.numeroPedido}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '#${p.numeroPedido}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -894,7 +907,12 @@ class _ReportesScreenState extends State<ReportesScreen> {
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 6),
-      Text(texto, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+      Flexible(
+        child: Text(
+          texto,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+        ),
+      ),
     ],
   );
 

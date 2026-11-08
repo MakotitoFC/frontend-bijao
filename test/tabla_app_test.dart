@@ -128,27 +128,41 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('en celular la paginación flota sobre el borde de abajo', (
+  testWidgets('en celular la paginación es una barra fija abajo, no flotante', (
     tester,
   ) async {
     await abrirPaginada(tester, 375);
-    expect(find.text('3'), findsOneWidget); // los números de página
-    // Flota: queda en el borde inferior de la vista, no pegada a la tabla.
-    final y = tester.getCenter(find.text('3')).dy;
+    expect(find.text('Mostrando 1-8 de 20'), findsOneWidget);
+    expect(find.text('1 / 3'), findsOneWidget);
+    // Barra fija en el borde inferior: no tapa las filas de la tabla.
+    final y = tester.getCenter(find.text('1 / 3')).dy;
     expect(y, greaterThan(700));
-    // Y no es el pie de escritorio.
-    expect(find.textContaining('Mostrando'), findsNothing);
+    final ultima = tester.getRect(find.text('Fila 8')).bottom;
+    expect(ultima, lessThanOrEqualTo(tester.getRect(find.text('1 / 3')).top));
+    await tester.tap(find.byTooltip('Página siguiente'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Mostrando 9-16 de 20'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('en escritorio la paginación es una barra fija con el rango', (
+  testWidgets('en escritorio la paginación tiene el mismo diseño y rango', (
     tester,
   ) async {
     await abrirPaginada(tester, 1200);
     expect(find.text('Mostrando 1-8 de 20'), findsOneWidget);
-    await tester.tap(find.text('Siguiente ›'));
+    expect(find.text('1 / 3'), findsOneWidget);
+    await tester.tap(find.byTooltip('Página siguiente'));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('Mostrando 9-16 de 20'), findsOneWidget);
+    await tester.tap(find.byTooltip('Página anterior'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Mostrando 1-8 de 20'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('con pocas filas no se dibuja el paginador', (tester) async {
+    await abrir(tester, 900);
+    expect(find.textContaining('Mostrando'), findsNothing);
+    expect(find.byTooltip('Página siguiente'), findsNothing);
   });
 }

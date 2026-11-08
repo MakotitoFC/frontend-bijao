@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_bijao/widgets/detalle_pedido_panel.dart';
+import 'package:frontend_bijao/widgets/menu_flotante.dart';
 
 void main() {
   testWidgets(
@@ -55,4 +56,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Anular pedido'), findsNothing);
   });
+
+  // El panel mide al menos 190 px: con un disparador angosto pegado a un borde
+  // se saldría de la pantalla, así que se corre solo para quedar dentro.
+  for (final e in {
+    'pegado a la izquierda': Alignment.centerLeft,
+    'en el centro': Alignment.center,
+    'pegado a la derecha': Alignment.centerRight,
+  }.entries) {
+    testWidgets('el menú se reubica solo para no salirse (${e.key})', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: e.value,
+              child: SizedBox(
+                width: 100,
+                child: MenuFlotante<String>(
+                  opciones: const [
+                    OpcionMenu(valor: 'a', etiqueta: 'Clientes (5)'),
+                    OpcionMenu(valor: 'b', etiqueta: 'Empleados (0)'),
+                  ],
+                  onSeleccionar: (_) {},
+                  disparador: (context, abierto) => Container(
+                    height: 40,
+                    color: Colors.grey,
+                    alignment: Alignment.center,
+                    child: const Text('abrir'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+      final opcion = tester.getRect(find.text('Empleados (0)'));
+      expect(opcion.left, greaterThanOrEqualTo(8));
+      expect(opcion.right, lessThanOrEqualTo(320 - 8));
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

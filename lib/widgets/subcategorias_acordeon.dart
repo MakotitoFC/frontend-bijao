@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/subcategoria.dart';
 import '../theme/app_theme.dart';
+import 'barra_desplazamiento.dart';
 
 // Acordeón para elegir las subcategorías de un producto: al abrirlo muestra
 // un checklist de 2 columnas con scroll.
@@ -116,7 +117,7 @@ class _SubcategoriasAcordeonState extends State<SubcategoriasAcordeon> {
         Divider(height: 1, color: Colors.grey.shade300),
         ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 180),
-          child: Scrollbar(
+          child: BarraDesplazamiento(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: LayoutBuilder(

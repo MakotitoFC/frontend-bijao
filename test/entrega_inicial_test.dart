@@ -58,7 +58,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
     if (cambiarA != null) {
-      await tester.tap(find.text(cambiarA));
+      // El rótulo va en mayúsculas y, si no cabe, se acorta ("EN MESA" → "MESA").
+      const cortos = {'En mesa': 'MESA', 'Para llevar': 'LLEVAR'};
+      final completo = find.text(cambiarA.toUpperCase());
+      await tester.tap(
+        completo.evaluate().isNotEmpty
+            ? completo
+            : find.text(cortos[cambiarA]!),
+      );
       await tester.pump();
     }
     await tester.tap(find.textContaining('Agregar S/'));

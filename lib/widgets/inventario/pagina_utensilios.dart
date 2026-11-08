@@ -318,7 +318,7 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: AppSearchField(
-                  hint: 'Buscar por producto o empleado...',
+                  hint: 'Buscar...',
                   onChanged: (v) => setState(() => _busqueda = v),
                 ),
               ),

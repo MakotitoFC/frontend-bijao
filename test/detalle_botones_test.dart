@@ -75,15 +75,21 @@ void main() {
     await abrir(tester, _pedido());
     expect(find.text('Pagar'), findsOneWidget);
     expect(find.text('Pago compartido'), findsNothing);
+    // En celular las acciones secundarias van en el menú "Más acciones".
+    await tester.tap(find.byTooltip('Más acciones'));
+    await tester.pumpAndSettle();
     // Un cliente puede pedir solo un táper: también se agrega desde el detalle.
-    expect(find.byTooltip('Táper'), findsOneWidget);
-    expect(find.byTooltip('Promoción'), findsOneWidget);
+    expect(find.text('Táper'), findsOneWidget);
+    expect(find.text('Promoción'), findsOneWidget);
+    expect(find.text('Anular pedido'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('Táper en el detalle abre el diálogo de tápers', (tester) async {
     await abrir(tester, _pedido());
-    await tester.tap(find.byTooltip('Táper'));
+    await tester.tap(find.byTooltip('Más acciones'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Táper'));
     await tester.pumpAndSettle();
     expect(find.text('Táper grande'), findsOneWidget);
     expect(find.text('Táper mediano'), findsOneWidget);
@@ -107,6 +113,29 @@ void main() {
     expect(find.text('Roturas / alquiler'), findsOneWidget);
     // Ya no hay elección previa ni pago compartido.
     expect(find.text('Pago compartido'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('con la propina apagada en Configuración, Pagar no la ofrece', (
+    tester,
+  ) async {
+    addTearDown(() => config.propinaHabilitada = true);
+    await abrir(tester, _pedido());
+    await tester.tap(find.text('Pagar'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.text('Propina'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+
+    config.propinaHabilitada = false;
+    await abrir(tester, _pedido());
+    await tester.tap(find.text('Pagar'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.text('Propina'), findsNothing);
+    expect(find.text('Roturas / alquiler'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -37,6 +37,8 @@ import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/elegir_nuevo_pedido_dialog.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
+import '../widgets/tabs_texto.dart';
+import '../widgets/texto_adaptable.dart';
 
 // Vista de Pedidos en dos secciones: cola de pedidos activos (`pedidos`,
 // `pedidos_detalle`) a la izquierda y detalle del pedido elegido a la derecha.
@@ -373,7 +375,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
   // Texto del buscador: coincide con la mesa, el mozo, el número del pedido o
   // el cliente (sin distinguir mayúsculas ni tildes).
   bool _coincide(Pedido p) {
-    final q = _normalizar(_busqueda.text.trim());
+    // El número de pedido se busca con o sin "#" ("#0007", "0007" o "7").
+    final q = _normalizar(_busqueda.text.trim()).replaceAll('#', '').trim();
     if (q.isEmpty) return true;
     final campos = [
       p.ubicacion,
@@ -381,8 +384,15 @@ class _PedidosScreenState extends State<PedidosScreen> {
       nombreMeseroDe(p),
       p.numeroPedido,
       p.clienteNombre ?? '',
+      p.clienteCelular ?? '',
     ];
-    return campos.any((c) => _normalizar(c).contains(q));
+    if (campos.any((c) => _normalizar(c).contains(q))) return true;
+    // El celular también se encuentra escrito con espacios o guiones.
+    final digitos = q.replaceAll(RegExp(r'\D'), '');
+    return digitos.length >= 3 &&
+        (p.clienteCelular ?? '')
+            .replaceAll(RegExp(r'\D'), '')
+            .contains(digitos);
   }
 
   static String _normalizar(String t) {
@@ -432,14 +442,14 @@ class _PedidosScreenState extends State<PedidosScreen> {
       return;
     }
     if (!mounted) return;
-    // Un solo modal con dos pasos (para quién es y el tipo); el mozo solo
-    // registra pedidos de clientes y empieza directo en el tipo.
+    // Un solo modal con dos pasos (para quién es y el tipo): cualquier usuario,
+    // también el mozo, puede registrar pedidos de clientes, empleados o familia.
     final eleccion = await showBlurDialog<EleccionNuevoPedido>(
       context: context,
-      builder: (_) => ElegirNuevoPedidoDialog(conDestinatario: _esAdmin),
+      builder: (_) => const ElegirNuevoPedidoDialog(conDestinatario: true),
     );
     if (eleccion == null || !mounted) return;
-    final destinatario = _esAdmin ? eleccion.destinatario : 'cliente';
+    final destinatario = eleccion.destinatario;
     final tipo = eleccion.tipo;
     setState(() {
       _destinatarioNuevo = destinatario;
@@ -774,7 +784,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   Widget _colaPedidos() {
     final cola = _cola;
-    return Container(
+    // Celular: filtros más livianos y tarjetas compactas.
+    final movil = AppBreakpoints.esMobile(context);
+    final lista = Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
@@ -782,9 +794,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
         children: [
           _bannerCajaCerrada(),
           _bannerTraspasos(),
-          _pestanasVistas(),
-          const SizedBox(height: 8),
-          _barraFiltros(),
+          if (movil)
+            _filtrosMovil()
+          else ...[
+            _pestanasVistas(),
+            const SizedBox(height: 8),
+            _barraFiltros(),
+          ],
           const SizedBox(height: 10),
           Expanded(
             child: cola.isEmpty
@@ -804,13 +820,16 @@ class _PedidosScreenState extends State<PedidosScreen> {
                           ((c.maxWidth + espacio) / (230 + espacio))
                               .floor()
                               .clamp(1, 4);
+                      // En celular no hay barra de desplazamiento: las tarjetas
+                      // ocupan el mismo ancho que los filtros.
+                      final holgura = movil ? 0.0 : 14.0;
                       final ancho =
-                          (c.maxWidth - 14 - espacio * (columnas - 1)) /
+                          (c.maxWidth - holgura - espacio * (columnas - 1)) /
                           columnas;
                       return IndicadorAbajo(
                         builder: (ctl) => SingleChildScrollView(
                           controller: ctl,
-                          padding: const EdgeInsets.only(right: 14, bottom: 8),
+                          padding: EdgeInsets.only(right: holgura, bottom: 8),
                           child: Wrap(
                             spacing: espacio,
                             runSpacing: espacio,
@@ -819,7 +838,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
                               for (final p in cola)
                                 SizedBox(
                                   width: ancho,
-                                  child: _tarjetaPedido(p),
+                                  child: movil
+                                      ? _tarjetaPedidoMovil(p)
+                                      : _tarjetaPedido(p),
                                 ),
                             ],
                           ),
@@ -827,6 +848,185 @@ class _PedidosScreenState extends State<PedidosScreen> {
                       );
                     },
                   ),
+          ),
+        ],
+      ),
+    );
+    return lista;
+  }
+
+  // Filtros de celular: buscador con "Nuevo", pestañas de texto por tipo de
+  // pedido (con su cantidad) y dos selectores lado a lado, "Para quién" y "Medio de pago",
+  // que abren su lista de opciones. Un selector con algo elegido se pinta de
+  // verde y su "x" lo quita.
+  Widget _filtrosMovil() {
+    final nombres = <String>{
+      for (final m in mediosPagoActivos) m.medioPago,
+      for (final p in pagos) p.medioPago.medioPago,
+    }.toList()..sort();
+    Widget selector({
+      required IconData icono,
+      required String texto,
+      String? textoCorto,
+      required bool activo,
+      required VoidCallback onQuitar,
+      required String tooltip,
+      required String seleccionada,
+      required List<OpcionMenu<String>> opciones,
+      required ValueChanged<String> onSeleccionar,
+    }) {
+      return Expanded(
+        child: MenuFlotante<String>(
+          tooltip: tooltip,
+          seleccionada: seleccionada,
+          onSeleccionar: onSeleccionar,
+          opciones: opciones,
+          disparador: (context, abierto) {
+            final color = activo
+                ? AppColors.primaryGreenDark
+                : Colors.grey.shade700;
+            return Container(
+              height: 40,
+              padding: const EdgeInsets.only(left: 10),
+              decoration: BoxDecoration(
+                color: activo
+                    ? AppColors.primaryGreen.withValues(alpha: 0.1)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: activo || abierto
+                      ? AppColors.primaryGreen
+                      : Colors.grey.shade400,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(icono, size: 16, color: color),
+                  const SizedBox(width: 6),
+                  // El texto se adapta al ancho (versión corta o más chico), sin
+                  // cortarse con "…".
+                  Expanded(
+                    child: TextoAdaptable(
+                      textos: [texto, ?textoCorto],
+                      alineacion: Alignment.centerLeft,
+                      textAlign: TextAlign.start,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: activo ? FontWeight.w700 : FontWeight.w500,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                  if (activo)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: onQuitar,
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(Icons.close, size: 16, color: color),
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: AnimatedRotation(
+                        duration: const Duration(milliseconds: 200),
+                        turns: abierto ? 0.5 : 0,
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 18,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    // Sin margen propio: queda alineado con las tarjetas de abajo.
+    return Padding(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // El buscador y "Nuevo" (el mismo botón y tamaño del resto del
+          // sistema) comparten la fila: nada flota sobre la lista.
+          Row(
+            children: [
+              Expanded(
+                child: AppSearchField(
+                  controller: _busqueda,
+                  hint: 'Buscar...',
+                  compacto: true,
+                  ajustarAlTexto: false,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _botonNuevoPedido(),
+            ],
+          ),
+          const SizedBox(height: 4),
+          TabsTexto(
+            tabs: [
+              for (final o in const <(String?, String)>[
+                (null, 'Todos'),
+                ('mesa', 'Mesa'),
+                ('delivery', 'Delivery'),
+                ('llevar', 'Para llevar'),
+              ])
+                TabTexto(
+                  etiqueta: o.$2,
+                  cantidad: _contarTipo(o.$1),
+                  activa: _tipoFiltro == o.$1,
+                  onTap: () => setState(() => _tipoFiltro = o.$1),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              selector(
+                icono: LucideIcons.users,
+                texto: _vistaActual.nombre,
+                activo: _vistaId != 'clientes',
+                onQuitar: () => setState(() => _vistaId = 'clientes'),
+                tooltip: 'Pedidos de clientes, empleados o familia',
+                seleccionada: _vistaId,
+                opciones: [
+                  for (final v in _vistas)
+                    OpcionMenu(
+                      valor: v.id,
+                      etiqueta: '${v.nombre} (${_cantidadDeVista(v)})',
+                    ),
+                ],
+                onSeleccionar: (v) => setState(() => _vistaId = v),
+              ),
+              const SizedBox(width: 8),
+              selector(
+                icono: LucideIcons.wallet,
+                texto: _medioFiltro == 'todos'
+                    ? 'Todos los pagos'
+                    : _medioFiltro,
+                textoCorto: _medioFiltro == 'todos' ? 'Pagos' : null,
+                activo: _medioFiltro != 'todos',
+                onQuitar: () => setState(() => _medioFiltro = 'todos'),
+                tooltip: 'Filtrar por medio de pago',
+                seleccionada: _medioFiltro,
+                opciones: [
+                  const OpcionMenu(
+                    valor: 'todos',
+                    etiqueta: 'Todos los medios de pago',
+                  ),
+                  for (final n in nombres) OpcionMenu(valor: n, etiqueta: n),
+                ],
+                onSeleccionar: (v) => setState(() => _medioFiltro = v),
+              ),
+            ],
           ),
         ],
       ),
@@ -862,7 +1062,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     }.toList()..sort();
     final buscador = AppSearchField(
       controller: _busqueda,
-      hint: 'Buscar mesa, mozo o pedido...',
+      hint: 'Buscar...',
       compacto: true,
       ajustarAlTexto: false,
       onChanged: (_) => setState(() {}),
@@ -1004,6 +1204,182 @@ class _PedidosScreenState extends State<PedidosScreen> {
     final cobrados = mediosDePagoDe(p.id);
     if (cobrados.isNotEmpty) return 'Pagó con ${cobrados.join(' · ')}';
     return null;
+  }
+
+  // Tarjeta de celular: compacta (número, tipo y hora; mozo; total y
+  // cronómetro), neutra: el estado se ve en su etiqueta de color, no en la
+  // tarjeta.
+  Widget _tarjetaPedidoMovil(Pedido p) {
+    final nombreEtiqueta = (nombreClienteDe(p) ?? '').trim();
+    final cliente = esPedidoDeEmpleado(p)
+        ? (nombreEtiqueta.isEmpty ? 'Empleado' : 'Empleado: $nombreEtiqueta')
+        : esPedidoDeFamilia(p.id)
+        ? (nombreEtiqueta.isEmpty ? 'Familia' : 'Familia: $nombreEtiqueta')
+        : p.notas;
+    final productos = (detallesPorPedido[p.id] ?? [])
+        .where(esLineaDeProducto)
+        .fold<int>(0, (s, l) => s + l.cantidad);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => setState(() => _seleccionId = p.id),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '#${p.numeroPedido}',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              TextSpan(
+                                text:
+                                    ' · ${p.ubicacion} · ${_hora(p.fechaPedido)}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (p.estado == 'pagado' || _esCobrado(p))
+                        const _TagPagado(cobrado: true)
+                      else ...[
+                        if (pagadoSinServir(p)) ...[
+                          const _TagPagado(),
+                          const SizedBox(width: 6),
+                        ],
+                        BadgeEstadoPedido(p.estado),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        LucideIcons.user,
+                        size: 13,
+                        color: Colors.grey.shade700,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Mozo: ${nombreMeseroDe(p)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      // El total se achica antes de desbordar la fila.
+                      Flexible(
+                        flex: 3,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            esPedidoDeFamilia(p.id) &&
+                                    totalDePedido(p.id).abs() < 0.005
+                                ? 'Cuenta de familia'
+                                : 'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Se recorta si falta ancho (celular chico o letra grande).
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          ' · $productos producto${productos == 1 ? '' : 's'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      CronometroPedido(pedido: p),
+                    ],
+                  ),
+                  if (_lineaDePago(p) case final linea?) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      linea,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (cliente != null)
+              Container(
+                color: Colors.grey.shade700,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
+                child: Text(
+                  cliente,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _tarjetaPedido(Pedido p) {
@@ -1244,15 +1620,21 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Text(
-                        esPedidoDeFamilia(p.id) &&
-                                totalDePedido(p.id).abs() < 0.005
-                            ? 'Cuenta de familia'
-                            : 'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            esPedidoDeFamilia(p.id) &&
+                                    totalDePedido(p.id).abs() < 0.005
+                                ? 'Cuenta de familia'
+                                : 'S/ ${totalDePedido(p.id).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                          ),
                         ),
                       ),
                       const Spacer(),

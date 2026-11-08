@@ -18,6 +18,7 @@ import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
 import 'selector_taper.dart';
+import 'texto_adaptable.dart';
 import 'taper_catalogo_dialog.dart' show TaperElegido;
 import '../utils/agregados_utils.dart';
 import '../utils/motivo_precio.dart';
@@ -451,32 +452,68 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     String hint, {
     bool numero = false,
     String? prefijo,
-  }) => SizedBox(
-    height: AppSizes.boton,
-    child: CampoTexto(
-      controller: ctrl,
-      expands: true,
-      maxLines: null,
-      keyboardType: numero
-          ? const TextInputType.numberWithOptions(decimal: true)
-          : null,
-      onChanged: (_) => _recalcularManual(),
-      // El prefijo va como icono para quedar centrado en el alto del campo (con
-      // prefixText salía arriba y el campo se veía más alto que el select).
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: prefijo == null
-            ? null
-            : Padding(
-                padding: const EdgeInsets.only(left: 12, right: 4),
-                child: Text(
-                  prefijo.trim(),
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+    String? etiqueta,
+  }) {
+    // Sin alto fijo, en celular y en escritorio: con 36 px y el relleno del
+    // campo el texto se cortaba (se vio también en el modal de escritorio,
+    // donde "Adicional" queda muy angosto). El campo crece con el texto. En
+    // celular mide al menos 44 px, usa letra de 16 px (Safari agranda la
+    // pantalla con menos) y lleva su etiqueta arriba.
+    final movil = AppBreakpoints.esMobile(context);
+    final tamano = movil ? 16.0 : 14.0;
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: movil ? 44 : AppSizes.boton),
+      child: CampoTexto(
+        controller: ctrl,
+        style: movil ? TextStyle(fontSize: tamano) : null,
+        keyboardType: numero
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : null,
+        onChanged: (_) => _recalcularManual(),
+        decoration: InputDecoration(
+          labelText: movil ? etiqueta : null,
+          hintText: hint,
+          prefixIcon: prefijo == null
+              ? null
+              : Padding(
+                  padding: EdgeInsets.only(left: movil ? 14 : 12, right: 4),
+                  child: Text(
+                    prefijo.trim(),
+                    style: TextStyle(
+                      fontSize: tamano,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
                 ),
-              ),
-        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 0,
+            minHeight: 0,
+          ),
+        ),
       ),
-    ),
+    );
+  }
+
+  Widget _selectCambio(int i) => AppSelect<String>(
+    compacto: true,
+    buscable: true,
+    value: _cambios[i].plato,
+    hint: 'Plato que se cambia',
+    items: [
+      for (final n in _opcionesDeCambio) AppSelectItem(value: n, label: n),
+    ],
+    onChanged: (v) {
+      _cambios[i].plato = v;
+      _recalcularManual();
+    },
+  );
+
+  Widget _quitarCambio(int i) => BotonCerrarCircular(
+    tamano: 30,
+    onPressed: () {
+      setState(() => _cambios.removeAt(i).adicional.dispose());
+      _recalcularManual();
+    },
   );
 
   Widget _precioEnLinea() {
@@ -485,24 +522,39 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       children: [
         if (_editandoPrecio) ...[
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: _campoLinea(
-                  _precioCtrl,
-                  'Precio',
-                  numero: true,
-                  prefijo: 'S/ ',
+          if (AppBreakpoints.esMobile(context)) ...[
+            _campoLinea(
+              _precioCtrl,
+              'Precio',
+              numero: true,
+              prefijo: 'S/ ',
+              etiqueta: 'Precio para este pedido',
+            ),
+            const SizedBox(height: 10),
+            _campoLinea(
+              _motivoCtrl,
+              'Ej. cliente frecuente',
+              etiqueta: 'Motivo del cambio',
+            ),
+          ] else
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: _campoLinea(
+                    _precioCtrl,
+                    'Precio',
+                    numero: true,
+                    prefijo: 'S/ ',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 4,
-                child: _campoLinea(_motivoCtrl, 'Motivo del cambio'),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 4,
+                  child: _campoLinea(_motivoCtrl, 'Motivo del cambio'),
+                ),
+              ],
+            ),
         ],
         if (_falta)
           const Padding(
@@ -523,45 +575,47 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
           for (var i = 0; i < _cambios.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: AppSelect<String>(
-                      compacto: true,
-                      buscable: true,
-                      value: _cambios[i].plato,
-                      hint: 'Plato que se cambia',
-                      items: [
-                        for (final n in _opcionesDeCambio)
-                          AppSelectItem(value: n, label: n),
+              child: AppBreakpoints.esMobile(context)
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _selectCambio(i),
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: _campoLinea(
+                                _cambios[i].adicional,
+                                'Adicional',
+                                numero: true,
+                                prefijo: 'S/ ',
+                                etiqueta: 'Adicional',
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _quitarCambio(i),
+                          ],
+                        ),
                       ],
-                      onChanged: (v) {
-                        _cambios[i].plato = v;
-                        _recalcularManual();
-                      },
+                    )
+                  : Row(
+                      children: [
+                        Expanded(flex: 4, child: _selectCambio(i)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: _campoLinea(
+                            _cambios[i].adicional,
+                            'Adicional',
+                            numero: true,
+                            prefijo: 'S/ ',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _quitarCambio(i),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 2,
-                    child: _campoLinea(
-                      _cambios[i].adicional,
-                      'Adicional',
-                      numero: true,
-                      prefijo: 'S/ ',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  BotonCerrarCircular(
-                    tamano: 30,
-                    onPressed: () {
-                      setState(() => _cambios.removeAt(i).adicional.dispose());
-                      _recalcularManual();
-                    },
-                  ),
-                ],
-              ),
             ),
           Align(
             alignment: Alignment.centerLeft,
@@ -937,6 +991,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     );
   }
 
+  // Versión corta de cada entrega para cuando la larga no cabe en su botón.
+  static const _entregaCorta = {'En mesa': 'Mesa', 'Para llevar': 'Llevar'};
+
   Widget _chipTipoEntrega(String tipo, String etiqueta, IconData icono) {
     final activo = _tipoEntrega == tipo;
     return Expanded(
@@ -973,9 +1030,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
               ),
               const SizedBox(width: 6),
               Flexible(
-                child: Text(
-                  etiqueta.toUpperCase(),
-                  overflow: TextOverflow.ellipsis,
+                child: TextoAdaptable(
+                  ajustarAncho: true,
+                  textos: [
+                    etiqueta.toUpperCase(),
+                    if (_entregaCorta[etiqueta] != null)
+                      _entregaCorta[etiqueta]!.toUpperCase(),
+                  ],
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: activo ? FontWeight.w800 : FontWeight.w600,

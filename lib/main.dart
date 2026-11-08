@@ -19,6 +19,22 @@ void main() async {
   runApp(const MyApp());
 }
 
+// En celular (APK y web angosta) las listas se deslizan con el dedo y no
+// muestran barra de desplazamiento; en pantallas anchas se conserva.
+class _DesplazamientoDeLaApp extends MaterialScrollBehavior {
+  const _DesplazamientoDeLaApp();
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    if (AppBreakpoints.esMobile(context)) return child;
+    return super.buildScrollbar(context, child, details);
+  }
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -28,6 +44,7 @@ class MyApp extends StatelessWidget {
       title: 'El Bijao',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      scrollBehavior: const _DesplazamientoDeLaApp(),
       home: ValueListenableBuilder<Usuario?>(
         valueListenable: AuthService.instance.userNotifier,
         builder: (context, user, _) {

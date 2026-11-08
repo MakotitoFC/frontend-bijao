@@ -222,9 +222,14 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     );
     if (numero == null || !mounted) return;
 
+    // Con el nombre del cliente: el del pedido o, si no, el del comprobante.
+    final nombreCliente = nombreClienteWhatsapp(
+      widget.pedido.clienteNombre,
+      c.clienteDenominacion,
+    );
     final negocio = nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio();
     final buf = StringBuffer()
-      ..writeln('Hola, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
+      ..writeln('Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
       ..writeln('Total: S/ ${c.total.toStringAsFixed(2)}')
       ..writeln();
 

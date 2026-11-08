@@ -200,7 +200,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
               // El buscador ocupa toda la fila.
               AppSearchField(
                 controller: _busqueda,
-                hint: 'Buscar producto...',
+                hint: 'Buscar...',
                 ajustarAlTexto: false,
                 onChanged: (_) => setState(() {}),
               ),

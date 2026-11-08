@@ -144,7 +144,7 @@ class _StockBaseDialogState extends State<StockBaseDialog> {
           CampoTexto(
             onChanged: (v) => setState(() => _busqueda = v),
             decoration: const InputDecoration(
-              hintText: 'Buscar plato...',
+              hintText: 'Buscar...',
               prefixIcon: Icon(Icons.search, size: 20),
             ),
           ),

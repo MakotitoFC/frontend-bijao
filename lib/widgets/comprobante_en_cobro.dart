@@ -26,6 +26,7 @@ import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
 import 'emitir_comprobante_dialog.dart';
+import '../utils/direccion_ticket.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
 // Hasta este total (inclusive) el DNI de la boleta es opcional; por encima,
@@ -499,7 +500,12 @@ class ComprobanteEnCobro extends ChangeNotifier {
         'boleta' => conDni ? nombre.text.trim() : 'CLIENTES VARIOS',
         _ => null,
       },
-      clienteDireccion: tipo == 'factura' ? direccion.text.trim() : null,
+      clienteDireccion: switch (tipo) {
+        'factura' => direccion.text.trim(),
+        // En el ticket de venta, dirección y teléfono del cliente.
+        'ticket_venta' => direccionConTelefono(pedido),
+        _ => null,
+      },
     );
     // El ticket de la cuenta usa este nombre en lugar de "CLIENTES VARIOS".
     recordarClienteDeComprobante(
@@ -1473,9 +1479,14 @@ class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
     );
     if (numero == null || !mounted) return;
 
+    // Con el nombre del cliente: el del pedido o, si no, el del comprobante.
+    final nombreCliente = nombreClienteWhatsapp(
+      widget.pedido.clienteNombre,
+      c.clienteDenominacion,
+    );
     final negocio = nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio();
     final buf = StringBuffer()
-      ..writeln('Hola, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
+      ..writeln('Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
       ..writeln('Total: S/ ${c.total.toStringAsFixed(2)}')
       ..writeln();
 

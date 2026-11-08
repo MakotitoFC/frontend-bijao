@@ -72,7 +72,7 @@ void main() {
   }
 
   Future<void> agregarTacacho(WidgetTester tester) async {
-    await tester.tap(find.text('Agregar al pedido').first);
+    await tester.tap(find.text('Agregar').first);
     await esperar(tester);
     await tester.tap(find.textContaining('Agregar S/'));
     await esperar(tester);
@@ -88,16 +88,16 @@ void main() {
     await tester.pumpWidget(dialogo());
     await esperar(tester);
     await agregarTacacho(tester);
-    await tester.tap(find.byTooltip('Ver detalle completo'));
+    await tester.tap(find.text('Revisar'));
     await esperar(tester);
     // Con el buscador en la cabecera, el primer campo ya no es el del nombre.
     await tester.enterText(
       find.widgetWithText(TextField, 'Nombre del cliente * Obligatorio'),
       'Carlos',
     );
-    await tester.tap(find.text('Seguir agregando'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Agregar'));
     await esperar(tester);
-    expect(find.textContaining('Pedido · 1 producto'), findsOneWidget);
+    expect(find.text('1 producto'), findsOneWidget);
 
     // El usuario cambia de vista: la pantalla se destruye.
     await tester.pumpWidget(const SizedBox());
@@ -106,9 +106,9 @@ void main() {
     // Vuelve a Pedidos: el pedido está como lo dejó.
     await tester.pumpWidget(dialogo());
     await esperar(tester);
-    expect(find.textContaining('Pedido · 1 producto'), findsOneWidget);
+    expect(find.text('1 producto'), findsOneWidget);
     expect(borradorDe('u1')?.nombre, 'Carlos');
-    await tester.tap(find.byTooltip('Ver detalle completo'));
+    await tester.tap(find.text('Revisar'));
     await esperar(tester);
     expect(find.text('Carlos'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -148,6 +148,9 @@ void main() {
       await tester.pumpWidget(dialogo(alTerminar: (_) => terminado = true));
       await esperar(tester);
       await agregarTacacho(tester);
+      // Se confirma desde la revisión, no desde la barra.
+      await tester.tap(find.text('Revisar'));
+      await esperar(tester);
 
       // Las llamadas HTTP de las pruebas fallan: es un envío que no llega.
       await tester.tap(find.text('Confirmar pedido'));

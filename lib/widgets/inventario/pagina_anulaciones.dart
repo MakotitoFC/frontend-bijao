@@ -146,9 +146,12 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
               return Row(
                 children: [
                   SizedBox(
-                    width: ancho.clamp(260.0, c.maxWidth - 56),
+                    // En pantallas angostas el buscador ocupa todo el ancho.
+                    width: c.maxWidth < 560
+                        ? c.maxWidth
+                        : ancho.clamp(260.0, c.maxWidth - 56),
                     child: AppSearchField(
-                      hint: 'Buscar plato, mozo, mesa o motivo...',
+                      hint: 'Buscar...',
                       ajustarAlTexto: false,
                       onChanged: (v) => setState(() => _busqueda = v),
                     ),
@@ -219,7 +222,7 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
                   )
                 : TablaApp<Map<String, dynamic>>(
                     scrollInterno: true,
-                    porPagina: 10,
+                    porPagina: 8,
                     filas: filtradas,
                     altoFila: 62,
                     columnas: [

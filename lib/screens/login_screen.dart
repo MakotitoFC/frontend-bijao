@@ -186,9 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
               return null;
             },
           ),
-          const SizedBox(height: 18),
-          _recordarmeYOlvido(),
-          const SizedBox(height: 48),
+          const SizedBox(height: 32),
           ElevatedButton(
             onPressed: _isLoading ? null : _submit,
             style: ElevatedButton.styleFrom(
@@ -214,27 +212,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
           ),
-          const SizedBox(height: 14),
-          Text(
-            '¿Tienes problemas para ingresar?',
-            textAlign: TextAlign.start,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-          const Text(
-            'Contacta al administrador',
-            textAlign: TextAlign.start,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF4B5563),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  // Casilla "Recordarme" y enlace de contraseña olvidada.
+  // Casilla "Recordarme" y enlace de contraseña olvidada: ocultos por ahora (no
+  // se muestran en el ingreso). Para volver a verlos, ponerlos otra vez debajo
+  // del campo de contraseña.
+  // ignore: unused_element
   Widget _recordarmeYOlvido() {
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
@@ -376,17 +362,16 @@ class _LoginScreenState extends State<LoginScreen> {
     final mobile = AppBreakpoints.esMobile(context);
     return Scaffold(
       backgroundColor: Colors.white,
-      floatingActionButton: FloatingActionButton.extended(
+      // Servidor / red: solo el icono, en un círculo de color.
+      floatingActionButton: FloatingActionButton(
         heroTag: 'server_conn_btn',
-        backgroundColor: Colors.grey.shade100,
-        foregroundColor: Colors.black87,
+        tooltip: 'Servidor / Red',
+        backgroundColor: _fondoVerde,
+        foregroundColor: Colors.white,
         elevation: 1,
+        shape: const CircleBorder(),
         onPressed: () => ServerConnectionDialog.show(context),
-        icon: const Icon(LucideIcons.wifi, size: 16),
-        label: const Text(
-          'Servidor / Red',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
+        child: const Icon(LucideIcons.wifi, size: 20),
       ),
       body: mobile ? _buildMobile(context) : _buildEscritorio(context),
     );

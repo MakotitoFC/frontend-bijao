@@ -189,11 +189,15 @@ class PagoService {
   // Trae los pagos de un rango de fechas (inclusive) y los suma a los que ya
   // están en pantalla.
   Future<void> cargarDelRango(DateTime desde, DateTime hasta) async {
-    String dos(int n) => n.toString().padLeft(2, '0');
-    String f(DateTime d) => '${d.year}-${dos(d.month)}-${dos(d.day)}';
-    final res = await _api.get(
-      '/api/pagos?desde=${f(desde)}&hasta=${f(hasta)}',
-    );
+    // El servidor toma una fecha sola ("2026-11-08") como medianoche UTC: el
+    // "hoy" se corría 5 horas y los cobros de la noche (desde las 7 p. m. en
+    // Lima) no volvían al recargar. Se manda el día completo con la hora de
+    // este equipo, como instantes.
+    String f(DateTime d) =>
+        Uri.encodeQueryComponent(d.toUtc().toIso8601String());
+    final inicio = DateTime(desde.year, desde.month, desde.day);
+    final fin = DateTime(hasta.year, hasta.month, hasta.day, 23, 59, 59);
+    final res = await _api.get('/api/pagos?desde=${f(inicio)}&hasta=${f(fin)}');
     if (res is! List) return;
     agregarPagosDelServidor(res.whereType<Map<String, dynamic>>().toList());
   }

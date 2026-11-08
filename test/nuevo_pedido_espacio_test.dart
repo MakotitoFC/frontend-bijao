@@ -67,10 +67,10 @@ void main() {
 
   // Agrega el producto de la tarjeta número [i] de la galería.
   Future<void> agregar(WidgetTester tester, int i) async {
-    // En celular la tarjeta es horizontal y el botón dice solo "Agregar".
-    final botones = find.text(
-      tester.view.physicalSize.width < 600 ? 'Agregar' : 'Agregar al pedido',
-    );
+    // En celular el botón dice solo "Agregar"; en pantallas anchas, "Agregar al
+    // pedido".
+    final movil = tester.view.physicalSize.width < 700;
+    final botones = find.text(movil ? 'Agregar' : 'Agregar al pedido');
     await tester.ensureVisible(botones.at(i));
     await tester.pump();
     await tester.tap(botones.at(i), warnIfMissed: false);
@@ -79,30 +79,21 @@ void main() {
     await esperar(tester);
   }
 
-  testWidgets('celular: con varios productos la hoja deja la mitad de la '
-      'pantalla a la galería', (tester) async {
+  testWidgets('celular: la barra del pedido es una sola fila baja', (
+    tester,
+  ) async {
     await abrir(tester, const Size(375, 812));
     for (var i = 0; i < 3; i++) {
       await agregar(tester, i);
     }
-    expect(find.textContaining('Pedido · 3 productos'), findsOneWidget);
+    expect(find.text('3 productos'), findsOneWidget);
+    expect(find.text('Revisar'), findsOneWidget);
+    // La barra no confirma: se confirma desde la revisión.
+    expect(find.text('Confirmar pedido'), findsNothing);
 
-    // La lista del pedido empieza oculta: la hoja es solo la cabecera.
-    final arribaOculta = tester
-        .getTopLeft(find.textContaining('Pedido · 3 productos'))
-        .dy;
-    expect(arribaOculta, greaterThan(812 * 0.7));
-
-    // Se puede mostrar; aun así la hoja deja la mitad de arriba a la galería.
-    await tester.tap(find.byTooltip('Mostrar productos'));
-    await esperar(tester);
-    final arribaVisible = tester
-        .getTopLeft(find.textContaining('Pedido · 3 productos'))
-        .dy;
-    expect(arribaVisible, lessThan(arribaOculta));
-    expect(arribaVisible, greaterThan(812 * 0.5));
-    await tester.tap(find.byTooltip('Ocultar productos'));
-    await esperar(tester);
+    // Solo ocupa el pie: la galería conserva más del 70 % de la pantalla.
+    final arriba = tester.getTopLeft(find.text('3 productos')).dy;
+    expect(arriba, greaterThan(812 * 0.7));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

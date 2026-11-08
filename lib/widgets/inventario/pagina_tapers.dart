@@ -101,7 +101,7 @@ class _PaginaTapersState extends State<PaginaTapers> {
           barra: Align(
             alignment: Alignment.centerLeft,
             child: AppSearchField(
-              hint: 'Buscar táper...',
+              hint: 'Buscar...',
               onChanged: (v) => setState(() => _busqueda = v),
             ),
           ),
