@@ -23,6 +23,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/subcategorias_acordeon.dart';
 import '../widgets/campo_texto.dart';
 import '../widgets/imagen_plato.dart';
+import '../widgets/selector_taper.dart';
 
 // Lo que devuelve el formulario: el plato y, si se eligió una foto nueva, sus
 // bytes y nombre (se suben al guardar el plato).
@@ -193,6 +194,11 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
     }
     if (unidadesBebida.isEmpty) {
       CatalogService.instance.cargarUnidadesBebida().then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+    if (CatalogService.instance.tapers.isEmpty) {
+      CatalogService.instance.cargarTapers().then((_) {
         if (mounted) setState(() {});
       });
     }
@@ -787,6 +793,10 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
                       _seccionPresentaciones(),
                       const SizedBox(height: 16),
 
+                      // 6c. Tápers con los que se entrega el plato
+                      _seccionTapers(),
+                      const SizedBox(height: 16),
+
                       // 7. Selector de Estado (disponible / agotado)
                       _buildEstadoSelector(),
                       const SizedBox(height: 24),
@@ -1099,6 +1109,53 @@ class _CartaFormScreenState extends State<CartaFormScreen> {
   }
 
   // Presentaciones del plato (`carta_presentacion`, ej. Vaso 350 ml, Jarra 1000 ml).
+  // Tápers del plato: opcional, con buscador y selección múltiple. La tarjeta
+  // del plato y Nuevo pedido los muestran.
+  Widget _seccionTapers() {
+    final disponibles = [
+      for (final x in CatalogService.instance.tapers)
+        if (x.estado || _tapersElegidos.contains(x.id)) x,
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Tápers del plato',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Opcional. Marca los tápers con los que se entrega este plato para '
+            'llevar.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 10),
+          if (disponibles.isEmpty)
+            Text(
+              'Aún no hay tápers creados. Se crean en Inventario.',
+              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+            )
+          else
+            SelectorTaper(
+              tapers: disponibles,
+              seleccionados: _tapersElegidos.toSet(),
+              // Aquí no se pide stock: solo se asocian al plato.
+              cantidadNecesaria: 0,
+              onAlternar: (x) => setState(() {
+                if (!_tapersElegidos.remove(x.id)) _tapersElegidos.add(x.id);
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _seccionPresentaciones() {
     final primeraUnidadId = unidadesBebida
         .where((u) => u.estado)

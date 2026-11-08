@@ -10,11 +10,14 @@ import '../models/carta_presentacion.dart';
 import '../models/carta_variante.dart';
 import '../models/modificador.dart';
 import '../models/pedido_line.dart';
+import '../models/taper.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'imagen_plato.dart';
+import 'selector_taper.dart';
 import 'taper_catalogo_dialog.dart' show TaperElegido;
 import '../utils/agregados_utils.dart';
 import '../utils/motivo_precio.dart';
@@ -97,6 +100,9 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
   int _cantidad = 1;
 
   String _tipoEntrega = 'mesa'; // 'mesa', 'llevar', 'delivery'
+  // Tápers elegidos para este plato (id -> cuántos). Cada uno se agrega al
+  // pedido como una fila propia.
+  final Map<String, int> _tapers = {};
   late final List<Map<String, dynamic>> _extrasSimples = agregadosSimples(
     widget.item.agregados,
   );
@@ -119,6 +125,13 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     }
     final l = widget.lineaInicial;
     if (l != null) _restaurar(l);
+    _preseleccionarTaper();
+    if (CatalogService.instance.tapers.isEmpty) {
+      CatalogService.instance.cargarTapers().then((_) {
+        if (!mounted) return;
+        setState(_preseleccionarTaper);
+      });
+    }
   }
 
   // Abre el modal con lo que ya tenía la línea del carrito.
@@ -310,7 +323,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
       precioTaper: 0.0,
       cantidadTaper: null,
       totalLinea: totalLinea,
-      tapersAdicionales: const [],
+      tapersAdicionales: _tapersElegidos,
       precioManual: _precioManual != null,
       precioOriginal: _precioCalculado,
       motivoPrecio: _motivoPrecio,
@@ -758,6 +771,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                     const SizedBox(height: 18),
                     _selectorTipoEntrega(),
                     const SizedBox(height: 18),
+                    if (_mostrarTapers) ...[
+                      _seccionTapers(),
+                      const SizedBox(height: 18),
+                    ],
                     _tituloSeccion('Notas (opcional)'),
                     const SizedBox(height: 6),
                     CampoTexto(
@@ -821,7 +838,7 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
                             widget.acento ?? AppColors.primaryGreen,
                       ),
                       child: Text(
-                        '${widget.lineaInicial == null ? 'Agregar' : 'Guardar'} S/ ${_total.toStringAsFixed(2)}',
+                        '${widget.lineaInicial == null ? 'Agregar' : 'Guardar'} S/ ${(_total + _totalTapers).toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -832,6 +849,72 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
           ],
         ),
       ),
+    );
+  }
+
+  // Tápers que se ofrecen: los del plato si los tiene; si no, los activos del
+  // catálogo.
+  List<Taper> get _tapersDisponibles {
+    final todos = CatalogService.instance.tapers;
+    final ids = widget.item.taperIds.isNotEmpty
+        ? widget.item.taperIds
+        : [if (widget.item.taperId != null) widget.item.taperId!];
+    final propios = [
+      for (final x in todos)
+        if (ids.contains(x.id)) x,
+    ];
+    return propios.isNotEmpty
+        ? propios
+        : [
+            for (final x in todos)
+              if (x.estado) x,
+          ];
+  }
+
+  // Los tápers se ofrecen en mesa, para llevar y delivery, y solo al agregar
+  // (no al editar una línea del carrito: ahí los tápers son filas aparte).
+  bool get _mostrarTapers =>
+      widget.lineaInicial == null && _tapersDisponibles.isNotEmpty;
+
+  // Si el plato tiene un solo táper asignado, arranca elegido.
+  void _preseleccionarTaper() {
+    if (widget.lineaInicial != null) return;
+    final propios = _tapersDisponibles;
+    final tieneAsignados =
+        widget.item.taperIds.isNotEmpty || widget.item.taperId != null;
+    if (_tapers.isEmpty && tieneAsignados && propios.length == 1) {
+      _tapers[propios.first.id] = _cantidad;
+    }
+  }
+
+  List<TaperElegido> get _tapersElegidos => [
+    for (final x in CatalogService.instance.tapers)
+      if (_tapers.containsKey(x.id)) (taper: x, cantidad: _tapers[x.id]!),
+  ];
+
+  double get _totalTapers =>
+      _tapersElegidos.fold(0.0, (s, e) => s + e.taper.precio * e.cantidad);
+
+  Widget _seccionTapers() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _tituloSeccion(
+          'Táper (opcional)',
+          subtitulo: 'Se agrega como una fila aparte en el pedido.',
+        ),
+        const SizedBox(height: 8),
+        SelectorTaper(
+          tapers: _tapersDisponibles,
+          seleccionados: _tapers.keys.toSet(),
+          cantidades: _tapers,
+          cantidadNecesaria: _cantidad,
+          onAlternar: (x) => setState(() {
+            if (_tapers.remove(x.id) == null) _tapers[x.id] = _cantidad;
+          }),
+          onCantidad: (x, n) => setState(() => _tapers[x.id] = n),
+        ),
+      ],
     );
   }
 
@@ -859,7 +942,10 @@ class _ProductoOpcionesDialogState extends State<ProductoOpcionesDialog> {
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() => _tipoEntrega = tipo);
+          setState(() {
+            _tipoEntrega = tipo;
+            _preseleccionarTaper();
+          });
         },
         borderRadius: BorderRadius.circular(10),
         child: Container(

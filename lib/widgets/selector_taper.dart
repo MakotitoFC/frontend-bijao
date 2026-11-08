@@ -146,6 +146,10 @@ class _SelectorTaperState extends State<SelectorTaper> {
       opacity: 1,
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
+        // Sin resplandor ni sombra al tocar o pasar el cursor: solo cambia el
+        // borde de la fila elegida.
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
         onTap: () =>
             widget._multiple ? widget.onAlternar!(t) : widget.onElegir!(t),
         child: Container(

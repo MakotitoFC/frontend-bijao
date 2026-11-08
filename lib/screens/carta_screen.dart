@@ -16,6 +16,7 @@ import '../services/disponibilidad_service.dart';
 import '../services/eventos_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
+import '../utils/taper_texto.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/carta_cabecera.dart';
 import '../widgets/carta_item_detail_sheet.dart';
@@ -70,6 +71,12 @@ class _CartaScreenState extends State<CartaScreen> {
     super.initState();
     CatalogService.instance.cargarUnidadesBebida();
     CatalogService.instance.cargarCarta();
+    // El táper de cada tarjeta se busca en el catálogo de tápers.
+    if (CatalogService.instance.tapers.isEmpty) {
+      CatalogService.instance.cargarTapers().then((_) {
+        if (mounted) setState(() {});
+      });
+    }
     // Los cambios de otros equipos llegan por el flujo de eventos del servidor
     // (`CARTA_ACTUALIZADA`), sin consultar cada cierto tiempo.
     EventosService.instance.revision.addListener(_alCambiarEnVivo);
@@ -675,6 +682,8 @@ class _CartaScreenState extends State<CartaScreen> {
                                         ? '${item.stock}'
                                         : 'Libre')),
                       ),
+                      if (textoTaperDePlato(item) != null)
+                        _dato('Táper', textoTaperDePlato(item)!),
                     ],
                   ),
                   if (varsActivas.isNotEmpty || presActivas.isNotEmpty) ...[

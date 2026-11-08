@@ -48,6 +48,7 @@ import 'producto_opciones_dialog.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'taper_catalogo_dialog.dart';
+import '../utils/taper_texto.dart';
 import 'tupper_dialog.dart';
 import 'campo_texto.dart';
 import 'indicador_abajo.dart';
@@ -1324,6 +1325,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                     color: AppColors.primaryGreen,
                   ),
                 ),
+                if (textoTaperDePlato(item) != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Táper: ${textoTaperDePlato(item)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 SizedBox(
                   height: 32,
@@ -1427,6 +1435,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
               color: AppColors.primaryGreen,
             ),
           ),
+          if (textoTaperDePlato(item) != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Táper: ${textoTaperDePlato(item)}',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
+          ],
           const SizedBox(height: 8),
           SizedBox(
             height: 34,
