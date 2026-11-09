@@ -4,6 +4,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../data/configuracion_store.dart';
 import '../models/medio_pago.dart';
 import '../models/movimiento_caja.dart';
+import '../services/facturacion_service.dart';
 import '../services/impresion_service.dart';
 import '../services/pago_service.dart';
 import '../theme/app_theme.dart';
@@ -70,19 +71,24 @@ class _DescargoPagoDialogState extends State<DescargoPagoDialog> {
         );
       }
 
-      await PagoService.instance.rectificarPago(
+      final resDescargo = await PagoService.instance.rectificarPago(
         pagoId: pagoId,
         nuevoMedioPagoId: _nuevoMedio!.id,
         motivo: _motivo.text.trim(),
       );
 
       // Si se solicitó reimprimir comprobante / precuenta
-      if (_reimprimir && widget.movimiento.pedidosId != null) {
+      if (_reimprimir) {
         try {
-          await ImpresionService.instance.reimprimirPedido(
-            widget.movimiento.pedidosId!,
-            tipo: 'cuenta',
-          );
+          final compId = resDescargo['comprobante_id'] as String?;
+          if (compId != null && compId.isNotEmpty) {
+            await FacturacionService.instance.reimprimir(compId);
+          } else if (widget.movimiento.pedidosId != null) {
+            await ImpresionService.instance.reimprimirPedido(
+              widget.movimiento.pedidosId!,
+              tipo: 'cuenta',
+            );
+          }
         } catch (_) {
           // Si la impresora térmica no responde, no bloquea el descargo financiero
         }
