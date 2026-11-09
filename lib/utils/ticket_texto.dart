@@ -1,3 +1,4 @@
+import '../services/facturacion_service.dart';
 import '../data/cargos_extra_store.dart';
 import '../data/cliente_comprobante_store.dart';
 import '../data/mesas_store.dart';
@@ -540,8 +541,11 @@ List<LineaTicket> ticketComprobante({
       (propinaExtra > 0.001 ? propinaExtra : 0) +
       totalCargosExtra(pedido.id) +
       (recargo > 0.001 ? recargo : 0);
-  final gravada = total / 1.18;
+  final igvPct = FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
+  final igvFactor = 1.0 + (igvPct / 100.0);
+  final gravada = total / igvFactor;
   final igv = total - gravada;
+  final igvLabel = (igvPct % 1 == 0) ? '${igvPct.toInt()}%' : '$igvPct%';
   String doc(String? v, String vacio) =>
       (v == null || v.trim().isEmpty) ? vacio : v.trim();
 
@@ -606,7 +610,7 @@ List<LineaTicket> ticketComprobante({
       // Antes del total: base imponible e IGV.
       salida
         ..add(LineaTicket(padLinea('OP. GRAVADA', soles(gravada))))
-        ..add(LineaTicket(padLinea('IGV (18%)', soles(igv))))
+        ..add(LineaTicket(padLinea('IGV ($igvLabel)', soles(igv))))
         ..add(l);
     } else {
       salida.add(l);

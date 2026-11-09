@@ -498,6 +498,11 @@ class ComprobanteEnCobro extends ChangeNotifier {
       clienteDenominacion: switch (tipo) {
         'factura' => razon.text.trim(),
         'boleta' => conDni ? nombre.text.trim() : 'CLIENTES VARIOS',
+        'ticket_venta' => nombre.text.trim().isNotEmpty
+            ? nombre.text.trim()
+            : ((pedido.clienteNombre?.trim().isNotEmpty == true)
+                ? pedido.clienteNombre!.trim()
+                : 'CLIENTES VARIOS'),
         _ => null,
       },
       clienteDireccion: switch (tipo) {
