@@ -6,8 +6,11 @@ import 'submenu_lateral.dart';
 // si no caben) y, debajo, el contenido de la pestaña elegida.
 class PestanasVista extends StatefulWidget {
   final List<({String etiqueta, WidgetBuilder contenido})> pestanas;
+  // Para pasar a otra pestaña desde dentro del contenido: se escribe la
+  // etiqueta de la pestaña y la vista la abre (y deja el valor en null).
+  final ValueNotifier<String?>? irA;
 
-  const PestanasVista({super.key, required this.pestanas});
+  const PestanasVista({super.key, required this.pestanas, this.irA});
 
   @override
   State<PestanasVista> createState() => _PestanasVistaState();
@@ -15,6 +18,26 @@ class PestanasVista extends StatefulWidget {
 
 class _PestanasVistaState extends State<PestanasVista> {
   int _indice = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.irA?.addListener(_ir);
+  }
+
+  @override
+  void dispose() {
+    widget.irA?.removeListener(_ir);
+    super.dispose();
+  }
+
+  void _ir() {
+    final etiqueta = widget.irA?.value;
+    if (etiqueta == null) return;
+    final i = widget.pestanas.indexWhere((p) => p.etiqueta == etiqueta);
+    widget.irA!.value = null;
+    if (i >= 0 && mounted) setState(() => _indice = i);
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -43,16 +43,17 @@ const navItems = [
     rolesOcultos: {AppRole.cajero},
     permisoRequerido: 'LEER.CARTA',
   ),
-  NavItem(
-    clave: 'cocina',
-    label: 'Cocina',
-    icono: LucideIcons.chefHat,
-    rolesPermitidos: {AppRole.administrador, AppRole.trabajador},
-    // Cocina no es del mozo ni del cajero, aunque tengan permiso para leer
-    // pedidos.
-    rolesOcultos: {AppRole.mesero, AppRole.cajero},
-    permisoRequerido: 'LEER.PEDIDO',
-  ),
+  // Vista "Cocina" oculta por ahora: el negocio no la usa. Sin ítem en el menú no
+  // se puede abrir (la pantalla sigue en `home_screen.dart` para activarla de
+  // nuevo descomentando esto).
+  // NavItem(
+  //   clave: 'cocina',
+  //   label: 'Cocina',
+  //   icono: LucideIcons.chefHat,
+  //   rolesPermitidos: {AppRole.administrador, AppRole.trabajador},
+  //   rolesOcultos: {AppRole.mesero, AppRole.cajero},
+  //   permisoRequerido: 'LEER.PEDIDO',
+  // ),
   // Ventas, Caja y Reportes son módulos independientes, cada uno con su propia
   // vista, para no confundir las ventas con la caja.
   NavItem(
@@ -66,6 +67,13 @@ const navItems = [
     clave: 'caja',
     label: 'Caja',
     icono: LucideIcons.wallet,
+    rolesPermitidos: {AppRole.administrador, AppRole.cajero},
+    permisoRequerido: 'LEER.PAGO',
+  ),
+  NavItem(
+    clave: 'comprobantes',
+    label: 'Comprobantes',
+    icono: LucideIcons.fileCheck,
     rolesPermitidos: {AppRole.administrador, AppRole.cajero},
     permisoRequerido: 'LEER.PAGO',
   ),

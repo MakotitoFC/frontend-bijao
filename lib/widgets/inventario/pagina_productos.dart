@@ -227,7 +227,7 @@ class _PaginaProductosState extends State<PaginaProductos> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               AppSearchField(
-                hint: 'Buscar producto...',
+                hint: 'Buscar...',
                 onChanged: (v) => setState(() => _busqueda = v),
               ),
               if (tiposProducto.isNotEmpty)

@@ -223,14 +223,16 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Configura qué elementos se imprimen en la comanda de cocina para ahorrar papel. '
-                'Puedes apagar subcategorías completas (como Bebidas o Helados) y marcar platos individuales '
-                'que sí deben salir porque se preparan en cocina (ej. limonada, aguaje). '
-                'Los cambios se aplican de inmediato en los próximos pedidos.',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-              ),
+              if (!AppBreakpoints.esMobile(context)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Configura qué elementos se imprimen en la comanda de cocina para ahorrar papel. '
+                  'Puedes apagar subcategorías completas (como Bebidas o Helados) y marcar platos individuales '
+                  'que sí deben salir porque se preparan en cocina (ej. limonada, aguaje). '
+                  'Los cambios se aplican de inmediato en los próximos pedidos.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+              ],
               const SizedBox(height: 18),
 
               // 1. Interruptor general para Tápers / Empaques
@@ -292,9 +294,13 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
         border: Border.all(color: Colors.grey.shade200),
       ),
       padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
+      // Con poco ancho, el título (con su interruptor) va arriba y la
+      // descripción debajo, a todo el ancho: en una columna angosta el texto
+      // se partía en una palabra por línea.
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final angosto = c.maxWidth < 440;
+          final icono = Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: (imprime ? AppColors.primaryGreen : Colors.grey.shade300)
@@ -308,28 +314,18 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
                   : Colors.grey.shade600,
               size: 26,
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Imprimir tápers en comanda de cocina',
-                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  imprime
-                      ? 'Los empaques/tápers agregados se imprimirán en el ticket de cocina.'
-                      : 'Ahorro de papel activo: los ítems de tápers no se imprimirán en cocina.',
-                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
+          );
+          const titulo = Text(
+            'Imprimir tápers en comanda de cocina',
+            style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+          );
+          final descripcion = Text(
+            imprime
+                ? 'Los empaques/tápers agregados se imprimirán en el ticket de cocina.'
+                : 'Ahorro de papel activo: los ítems de tápers no se imprimirán en cocina.',
+            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+          );
+          final estado = Text(
             imprime ? 'Se imprime' : 'No se imprime',
             style: TextStyle(
               fontSize: 12.5,
@@ -338,15 +334,50 @@ class _ReglasCocinaConfigState extends State<ReglasCocinaConfig> {
                   ? AppColors.primaryGreenDark
                   : Colors.grey.shade600,
             ),
-          ),
-          const SizedBox(width: 8),
-          AppSwitch(
+          );
+          final interruptor = AppSwitch(
             value: imprime,
             onChanged: _toggleTapers,
             activeThumbColor: Colors.white,
             activeTrackColor: AppColors.primaryGreen,
-          ),
-        ],
+          );
+          if (angosto) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    icono,
+                    const SizedBox(width: 12),
+                    const Expanded(child: titulo),
+                    const SizedBox(width: 8),
+                    interruptor,
+                  ],
+                ),
+                const SizedBox(height: 10),
+                descripcion,
+                const SizedBox(height: 6),
+                estado,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              icono,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [titulo, const SizedBox(height: 3), descripcion],
+                ),
+              ),
+              const SizedBox(width: 12),
+              estado,
+              const SizedBox(width: 8),
+              interruptor,
+            ],
+          );
+        },
       ),
     );
   }

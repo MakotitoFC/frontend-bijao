@@ -69,6 +69,13 @@ void main() {
   const subvistasAlmacen = {'Productos', 'Tipos y unidades', 'Tápers'};
 
   Future<void> ir(WidgetTester tester, String etiqueta) async {
+    // Celular: se abre desde el índice; si hay una subvista abierta, se vuelve
+    // primero a él.
+    if (tester.view.physicalSize.width < 700 &&
+        find.byTooltip('Volver').evaluate().isNotEmpty) {
+      await tester.tap(find.byTooltip('Volver'));
+      await tester.pump(const Duration(milliseconds: 300));
+    }
     if (subvistasAlmacen.contains(etiqueta)) {
       await tester.ensureVisible(find.text('Almacén').first);
       await tester.pump();

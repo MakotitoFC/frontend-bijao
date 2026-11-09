@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
+import 'texto_adaptable.dart';
 
 class PlatoLibreDialog extends StatefulWidget {
   const PlatoLibreDialog({super.key});
@@ -312,6 +313,9 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
     );
   }
 
+  // Versión corta de cada entrega para cuando la larga no cabe en su botón.
+  static const _entregaCorta = {'En mesa': 'Mesa', 'Para llevar': 'Llevar'};
+
   Widget _chipTipo(String tipo, String etiqueta, IconData icono) {
     final activo = _tipoEntrega == tipo;
     return Expanded(
@@ -345,9 +349,13 @@ class _PlatoLibreDialogState extends State<PlatoLibreDialog> {
               ),
               const SizedBox(width: 4),
               Flexible(
-                child: Text(
-                  etiqueta,
-                  overflow: TextOverflow.ellipsis,
+                child: TextoAdaptable(
+                  ajustarAncho: true,
+                  textos: [
+                    etiqueta,
+                    if (_entregaCorta[etiqueta] != null)
+                      _entregaCorta[etiqueta]!,
+                  ],
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: activo ? FontWeight.w700 : FontWeight.w500,

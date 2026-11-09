@@ -1,3 +1,5 @@
+import '../theme/app_theme.dart';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
@@ -8,6 +10,7 @@ import 'app_switch.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
+import 'fila_responsiva.dart';
 
 class PlantillasImpresionEditor extends StatefulWidget {
   const PlantillasImpresionEditor({super.key});
@@ -135,39 +138,52 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Diseño y partes de documentos',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
+        // Título y "Guardar plantilla": con poco ancho el botón baja bajo el
+        // título en vez de apretarlo.
+        LayoutBuilder(
+          builder: (context, c) {
+            final titulo = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Diseño y partes de documentos',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                if (!AppBreakpoints.esMobile(context)) ...[
                   const SizedBox(height: 4),
                   Text(
                     'Elige qué bloques, textos y tamaños de letra se imprimen en cada comanda o comprobante.',
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            if (_guardando)
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              FilledButton.icon(
-                onPressed: _guardarCambios,
-                icon: const Icon(LucideIcons.save, size: 16),
-                label: const Text('Guardar plantilla'),
-              ),
-          ],
+              ],
+            );
+            final accion = _guardando
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : FilledButton.icon(
+                    onPressed: _guardarCambios,
+                    icon: const Icon(LucideIcons.save, size: 16),
+                    label: const Text('Guardar plantilla'),
+                  );
+            if (c.maxWidth < 560) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [titulo, const SizedBox(height: 12), accion],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: titulo),
+                const SizedBox(width: 12),
+                accion,
+              ],
+            );
+          },
         ),
         const SizedBox(height: 16),
 
@@ -275,8 +291,7 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        FilaResponsiva.fila(
           children: [
             Expanded(
               flex: 3,
@@ -390,7 +405,8 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
         const SizedBox(height: 20),
 
         _subtitulo('Tamaños de letra'),
-        Row(
+        FilaResponsiva.fila(
+          anchoMinimo: 520,
           children: [
             Expanded(
               child: AppSelect<String>(

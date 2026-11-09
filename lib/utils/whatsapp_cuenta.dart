@@ -40,6 +40,20 @@ Future<bool> abrirWhatsapp(String numero, String mensaje) async {
   }
 }
 
+// Nombre con el que se saluda al cliente en WhatsApp: el del pedido o, si no
+// lo hay, el del comprobante (sin los genéricos como "CLIENTES VARIOS").
+String nombreClienteWhatsapp(String? delPedido, String? delComprobante) {
+  final p = (delPedido ?? '').trim();
+  if (p.isNotEmpty) return p;
+  final c = (delComprobante ?? '').trim();
+  final generico =
+      c.isEmpty ||
+      c == '-' ||
+      c.toUpperCase().contains('VARIOS') ||
+      c.toUpperCase() == 'CLIENTE';
+  return generico ? '' : c;
+}
+
 const _separadorWhatsapp = '--------------------------------';
 
 String _dos(int n) => n.toString().padLeft(2, '0');

@@ -12,6 +12,7 @@ import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
+import 'lista_paginada.dart';
 
 String _error(Object e) => e is ApiException
     ? e.message
@@ -253,11 +254,23 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
             child: Wrap(
               spacing: 4,
               children: [
-                if (c.pdfTicketUrl != null || c.pdfA4Url != null)
+                if (c.ticketUrl != null)
                   TextButton.icon(
-                    onPressed: () => abrirEnlace(c.pdfTicketUrl ?? c.pdfA4Url!),
+                    onPressed: () => abrirEnlace(c.ticketUrl!),
                     icon: const Icon(LucideIcons.fileText, size: 14),
-                    label: const Text('PDF'),
+                    label: const Text('Ticket'),
+                  ),
+                if (c.a4Url != null)
+                  TextButton.icon(
+                    onPressed: () => abrirEnlace(c.a4Url!),
+                    icon: const Icon(LucideIcons.fileText, size: 14),
+                    label: const Text('PDF A4'),
+                  ),
+                if (c.xmlDescargaUrl != null)
+                  TextButton.icon(
+                    onPressed: () => abrirEnlace(c.xmlDescargaUrl!),
+                    icon: const Icon(LucideIcons.code, size: 14),
+                    label: const Text('XML'),
                   ),
                 if (c.puedeAnularse)
                   TextButton.icon(
@@ -372,16 +385,11 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
               ),
             )
           else
-            // Se ven 5 comprobantes; el resto se desplaza.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 430),
-              child: Scrollbar(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(right: 16),
-                  children: [for (final c in visibles) _fila(c)],
-                ),
-              ),
+            // De 5 en 5, con las flechas para pasar de página.
+            ListaPaginada<Comprobante>(
+              items: visibles,
+              reiniciarCon: _tipoFiltro,
+              itemBuilder: _fila,
             ),
         ],
       ),

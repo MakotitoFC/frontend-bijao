@@ -247,11 +247,16 @@ class _TurnosConfigWidgetState extends State<TurnosConfigWidget> {
                     'Turnos de caja operativos',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Configura los turnos diarios de tu local para cierres y reportes independientes.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
+                  if (!AppBreakpoints.esMobile(context)) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Configura los turnos diarios de tu local para cierres y reportes independientes.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

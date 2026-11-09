@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:frontend_bijao/data/configuracion_store.dart';
 import 'package:frontend_bijao/data/movimientos_caja_store.dart';
 import 'package:frontend_bijao/data/pagos_store.dart';
@@ -181,7 +182,8 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Salida'));
+      // El botón solo muestra su nombre al pasar el mouse: se toca por su icono.
+      await tester.tap(find.byIcon(LucideIcons.minus));
       await tester.pumpAndSettle();
       expect(find.text('Registrar una salida'), findsOneWidget);
       // Hasta llenar categoría y monto no deja registrar.
@@ -207,7 +209,7 @@ void main() {
       expect(movimientosCaja.single.tipo, TipoMovimiento.egreso);
       expect(movimientosCaja.single.monto, 12.5);
       expect(find.text('Gasto operativo · Efectivo'), findsOneWidget);
-      expect(find.text('-S/ 12.50'), findsOneWidget);
+      expect(find.text('-S/ 12.50'), findsWidgets);
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 6));

@@ -8,6 +8,7 @@ import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'config_widgets.dart';
 import 'inventario/inventario_comun.dart' show EtiquetaFila;
+import 'fila_responsiva.dart';
 
 // Vista de administración para datos fiscales de la Sede, % de IGV, Cajas y
 // Series y Correlativos de comprobantes electrónicos (SUNAT).
@@ -431,50 +432,38 @@ class _SedeFiscalConfigState extends State<SedeFiscalConfig> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Column(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: CampoTextoConfig(
-                                etiqueta: 'RUC de la Empresa',
-                                valor: _ruc.text,
-                                onChanged: (v) => _ruc.text = v,
-                              ),
+                        FilaResponsiva(
+                          flex: const [2, 1],
+                          anchoMinimo: 360,
+                          hijos: [
+                            CampoTextoConfig(
+                              etiqueta: 'RUC de la Empresa',
+                              valor: _ruc.text,
+                              onChanged: (v) => _ruc.text = v,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 1,
-                              child: CampoTextoConfig(
-                                etiqueta: '% IGV Actual',
-                                valor: _igv.text,
-                                onChanged: (v) => _igv.text = v,
-                              ),
+                            CampoTextoConfig(
+                              etiqueta: '% IGV Actual',
+                              valor: _igv.text,
+                              onChanged: (v) => _igv.text = v,
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: CampoTextoConfig(
-                                etiqueta: 'Código Serie Sede (3 carácteres)',
-                                valor: _codigoSerie.text,
-                                onChanged: (v) {
-                                  setState(() {
-                                    _codigoSerie.text = v.toUpperCase();
-                                  });
-                                },
-                              ),
+                        FilaResponsiva(
+                          flex: const [1, 2],
+                          anchoMinimo: 560,
+                          hijos: [
+                            CampoTextoConfig(
+                              etiqueta: 'Código Serie Sede (3 carácteres)',
+                              valor: _codigoSerie.text,
+                              onChanged: (v) {
+                                setState(() {
+                                  _codigoSerie.text = v.toUpperCase();
+                                });
+                              },
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: _SeriesGeneradas(
-                                codigo: _formatearCodigoSerie(
-                                  _codigoSerie.text,
-                                ),
-                              ),
+                            _SeriesGeneradas(
+                              codigo: _formatearCodigoSerie(_codigoSerie.text),
                             ),
                           ],
                         ),
@@ -685,17 +674,39 @@ class _SeriesGeneradas extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(LucideIcons.hash, size: 14, color: Colors.grey.shade600),
-              const SizedBox(width: 6),
-              const Text(
-                'Series generadas para SUNAT',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  LucideIcons.hash,
+                  size: 14,
+                  color: Colors.grey.shade600,
+                ),
               ),
               const SizedBox(width: 6),
-              Text(
-                '· 4 caracteres',
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+              // El texto baja de línea si no cabe, en vez de desbordarse.
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      const TextSpan(
+                        text: 'Series generadas para SUNAT',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' · 4 caracteres',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

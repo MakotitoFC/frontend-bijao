@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import '../widgets/boton_actualizar.dart';
+
+import 'package:lucide_flutter/lucide_flutter.dart';
+
 import '../widgets/config_widgets.dart';
+import '../widgets/indice_subvistas.dart';
 import '../widgets/inventario/pagina_catalogos.dart';
 import '../widgets/inventario/pagina_compras.dart';
 import '../widgets/inventario/pagina_productos.dart';
@@ -11,6 +14,7 @@ import '../widgets/inventario/pagina_tapers.dart';
 import '../widgets/inventario/pagina_utensilios.dart';
 import '../widgets/inventario/pagina_anulaciones.dart';
 import '../widgets/submenu_lateral.dart';
+import '../widgets/tabs_texto.dart';
 
 // import '../widgets/tamanos_tab.dart'; // página Tamaños oculta (ver _paginas)
 
@@ -30,6 +34,8 @@ class InventarioScreen extends StatefulWidget {
 
 class _InventarioScreenState extends State<InventarioScreen> {
   String _clave = 'resumen';
+  // Celular: subvista abierta desde el índice (null = el índice).
+  String? _abierta;
   // Sube cada vez que se pide actualizar: las páginas se vuelven a montar y
   // leen los datos otra vez.
   int _recarga = 0;
@@ -47,7 +53,17 @@ class _InventarioScreenState extends State<InventarioScreen> {
     } else {
       _clave = clave;
     }
+    _abierta = _clave;
   });
+
+  // Icono de cada subvista en el índice de celular.
+  static const _iconos = {
+    'resumen': LucideIcons.layoutDashboard,
+    'almacen': LucideIcons.warehouse,
+    'compras': LucideIcons.shoppingCart,
+    'utensilios': LucideIcons.triangleAlert,
+    'anulaciones': LucideIcons.ban,
+  };
 
   List<
     ({
@@ -102,9 +118,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
     ),
   ];
 
-  Widget _botonActualizar() =>
-      BotonActualizar(onTap: () => setState(() => _recarga++));
-
   @override
   Widget build(BuildContext context) {
     final paginas = _paginas;
@@ -125,27 +138,28 @@ class _InventarioScreenState extends State<InventarioScreen> {
       entradas.add(SubmenuEntrada.item(p.clave, p.etiqueta));
     }
 
-    // Celular: no hay lugar para dos columnas; las subvistas van en la barra
-    // oscura de arriba.
+    // Celular: un índice con las subvistas (sin la barra oscura); cada fila abre
+    // la suya a pantalla completa.
     if (AppBreakpoints.esMobile(context)) {
       return Scaffold(
         backgroundColor: Colors.white,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SubmenuSuperior(
-              entradas: entradas,
-              seleccionada: actual.clave,
-              onSeleccionar: _irA,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _botonActualizar(),
+        body: IndiceSubvistas(
+          titulo: 'Inventario',
+          descripcion: 'Stock, compras y registros del almacén.',
+          abierta: _abierta,
+          onAbrir: (c) => c == null ? setState(() => _abierta = null) : _irA(c),
+          subvistas: [
+            for (final p in paginas)
+              (
+                clave: p.clave,
+                etiqueta: p.etiqueta,
+                icono: _iconos[p.clave] ?? LucideIcons.circle,
+                grupo: p.seccion ?? 'Stock',
+                contenido: (_) => KeyedSubtree(
+                  key: ValueKey('${p.clave}-$_recarga'),
+                  child: p.contenido(),
+                ),
               ),
-            ),
-            Expanded(child: contenido),
           ],
         ),
       );
@@ -170,7 +184,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 Expanded(
                   child: EncabezadoRuta(ruta: ['Inventario', actual.etiqueta]),
                 ),
-                _botonActualizar(),
               ],
             ),
           ),
@@ -202,49 +215,15 @@ class _PaginaAlmacen extends StatelessWidget {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(margen, 8, margen, 4),
-          // Las tres subvistas de Almacén son un control segmentado, para que
-          // no se confundan con los filtros de cada lista.
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final s in subvistas)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => onSub(s.$1),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
-                        height: 30,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: s.$1 == sub
-                              ? AppColors.primaryGreen
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          s.$2,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: s.$1 == sub
-                                ? Colors.white
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          child: TabsTexto(
+            tabs: [
+              for (final s in subvistas)
+                TabTexto(
+                  etiqueta: s.$2,
+                  activa: s.$1 == sub,
+                  onTap: () => onSub(s.$1),
+                ),
+            ],
           ),
         ),
         Expanded(

@@ -150,7 +150,7 @@ class _AperturaDiariaDialogState extends State<AperturaDiariaDialog> {
               final buscador = CampoTexto(
                 onChanged: (v) => setState(() => _busqueda = v),
                 decoration: const InputDecoration(
-                  hintText: 'Buscar plato...',
+                  hintText: 'Buscar...',
                   prefixIcon: Icon(Icons.search, size: 20),
                 ),
               );

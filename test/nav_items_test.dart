@@ -23,20 +23,22 @@ void main() {
     expect(mesas.tieneAcceso(_usuario(AppRole.mesero)), false);
   });
 
-  test(
-    'Configuración y Cocina no se ven para mozo ni cajero, con permisos',
-    () {
-      final config = navItems.firstWhere((i) => i.clave == 'configuracion');
-      final cocina = navItems.firstWhere((i) => i.clave == 'cocina');
-      const permisos = {'LEER.SEDE', 'LEER.PEDIDO'};
-      for (final rol in [AppRole.mesero, AppRole.cajero]) {
-        expect(config.tieneAcceso(_usuario(rol, permisos: permisos)), false);
-        expect(cocina.tieneAcceso(_usuario(rol, permisos: permisos)), false);
-      }
-      expect(config.tieneAcceso(_usuario(AppRole.administrador)), true);
-      expect(cocina.tieneAcceso(_usuario(AppRole.trabajador)), true);
-    },
-  );
+  test('Configuración no se ve para mozo ni cajero, con permisos', () {
+    final config = navItems.firstWhere((i) => i.clave == 'configuracion');
+    const permisos = {'LEER.SEDE', 'LEER.PEDIDO'};
+    for (final rol in [AppRole.mesero, AppRole.cajero]) {
+      expect(config.tieneAcceso(_usuario(rol, permisos: permisos)), false);
+    }
+    expect(config.tieneAcceso(_usuario(AppRole.administrador)), true);
+  });
+
+  test('Cocina está oculta del menú para todos los roles', () {
+    expect(navItems.any((i) => i.clave == 'cocina'), false);
+    for (final rol in AppRole.values) {
+      final visibles = navItems.where((i) => i.tieneAcceso(_usuario(rol)));
+      expect(visibles.any((i) => i.label == 'Cocina'), false, reason: '$rol');
+    }
+  });
 
   test('Mesas sigue visible para el administrador, no para el cajero', () {
     expect(mesas.tieneAcceso(_usuario(AppRole.administrador)), true);

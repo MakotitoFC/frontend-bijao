@@ -14,9 +14,12 @@ import '../services/pedido_mozo_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/monto_letras.dart';
+import '../utils/abrir_enlace.dart';
+import '../utils/whatsapp_cuenta.dart';
 import 'app_toast.dart';
 import 'comprobante_en_cobro.dart';
 import 'dialogo_app.dart';
+import 'whatsapp_cuenta_dialog.dart';
 
 typedef EmisionHecha = ({Comprobante comprobante, bool imprimirDespues});
 
@@ -206,6 +209,50 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     }
   }
 
+  Future<void> _whatsapp(Comprobante c) async {
+    final urlTicket = c.urlPublicaTicket;
+    final urlA4 = c.urlPublicaA4;
+    final urlXml = c.urlPublicaXml;
+    if (urlTicket == null && urlA4 == null && urlXml == null) return;
+
+    final numero = await showBlurDialog<String>(
+      context: context,
+      builder: (_) =>
+          WhatsappCuentaDialog(celularInicial: widget.pedido.clienteCelular),
+    );
+    if (numero == null || !mounted) return;
+
+    // Con el nombre del cliente: el del pedido o, si no, el del comprobante.
+    final nombreCliente = nombreClienteWhatsapp(
+      widget.pedido.clienteNombre,
+      c.clienteDenominacion,
+    );
+    final negocio = nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio();
+    final buf = StringBuffer()
+      ..writeln('Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
+      ..writeln('Total: S/ ${c.total.toStringAsFixed(2)}')
+      ..writeln();
+
+    if (urlA4 != null) {
+      buf.writeln('📄 PDF A4: $urlA4');
+    }
+    if (urlTicket != null) {
+      buf.writeln('🧾 PDF Ticket: $urlTicket');
+    }
+    if (urlXml != null) {
+      buf.writeln('📦 XML: $urlXml');
+    }
+
+    final abierto = await abrirWhatsapp(numero, buf.toString().trim());
+    if (!abierto && mounted) {
+      showAppToast(
+        context,
+        'No se pudo abrir WhatsApp.',
+        type: ToastType.error,
+      );
+    }
+  }
+
   Future<void> _abrirDialogoAnulacion(Comprobante c) async {
     final anulado = await showBlurDialog<bool>(
       context: context,
@@ -378,6 +425,42 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     ],
+                    if (fiscal.ticketUrl != null)
+                      OutlinedButton.icon(
+                        onPressed: () => abrirEnlace(fiscal.ticketUrl!),
+                        icon: const Icon(LucideIcons.fileText, size: 15),
+                        label: const Text('PDF ticket'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    if (fiscal.a4Url != null)
+                      OutlinedButton.icon(
+                        onPressed: () => abrirEnlace(fiscal.a4Url!),
+                        icon: const Icon(LucideIcons.fileText, size: 15),
+                        label: const Text('PDF A4'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    if (fiscal.xmlDescargaUrl != null)
+                      OutlinedButton.icon(
+                        onPressed: () => abrirEnlace(fiscal.xmlDescargaUrl!),
+                        icon: const Icon(LucideIcons.code, size: 15),
+                        label: const Text('XML'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
                     FilledButton.icon(
                       onPressed: () => _reimprimir(fiscal),
                       icon: const Icon(LucideIcons.printer, size: 15),
@@ -390,6 +473,20 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     ),
+                    if (fiscal.ticketUrl != null || fiscal.a4Url != null || fiscal.xmlDescargaUrl != null)
+                      FilledButton.icon(
+                        onPressed: () => _whatsapp(fiscal),
+                        icon: const Icon(LucideIcons.messageCircle, size: 15),
+                        label: const Text('WhatsApp'),
+                        style: estiloBotonWhatsapp.copyWith(
+                          padding: const WidgetStatePropertyAll(
+                            EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                        ),
+                      ),
                     OutlinedButton.icon(
                       onPressed: () => _abrirDialogoAnulacion(fiscal),
                       icon: const Icon(

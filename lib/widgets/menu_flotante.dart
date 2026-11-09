@@ -62,14 +62,24 @@ class _MenuFlotanteState<T> extends State<MenuFlotante<T>> {
     final caja = _llave.currentContext!.findRenderObject() as RenderBox;
     final origen = caja.localToGlobal(Offset.zero);
     final alto = caja.size.height;
-    final ancho = caja.size.width < widget.anchoMinimo
-        ? widget.anchoMinimo
-        : caja.size.width;
-
     final pantalla = Offset.zero & MediaQuery.sizeOf(context);
     final limite = LimiteModal.rectDe(context) ?? pantalla;
     const separacion = 6.0;
     const margen = 8.0;
+    // El panel nunca es más ancho que el espacio disponible.
+    final ancho =
+        (caja.size.width < widget.anchoMinimo
+                ? widget.anchoMinimo
+                : caja.size.width)
+            .clamp(0.0, limite.width - margen * 2);
+    // Se alinea al borde derecho del disparador; si así se saldría por un lado,
+    // se corre lo justo para quedar dentro del límite.
+    final izquierdaIdeal = origen.dx + caja.size.width - ancho;
+    final izquierda = izquierdaIdeal.clamp(
+      limite.left + margen,
+      limite.right - margen - ancho,
+    );
+    final desvioX = izquierda - origen.dx;
     final espacioAbajo =
         limite.bottom - (origen.dy + alto) - separacion - margen;
     final espacioArriba = origen.dy - limite.top - separacion - margen;
@@ -90,14 +100,14 @@ class _MenuFlotanteState<T> extends State<MenuFlotante<T>> {
               onTap: _cerrar,
             ),
           ),
-          // Alineado al borde derecho del disparador, para no salirse por ese
-          // lado cuando el disparador está pegado a la derecha.
+          // Pegado al disparador por su esquina izquierda y corrido en horizontal
+          // lo necesario para no salirse de la pantalla (ver `desvioX`).
           CompositedTransformFollower(
             link: _enlace,
             showWhenUnlinked: false,
-            targetAnchor: abajo ? Alignment.bottomRight : Alignment.topRight,
-            followerAnchor: abajo ? Alignment.topRight : Alignment.bottomRight,
-            offset: Offset(0, abajo ? separacion : -separacion),
+            targetAnchor: abajo ? Alignment.bottomLeft : Alignment.topLeft,
+            followerAnchor: abajo ? Alignment.topLeft : Alignment.bottomLeft,
+            offset: Offset(desvioX, abajo ? separacion : -separacion),
             child: Material(
               color: Colors.transparent,
               child: SizedBox(width: ancho, child: _panel(altoPanel)),

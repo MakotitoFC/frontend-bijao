@@ -32,6 +32,10 @@ class AppSearchField extends StatelessWidget {
   static const double _altoCompacto = 38;
   static const double _tamanoTextoCompacto = 13;
 
+  // Con un placeholder corto ('Buscar...') el campo sigue siendo cómodo para
+  // escribir un nombre o un número.
+  static const double _anchoMinimo = 260;
+
   // Lupa + márgenes + algo de espacio para escribir.
   static const double _extra = 14 + 24 + 12 + 24;
 
@@ -55,7 +59,9 @@ class AppSearchField extends StatelessWidget {
     final movil = AppBreakpoints.esMobile(context) && !compacto;
     return SizedBox(
       width: (ajustarAlTexto && !movil)
-          ? medida.width + _extra + 20
+          ? (medida.width + _extra + 20 < _anchoMinimo
+                ? _anchoMinimo
+                : medida.width + _extra + 20)
           : double.infinity,
       height: compacto ? _altoCompacto : _alto,
       child: TextField(

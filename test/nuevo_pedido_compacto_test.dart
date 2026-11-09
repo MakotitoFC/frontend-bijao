@@ -6,6 +6,7 @@ import 'package:frontend_bijao/models/app_role.dart';
 import 'package:frontend_bijao/models/carta_item.dart';
 import 'package:frontend_bijao/models/usuario.dart';
 import 'package:frontend_bijao/services/api_client.dart';
+import 'package:frontend_bijao/theme/app_theme.dart';
 import 'package:frontend_bijao/widgets/nuevo_pedido_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,7 +32,10 @@ void main() {
     limpiarBorradorPedido();
   });
 
+  // Con el tema real de la app: limita el alto de todos los botones a 36 px y
+  // así saca a la luz los botones que piden más alto sin subir el máximo.
   Widget app(Size tam) => MaterialApp(
+    theme: AppTheme.light,
     home: Scaffold(
       body: NuevoPedidoDialog(
         usuario: Usuario(
@@ -59,25 +63,31 @@ void main() {
 
     // La hoja se ve de entrada, sin tener que bajar.
     expect(find.text('Aún no agregas productos'), findsOneWidget);
-    expect(find.text('Confirmar pedido'), findsOneWidget);
+    // La barra no confirma: solo deja revisar (apagado mientras no hay nada).
+    expect(find.text('Revisar'), findsOneWidget);
+    expect(find.text('Confirmar pedido'), findsNothing);
 
-    await tester.tap(find.text('Agregar al pedido').first);
+    await tester.tap(find.text('Agregar').first);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.widgetWithText(FilledButton, 'Agregar S/ 12.00'));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.textContaining('Pedido · 1 producto'), findsOneWidget);
+    expect(find.text('1 producto'), findsOneWidget);
 
-    // Se expande con el ícono y vuelve con "Seguir agregando".
-    await tester.tap(find.byTooltip('Ver detalle completo'));
+    // "Revisar" abre la revisión (ahí se confirma) y se vuelve con
+    // "Seguir agregando".
+    await tester.tap(find.text('Revisar'));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Detalle del pedido'), findsOneWidget);
+    expect(find.text('Revisa el pedido'), findsOneWidget);
+    expect(find.text('Aún no se envía a cocina'), findsOneWidget);
+    expect(find.text('Confirmar pedido'), findsOneWidget);
     expect(find.text('Nota'), findsOneWidget);
-    await tester.tap(find.text('Seguir agregando'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Agregar'));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Detalle del pedido'), findsNothing);
+    expect(find.text('Revisa el pedido'), findsNothing);
+    expect(find.text('Confirmar pedido'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -88,7 +98,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(app(const Size(1400, 900)));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byTooltip('Ver detalle completo'), findsNothing);
+    expect(find.text('Revisar'), findsNothing);
     expect(find.text('Nota'), findsOneWidget);
     expect(find.text('Plato rápido'), findsOneWidget); // junto al buscador
     expect(tester.takeException(), isNull);

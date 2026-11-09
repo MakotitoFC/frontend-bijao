@@ -427,7 +427,7 @@ class _MesasPlanoState extends State<MesasPlano> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           AppSearchField(
-            hint: 'Buscar mesa o cliente...',
+            hint: 'Buscar...',
             controller: _busqueda,
             onChanged: (_) => setState(() {}),
           ),

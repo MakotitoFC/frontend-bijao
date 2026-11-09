@@ -45,7 +45,11 @@ void main() {
     mediosPago
       ..clear()
       ..add(
-        const MedioPago(id: 'mp1', medioPago: 'Efectivo', aplicaComision: false),
+        const MedioPago(
+          id: 'mp1',
+          medioPago: 'Efectivo',
+          aplicaComision: false,
+        ),
       );
     mesas
       ..clear()
@@ -111,11 +115,8 @@ void main() {
       addTearDown(tester.view.reset);
       final problemas = <String>[];
       final pantallas = <String, Widget Function()>{
-        'Inicio': () => InicioScreen(
-          usuario: _admin,
-          sede: _sede,
-          onIrA: (_) {},
-        ),
+        'Inicio': () =>
+            InicioScreen(usuario: _admin, sede: _sede, onIrA: (_) {}),
         'Mesas': () => Scaffold(body: MesasScreen(usuario: _admin)),
         'Cocina': () => const Scaffold(body: CocinaScreen()),
         'Cocina (caja)': () =>
@@ -158,6 +159,17 @@ void main() {
         'Turnos de Caja',
         'Negocio',
       ]) {
+        // El índice es una lista: las filas de más abajo se construyen al
+        // desplazarse.
+        if (find.text(pestana).evaluate().isEmpty) {
+          try {
+            await tester.scrollUntilVisible(
+              find.text(pestana),
+              200,
+              scrollable: find.byType(Scrollable).first,
+            );
+          } catch (_) {}
+        }
         final f = find.text(pestana);
         if (f.evaluate().isEmpty) {
           problemas.add('Configuración: no se encontró la pestaña "$pestana"');
@@ -169,10 +181,11 @@ void main() {
         for (var i = 0; i < 3; i++) {
           await tester.pump(const Duration(milliseconds: 250));
         }
-        problemas.addAll(
-          _desbordes(fallos).map((x) => '$pestana: $x'),
-        );
+        problemas.addAll(_desbordes(fallos).map((x) => '$pestana: $x'));
         fallos.clear();
+        // Vuelve al índice para abrir la siguiente.
+        await tester.tap(find.byTooltip('Volver'));
+        await tester.pump(const Duration(milliseconds: 300));
       }
       FlutterError.onError = anterior;
       await tester.pumpWidget(const SizedBox());

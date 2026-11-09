@@ -13,7 +13,10 @@ class Configuracion {
   bool servicioLocal = true;
   bool servicioDelivery = true;
 
-  // Propina al cobrar (`pedidos.propina`) y porcentaje sugerido.
+  // Propina al cobrar (`pedidos.propina`): con esto apagado, la pantalla de
+  // pagar no ofrece la propina. El porcentaje sugerido es el del botón de
+  // propina de los pedidos.
+  bool propinaHabilitada = true;
   double propinaSugerida = 10;
 
   // Precio de cada tamaño de tupper (editable al agregarlo al pedido).
@@ -31,6 +34,7 @@ class Configuracion {
       double n(String k, double d) => p.getDouble('$_prefijo$k') ?? d;
       servicioLocal = b('servicioLocal', servicioLocal);
       servicioDelivery = b('servicioDelivery', servicioDelivery);
+      propinaHabilitada = b('propinaHabilitada', propinaHabilitada);
       propinaSugerida = n('propinaSugerida', propinaSugerida);
       tupperGrande = n('tupperGrande', tupperGrande);
       tupperMediano = n('tupperMediano', tupperMediano);
@@ -45,6 +49,7 @@ class Configuracion {
       final p = await SharedPreferences.getInstance();
       await p.setBool('${_prefijo}servicioLocal', servicioLocal);
       await p.setBool('${_prefijo}servicioDelivery', servicioDelivery);
+      await p.setBool('${_prefijo}propinaHabilitada', propinaHabilitada);
       await p.setDouble('${_prefijo}propinaSugerida', propinaSugerida);
       await p.setDouble('${_prefijo}tupperGrande', tupperGrande);
       await p.setDouble('${_prefijo}tupperMediano', tupperMediano);
@@ -82,12 +87,6 @@ List<MedioPago> get mediosPagoActivos =>
     mediosPago.where((m) => m.activo).toList();
 
 // Restaurantes / sedes (`restaurantes.direccion`, `telefono`, `activo`). Se
-// cargan desde el backend; queda 1 de prueba para que el login funcione.
-final List<Sede> sedes = [
-  const Sede(
-    id: '1',
-    ruc: '20123456789',
-    direccion: 'Av. Principal 123, San Isidro',
-    celular: '987654321',
-  ),
-];
+// cargan desde el backend. Mientras no llegan queda una sede vacía (sin datos de
+// ejemplo) para que la app no falle.
+final List<Sede> sedes = [const Sede(id: '', ruc: '', direccion: '')];

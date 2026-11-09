@@ -313,8 +313,15 @@ void main() {
     ) async {
       await abrir(tester);
       expect(find.text('Pagar'), findsOneWidget);
-      expect(find.byTooltip('Promoción'), findsOneWidget);
-      expect(find.byTooltip('Táper'), findsOneWidget);
+      // Las demás acciones van en el menú "Más acciones" (celular).
+      await tester.tap(find.byTooltip('Más acciones'));
+      await tester.pumpAndSettle();
+      expect(find.text('Promoción'), findsOneWidget);
+      expect(find.text('Táper'), findsOneWidget);
+      expect(find.text('Descuento'), findsOneWidget);
+      expect(find.text('Anular pedido'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
       expect(find.text('Tacacho'), findsWidgets);
       await tester.pumpWidget(const SizedBox());
     });
@@ -332,7 +339,9 @@ void main() {
 
     testWidgets('Táper abre su diálogo', (tester) async {
       await abrir(tester);
-      await tester.tap(find.byTooltip('Táper'));
+      await tester.tap(find.byTooltip('Más acciones'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Táper'));
       await tester.pumpAndSettle();
       expect(find.text('Táper grande'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
@@ -340,12 +349,13 @@ void main() {
 
     testWidgets('Cancelar pedido pide confirmación', (tester) async {
       await abrir(tester);
-      await tester.tap(find.byTooltip('Cancelar pedido'));
+      await tester.tap(find.byTooltip('Más acciones'));
       await tester.pumpAndSettle();
-      expect(find.text('Cancelar pedido #0001'), findsOneWidget);
-      await tester.tap(find.text('Volver'));
+      await tester.tap(find.text('Anular pedido'));
       await tester.pumpAndSettle();
-      expect(find.text('Cancelar pedido #0001'), findsNothing);
+      expect(find.textContaining('#0001'), findsWidgets);
+      expect(find.text('Más acciones'), findsNothing);
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -353,6 +363,8 @@ void main() {
       tester,
     ) async {
       await abrir(tester);
+      await tester.tap(find.byTooltip('Más acciones'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Descuento'));
       await tester.pumpAndSettle();
       // Se abre el diálogo de ajuste/descuento.
@@ -363,7 +375,9 @@ void main() {
 
     testWidgets('Promoción abre su diálogo', (tester) async {
       await abrir(tester);
-      await tester.tap(find.byTooltip('Promoción'));
+      await tester.tap(find.byTooltip('Más acciones'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Promoción'));
       await tester.pump(const Duration(milliseconds: 500));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

@@ -287,7 +287,7 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                     controller: _productoSearchController,
                     focusNode: _productoFocusNode,
                     decoration: InputDecoration(
-                      hintText: 'Buscar producto (ej. Copa, Plato, Vaso)...',
+                      hintText: 'Buscar...',
                       prefixIcon: const Icon(Icons.search, size: 20),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -396,7 +396,7 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                     controller: _empleadoSearchController,
                     focusNode: _empleadoFocusNode,
                     decoration: InputDecoration(
-                      hintText: 'Buscar empleado o mozo...',
+                      hintText: 'Buscar...',
                       prefixIcon: const Icon(Icons.person_search, size: 20),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),

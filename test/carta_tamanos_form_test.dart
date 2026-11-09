@@ -100,93 +100,98 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
-  testWidgets('el interruptor muestra las filas y se pueden agregar más', (
-    tester,
-  ) async {
-    await abrir(tester, _item(), (_) {});
-    expect(find.text('Tiene variantes'), findsOneWidget);
-    expect(find.text('Agregar variante'), findsNothing); // apagado: sin filas
+  // La sección de variantes está oculta del formulario de la carta (los tamaños
+  // se crean desde "+ Tamaño"): estas pruebas quedan en pausa hasta volver a
+  // mostrarla.
+  group('variantes en el formulario', () {
+    testWidgets('el interruptor muestra las filas y se pueden agregar más', (
+      tester,
+    ) async {
+      await abrir(tester, _item(), (_) {});
+      expect(find.text('Tiene variantes'), findsOneWidget);
+      expect(find.text('Agregar variante'), findsNothing); // apagado: sin filas
 
-    await tester.tap(find.byType(AppSwitch).first);
-    await tester.pumpAndSettle();
-    expect(find.text('Agregar variante'), findsOneWidget);
-    expect(campo('Variante'), findsOneWidget);
+      await tester.tap(find.byType(AppSwitch).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Agregar variante'), findsOneWidget);
+      expect(campo('Variante'), findsOneWidget);
 
-    await tester.tap(find.text('Agregar variante'));
-    await tester.pumpAndSettle();
-    expect(campo('Variante'), findsNWidgets(2));
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('guardar con variantes los devuelve con nombre y precio', (
-    tester,
-  ) async {
-    ResultadoPlato? salida;
-    await abrir(tester, _item(), (r) => salida = r);
-    await tester.tap(find.byType(AppSwitch).first);
-    await tester.pumpAndSettle();
-    await tester.enterText(campo('Variante'), 'Pequeño');
-    await tester.enterText(campo('Precio'), '18');
-    await tester.tap(find.text('Agregar variante'));
-    await tester.pumpAndSettle();
-    await tester.enterText(campo('Variante').last, 'Grande');
-    await tester.enterText(campo('Precio').last, '28');
-    await guardar(tester);
-
-    final lista = salida!.variantes!;
-    expect(lista.map((v) => v.nombre), ['Pequeño', 'Grande']);
-    expect(lista.map((v) => v.precioCliente), [18, 28]);
-    // Sin precio personal, vale lo mismo que el público.
-    expect(lista.map((v) => v.precioPersonal), [18, 28]);
-    expect(lista.every((v) => v.id.isEmpty && v.estado), isTrue);
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('con el interruptor activo y sin nombre no se guarda', (
-    tester,
-  ) async {
-    ResultadoPlato? salida;
-    var cerro = false;
-    await abrir(tester, _item(), (r) {
-      salida = r;
-      cerro = true;
+      await tester.tap(find.text('Agregar variante'));
+      await tester.pumpAndSettle();
+      expect(campo('Variante'), findsNWidgets(2));
+      await tester.pumpWidget(const SizedBox());
     });
-    await tester.tap(find.byType(AppSwitch).first);
-    await tester.pumpAndSettle();
-    await guardar(tester);
-    expect(cerro, isFalse); // sigue abierto
-    expect(salida, isNull);
-    expect(
-      find.text('Cada variante necesita su nombre y un precio válido.'),
-      findsOneWidget,
-    );
-    await tester.pumpWidget(const SizedBox());
-  });
 
-  testWidgets('apagar el interruptor desactiva los tamaños que ya existían', (
-    tester,
-  ) async {
-    variantes.add(
-      const CartaVariante(
-        id: _varExistente,
-        cartaId: _plato,
-        nombre: 'Personal',
-        precioCliente: 25,
-        precioPersonal: 25,
-      ),
-    );
-    ResultadoPlato? salida;
-    await abrir(tester, _item(), (r) => salida = r);
-    // Ya tiene un tamaño activo: el interruptor empieza encendido.
-    expect(campo('Variante'), findsOneWidget);
-    await tester.tap(find.byType(AppSwitch).first);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('se desactivarán'), findsOneWidget);
-    await guardar(tester);
+    testWidgets('guardar con variantes los devuelve con nombre y precio', (
+      tester,
+    ) async {
+      ResultadoPlato? salida;
+      await abrir(tester, _item(), (r) => salida = r);
+      await tester.tap(find.byType(AppSwitch).first);
+      await tester.pumpAndSettle();
+      await tester.enterText(campo('Variante'), 'Pequeño');
+      await tester.enterText(campo('Precio'), '18');
+      await tester.tap(find.text('Agregar variante'));
+      await tester.pumpAndSettle();
+      await tester.enterText(campo('Variante').last, 'Grande');
+      await tester.enterText(campo('Precio').last, '28');
+      await guardar(tester);
 
-    final v = salida!.variantes!.single;
-    expect(v.id, _varExistente);
-    expect(v.estado, isFalse);
-    await tester.pumpWidget(const SizedBox());
-  });
+      final lista = salida!.variantes!;
+      expect(lista.map((v) => v.nombre), ['Pequeño', 'Grande']);
+      expect(lista.map((v) => v.precioCliente), [18, 28]);
+      // Sin precio personal, vale lo mismo que el público.
+      expect(lista.map((v) => v.precioPersonal), [18, 28]);
+      expect(lista.every((v) => v.id.isEmpty && v.estado), isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('con el interruptor activo y sin nombre no se guarda', (
+      tester,
+    ) async {
+      ResultadoPlato? salida;
+      var cerro = false;
+      await abrir(tester, _item(), (r) {
+        salida = r;
+        cerro = true;
+      });
+      await tester.tap(find.byType(AppSwitch).first);
+      await tester.pumpAndSettle();
+      await guardar(tester);
+      expect(cerro, isFalse); // sigue abierto
+      expect(salida, isNull);
+      expect(
+        find.text('Cada variante necesita su nombre y un precio válido.'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('apagar el interruptor desactiva los tamaños que ya existían', (
+      tester,
+    ) async {
+      variantes.add(
+        const CartaVariante(
+          id: _varExistente,
+          cartaId: _plato,
+          nombre: 'Personal',
+          precioCliente: 25,
+          precioPersonal: 25,
+        ),
+      );
+      ResultadoPlato? salida;
+      await abrir(tester, _item(), (r) => salida = r);
+      // Ya tiene un tamaño activo: el interruptor empieza encendido.
+      expect(campo('Variante'), findsOneWidget);
+      await tester.tap(find.byType(AppSwitch).first);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('se desactivarán'), findsOneWidget);
+      await guardar(tester);
+
+      final v = salida!.variantes!.single;
+      expect(v.id, _varExistente);
+      expect(v.estado, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }, skip: 'La sección de variantes está oculta del formulario de la carta');
 }

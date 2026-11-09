@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
+import 'barra_desplazamiento.dart';
+
 // Barra de desplazamiento por defecto (siempre visible) y, abajo, un círculo con ">"
 // hacia abajo mientras haya más contenido; al tocarlo baja.
 class IndicadorAbajo extends StatefulWidget {
@@ -75,7 +77,7 @@ class IndicadorAbajoState extends State<IndicadorAbajo> {
                 PointerDeviceKind.unknown,
               },
             ),
-            child: Scrollbar(
+            child: BarraDesplazamiento(
               controller: ctl,
               thumbVisibility: scrollable,
               child: widget.builder(ctl),

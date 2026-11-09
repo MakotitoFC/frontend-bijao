@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'app_toast.dart';
 import 'dialogo_app.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -16,10 +15,9 @@ import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import 'carta_acciones.dart';
 import 'app_search_field.dart';
-import 'app_tag.dart';
 import 'apertura_diaria_dialog.dart';
 import 'categorias_crud_dialog.dart';
-import 'tabs_desplazables.dart';
+import 'tabs_texto.dart';
 
 // Cabecera de Productos: título, buscador, "Nueva categoría" y tabs de categorías.
 class CartaCabecera extends StatefulWidget {
@@ -66,44 +64,6 @@ class _CartaCabeceraState extends State<CartaCabecera> {
     _busquedaController.dispose();
     super.dispose();
   }
-
-  bool _actualizando = false;
-
-  // Vuelve a leer del servidor las categorías y la carta (platos nuevos que
-  // llegaron desde otro equipo o desde la nube mientras esta pantalla estaba
-  // abierta).
-  Future<void> _actualizar() async {
-    if (_actualizando) return;
-    setState(() => _actualizando = true);
-    try {
-      await CatalogService.instance.recargarCarta();
-      if (!mounted) return;
-      widget.onCambio();
-      showAppToast(context, 'Carta actualizada.', type: ToastType.success);
-    } catch (e) {
-      if (mounted) {
-        showAppToast(
-          context,
-          'No se pudo actualizar la carta: $e',
-          type: ToastType.error,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _actualizando = false);
-    }
-  }
-
-  Widget _botonActualizar() => IconButton.outlined(
-    tooltip: 'Actualizar carta',
-    onPressed: _actualizando ? null : _actualizar,
-    icon: _actualizando
-        ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(LucideIcons.refreshCw),
-  );
 
   Future<void> _abrirDia() async {
     await showBlurDialog<bool>(
@@ -195,7 +155,7 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         child: AppSearchField(
           ajustarAlTexto: false,
           controller: _busquedaController,
-          hint: 'Buscar en la carta...',
+          hint: 'Buscar...',
           onChanged: (v) => widget.busqueda.value = v,
         ),
       ),
@@ -239,28 +199,25 @@ class _CartaCabeceraState extends State<CartaCabecera> {
             }
           });
         }
-        return TabsDesplazables(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        return TabsTexto(
+          tabs: [
+            _tab(
+              'Todos',
+              cartas.length,
+              actual == null,
+              () => widget.seleccion.value = null,
+            ),
+            for (final cat in categorias)
               _tab(
-                'Todos',
-                cartas.length,
-                actual == null,
-                () => widget.seleccion.value = null,
+                cat.categoria,
+                _contar(cartas, cat),
+                actual?.id == cat.id,
+                () => widget.seleccion.value = cat,
+                onEliminar: widget.esAdmin && actual?.id == cat.id
+                    ? () => _eliminarCategoria(cat)
+                    : null,
               ),
-              for (final cat in categorias)
-                _tab(
-                  cat.categoria,
-                  _contar(cartas, cat),
-                  actual?.id == cat.id,
-                  () => widget.seleccion.value = cat,
-                  onEliminar: widget.esAdmin && actual?.id == cat.id
-                      ? () => _eliminarCategoria(cat)
-                      : null,
-                ),
-            ],
-          ),
+          ],
         );
       },
     );
@@ -279,10 +236,8 @@ class _CartaCabeceraState extends State<CartaCabecera> {
                   child: _buscador(),
                 ),
               ),
-              const SizedBox(width: 8),
-              _botonActualizar(),
               if (widget.esAdmin) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 IconButton.outlined(
                   tooltip: 'Apertura del día',
                   onPressed: _abrirDia,
@@ -325,8 +280,6 @@ class _CartaCabeceraState extends State<CartaCabecera> {
         Row(
           children: [
             Expanded(child: tabs),
-            const SizedBox(width: 16),
-            _botonActualizar(),
             if (_puedeAbrirDia) ...[
               const SizedBox(width: 24),
               OutlinedButton.icon(
@@ -368,17 +321,17 @@ class _CartaCabeceraState extends State<CartaCabecera> {
   int _contar(List<CartaItem> cartas, CategoriaComida cat) =>
       cartas.where((c) => c.categoriaId == cat.id).length;
 
-  // Tab de categoría: la activa tiene trazo verde, las demás se ven atenuadas.
-  Widget _tab(
+  // Tab de categoría: la activa va en verde y negrita, las demás en gris.
+  TabTexto _tab(
     String label,
     int cantidad,
     bool activo,
     VoidCallback onTap, {
     VoidCallback? onEliminar,
   }) {
-    return AppTag(
+    return TabTexto(
       etiqueta: label,
-      activo: activo,
+      activa: activo,
       cantidad: cantidad,
       onTap: onTap,
       onQuitar: onEliminar,

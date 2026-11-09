@@ -4,6 +4,8 @@ import '../../data/catalogos_store.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
 import '../dialogo_app.dart';
+import '../indice_subvistas.dart';
+import '../lista_paginada.dart';
 
 // Piezas comunes de las páginas de Inventario. Siguen el diseño de
 // Configuración: título arriba, una sola acción principal y una tarjeta blanca
@@ -75,6 +77,21 @@ class CabeceraSeccion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // En celular, si el título repite al de la cabecera de la subvista, se omite
+    // (con su descripción) y la acción sube a esa cabecera.
+    final ctx = AppBreakpoints.esMobile(context)
+        ? ContextoSubvista.de(context)
+        : null;
+    if (ctx != null && ctx.repite(titulo)) {
+      const vacio = SizedBox.shrink();
+      return accion == null
+          ? vacio
+          : RegistroAccionSubvista(
+              contexto: ctx,
+              accion: accion!,
+              child: vacio,
+            );
+    }
     final textos = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -82,7 +99,8 @@ class CabeceraSeccion extends StatelessWidget {
           titulo,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
-        if (descripcion != null) ...[
+        // En celular las descripciones no se muestran.
+        if (descripcion != null && !AppBreakpoints.esMobile(context)) ...[
           const SizedBox(height: 4),
           Text(
             descripcion!,
@@ -116,15 +134,37 @@ class CabeceraSeccion extends StatelessWidget {
   }
 }
 
-// Tarjeta blanca con filas separadas por líneas finas.
-class TarjetaFilas extends StatelessWidget {
+// Filas separadas por líneas finas, de [porPagina] en [porPagina] con el mismo
+// paginador de toda la app.
+class TarjetaFilas extends StatefulWidget {
   final List<Widget> filas;
+  final int porPagina;
+  // Lo que se ve cuando no hay filas (no cuenta para el paginador).
+  final Widget? vacio;
 
-  const TarjetaFilas({super.key, required this.filas});
+  const TarjetaFilas({
+    super.key,
+    required this.filas,
+    this.porPagina = 8,
+    this.vacio,
+  });
+
+  @override
+  State<TarjetaFilas> createState() => _TarjetaFilasState();
+}
+
+class _TarjetaFilasState extends State<TarjetaFilas> {
+  int _pagina = 0;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final total = widget.filas.length;
+    final paginas = total == 0 ? 1 : (total / widget.porPagina).ceil();
+    final pagina = _pagina.clamp(0, paginas - 1);
+    final desde = pagina * widget.porPagina;
+    final hasta = (desde + widget.porPagina).clamp(0, total);
+    final filas = widget.filas.sublist(desde, hasta);
+    final lista = Container(
       // Sin tarjeta: las filas se apoyan sobre el fondo blanco, entre dos
       // líneas finas.
       decoration: BoxDecoration(
@@ -137,12 +177,26 @@ class TarjetaFilas extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (filas.isEmpty && widget.vacio != null) widget.vacio!,
           for (var i = 0; i < filas.length; i++) ...[
             if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
             filas[i],
           ],
         ],
       ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        lista,
+        const SizedBox(height: 10),
+        PaginadorApp(
+          total: total,
+          porPagina: widget.porPagina,
+          pagina: pagina,
+          onPagina: (p) => setState(() => _pagina = p),
+        ),
+      ],
     );
   }
 }
@@ -180,17 +234,14 @@ class SeccionInventario extends StatelessWidget {
         if (barra != null) ...[const SizedBox(height: 14), barra!],
         const SizedBox(height: 14),
         TarjetaFilas(
-          filas: filas.isEmpty
-              ? [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 22),
-                    child: Text(
-                      mensajeVacio,
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                  ),
-                ]
-              : filas,
+          filas: filas,
+          vacio: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 22),
+            child: Text(
+              mensajeVacio,
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ),
         ),
       ],
     );
