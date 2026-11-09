@@ -7,6 +7,8 @@ import '../services/pago_service.dart';
 import '../data/pedidos_store.dart';
 import '../models/pedido.dart';
 import '../services/impresion_service.dart';
+import '../services/preview_ticket_service.dart';
+import '../utils/uuid_helper.dart';
 import '../theme/app_theme.dart';
 import '../utils/datos_sede.dart';
 import '../utils/ticket_texto.dart';
@@ -49,10 +51,27 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
   // Solo se visualiza en este orden: 'cuenta' y luego 'comanda'.
   String _tab = 'cuenta';
 
+  // La cuenta tal como la imprime el servidor (con su plantilla). Mientras llega,
+  // o si el servidor no la ofrece, se ve la versión aproximada de la app.
+  PreviewTicket? _cuentaServidor;
+  bool _cargandoCuenta = false;
+
+  Future<void> _cargarCuentaServidor() async {
+    if (!UuidHelper.isValid(widget.pedido.id)) return;
+    setState(() => _cargandoCuenta = true);
+    final p = await PreviewTicketService.instance.cuenta(widget.pedido.id);
+    if (!mounted) return;
+    setState(() {
+      _cuentaServidor = p;
+      _cargandoCuenta = false;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     cargarLogoTicketLocal();
+    _cargarCuentaServidor();
     // Todos los abonos del pedido (también los de otros días) para listarlos.
     PagoService.instance
         .cargarDePedido(widget.pedido)
@@ -72,6 +91,7 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
     final efectivo = efectivoRecibidoPorPedido[pedido.id];
     final metodo = widget.metodoPago == 'Sin pago' ? '' : widget.metodoPago;
     final ticket = switch (_tab) {
+      'cuenta' when _cuentaServidor != null => _cuentaServidor!.lineas,
       'comanda' => ticketComanda(
         pedido: pedido,
         lineas: lineas,
@@ -161,6 +181,20 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
               : 'Así sale en la impresora de cocina (sin precios). Al reimprimirla lleva el rótulo de REIMPRESIÓN.',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
+        // Qué versión se ve: la que imprime el servidor o la aproximada.
+        if (_tab == 'cuenta' && _cargandoCuenta) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Cargando la cuenta tal como se imprime…',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ] else if (_tab == 'cuenta' && _cuentaServidor == null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Vista aproximada: no se pudo leer cómo la imprime el servidor.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ],
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
@@ -169,7 +203,15 @@ class _BoletaPedidoDialogState extends State<BoletaPedidoDialog> {
             borderRadius: BorderRadius.circular(12),
           ),
           // La cuenta lleva logo; la comanda de cocina no.
-          child: TicketConLogo(lineas: ticket, conLogo: _tab != 'comanda'),
+          child: TicketConLogo(
+            lineas: ticket,
+            // La cuenta del servidor dice si lleva logo (según su plantilla).
+            conLogo:
+                _tab != 'comanda' &&
+                (_tab != 'cuenta' ||
+                    _cuentaServidor == null ||
+                    _cuentaServidor!.conLogo),
+          ),
         ),
         const SizedBox(height: 12),
       ],
