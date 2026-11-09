@@ -73,25 +73,21 @@ class _PropinaDialogState extends State<PropinaDialog> {
                 ],
               ),
               const SeparadorDialogo(),
-              SizedBox(
-                height: AppSizes.boton,
-                child: CampoTexto(
-                  controller: _monto,
-                  autofocus: true,
-                  expands: true,
-                  maxLines: null,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                  ],
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) {
-                    if (_valor > 0) Navigator.of(context).pop(_valor);
-                  },
-                  decoration: const InputDecoration(hintText: 'S/.'),
+              // Sin alto fijo: el campo toma el alto de su texto y no se corta.
+              CampoTexto(
+                controller: _monto,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) {
+                  if (_valor > 0) Navigator.of(context).pop(_valor);
+                },
+                decoration: const InputDecoration(hintText: 'S/.'),
               ),
               const SizedBox(height: 20),
               Row(

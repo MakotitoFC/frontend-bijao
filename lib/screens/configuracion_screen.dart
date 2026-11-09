@@ -611,8 +611,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         ? 'Escribe la dirección.'
         : (s.celular ?? '').trim().length > 9
         ? 'El teléfono no puede pasar de 9 dígitos.'
-        : s.codigoSerie.trim().length != 1
-        ? 'El código de serie es una sola letra o número.'
+        : (s.codigoSerie.trim().isEmpty || s.codigoSerie.trim().length > 3)
+        ? 'El código de serie tiene hasta 3 letras o números.'
         : s.igvPorcentaje <= 0
         ? 'El IGV debe ser mayor que 0.'
         : null;
@@ -719,7 +719,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
               const SizedBox(height: 12),
               campo(
                 'serie',
-                'Código de serie (1 carácter)',
+                'Código de serie (3 caracteres)',
                 s.codigoSerie,
                 (v) => s.copyWith(codigoSerie: v),
               ),

@@ -922,24 +922,19 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     String hint = 'S/.',
     ValueChanged<String>? onChanged,
   }) {
-    return SizedBox(
-      height: AppSizes.boton,
-      child: CampoTexto(
-        controller: ctrl,
-        expands: true,
-        maxLines: null,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-        ],
-        onChanged: (v) {
-          setState(() {
-            if (_sobraEfectivo <= 0.005) _vueltoComoPropina = false;
-          });
-          onChanged?.call(v);
-        },
-        decoration: InputDecoration(hintText: hint),
-      ),
+    // Sin alto fijo: el campo toma el alto que necesita su texto (con 36 px se
+    // cortaba a la mitad, sobre todo en celular).
+    return CampoTexto(
+      controller: ctrl,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      onChanged: (v) {
+        setState(() {
+          if (_sobraEfectivo <= 0.005) _vueltoComoPropina = false;
+        });
+        onChanged?.call(v);
+      },
+      decoration: InputDecoration(hintText: hint),
     );
   }
 

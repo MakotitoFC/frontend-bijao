@@ -51,6 +51,20 @@ void main() {
       expect(find.text('Quitar'), findsNothing);
     });
 
+    testWidgets('en celular el input no se corta: toma el alto de su texto', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await abrir(tester, actual: 4.5);
+      final alto = tester.getSize(find.byType(TextField)).height;
+      // Letra de 13.5 px con 12 px de margen arriba y abajo: más de 36 px.
+      expect(alto, greaterThan(38));
+      expect(find.text('4.50'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('con una propina puesta se puede cambiar o quitar', (
       tester,
     ) async {
