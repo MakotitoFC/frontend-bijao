@@ -587,7 +587,12 @@ class SelectorComprobante extends StatelessWidget {
                     keyboardType: TextInputType.number,
                     inputFormatters: solo,
                     maxLength: 11,
-                    onChanged: (_) => control.cambio(),
+                    onChanged: (v) {
+                      control.cambio();
+                      if (v.trim().length == 11 && !control.buscando) {
+                        control.buscarRuc();
+                      }
+                    },
                     decoration: const InputDecoration(
                       labelText: 'RUC (11 dígitos)',
                       counterText: '',
