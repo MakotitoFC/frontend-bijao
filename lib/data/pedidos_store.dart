@@ -1,3 +1,5 @@
+import '../utils/nota_pedido.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/pedido.dart';
@@ -88,6 +90,11 @@ void sincronizarPedidosDesdeServidor(
   pedidos.addAll(porId.values);
   detallesPorPedido.clear();
   detallesPorPedido.addAll(nuevosDetalles);
+  // La propina que se anotó en las notas del pedido (en otro equipo) llega aquí.
+  for (final p in porId.values) {
+    final propina = propinaEnComentarios(p.notas);
+    if (propina != null) establecerPropinaPedido(p.id, propina);
+  }
 }
 
 void actualizarEstadoPedido(String id, String nuevoEstado) {

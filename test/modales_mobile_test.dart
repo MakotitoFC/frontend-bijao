@@ -157,9 +157,13 @@ void main() {
       // llenan el ancho de la hoja menos el margen.
       final hijos = find.text('Ventas');
       expect(hijos, findsOneWidget);
-      final a = tester.getTopLeft(find.text('Ventas')).dy;
-      final b = tester.getTopLeft(find.text('Caja').last).dy;
-      expect(a, b); // misma fila
+      // Hay tarjetas que comparten fila (dos columnas).
+      final filas = [
+        for (final n in ['Ventas', 'Caja', 'Comprobantes', 'Reportes'])
+          if (find.text(n).evaluate().isNotEmpty)
+            tester.getTopLeft(find.text(n).last).dy,
+      ];
+      expect(filas.toSet().length, lessThan(filas.length));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

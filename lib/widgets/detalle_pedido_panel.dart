@@ -1105,16 +1105,29 @@ class DetallePedidoPanel extends StatelessWidget {
       );
       return;
     }
-    final base = lineas
-        .where(esLineaDeProducto)
-        .fold(0.0, (s, l) => s + l.precioTotalLinea);
     final monto = await showBlurDialog<double>(
       context: context,
-      builder: (_) =>
-          PropinaDialog(base: base, actual: propinaDePedido(pedido.id)),
+      builder: (_) => PropinaDialog(actual: propinaDePedido(pedido.id)),
     );
     if (monto == null) return;
     establecerPropinaPedido(pedido.id, monto);
+    // También en las notas del pedido, para que caja la vea en otro equipo.
+    try {
+      if (UuidHelper.isValid(pedido.id) && PedidoMozoService.instance.activo) {
+        await PedidoMozoService.instance.comentarioPedido(
+          pedido.id,
+          comentariosConPropina(pedido.notas, monto),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        showAppToast(
+          context,
+          'La propina quedó solo en este equipo.',
+          type: ToastType.info,
+        );
+      }
+    }
     onCambio();
   }
 
@@ -2147,6 +2160,15 @@ class DetallePedidoPanel extends StatelessWidget {
                 'Táper',
                 () => _editarTupper(context),
               ),
+            if (config.propinaHabilitada)
+              accion(
+                LucideIcons.coins,
+                'Propina',
+                () => _editarPropina(context),
+                detalle: propinaDePedido(pedido.id) > 0.004
+                    ? 'S/ ${propinaDePedido(pedido.id).toStringAsFixed(2)}'
+                    : null,
+              ),
             if (_veCaja)
               accion(
                 LucideIcons.percent,
@@ -2909,6 +2931,24 @@ class DetallePedidoPanel extends StatelessWidget {
               color: Colors.black87,
             ),
             onTap: () => _editarTupper(context),
+          ),
+        // Propina: se anota aquí y aparece sola en Pagar.
+        if (config.propinaHabilitada)
+          _circulo(
+            tooltip: propinaDePedido(pedido.id) > 0
+                ? 'Propina S/ ${propinaDePedido(pedido.id).toStringAsFixed(2)}'
+                : 'Propina',
+            borde: propinaDePedido(pedido.id) > 0
+                ? AppColors.primaryGreen
+                : gris,
+            icono: Icon(
+              LucideIcons.coins,
+              size: 18,
+              color: propinaDePedido(pedido.id) > 0
+                  ? AppColors.primaryGreenDark
+                  : Colors.black87,
+            ),
+            onTap: () => _editarPropina(context),
           ),
       ],
     );

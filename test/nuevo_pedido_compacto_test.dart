@@ -104,4 +104,66 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('celular: botón "Propina" junto a Promoción y Táper, con modal '
+      'solo en soles', (tester) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(app(const Size(375, 812)));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Agregar').first);
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+    await tester.tap(find.widgetWithText(FilledButton, 'Agregar S/ 12.00'));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(find.text('Revisar'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Promoción'), findsOneWidget);
+    expect(find.text('Táper'), findsOneWidget);
+    expect(find.text('Propina'), findsOneWidget);
+    await tester.tap(find.text('Propina'));
+    await tester.pumpAndSettle();
+    expect(find.text('S/.'), findsOneWidget);
+    expect(find.textContaining('%'), findsNothing);
+    await tester.enterText(find.byType(EditableText).last, '4');
+    await tester.pump();
+    await tester.tap(find.text('Aplicar'));
+    await tester.pumpAndSettle();
+    // El botón muestra el monto y el total lo incluye.
+    expect(find.text('Propina S/ 4.00'), findsOneWidget);
+    expect(find.text('S/ 16.00'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('escritorio: la propina es un botón circular solo con icono', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(app(const Size(1400, 900)));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Agregar al pedido').first);
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+    await tester.tap(find.widgetWithText(FilledButton, 'Agregar S/ 12.00'));
+    await tester.pumpAndSettle();
+
+    // Sin texto "Propina" en el botón: solo el icono, con su nombre al mantener.
+    expect(find.text('Propina'), findsNothing);
+    expect(find.byTooltip('Propina'), findsOneWidget);
+    expect(find.text('Promoción'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('Propina'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Propina'));
+    await tester.pumpAndSettle();
+    expect(find.text('S/.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

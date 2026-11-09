@@ -153,7 +153,7 @@ void main() {
     'Apertura del día': () => const AperturaDiariaDialog(),
     'Cantidades base': () => const StockBaseDialog(),
     'Descuento': () => const DescuentoDialog(base: 120),
-    'Propina': () => const PropinaDialog(base: 120),
+    'Propina': () => const PropinaDialog(),
     'Táper': () => const TupperDialog(),
     'Cambiar entrega': () => CambiarEntregaDialog(pedido: _pedido()),
     'Traspasar pedido': () => TraspasarPedidoDialog(pedido: _pedido()),

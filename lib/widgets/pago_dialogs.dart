@@ -343,7 +343,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   late final double _propinaInicial = propinaPendienteDePedido(
     widget.pedido.id,
   );
-  late bool _conPropina = _propinaInicial > 0.005;
   late final _propinaCtrl = TextEditingController(
     text: _propinaInicial > 0.005 ? _propinaInicial.toStringAsFixed(2) : '',
   );
@@ -526,9 +525,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
 
   // Propina y táper: el cliente los paga además de la cuenta, sin recargo.
   // Con la propina apagada en Configuración no se ofrece al cobrar.
-  double get _propinaManual => (config.propinaHabilitada && _conPropina)
-      ? leerMonto(_propinaCtrl.text)
-      : 0.0;
+  double get _propinaManual =>
+      config.propinaHabilitada ? leerMonto(_propinaCtrl.text) : 0.0;
   // La propina que se cobra: la escrita más el vuelto que el cliente deja.
   double get _propina => _propinaManual + _propinaDeVuelto;
   double get _taper => taperPendienteDePedido(widget.pedido.id);
@@ -1111,18 +1109,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     });
   }
 
-  void _alternarPropina(bool v) {
-    setState(() {
-      _conPropina = v;
-      if (!v) {
-        _propinaCtrl.clear();
-        establecerPropinaPedido(widget.pedido.id, 0);
-      } else {
-        establecerPropinaPedido(widget.pedido.id, _propinaManual);
-      }
-    });
-  }
-
   ProductoInventario? get _productoMenaje =>
       productosInventario.where((p) => p.id == _menajeElegido).firstOrNull;
 
@@ -1155,31 +1141,15 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     ),
   );
 
+  // Propina: solo el monto en soles. Si ya se anotó al registrar el pedido, aquí
+  // aparece sola y se puede cambiar.
   Widget _columnaPropina() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: _subtitulo('Propina')),
-            AppSwitch(value: _conPropina, onChanged: _alternarPropina),
-          ],
-        ),
-        if (_conPropina) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _campoSoles(_propinaCtrl, onChanged: _cambiarPropina),
-              ),
-              const SizedBox(width: 8),
-              BotonCerrarCircular(
-                tamano: 30,
-                onPressed: () => _alternarPropina(false),
-              ),
-            ],
-          ),
-        ],
+        _subtitulo('Propina'),
+        const SizedBox(height: 8),
+        _campoSoles(_propinaCtrl, onChanged: _cambiarPropina),
       ],
     );
   }

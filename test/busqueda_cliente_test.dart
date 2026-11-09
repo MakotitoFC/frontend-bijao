@@ -13,6 +13,7 @@ import 'package:frontend_bijao/services/api_client.dart';
 import 'package:frontend_bijao/services/auth_service.dart';
 import 'package:frontend_bijao/theme/app_theme.dart';
 import 'package:frontend_bijao/utils/whatsapp_cuenta.dart';
+import 'package:frontend_bijao/widgets/app_search_field.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Los buscadores de Pedidos y Ventas encuentran por nombre del cliente y por

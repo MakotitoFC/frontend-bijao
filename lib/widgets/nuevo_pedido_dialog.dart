@@ -1,3 +1,5 @@
+import '../data/configuracion_store.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -39,6 +41,8 @@ import '../utils/motivo_precio.dart';
 import '../utils/uuid_helper.dart';
 import 'app_search_field.dart';
 import 'app_tag.dart';
+import 'tabs_texto.dart';
+import '../utils/nota_pedido.dart';
 import 'app_toast.dart';
 import 'dotted_divider.dart';
 import 'imagen_plato.dart';
@@ -599,9 +603,13 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
         mesaId: _mesaId,
         mesaNumero: esMesa ? mesaNumero : null,
         tipoEntrega: widget.tipo, // 'mesa', 'llevar' o 'delivery'
-        comentarios: _notasController.text.trim().isNotEmpty
-            ? _notasController.text.trim()
-            : null,
+        // La propina viaja en las notas del pedido: así la ve caja en otro equipo.
+        comentarios: comentariosConPropina(
+          _notasController.text.trim().isNotEmpty
+              ? _notasController.text.trim()
+              : null,
+          _propina,
+        ),
         esPersonal: _esPersonal,
       );
 
@@ -1178,21 +1186,24 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
   // desplazan juntos, para que los productos tengan toda la pantalla.
   Widget _galeria({bool todoEnScroll = false}) {
     final productos = _productos;
-    final categoriasFila = _FilaDesplazable(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _pillCategoria('Todos', _categoria == null, () {
-            setState(() => _categoria = null);
-          }),
-          for (final cat in categorias)
-            _pillCategoria(
-              cat.categoria,
-              _categoria?.id == cat.id,
-              () => setState(() => _categoria = cat),
-            ),
-        ],
-      ),
+    // Categorías: pestañas de texto con su cantidad, como las de la Carta.
+    final disponibles = cartasNotifier.value.where((c) => c.disponible);
+    final categoriasFila = TabsTexto(
+      tabs: [
+        TabTexto(
+          etiqueta: 'Todos',
+          cantidad: disponibles.length,
+          activa: _categoria == null,
+          onTap: () => setState(() => _categoria = null),
+        ),
+        for (final cat in categorias)
+          TabTexto(
+            etiqueta: cat.categoria,
+            cantidad: disponibles.where((c) => c.categoriaId == cat.id).length,
+            activa: _categoria?.id == cat.id,
+            onTap: () => setState(() => _categoria = cat),
+          ),
+      ],
     );
     Widget grilla() => LayoutBuilder(
       builder: (context, c) {
@@ -1259,6 +1270,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     );
   }
 
+  // ignore: unused_element
   Widget _pillCategoria(String texto, bool activo, VoidCallback onTap) {
     return AppTag(etiqueta: texto, activo: activo, onTap: onTap);
   }
@@ -1609,6 +1621,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
                 colorBorde: Colors.grey.shade300,
                 onTap: _abrirTupper,
               ),
+              if (config.propinaHabilitada) _botonPropina(),
             ],
           ),
         ),
@@ -1962,10 +1975,57 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     setState(() => _tupper = r);
   }
 
+  // Botón de la propina: en celular, "Propina" como Promoción y Táper; en
+  // escritorio, un botón circular solo con el icono.
+  Widget _botonPropina() {
+    final tiene = _propina > 0;
+    final texto = tiene
+        ? 'Propina S/ ${_propina.toStringAsFixed(2)}'
+        : 'Propina';
+    if (AppBreakpoints.esMobile(context)) {
+      return AppTag(
+        etiqueta: texto,
+        icono: LucideIcons.coins,
+        activo: tiene,
+        color: tiene ? AppColors.primaryGreen : Colors.black87,
+        colorBorde: tiene ? null : Colors.grey.shade300,
+        onTap: _abrirPropina,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Tooltip(
+        message: texto,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _abrirPropina,
+          child: Container(
+            width: AppSizes.boton,
+            height: AppSizes.boton,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tiene
+                  ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                  : Colors.white,
+              border: Border.all(
+                color: tiene ? AppColors.primaryGreen : Colors.grey.shade300,
+              ),
+            ),
+            child: Icon(
+              LucideIcons.coins,
+              size: 18,
+              color: tiene ? AppColors.primaryGreenDark : Colors.black87,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _abrirPropina() async {
     final monto = await showBlurDialog<double>(
       context: context,
-      builder: (_) => PropinaDialog(base: _subtotal, actual: _propina),
+      builder: (_) => PropinaDialog(actual: _propina),
     );
     if (monto == null || !mounted) return;
     setState(() => _propina = monto);
@@ -2741,6 +2801,7 @@ class _EmpleadoPreciosDialogState extends State<_EmpleadoPreciosDialog> {
 
 // Fila que se desplaza en horizontal con botones circulares < y > a los lados;
 // cada botón solo aparece si hay más contenido hacia ese lado.
+// ignore: unused_element
 class _FilaDesplazable extends StatefulWidget {
   final Widget child;
 

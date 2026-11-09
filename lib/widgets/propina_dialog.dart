@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import '../data/configuracion_store.dart';
 import '../theme/app_theme.dart';
-import 'app_tag.dart';
-import 'dialogo_app.dart';
 import 'campo_texto.dart';
+import 'dialogo_app.dart';
 
-// Propina para el mesero: se elige un porcentaje sugerido o se escribe el monto.
-// Devuelve el monto en soles (0 quita la propina) o null si se cancela.
+// Propina para el mesero: se escribe el monto en soles. Devuelve el monto (0
+// quita la propina) o null si se cancela.
 class PropinaDialog extends StatefulWidget {
-  // Consumo sobre el que se calculan los porcentajes.
-  final double base;
   final double actual;
 
-  const PropinaDialog({super.key, required this.base, this.actual = 0});
+  const PropinaDialog({super.key, this.actual = 0});
 
   @override
   State<PropinaDialog> createState() => _PropinaDialogState();
@@ -33,15 +30,6 @@ class _PropinaDialogState extends State<PropinaDialog> {
   double get _valor =>
       double.tryParse(_monto.text.trim().replaceAll(',', '.')) ?? 0;
 
-  List<double> get _porcentajes {
-    final sugerido = config.propinaSugerida;
-    final lista = <double>{5, 10, 15, sugerido}.toList()..sort();
-    return lista;
-  }
-
-  bool _esPorcentaje(double pct) =>
-      (_valor - widget.base * pct / 100).abs() < 0.005 && _valor > 0;
-
   @override
   Widget build(BuildContext context) {
     final esMobile = AppBreakpoints.esMobile(context);
@@ -54,8 +42,8 @@ class _PropinaDialogState extends State<PropinaDialog> {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          minWidth: esMobile ? ancho : 400,
-          maxWidth: esMobile ? ancho : 400,
+          minWidth: esMobile ? ancho : 360,
+          maxWidth: esMobile ? ancho : 360,
         ),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
@@ -72,7 +60,7 @@ class _PropinaDialogState extends State<PropinaDialog> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Propina para el mesero',
+                      'Propina',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -85,37 +73,24 @@ class _PropinaDialogState extends State<PropinaDialog> {
                 ],
               ),
               const SeparadorDialogo(),
-              Text(
-                'Consumo: S/ ${widget.base.toStringAsFixed(2)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                runSpacing: 8,
-                children: [
-                  for (final pct in _porcentajes)
-                    AppTag(
-                      etiqueta: '${pct.toStringAsFixed(pct % 1 == 0 ? 0 : 1)}%',
-                      activo: _esPorcentaje(pct),
-                      onTap: () => setState(
-                        () => _monto.text = (widget.base * pct / 100)
-                            .toStringAsFixed(2),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              CampoTexto(
-                controller: _monto,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => Navigator.of(context).pop(_valor),
-                decoration: const InputDecoration(
-                  labelText: 'Monto de la propina (S/)',
-                  prefixText: 'S/ ',
+              SizedBox(
+                height: AppSizes.boton,
+                child: CampoTexto(
+                  controller: _monto,
+                  autofocus: true,
+                  expands: true,
+                  maxLines: null,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                  ],
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) {
+                    if (_valor > 0) Navigator.of(context).pop(_valor);
+                  },
+                  decoration: const InputDecoration(hintText: 'S/.'),
                 ),
               ),
               const SizedBox(height: 20),

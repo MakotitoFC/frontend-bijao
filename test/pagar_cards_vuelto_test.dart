@@ -65,7 +65,11 @@ void main() {
     detallesPorPedido.clear();
   });
 
-  Future<void> abrir(WidgetTester tester, double ancho) async {
+  Future<void> abrir(
+    WidgetTester tester,
+    double ancho, {
+    double propina = 0,
+  }) async {
     tester.view.physicalSize = Size(ancho, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -73,6 +77,7 @@ void main() {
       ..clear()
       ..add(_pedido);
     detallesPorPedido[_pedido.id] = [_linea];
+    if (propina > 0) establecerPropinaPedido(_pedido.id, propina);
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light,
@@ -295,6 +300,17 @@ void main() {
     // El total sigue en 140 (130 de cuenta + 10 de propina), no 150.
     expect(find.textContaining('Pagar · S/ 140.00'), findsOneWidget);
     expect(find.textContaining('S/ 150.00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Pagar: la propina anotada al registrar aparece sola, sin '
+      'interruptor', (tester) async {
+    addTearDown(() => config.propinaHabilitada = true);
+    await abrir(tester, 500, propina: 4);
+    expect(find.text('4.00'), findsWidgets);
+    expect(find.text('Propina'), findsOneWidget);
+    // Cuenta 130 + propina 4.
+    expect(find.textContaining('Pagar · S/ 134.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

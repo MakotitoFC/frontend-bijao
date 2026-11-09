@@ -1,3 +1,4 @@
+import '../utils/nota_pedido.dart';
 import '../data/mesas_por_liberar_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
@@ -548,6 +549,9 @@ class PedidoMozoService {
       pedidos[i] = nuevo;
     }
     detallesPorPedido[d.id] = [...d.lineas, ...propias];
+    // La propina que se anotó en las notas del pedido (en otro equipo) manda.
+    final propinaNotas = propinaEnComentarios(d.comentarios);
+    if (propinaNotas != null) establecerPropinaPedido(d.id, propinaNotas);
     lineasAnuladasPorPedido[d.id] = d.anuladas;
     return d;
   }

@@ -24,7 +24,6 @@ import '../utils/blur_dialog.dart';
 import '../utils/nota_pedido.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/menu_flotante.dart';
-import '../widgets/app_tag.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/aviso_caja_cerrada.dart';
 import '../data/cierres_store.dart';
@@ -37,6 +36,7 @@ import '../widgets/cronometro_pedido.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/elegir_nuevo_pedido_dialog.dart';
 import '../widgets/nuevo_pedido_dialog.dart';
+import '../widgets/app_tag.dart';
 import '../widgets/tabs_texto.dart';
 import '../widgets/texto_adaptable.dart';
 
@@ -1215,7 +1215,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         ? (nombreEtiqueta.isEmpty ? 'Empleado' : 'Empleado: $nombreEtiqueta')
         : esPedidoDeFamilia(p.id)
         ? (nombreEtiqueta.isEmpty ? 'Familia' : 'Familia: $nombreEtiqueta')
-        : p.notas;
+        : sinLineaDePropina(p.notas);
     final productos = (detallesPorPedido[p.id] ?? [])
         .where(esLineaDeProducto)
         .fold<int>(0, (s, l) => s + l.cantidad);
@@ -1394,7 +1394,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         ? (nombreEtiqueta.isEmpty ? 'Empleado' : 'Empleado: $nombreEtiqueta')
         : esPedidoDeFamilia(p.id)
         ? (nombreEtiqueta.isEmpty ? 'Familia' : 'Familia: $nombreEtiqueta')
-        : p.notas;
+        : sinLineaDePropina(p.notas);
     final lineas = (detallesPorPedido[p.id] ?? [])
         .where(esLineaDeProducto)
         .toList();
