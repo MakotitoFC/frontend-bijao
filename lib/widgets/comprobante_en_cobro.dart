@@ -26,7 +26,6 @@ import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
 import 'emitir_comprobante_dialog.dart';
-import '../utils/direccion_ticket.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
 // Hasta este total (inclusive) el DNI de la boleta es opcional; por encima,
@@ -498,19 +497,16 @@ class ComprobanteEnCobro extends ChangeNotifier {
       clienteDenominacion: switch (tipo) {
         'factura' => razon.text.trim(),
         'boleta' => conDni ? nombre.text.trim() : 'CLIENTES VARIOS',
-        'ticket_venta' => nombre.text.trim().isNotEmpty
-            ? nombre.text.trim()
-            : ((pedido.clienteNombre?.trim().isNotEmpty == true)
-                ? pedido.clienteNombre!.trim()
-                : 'CLIENTES VARIOS'),
+        'ticket_venta' =>
+          nombre.text.trim().isNotEmpty
+              ? nombre.text.trim()
+              : ((pedido.clienteNombre?.trim().isNotEmpty == true)
+                    ? pedido.clienteNombre!.trim()
+                    : 'CLIENTES VARIOS'),
         _ => null,
       },
-      clienteDireccion: switch (tipo) {
-        'factura' => direccion.text.trim(),
-        // En el ticket de venta, dirección y teléfono del cliente.
-        'ticket_venta' => direccionConTelefono(pedido),
-        _ => null,
-      },
+      // El teléfono del cliente ya lo imprime el servidor en su propia línea.
+      clienteDireccion: tipo == 'factura' ? direccion.text.trim() : null,
     );
     // El ticket de la cuenta usa este nombre en lugar de "CLIENTES VARIOS".
     recordarClienteDeComprobante(
@@ -1120,11 +1116,9 @@ class SelectorComprobante extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (pedido != null && (!control.inicializado || control.pedidoIdInicializado != pedido!.id)) {
-      control.asegurarInicializado(
-        pedido!,
-        recargoActual: recargoActual,
-      );
+    if (pedido != null &&
+        (!control.inicializado || control.pedidoIdInicializado != pedido!.id)) {
+      control.asegurarInicializado(pedido!, recargoActual: recargoActual);
     }
     return ListenableBuilder(
       listenable: control,
@@ -1489,9 +1483,13 @@ class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
       widget.pedido.clienteNombre,
       c.clienteDenominacion,
     );
-    final negocio = nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio();
+    final negocio = nombreDelNegocio().isEmpty
+        ? 'nuestro restaurante'
+        : nombreDelNegocio();
     final buf = StringBuffer()
-      ..writeln('Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
+      ..writeln(
+        'Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.',
+      )
       ..writeln('Total: S/ ${c.total.toStringAsFixed(2)}')
       ..writeln();
 
@@ -1630,7 +1628,9 @@ class _ComprobanteEmitidoDialogState extends State<ComprobanteEmitidoDialog> {
                   icon: const Icon(LucideIcons.printer, size: 16),
                   label: const Text('Reimprimir'),
                 ),
-                if (c.ticketUrl != null || c.a4Url != null || c.xmlDescargaUrl != null)
+                if (c.ticketUrl != null ||
+                    c.a4Url != null ||
+                    c.xmlDescargaUrl != null)
                   FilledButton.icon(
                     onPressed: () => _whatsapp(c),
                     icon: const Icon(LucideIcons.messageCircle, size: 16),

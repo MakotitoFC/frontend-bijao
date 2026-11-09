@@ -56,7 +56,6 @@ import 'taper_catalogo_dialog.dart';
 import 'tupper_dialog.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
-import '../utils/direccion_ticket.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
 const _naranjaPago = Color(0xFFF07F13);
@@ -3018,7 +3017,6 @@ class DetallePedidoPanel extends StatelessWidget {
         pedidoId: pedido.id,
         tipoDocumento: 'ticket_venta',
         imprimir: imprimir,
-        clienteDireccion: direccionConTelefono(pedido),
         clienteDenominacion: nombre.isEmpty
             ? _rotuloCuentaCero(motivoCuentaCero(pedido))
             : '${_rotuloCuentaCero(motivoCuentaCero(pedido))} - '
