@@ -142,6 +142,23 @@ void main() {
       ruc: '20123456789',
     );
 
+    test('en un pedido de empleado la cuenta muestra el nombre del empleado '
+        '(guardado en los comentarios)', () {
+      final t = ticketBoleta(
+        pedido: _pedido(
+          tipo: 'llevar',
+          notas: 'Cliente: Maria',
+        ).copyWith(esEmpleado: true),
+        lineas: [_linea(cantidad: 1, precio: 30)],
+        mozo: 'admin',
+        sede: sede,
+      );
+      final textos = t.map((l) => l.texto).toList();
+      expect(textos, contains('Cliente: Maria (Mozo)'));
+      expect(textos.any((x) => x.contains('SIN NOMBRE')), false);
+      expect(textos, contains('Atendido por: admin'));
+    });
+
     test('la cuenta sigue el orden: sede, título, datos, productos, SON, aclaración', () {
       final t = ticketBoleta(
         pedido: _pedido().copyWith(clienteNombre: 'Ana Perez'),

@@ -345,9 +345,14 @@ List<LineaTicket> ticketBoleta({
   final numero = pedido.numeroPedido;
   // El nombre del pedido o, si no tiene, el del cliente al que se emitió la
   // boleta o la factura.
+  // En un pedido de empleado el servidor guarda el nombre del empleado en la línea
+  // "Cliente: …" de los comentarios (no en el campo del cliente): el detalle del
+  // pedido ya lo lee de ahí, y la cuenta también.
   final cliente = (pedido.clienteNombre ?? '').trim().isNotEmpty
       ? pedido.clienteNombre!.trim()
-      : (etiquetaClienteDeComprobante(pedido.id) ?? '');
+      : ((nombreEnComentarios(pedido.notas) ?? '').trim().isNotEmpty
+            ? nombreEnComentarios(pedido.notas)!.trim()
+            : (etiquetaClienteDeComprobante(pedido.id) ?? ''));
 
   final salida = <LineaTicket>[
     ..._cabeceraBoleta(sede, numero),
