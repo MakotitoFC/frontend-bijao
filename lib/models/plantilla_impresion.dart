@@ -45,6 +45,15 @@ class PlantillaImpresion {
     this.activo = true,
   });
 
+  static String? _limpiarNull(dynamic v) {
+    if (v == null) return null;
+    final s = v.toString().trim();
+    if (s.isEmpty || s.toUpperCase() == 'NULL' || s.toLowerCase() == '<null>' || s.toLowerCase() == 'nil') {
+      return null;
+    }
+    return s;
+  }
+
   factory PlantillaImpresion.fromJson(Map<String, dynamic> json) {
     return PlantillaImpresion(
       id: json['id']?.toString() ?? '',
@@ -59,9 +68,9 @@ class PlantillaImpresion {
       imprimirMozo: json['imprimir_mozo'] == true,
       imprimirTaper: json['imprimir_taper'] == true,
       imprimirMesaZona: json['imprimir_mesa_zona'] == true,
-      encabezadoPersonalizado: json['encabezado_personalizado']?.toString(),
-      piePaginaPersonalizado: json['pie_pagina_personalizado']?.toString(),
-      mensajeFiscal: json['mensaje_fiscal']?.toString(),
+      encabezadoPersonalizado: _limpiarNull(json['encabezado_personalizado']),
+      piePaginaPersonalizado: _limpiarNull(json['pie_pagina_personalizado']),
+      mensajeFiscal: _limpiarNull(json['mensaje_fiscal']),
       tamanioTitulo: json['tamanio_titulo']?.toString() ?? 'doble_alto',
       tamanioCodigoOrden: json['tamanio_codigo_orden']?.toString() ?? 'doble_alto',
       tamanioPlato: json['tamanio_plato']?.toString() ?? 'normal',
@@ -84,9 +93,9 @@ class PlantillaImpresion {
       'imprimir_mozo': imprimirMozo,
       'imprimir_taper': imprimirTaper,
       'imprimir_mesa_zona': imprimirMesaZona,
-      'encabezado_personalizado': encabezadoPersonalizado,
-      'pie_pagina_personalizado': piePaginaPersonalizado,
-      'mensaje_fiscal': mensajeFiscal,
+      'encabezado_personalizado': _limpiarNull(encabezadoPersonalizado),
+      'pie_pagina_personalizado': _limpiarNull(piePaginaPersonalizado),
+      'mensaje_fiscal': _limpiarNull(mensajeFiscal),
       'tamanio_titulo': tamanioTitulo,
       'tamanio_codigo_orden': tamanioCodigoOrden,
       'tamanio_plato': tamanioPlato,

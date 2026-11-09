@@ -169,11 +169,21 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     try {
       final res = await FacturacionService.instance.consultarEstado(c.id);
       if (mounted) {
-        showAppToast(
-          context,
-          'Estado SUNAT: ${res.estadoSunat} - ${res.mensaje ?? ""}',
-          type: ToastType.info,
-        );
+        if (res.estadoSunat == 'ERROR_CONEXION') {
+          showAppToast(
+            context,
+            res.mensaje?.isNotEmpty == true
+                ? res.mensaje!
+                : 'SUNAT no tiene registrado este comprobante aún. Presione "Reintentar Envío a SUNAT".',
+            type: ToastType.warning,
+          );
+        } else {
+          showAppToast(
+            context,
+            'Estado SUNAT: ${res.estadoSunat} - ${res.mensaje ?? ""}',
+            type: ToastType.info,
+          );
+        }
         await _cargarComprobantes();
       }
     } catch (e) {
