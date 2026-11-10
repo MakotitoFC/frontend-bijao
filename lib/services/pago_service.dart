@@ -256,23 +256,4 @@ class PagoService {
     }
     return res;
   }
-
-  // Reasigna o divide los pagos de un pedido entre varios métodos sin destruir la venta
-  Future<Map<String, dynamic>> redistribuirPagos({
-    required String pedidoId,
-    required String motivo,
-    required List<Map<String, dynamic>> distribucion,
-  }) async {
-    final res = await _api.post(
-      '/api/pedidos/$pedidoId/redistribuir-pagos',
-      body: {
-        'motivo': motivo.trim(),
-        'distribucion': distribucion,
-      },
-    );
-    if (res is! Map<String, dynamic>) {
-      throw Exception('El servidor no devolvió la confirmación de la reasignación');
-    }
-    return res;
-  }
 }

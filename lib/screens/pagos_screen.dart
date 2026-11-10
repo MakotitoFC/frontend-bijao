@@ -47,7 +47,6 @@ import '../widgets/tabs_texto.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
 import '../widgets/campo_texto.dart';
 import '../widgets/descargo_pago_dialog.dart';
-import '../widgets/redistribuir_pagos_dialog.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
 
@@ -1151,26 +1150,6 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  Future<void> _redistribuir(MovimientoCaja m) async {
-    final pId = m.pedidosId;
-    if (pId == null || pId.isEmpty) {
-      showAppToast(context, 'Este movimiento no está asociado a un pedido', type: ToastType.error);
-      return;
-    }
-    final r = await showBlurDialog<bool>(
-      context: context,
-      builder: (_) => RedistribuirPagosDialog(pedidoId: pId),
-    );
-    if (r == true && mounted) {
-      showAppToast(
-        context,
-        'Pagos reasignados y divididos correctamente.',
-        type: ToastType.success,
-      );
-      await _refrescarCaja();
-    }
-  }
-
   Future<void> _buscarComanda() async {
     final ctrl = TextEditingController();
     final comandaNum = await showBlurDialog<int>(
@@ -1248,28 +1227,9 @@ class _CajaScreenState extends State<CajaScreen> {
               titulo: 'Comanda #$comandaNum',
               ancho: 520,
               acciones: [
-                OutlinedButton(
+                FilledButton(
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: const Text('Cerrar'),
-                ),
-                FilledButton.icon(
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-                    final r = await showBlurDialog<bool>(
-                      context: context,
-                      builder: (_) => RedistribuirPagosDialog(
-                        pedidoId: pId,
-                        comandaOrden: comandaNum,
-                      ),
-                    );
-                    if (r == true && mounted) {
-                      showAppToast(context, 'Pagos reasignados.', type: ToastType.success);
-                      await _refrescarCaja();
-                    }
-                  },
-                  icon: const Icon(LucideIcons.split, size: 16),
-                  label: const Text('Dividir / Reasignar Pagos'),
-                  style: FilledButton.styleFrom(backgroundColor: Colors.teal.shade700),
                 ),
               ],
               children: [
@@ -1317,36 +1277,74 @@ class _CajaScreenState extends State<CajaScreen> {
                       children: [
                         for (final p in pagosActivos)
                           if (p is Map<String, dynamic>)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('· ${p['medio_pago_nombre'] ?? 'Método'}', style: const TextStyle(fontSize: 13)),
-                                  Builder(
-                                    builder: (_) {
-                                      final mCobrado = parseM(p['monto_cobrado']);
-                                      final mAbonado = parseM(p['monto_abonado']);
-                                      final mFinal = mCobrado > 0 ? mCobrado : mAbonado;
-                                      final prop = parseM(p['propina']);
-                                      return Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (prop > 0)
-                                            Text(
-                                              '(propina S/ ${prop.toStringAsFixed(2)}) ',
-                                              style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
-                                            ),
-                                          Text(
-                                            'S/ ${mFinal.toStringAsFixed(2)}',
-                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                                          ),
-                                        ],
-                                      );
-                                    },
+                            Builder(
+                              builder: (_) {
+                                final pIdStr = p['id']?.toString() ?? '';
+                                final mCobrado = parseM(p['monto_cobrado']);
+                                final mAbonado = parseM(p['monto_abonado']);
+                                final mFinal = mCobrado > 0 ? mCobrado : mAbonado;
+                                final prop = parseM(p['propina']);
+                                final todosMovs = _rangoMov == null ? movimientosCaja : _movRango;
+                                final movRel = todosMovs.where((m) => (pIdStr.isNotEmpty && m.pagoId == pIdStr)).firstOrNull ??
+                                    todosMovs.where((m) => m.pedidosId == pId && !m.anulado).firstOrNull;
+
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.grey.shade200),
                                   ),
-                                ],
-                              ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              p['medio_pago_nombre']?.toString() ?? 'Método de pago',
+                                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                            ),
+                                            if (prop > 0)
+                                              Text(
+                                                'Incluye propina: S/ ${prop.toStringAsFixed(2)}',
+                                                style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        'S/ ${mFinal.toStringAsFixed(2)}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      ),
+                                      if (movRel != null) ...[
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: const Icon(LucideIcons.arrowLeftRight, size: 16),
+                                          tooltip: 'Hacer descargo (cambiar método)',
+                                          color: AppColors.primaryGreen,
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () async {
+                                            Navigator.of(ctx).pop();
+                                            await _descargo(movRel);
+                                          },
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(LucideIcons.ban, size: 16),
+                                          tooltip: 'Anular cobro',
+                                          color: AppColors.error,
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () async {
+                                            Navigator.of(ctx).pop();
+                                            await _anular(movRel);
+                                          },
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                       ],
                     );
@@ -1354,7 +1352,7 @@ class _CajaScreenState extends State<CajaScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Si necesitas corregir métodos de pago, presiona "Dividir / Reasignar Pagos".',
+                  'Usa los botones junto a cada cobro para hacer descargo (cambiar método) o anularlo directamente.',
                   style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ],
@@ -2382,19 +2380,6 @@ class _CajaScreenState extends State<CajaScreen> {
                         label: const Text('Descargo'),
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.primaryGreen,
-                        ),
-                      ),
-                    ),
-                    Tooltip(
-                      message: puedeCambiar
-                          ? 'Dividir o reasignar pagos del pedido'
-                          : tooltipBloqueado,
-                      child: TextButton.icon(
-                        onPressed: puedeCambiar ? () => _redistribuir(m) : null,
-                        icon: const Icon(LucideIcons.split, size: 14),
-                        label: const Text('Dividir pagos'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.teal.shade700,
                         ),
                       ),
                     ),
