@@ -234,6 +234,15 @@ class PagoService {
     return res;
   }
 
+  // Busca todos los datos de pago y movimientos de un pedido por su ID
+  Future<Map<String, dynamic>> getPagosByPedido(String pedidoId) async {
+    final res = await _api.get('/api/pedidos/$pedidoId/pagos');
+    if (res is! Map<String, dynamic>) {
+      throw Exception('No se encontraron pagos para el pedido');
+    }
+    return res;
+  }
+
   // Busca todos los datos de pago y movimientos de un pedido por su número de orden de comanda
   Future<Map<String, dynamic>> buscarPedidoPorComanda(int comandaNumero, {DateTime? fecha}) async {
     String q = '';

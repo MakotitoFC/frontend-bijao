@@ -45,7 +45,9 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
   bool _cargando = true;
   bool _guardando = false;
   String? _error;
-  double _totalPedido = 0.0;
+  double _totalConsumo = 0.0;
+  double _totalPropina = 0.0;
+  double _totalCobrado = 0.0;
   String _clienteNombre = '';
   int? _ordenComanda;
 
@@ -64,34 +66,31 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
     super.dispose();
   }
 
+  double _parseDouble(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString()) ?? 0.0;
+  }
+
   Future<void> _cargarDatosPedido() async {
     try {
-      final res = await PagoService.instance.buscarPedidoPorComanda(
-        widget.comandaOrden ?? 0,
-      ).catchError((_) async {
-        // Fallback a get por pedido
-        final r = await PagoService.instance.rectificarPago(
-          pagoId: '',
-          nuevoMedioPagoId: '',
-          motivo: '',
-        ).catchError((_) => <String, dynamic>{});
-        return r;
-      });
+      Map<String, dynamic> datos = {};
 
-      Map<String, dynamic> datos = res;
-      if (datos.isEmpty || datos['pedido_id'] == null) {
-        // Consultar directamente /api/pedidos/:id/pagos
-        final resPagos = await PagoService.instance.buscarPedidoPorComanda(
-          widget.comandaOrden ?? 1,
-        ).catchError((_) => <String, dynamic>{});
-        datos = resPagos;
+      if (widget.pedidoId.isNotEmpty) {
+        datos = await PagoService.instance.getPagosByPedido(widget.pedidoId).catchError((_) => <String, dynamic>{});
       }
 
-      final tot = (datos['total_pedido'] is num)
-          ? (datos['total_pedido'] as num).toDouble()
-          : (double.tryParse(datos['total_pedido']?.toString() ?? '0') ?? 0.0);
+      if (datos.isEmpty || datos['pedido_id'] == null) {
+        if (widget.comandaOrden != null && widget.comandaOrden! > 0) {
+          datos = await PagoService.instance.buscarPedidoPorComanda(widget.comandaOrden!).catchError((_) => <String, dynamic>{});
+        }
+      }
 
-      _totalPedido = tot;
+      _totalConsumo = _parseDouble(datos['total_pedido']);
+      _totalPropina = _parseDouble(datos['total_propina']);
+      final totCobradoRaw = _parseDouble(datos['total_cobrado']);
+      _totalCobrado = totCobradoRaw > 0 ? totCobradoRaw : (_totalConsumo + _totalPropina);
+
       _clienteNombre = datos['cliente_nombre']?.toString() ?? '';
       _ordenComanda = (datos['comanda_orden'] as num?)?.toInt() ?? widget.comandaOrden;
 
@@ -99,27 +98,30 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
       if (pagosRaw != null && pagosRaw.isNotEmpty) {
         for (final p in pagosRaw) {
           if (p is Map<String, dynamic>) {
+            // Ignorar pagos anulados para no duplicar montos
+            if (p['estado'] == 'anulado') continue;
+
             final mId = p['medio_pago_id']?.toString() ?? '';
-            final mAbonado = (p['monto_abonado'] is num)
-                ? (p['monto_abonado'] as num).toDouble()
-                : (double.tryParse(p['monto_abonado']?.toString() ?? '0') ?? 0.0);
+            final mCobrado = _parseDouble(p['monto_cobrado']);
+            final mAbonado = _parseDouble(p['monto_abonado']);
+            final montoFinal = mCobrado > 0 ? mCobrado : mAbonado;
 
             final medioEncontrado = _medios.where((m) => m.id == mId).firstOrNull ??
                 _medios.firstOrNull;
 
-            _filas.add(_FilaDistribucion(medio: medioEncontrado, monto: mAbonado));
+            _filas.add(_FilaDistribucion(medio: medioEncontrado, monto: montoFinal));
           }
         }
       }
 
       if (_filas.isEmpty) {
-        _filas.add(_FilaDistribucion(medio: _medios.firstOrNull, monto: _totalPedido));
+        _filas.add(_FilaDistribucion(medio: _medios.firstOrNull, monto: _totalCobrado));
       }
 
       setState(() => _cargando = false);
     } catch (e) {
       if (_filas.isEmpty) {
-        _filas.add(_FilaDistribucion(medio: _medios.firstOrNull, monto: _totalPedido));
+        _filas.add(_FilaDistribucion(medio: _medios.firstOrNull, monto: _totalCobrado));
       }
       setState(() {
         _cargando = false;
@@ -132,7 +134,7 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
       _filas.fold(0.0, (acc, f) => acc + f.monto);
 
   double get _diferencia =>
-      (_totalPedido > 0 ? _totalPedido : _sumaAsignada) - _sumaAsignada;
+      (_totalCobrado > 0 ? _totalCobrado : _sumaAsignada) - _sumaAsignada;
 
   bool get _esValido {
     if (_guardando || _filas.isEmpty) return false;
@@ -140,7 +142,7 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
     for (final f in _filas) {
       if (f.medio == null || f.monto <= 0) return false;
     }
-    if (_totalPedido > 0 && (_diferencia.abs() > 0.01)) return false;
+    if (_totalCobrado > 0 && (_diferencia.abs() > 0.01)) return false;
     return true;
   }
 
@@ -246,14 +248,24 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
                     ],
                   ],
                 ),
-                if (_totalPedido > 0)
-                  Text(
-                    'Total: S/ ${_totalPedido.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Colors.teal.shade900,
-                      fontSize: 14,
-                    ),
+                if (_totalCobrado > 0)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Total: S/ ${_totalCobrado.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Colors.teal.shade900,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (_totalPropina > 0)
+                        Text(
+                          'Consumo: S/ ${_totalConsumo.toStringAsFixed(2)} · Propina: S/ ${_totalPropina.toStringAsFixed(2)}',
+                          style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
+                        ),
+                    ],
                   ),
               ],
             ),
@@ -339,7 +351,7 @@ class _RedistribuirPagosDialogState extends State<RedistribuirPagosDialog> {
                 'Suma asignada: S/ ${_sumaAsignada.toStringAsFixed(2)}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
-              if (_totalPedido > 0)
+              if (_totalCobrado > 0)
                 Text(
                   _diferencia.abs() <= 0.01
                       ? '✓ Monto exacto cubierto'

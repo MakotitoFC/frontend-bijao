@@ -1230,9 +1230,17 @@ class _CajaScreenState extends State<CajaScreen> {
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDState) {
-            final tot = (res['total_pedido'] is num)
-                ? (res['total_pedido'] as num).toDouble()
-                : 0.0;
+            double parseM(dynamic v) {
+              if (v == null) return 0.0;
+              if (v is num) return v.toDouble();
+              return double.tryParse(v.toString()) ?? 0.0;
+            }
+
+            final totConsumo = parseM(res['total_pedido']);
+            final totPropina = parseM(res['total_propina']);
+            final totCobradoRaw = parseM(res['total_cobrado']);
+            final tot = totCobradoRaw > 0 ? totCobradoRaw : (totConsumo + totPropina);
+
             final clNom = res['cliente_nombre']?.toString() ?? 'Cliente';
             final est = res['estado_pedido']?.toString() ?? '';
 
@@ -1281,6 +1289,11 @@ class _CajaScreenState extends State<CajaScreen> {
                           Text('Cliente: $clNom', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                           const SizedBox(height: 2),
                           Text('Estado: ${est.toUpperCase()}', style: TextStyle(fontSize: 12, color: Colors.teal.shade800)),
+                          if (totPropina > 0)
+                            Text(
+                              'Consumo: S/ ${totConsumo.toStringAsFixed(2)} · Propina: S/ ${totPropina.toStringAsFixed(2)}',
+                              style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
+                            ),
                         ],
                       ),
                       Text(
@@ -1296,12 +1309,13 @@ class _CajaScreenState extends State<CajaScreen> {
                 Builder(
                   builder: (_) {
                     final pagosL = (res['pagos'] as List?) ?? [];
-                    if (pagosL.isEmpty) {
+                    final pagosActivos = pagosL.where((p) => p is Map<String, dynamic> && p['estado'] != 'anulado').toList();
+                    if (pagosActivos.isEmpty) {
                       return const Text('No hay cobros activos.', style: TextStyle(color: Colors.grey, fontSize: 12));
                     }
                     return Column(
                       children: [
-                        for (final p in pagosL)
+                        for (final p in pagosActivos)
                           if (p is Map<String, dynamic>)
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1309,9 +1323,27 @@ class _CajaScreenState extends State<CajaScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text('· ${p['medio_pago_nombre'] ?? 'Método'}', style: const TextStyle(fontSize: 13)),
-                                  Text(
-                                    'S/ ${(p['monto_abonado'] ?? 0.0).toString()}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                  Builder(
+                                    builder: (_) {
+                                      final mCobrado = parseM(p['monto_cobrado']);
+                                      final mAbonado = parseM(p['monto_abonado']);
+                                      final mFinal = mCobrado > 0 ? mCobrado : mAbonado;
+                                      final prop = parseM(p['propina']);
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (prop > 0)
+                                            Text(
+                                              '(propina S/ ${prop.toStringAsFixed(2)}) ',
+                                              style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
+                                            ),
+                                          Text(
+                                            'S/ ${mFinal.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                          ),
+                                        ],
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
