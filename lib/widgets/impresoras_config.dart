@@ -8,11 +8,9 @@ import '../services/api_client.dart';
 import '../services/impresion_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/abrir_enlace.dart';
-import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'config_widgets.dart';
-import 'logo_tickets_editor.dart';
 import 'plantillas_impresion_editor.dart';
 import 'inventario/inventario_comun.dart' show EtiquetaFila, confirmarAccion;
 import 'barra_desplazamiento.dart';
@@ -556,9 +554,9 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
 
   Widget _seccionCocina(ConfigImpresora cfg) {
     return SeccionConfig(
-      titulo: 'Comanda de cocina',
+      titulo: 'Comanda de cocina (Conexión)',
       descripcion:
-          'La comanda no lleva precios ni totales. Elige qué más se imprime.',
+          'Configura la conexión de red de la impresora térmica en cocina.',
       filas: [
         _switch(
           'Impresora de cocina activa',
@@ -572,66 +570,15 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
           guardada: cfg.cocinaIp,
           cocina: true,
         ),
-        _switch(
-          'Mostrar el mozo',
-          'Nombre de quien tomó el pedido.',
-          cfg.cocinaMostrarMozo,
-          'cocina_mostrar_mozo',
-        ),
-        _switch(
-          'Mostrar fecha y hora',
-          'Cuándo se tomó el pedido.',
-          cfg.cocinaMostrarFecha,
-          'cocina_mostrar_fecha',
-        ),
-        _switch(
-          'Mostrar las notas',
-          'La nota del pedido y la de cada producto.',
-          cfg.cocinaMostrarNotas,
-          'cocina_mostrar_notas',
-        ),
-        _switch(
-          'Marcar los productos para llevar',
-          'Indica "PARA LLEVAR / TAPER" en cada producto que va en táper.',
-          cfg.cocinaMostrarTaper,
-          'cocina_mostrar_taper',
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Tamaño de letra',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ),
-              SizedBox(
-                width: 170,
-                child: AppSelect<String>(
-                  compacto: true,
-                  value: cfg.cocinaTamanoLetra,
-                  items: const [
-                    AppSelectItem(value: 'doble', label: 'Grande (doble)'),
-                    AppSelectItem(value: 'normal', label: 'Normal'),
-                  ],
-                  onChanged: (v) {
-                    if (v != null && !_guardando) {
-                      _guardar({'cocina_tamano_letra': v});
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
 
   Widget _seccionCaja(ConfigImpresora cfg) {
     return SeccionConfig(
-      titulo: 'Tickets de caja',
+      titulo: 'Tickets de caja (Conexión)',
+      descripcion:
+          'Configura el puerto USB, driver de Windows o IP de red de la impresora de caja.',
       filas: [
         _switch(
           'Impresora de caja activa',
@@ -645,13 +592,6 @@ class _ImpresorasConfigState extends State<ImpresorasConfig> {
           guardada: cfg.cajaIp,
           cocina: false,
         ),
-        _switch(
-          'Imprimir el logo',
-          'Arriba de cada ticket de caja.',
-          cfg.cajaImprimirLogo,
-          'caja_imprimir_logo',
-        ),
-        const LogoTicketsEditor(),
       ],
     );
   }

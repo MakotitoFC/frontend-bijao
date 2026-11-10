@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import '../data/logo_ticket_store.dart';
 import '../theme/app_theme.dart';
 
 import 'package:flutter/material.dart';
@@ -12,6 +15,7 @@ import 'app_tag.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'fila_responsiva.dart';
+import 'logo_tickets_editor.dart';
 
 class PlantillasImpresionEditor extends StatefulWidget {
   const PlantillasImpresionEditor({super.key});
@@ -263,6 +267,16 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
                     );
                   },
                 ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: const LogoTicketsEditor(),
         ),
       ],
     );
@@ -541,8 +555,8 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
     final isCuenta = p.tipoDocumento == 'CUENTA_CONSUMO';
     final isDocFiscal = isBoleta || isFactura;
 
-    // El logo SOLAMENTE se imprime en Boletas y Facturas
-    final mostrarLogo = p.imprimirLogo && isDocFiscal;
+    // El logo se imprime en comprobantes y tickets (excepto comanda de cocina)
+    final mostrarLogo = p.imprimirLogo && !isComanda;
 
     // Limpieza de encabezado
     final encabezado = _encabezadoCtrl.text.trim();
@@ -627,29 +641,42 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
           ),
           const Divider(thickness: 1, height: 16),
 
-          // Logo simulado (SOLO en Boleta y Factura, pegado a los datos de la sede)
+          // Logo (si está habilitado para este documento)
           if (mostrarLogo) ...[
             Center(
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black26),
-                ),
-                child: const Icon(
-                  LucideIcons.store,
-                  color: Colors.black87,
-                  size: 26,
-                ),
+              child: ValueListenableBuilder<Uint8List?>(
+                valueListenable: logoTicketLocal,
+                builder: (context, bytes, _) {
+                  if (bytes != null) {
+                    return Image.memory(bytes, height: 48, fit: BoxFit.contain);
+                  }
+                  return Image.asset(
+                    'assets/images/logo_bijao.png',
+                    height: 44,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black26),
+                      ),
+                      child: const Icon(
+                        LucideIcons.store,
+                        color: Colors.black87,
+                        size: 24,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 4),
           ],
 
           // Encabezado personalizado si existe (y no es NULL)
-          if (tieneEncabezado) ...[
+          if (!isComanda && tieneEncabezado) ...[
             Text(
               encabezado,
               textAlign: TextAlign.center,
@@ -707,7 +734,7 @@ class _PlantillasImpresionEditorState extends State<PlantillasImpresionEditor> {
           // Título del documento
           Text(
             isComanda
-                ? '*** COMANDA COCINA ***'
+                ? (tieneEncabezado ? encabezado : '*** COMANDA COCINA ***')
                 : (isFactura
                     ? 'FACTURA ELECTRONICA'
                     : (isBoleta
