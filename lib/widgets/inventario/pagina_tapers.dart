@@ -90,61 +90,60 @@ class _PaginaTapersState extends State<PaginaTapers> {
       for (final t in tapers)
         if (q.isEmpty || t.nombre.toLowerCase().contains(q)) t,
     ];
-    return PaginaInventario(
-      secciones: [
-        SeccionInventario(
-          titulo: 'Tápers',
-          descripcion:
-              'Recipientes que se cobran en pedidos para llevar o delivery. '
-              'Apaga uno para dejar de ofrecerlo.',
-          accion: BotonNuevo(etiqueta: 'Táper', onPressed: () => _abrir()),
-          barra: Align(
-            alignment: Alignment.centerLeft,
-            child: AppSearchField(
-              hint: 'Buscar...',
-              onChanged: (v) => setState(() => _busqueda = v),
-            ),
-          ),
-          mensajeVacio: _cargando && tapers.isEmpty
-              ? 'Cargando…'
-              : (tapers.isEmpty
-                    ? 'Aún no hay tápers. Crea el primero con "Táper".'
-                    : 'Ningún táper coincide con la búsqueda.'),
-          filas: [
-            for (final t in filtrados)
-              FilaInventario(
-                titulo: tituloConEtiquetas(t.nombre, [
-                  if (t.estado && t.stockMinimo > 0 && t.stock <= t.stockMinimo)
-                    const EtiquetaFila('Stock bajo', color: AppColors.warning),
-                ], activo: t.estado),
-                detalle:
-                    'S/ ${t.precio.toStringAsFixed(2)} · stock ${cantidadTexto(t.stock)}'
-                    '${t.estado ? '' : ' · No se ofrece'}',
-                controles: [
-                  IconButton(
-                    tooltip: 'Editar',
-                    onPressed: () => _abrir(t),
-                    icon: Icon(
-                      LucideIcons.pencil,
-                      size: 16,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Eliminar',
-                    onPressed: () => _eliminar(t),
-                    icon: const Icon(
-                      LucideIcons.trash2,
-                      size: 16,
-                      color: AppColors.error,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  AppSwitch(value: t.estado, onChanged: (_) => _alternar(t)),
-                ],
-              ),
-          ],
+    return PaginaListaFija(
+      reiniciarCon: _busqueda,
+      cabecera: CabeceraSeccion(
+        titulo: 'Tápers',
+        descripcion:
+            'Recipientes que se cobran en pedidos para llevar o delivery. '
+            'Apaga uno para dejar de ofrecerlo.',
+        accion: BotonNuevo(etiqueta: 'Táper', onPressed: () => _abrir()),
+      ),
+      barra: Align(
+        alignment: Alignment.centerLeft,
+        child: AppSearchField(
+          hint: 'Buscar...',
+          onChanged: (v) => setState(() => _busqueda = v),
         ),
+      ),
+      mensajeVacio: _cargando && tapers.isEmpty
+          ? 'Cargando…'
+          : (tapers.isEmpty
+                ? 'Aún no hay tápers. Crea el primero con "Táper".'
+                : 'Ningún táper coincide con la búsqueda.'),
+      filas: [
+        for (final t in filtrados)
+          FilaInventario(
+            titulo: tituloConEtiquetas(t.nombre, [
+              if (t.estado && t.stockMinimo > 0 && t.stock <= t.stockMinimo)
+                const EtiquetaFila('Stock bajo', color: AppColors.warning),
+            ], activo: t.estado),
+            detalle:
+                'S/ ${t.precio.toStringAsFixed(2)} · stock ${cantidadTexto(t.stock)}'
+                '${t.estado ? '' : ' · No se ofrece'}',
+            controles: [
+              IconButton(
+                tooltip: 'Editar',
+                onPressed: () => _abrir(t),
+                icon: Icon(
+                  LucideIcons.pencil,
+                  size: 16,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Eliminar',
+                onPressed: () => _eliminar(t),
+                icon: const Icon(
+                  LucideIcons.trash2,
+                  size: 16,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(width: 4),
+              AppSwitch(value: t.estado, onChanged: (_) => _alternar(t)),
+            ],
+          ),
       ],
     );
   }

@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/configuracion_store.dart';
+import '../models/movimiento_caja.dart' show TipoMovimiento;
 import '../models/pago_cuenta_empleado.dart';
 import '../models/utensilio_roto.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
+import '../services/movimiento_caja_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import 'app_select.dart';
@@ -90,7 +92,43 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
       );
 
       await CatalogService.instance.crearPagoCuentaEmpleado(nuevoPago);
+      // Si el abono entra a la caja (efectivo, Yape, tarjeta…), figura como
+      // ingreso de la categoría "Roturas" con el nombre del mozo. El descuento
+      // de planilla no mueve dinero y no se anota.
+      final medio = mediosPagoActivos
+          .where((m) => m.id == _medioPagoSeleccionadoId)
+          .firstOrNull;
+      var avisoCaja = false;
+      if (medio != null &&
+          medio.grupo != 'credito' &&
+          medio.grupo != 'planilla') {
+        try {
+          final cat = await MovimientoCajaService.instance.categoriaAsegurada(
+            'Roturas',
+            TipoMovimiento.ingreso,
+          );
+          await MovimientoCajaService.instance.registrar(
+            categoria: cat,
+            monto: monto,
+            medio: medio,
+            nota:
+                'Rotura · ${widget.rotura.cantidad}x '
+                '${widget.rotura.productoNombre ?? 'Item'} · '
+                'Mozo: ${widget.rotura.empleadoNombre ?? 'Empleado'} · Abono',
+          );
+        } catch (_) {
+          avisoCaja = true;
+        }
+      }
       if (!mounted) return;
+      if (avisoCaja) {
+        showAppToast(
+          context,
+          'El abono se guardó, pero no se pudo anotar en Caja. Regístralo '
+          'como ingreso "Roturas".',
+          type: ToastType.error,
+        );
+      }
       showAppToast(
         context,
         'Abono registrado a cuenta del empleado',

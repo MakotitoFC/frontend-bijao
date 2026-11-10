@@ -42,11 +42,11 @@ class PaginaInventario extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
+      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 24),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 880),
+          constraints: const BoxConstraints(maxWidth: 1100),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -54,6 +54,104 @@ class PaginaInventario extends StatelessWidget {
                 if (i > 0) const SizedBox(height: 32),
                 secciones[i],
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Página de una sola lista: la cabecera y la barra de herramientas quedan
+// fijas arriba, el paginador fijo abajo y solo se desplazan las filas.
+class PaginaListaFija extends StatefulWidget {
+  final Widget? cabecera;
+  final Widget? barra;
+  final List<Widget> filas;
+  final String mensajeVacio;
+  final int porPagina;
+  // Vuelve a la primera página cuando cambia (por ejemplo, al filtrar).
+  final Object? reiniciarCon;
+  // Filas sueltas (tarjetas) en vez de líneas finas entre una y otra.
+  final bool tarjetas;
+
+  const PaginaListaFija({
+    super.key,
+    this.cabecera,
+    this.barra,
+    required this.filas,
+    this.mensajeVacio = 'No hay registros.',
+    this.porPagina = 8,
+    this.reiniciarCon,
+    this.tarjetas = false,
+  });
+
+  @override
+  State<PaginaListaFija> createState() => _PaginaListaFijaState();
+}
+
+class _PaginaListaFijaState extends State<PaginaListaFija> {
+  int _pagina = 0;
+
+  @override
+  void didUpdateWidget(PaginaListaFija old) {
+    super.didUpdateWidget(old);
+    if (old.reiniciarCon != widget.reiniciarCon) _pagina = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final margen = AppBreakpoints.esMobile(context) ? 16.0 : 24.0;
+    final total = widget.filas.length;
+    final paginas = total == 0 ? 1 : (total / widget.porPagina).ceil();
+    final pagina = _pagina.clamp(0, paginas - 1);
+    final desde = pagina * widget.porPagina;
+    final hasta = (desde + widget.porPagina).clamp(0, total);
+    final filas = widget.filas.sublist(desde, hasta);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(margen, margen, margen, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ?widget.cabecera,
+              if (widget.barra != null) ...[
+                const SizedBox(height: 14),
+                widget.barra!,
+              ],
+              const SizedBox(height: 14),
+              Expanded(
+                child: filas.isEmpty
+                    ? Align(
+                        alignment: Alignment.topLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 22),
+                          child: Text(
+                            widget.mensajeVacio,
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        // Cada página empieza arriba.
+                        key: ValueKey('pagina-$pagina'),
+                        itemCount: filas.length,
+                        separatorBuilder: (_, _) => widget.tarjetas
+                            ? const SizedBox(height: 10)
+                            : Divider(height: 1, color: Colors.grey.shade200),
+                        itemBuilder: (_, i) => filas[i],
+                      ),
+              ),
+              const SizedBox(height: 10),
+              PaginadorApp(
+                total: total,
+                porPagina: widget.porPagina,
+                pagina: pagina,
+                onPagina: (p) => setState(() => _pagina = p),
+              ),
             ],
           ),
         ),

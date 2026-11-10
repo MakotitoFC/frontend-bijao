@@ -206,8 +206,7 @@ void main() {
                 subs: const [
                   'Resumen',
                   'Almacén',
-                  'Compras',
-                  'Utensilios rotos',
+                  'Movimientos',
                   'Anulaciones',
                 ],
               ),
@@ -241,9 +240,6 @@ const _grupoDe = {
   'Sede y Facturación': 'Negocio',
   'Turnos de Caja': 'Negocio',
   'Negocio': 'Negocio',
-  'Compras': 'Movimientos',
-  'Utensilios rotos': 'Movimientos',
-  'Anulaciones': 'Movimientos',
 };
 
 Widget _app(Widget pantalla, double letra) => MaterialApp(

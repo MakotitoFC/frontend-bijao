@@ -8,14 +8,15 @@ import '../../models/compra_detalle.dart';
 import '../../services/catalog_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
-import '../app_tag.dart';
+import '../anular_compra_dialog.dart';
 import '../app_toast.dart';
-import '../compra_detalle_form.dart';
 import '../compra_form_dialog.dart';
 import 'inventario_comun.dart';
 
-// Inventario > Compras: cada compra repone el stock de los productos que trae.
-// Una compra nueva es un borrador: se arma y recién al guardarla entra al stock.
+// Inventario > Compras: cada compra guardada suma al stock los productos que
+// trae. La compra se arma entera en un solo modal ("Compra"); aquí se listan
+// las guardadas, de a [_porPagina] por página. Una compra guardada se edita
+// (fecha y notas) o se anula con su motivo; no se borra.
 class PaginaCompras extends StatefulWidget {
   const PaginaCompras({super.key});
 
@@ -24,12 +25,10 @@ class PaginaCompras extends StatefulWidget {
 }
 
 class _PaginaComprasState extends State<PaginaCompras> {
-  // Compras plegadas por el usuario (por defecto todas están abiertas) y
-  // compras con el formulario de producto abierto.
+  static const _porPagina = 6;
+
+  // Compras plegadas por el usuario (por defecto todas están abiertas).
   final Set<String> _colapsadas = {};
-  final Set<String> _conFormulario = {};
-  // Compras que se están guardando en el backend.
-  final Set<String> _guardando = {};
 
   @override
   void initState() {
@@ -50,46 +49,60 @@ class _PaginaComprasState extends State<PaginaCompras> {
           .firstOrNull ??
       'Producto eliminado';
 
-  // Envía el borrador (compra + detalles) al backend y repone el stock.
-  Future<void> _guardarCompra(Compra c) async {
-    setState(() => _guardando.add(c.id));
-    try {
-      await CatalogService.instance.guardarCompra(c.id);
-      if (!mounted) return;
-      setState(() => _conFormulario.remove(c.id));
+  // Compras guardadas (los borradores viven solo dentro del modal).
+  List<Compra> get _guardadas => [
+    for (final c in compras)
+      if (c.guardada) c,
+  ];
+
+  // Abre el modal de una compra nueva: fecha, notas y productos juntos.
+  Future<void> _nuevaCompra() async {
+    final r = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => const CompraFormDialog(),
+    );
+    if (!mounted) return;
+    setState(() {});
+    if (r == true) {
       showAppToast(
         context,
         'Compra guardada y stock actualizado.',
         type: ToastType.success,
       );
-    } catch (e) {
-      if (!mounted) return;
-      showAppToast(
-        context,
-        e.toString().replaceFirst('Exception: ', ''),
-        type: ToastType.error,
-      );
-    } finally {
-      if (mounted) setState(() => _guardando.remove(c.id));
     }
   }
 
-  // Crea la compra: queda abierta, con el formulario para agregar productos.
-  Future<void> _nuevaCompra() async {
-    final creada = await showBlurDialog<Compra>(
+  // Cambia la fecha y las notas de una compra guardada.
+  Future<void> _editarCompra(Compra c) async {
+    final r = await showBlurDialog<bool>(
       context: context,
-      builder: (_) => const CompraFormDialog(),
+      builder: (_) => CompraFormDialog(compra: c),
     );
-    if (creada == null || !mounted) return;
-    setState(() => _conFormulario.add(creada.id));
+    if (r == true && mounted) {
+      setState(() {});
+      showAppToast(context, 'Compra actualizada.', type: ToastType.success);
+    }
+  }
+
+  // Anula una compra guardada: pide el motivo y revierte el stock que sumó.
+  Future<void> _anularCompra(Compra c) async {
+    final r = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => AnularCompraDialog(compraId: c.id),
+    );
+    if (r == true && mounted) {
+      setState(() {});
+      showAppToast(
+        context,
+        'Compra anulada y stock revertido.',
+        type: ToastType.success,
+      );
+    }
   }
 
   Widget _tarjetaCompra(Compra c) {
     final abierta = !_colapsadas.contains(c.id);
     final detalles = detallesPorCompra[c.id] ?? [];
-    final borrador = !c.guardada;
-    final conFormulario = borrador && _conFormulario.contains(c.id);
-    final guardando = _guardando.contains(c.id);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -124,17 +137,18 @@ class _PaginaComprasState extends State<PaginaCompras> {
                                 fontSize: 14,
                               ),
                             ),
-                            if (borrador)
-                              const AppTag(
-                                etiqueta: 'Borrador',
-                                activo: false,
-                                color: AppColors.naranja,
+                            if (c.anulada)
+                              const EtiquetaFila(
+                                'Anulada',
+                                color: AppColors.error,
                               ),
                           ],
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${detalles.length} producto(s)',
+                          c.anulada
+                              ? 'Motivo: ${c.motivoAnulacion ?? ''}'
+                              : '${detalles.length} producto(s)',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600,
@@ -145,12 +159,34 @@ class _PaginaComprasState extends State<PaginaCompras> {
                   ),
                   Text(
                     'S/ ${c.total.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
+                      color: c.anulada ? Colors.grey.shade500 : null,
+                      decoration: c.anulada ? TextDecoration.lineThrough : null,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  if (!c.anulada) ...[
+                    IconButton(
+                      tooltip: 'Editar compra',
+                      onPressed: () => _editarCompra(c),
+                      icon: Icon(
+                        LucideIcons.pencil,
+                        size: 16,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Anular compra',
+                      onPressed: () => _anularCompra(c),
+                      icon: const Icon(
+                        LucideIcons.ban,
+                        size: 16,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ] else
+                    const SizedBox(width: 8),
                   AnimatedRotation(
                     turns: abierta ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
@@ -174,89 +210,19 @@ class _PaginaComprasState extends State<PaginaCompras> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Divider(height: 1, color: Colors.grey.shade200),
-                        if (c.notas != null)
+                        if (c.notasLimpias != null &&
+                            c.notasLimpias!.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 10),
                             child: Text(
-                              c.notas!,
+                              c.notasLimpias!,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,
                               ),
                             ),
                           ),
-                        if (borrador && !conFormulario)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
-                                onPressed: () =>
-                                    setState(() => _conFormulario.add(c.id)),
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('Agregar producto'),
-                              ),
-                            ),
-                          ),
-                        if (conFormulario) ...[
-                          const SizedBox(height: 10),
-                          CompraDetalleForm(
-                            key: ValueKey('detalle-${c.id}'),
-                            compraId: c.id,
-                            onAgregado: () => setState(() {}),
-                            onCerrar: () =>
-                                setState(() => _conFormulario.remove(c.id)),
-                          ),
-                        ],
-                        if (detalles.isEmpty && !conFormulario)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Text(
-                              'Aún no agregaste productos a esta compra.',
-                              style: TextStyle(color: Colors.grey.shade500),
-                            ),
-                          ),
-                        for (final d in detalles) _filaDetalle(d, c),
-                        if (borrador) ...[
-                          const SizedBox(height: 14),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Wrap(
-                              spacing: 10,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton(
-                                  onPressed: guardando
-                                      ? null
-                                      : () => setState(() {
-                                          descartarCompra(c.id);
-                                          _conFormulario.remove(c.id);
-                                        }),
-                                  child: const Text('Descartar'),
-                                ),
-                                FilledButton.icon(
-                                  onPressed: detalles.isEmpty || guardando
-                                      ? null
-                                      : () => _guardarCompra(c),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: AppColors.primaryGreen,
-                                  ),
-                                  icon: guardando
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(Icons.check, size: 18),
-                                  label: const Text('Guardar compra'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                        for (final d in detalles) _filaDetalle(d),
                       ],
                     ),
                   ),
@@ -266,7 +232,7 @@ class _PaginaComprasState extends State<PaginaCompras> {
     );
   }
 
-  Widget _filaDetalle(CompraDetalle d, Compra c) {
+  Widget _filaDetalle(CompraDetalle d) {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Row(
@@ -298,14 +264,6 @@ class _PaginaComprasState extends State<PaginaCompras> {
             'S/ ${d.precioTotal.toStringAsFixed(2)}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          if (!c.guardada)
-            IconButton(
-              tooltip: 'Quitar',
-              visualDensity: VisualDensity.compact,
-              onPressed: () =>
-                  setState(() => quitarDetalleDeCompra(c.id, d.id)),
-              icon: Icon(LucideIcons.x, size: 16, color: Colors.grey.shade700),
-            ),
         ],
       ),
     );
@@ -313,42 +271,19 @@ class _PaginaComprasState extends State<PaginaCompras> {
 
   @override
   Widget build(BuildContext context) {
-    return PaginaInventario(
-      secciones: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            CabeceraSeccion(
-              titulo: 'Compras',
-              descripcion:
-                  'Cada compra guardada suma al stock los productos que trae.',
-              accion: BotonNuevo(etiqueta: 'Compra', onPressed: _nuevaCompra),
-            ),
-            const SizedBox(height: 14),
-            if (compras.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 22,
-                  horizontal: 20,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Text(
-                  'Aún no hay compras. Registra la primera con "Compra".',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              )
-            else
-              for (var i = 0; i < compras.length; i++) ...[
-                if (i > 0) const SizedBox(height: 10),
-                _tarjetaCompra(compras[i]),
-              ],
-          ],
-        ),
-      ],
+    final lista = _guardadas;
+    return PaginaListaFija(
+      tarjetas: true,
+      porPagina: _porPagina,
+      reiniciarCon: lista.length,
+      cabecera: CabeceraSeccion(
+        titulo: 'Compras',
+        descripcion:
+            'Cada compra guardada suma al stock los productos que trae.',
+        accion: BotonNuevo(etiqueta: 'Compra', onPressed: _nuevaCompra),
+      ),
+      mensajeVacio: 'Aún no hay compras. Registra la primera con "Compra".',
+      filas: [for (final c in lista) _tarjetaCompra(c)],
     );
   }
 }

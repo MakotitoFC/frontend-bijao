@@ -273,74 +273,70 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
     final pendientes = utensiliosRotos.where((u) => !u.done).length;
     final resueltos = utensiliosRotos.where((u) => u.done).length;
     final lista = _filtrados;
-    return PaginaInventario(
-      secciones: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const CabeceraSeccion(
-              titulo: 'Utensilios rotos',
-              descripcion:
-                  'Registra roturas para descontar del stock y cobrar o '
-                  'reponer con el empleado.',
-            ),
-            const SizedBox(height: 14),
-            FilaKpi(
-              tarjetas: [
-                TarjetaKpi(
-                  icono: Icons.payments_outlined,
-                  color: Colors.orange.shade600,
-                  titulo: 'Costo acumulado',
-                  valor: 'S/ ${costo.toStringAsFixed(2)}',
-                ),
-                TarjetaKpi(
-                  icono: Icons.pending_actions,
-                  color: Colors.amber.shade700,
-                  titulo: 'Pendientes',
-                  valor: '$pendientes',
-                ),
-                TarjetaKpi(
-                  icono: Icons.check_circle_outline,
-                  color: AppColors.primaryGreen,
-                  titulo: 'Resueltos',
-                  valor: '$resueltos',
-                ),
-              ],
-            ),
-          ],
-        ),
-        SeccionInventario(
-          titulo: 'Registros',
-          accion: BotonNuevo(etiqueta: 'Rotura', onPressed: _registrar),
-          barra: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppSearchField(
-                  hint: 'Buscar...',
-                  onChanged: (v) => setState(() => _busqueda = v),
-                ),
+    return PaginaListaFija(
+      reiniciarCon: '$_busqueda|$_filtro',
+      cabecera: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CabeceraSeccion(
+            titulo: 'Roturas',
+            descripcion:
+                'Menaje roto y quién lo rompió. Se cobra a cuenta de sueldo o '
+                'se repone en físico.',
+            accion: BotonNuevo(etiqueta: 'Rotura', onPressed: _registrar),
+          ),
+          const SizedBox(height: 14),
+          FilaKpi(
+            tarjetas: [
+              TarjetaKpi(
+                icono: Icons.payments_outlined,
+                color: Colors.orange.shade600,
+                titulo: 'Costo acumulado',
+                valor: 'S/ ${costo.toStringAsFixed(2)}',
               ),
-              const SizedBox(height: 12),
-              TabsTexto(
-                tabs: [
-                  _filtroChip('Todos', 'todos'),
-                  _filtroChip('Por cobrar', 'cobro'),
-                  _filtroChip('Por reponer', 'reposicion'),
-                  _filtroChip('Resueltos', 'resueltos'),
-                ],
+              TarjetaKpi(
+                icono: Icons.pending_actions,
+                color: Colors.amber.shade700,
+                titulo: 'Pendientes',
+                valor: '$pendientes',
+              ),
+              TarjetaKpi(
+                icono: Icons.check_circle_outline,
+                color: AppColors.primaryGreen,
+                titulo: 'Resueltos',
+                valor: '$resueltos',
               ),
             ],
           ),
-          mensajeVacio: _cargando && utensiliosRotos.isEmpty
-              ? 'Cargando…'
-              : (utensiliosRotos.isEmpty
-                    ? 'Aún no hay roturas registradas.'
-                    : 'Ningún registro coincide con los filtros.'),
-          filas: [for (final u in lista) _fila(u)],
-        ),
-      ],
+        ],
+      ),
+      barra: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: AppSearchField(
+              hint: 'Buscar...',
+              onChanged: (v) => setState(() => _busqueda = v),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TabsTexto(
+            tabs: [
+              _filtroChip('Todos', 'todos'),
+              _filtroChip('Por cobrar', 'cobro'),
+              _filtroChip('Por reponer', 'reposicion'),
+              _filtroChip('Resueltos', 'resueltos'),
+            ],
+          ),
+        ],
+      ),
+      mensajeVacio: _cargando && utensiliosRotos.isEmpty
+          ? 'Cargando…'
+          : (utensiliosRotos.isEmpty
+                ? 'Aún no hay roturas registradas.'
+                : 'Ningún registro coincide con los filtros.'),
+      filas: [for (final u in lista) _fila(u)],
     );
   }
 }

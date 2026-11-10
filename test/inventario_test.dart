@@ -82,12 +82,6 @@ void main() {
       await tester.tap(find.text('Almacén').first);
       await tester.pump(const Duration(milliseconds: 400));
     }
-    // Compras y Utensilios rotos están bajo la sección Movimientos.
-    if (find.text(etiqueta).evaluate().isEmpty &&
-        find.text('Movimientos').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Movimientos').first);
-      await tester.pump(const Duration(milliseconds: 400));
-    }
     await tester.ensureVisible(find.text(etiqueta).first);
     await tester.pump();
     await tester.tap(find.text(etiqueta).first);
@@ -109,13 +103,43 @@ void main() {
       'Productos',
       'Tipos y unidades',
       'Tápers',
-      'Compras',
-      'Utensilios rotos',
+      'Movimientos',
+      'Anulaciones',
       'Resumen',
     ]) {
       await ir(tester, p);
       expect(tester.takeException(), isNull, reason: p);
     }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Movimientos: una vista con filtros y Anulaciones aparte', (
+    tester,
+  ) async {
+    await abrir(tester, const Size(1400, 900));
+    await ir(tester, 'Movimientos');
+    // Los tabs del contenido son los de texto, sin "Utensilios rotos" aparte.
+    for (final f in [
+      'Todos',
+      'Compras',
+      'Mermas y ajustes',
+      'Roturas',
+      'Alquileres',
+    ]) {
+      expect(find.text(f), findsWidgets, reason: f);
+    }
+    for (final f in [
+      'Compras',
+      'Roturas',
+      'Alquileres',
+      'Mermas y ajustes',
+      'Todos',
+    ]) {
+      await tester.tap(find.text(f).first);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull, reason: f);
+    }
+    expect(find.text('Utensilios rotos'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -175,8 +199,8 @@ void main() {
         'Productos',
         'Tipos y unidades',
         'Tápers',
-        'Compras',
-        'Utensilios rotos',
+        'Movimientos',
+        'Anulaciones',
         'Resumen',
       ]) {
         await ir(tester, p);
