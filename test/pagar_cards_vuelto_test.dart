@@ -138,8 +138,9 @@ void main() {
     await tester.ensureVisible(find.text('Por montos'));
     await tester.tap(find.byType(AppSwitch).first);
     await tester.pump();
-    await tester.ensureVisible(find.text('Agregar'));
-    await tester.tap(find.text('Agregar'));
+    // Hay dos "Agregar": el de "Por montos" (primero) y el de roturas.
+    await tester.ensureVisible(find.text('Agregar').first);
+    await tester.tap(find.text('Agregar').first);
     await tester.pump();
     Finder campo(String t) => find.byWidgetPredicate(
       (w) => w is EditableText && w.controller.text == t,

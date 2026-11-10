@@ -483,87 +483,108 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
               ),
               const SizedBox(height: 14),
 
-              // 3. Cantidad, Costo Unitario y Costo Total
-              Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: CampoTexto(
-                      controller: _cantidadController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: InputDecoration(
-                        labelText: 'Cantidad *',
-                        hintText: '1',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+              // 3. Cantidad, Costo Unitario y Costo Total: en una fila si hay
+              // ancho; en celular, cantidad y costo unitario juntos y el total
+              // debajo. Todos alineados arriba.
+              LayoutBuilder(
+                builder: (context, c) {
+                  final cantidad = CampoTexto(
+                    controller: _cantidadController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: 'Cantidad *',
+                      hintText: '1',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      onChanged: (_) => setState(_recalcularCostoTotal),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Requerido';
-                        final numVal = int.tryParse(v.trim());
-                        if (numVal == null || numVal <= 0) return '> 0';
-                        return null;
-                      },
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: CampoTexto(
-                      controller: _costoReposicionController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                    onChanged: (_) => setState(_recalcularCostoTotal),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Requerido';
+                      final numVal = int.tryParse(v.trim());
+                      if (numVal == null || numVal <= 0) return '> 0';
+                      return null;
+                    },
+                  );
+                  final costoUnit = CampoTexto(
+                    controller: _costoReposicionController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'Costo unit. (S/) *',
+                      hintText: '0.00',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d*'),
-                        ),
+                    ),
+                    onChanged: (_) => setState(_recalcularCostoTotal),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Requerido';
+                      final numVal = double.tryParse(v.trim());
+                      if (numVal == null || numVal <= 0) return '> 0';
+                      return null;
+                    },
+                  );
+                  final costoTotal = CampoTexto(
+                    controller: _costoTotalController,
+                    readOnly: true,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.redAccent,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Costo Total (S/)',
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  );
+                  if (c.maxWidth >= 440) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: cantidad),
+                        const SizedBox(width: 10),
+                        Expanded(flex: 4, child: costoUnit),
+                        const SizedBox(width: 10),
+                        Expanded(flex: 4, child: costoTotal),
                       ],
-                      decoration: InputDecoration(
-                        labelText: 'Costo unit. (S/) *',
-                        hintText: '0.00',
-                        helperText:
-                            (_productoSeleccionado?.costoReposicion == null ||
-                                _productoSeleccionado?.costoReposicion == 0)
-                            ? 'Se actualizará en inventario'
-                            : 'Fijado en inventario',
-                        helperStyle: const TextStyle(fontSize: 10.5),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 2, child: cantidad),
+                          const SizedBox(width: 10),
+                          Expanded(flex: 3, child: costoUnit),
+                        ],
                       ),
-                      onChanged: (_) => setState(_recalcularCostoTotal),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Requerido';
-                        final numVal = double.tryParse(v.trim());
-                        if (numVal == null || numVal <= 0) return '> 0';
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: CampoTexto(
-                      controller: _costoTotalController,
-                      readOnly: true,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.redAccent,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Costo Total (S/)',
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                      const SizedBox(height: 12),
+                      costoTotal,
+                    ],
+                  );
+                },
+              ),
+              // El aviso va debajo de la fila, completo, y no dentro del campo.
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  (_productoSeleccionado?.costoReposicion == null ||
+                          _productoSeleccionado?.costoReposicion == 0)
+                      ? 'El costo unitario se actualizará en inventario.'
+                      : 'El costo unitario está fijado en inventario.',
+                  style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                ),
               ),
               const SizedBox(height: 14),
 
@@ -617,7 +638,10 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                           },
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: _isPagado
                                   ? Colors.amber.shade50
@@ -643,14 +667,17 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                                       : Colors.grey.shade500,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  'Pagar / Descontar',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    color: _isPagado
-                                        ? Colors.amber.shade900
-                                        : Colors.grey.shade700,
+                                Flexible(
+                                  child: Text(
+                                    'Pagar / Descontar',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: _isPagado
+                                          ? Colors.amber.shade900
+                                          : Colors.grey.shade700,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -670,7 +697,10 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                           },
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: _isRepuesto
                                   ? Colors.blue.shade50
@@ -696,14 +726,17 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
                                       : Colors.grey.shade500,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  'Reponer en físico',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    color: _isRepuesto
-                                        ? Colors.blue.shade800
-                                        : Colors.grey.shade700,
+                                Flexible(
+                                  child: Text(
+                                    'Reponer en físico',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: _isRepuesto
+                                          ? Colors.blue.shade800
+                                          : Colors.grey.shade700,
+                                    ),
                                   ),
                                 ),
                               ],

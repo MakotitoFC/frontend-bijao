@@ -7,11 +7,10 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../widgets/config_widgets.dart';
 import '../widgets/indice_subvistas.dart';
 import '../widgets/inventario/pagina_catalogos.dart';
-import '../widgets/inventario/pagina_compras.dart';
+import '../widgets/inventario/pagina_movimientos.dart';
 import '../widgets/inventario/pagina_productos.dart';
 import '../widgets/inventario/pagina_resumen.dart';
 import '../widgets/inventario/pagina_tapers.dart';
-import '../widgets/inventario/pagina_utensilios.dart';
 import '../widgets/inventario/pagina_anulaciones.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/tabs_texto.dart';
@@ -24,7 +23,9 @@ import '../widgets/tabs_texto.dart';
 //  - Resumen: cómo está el stock y qué reponer (solo consulta).
 //  - Almacén: Productos, Tipos y unidades y Tápers, juntos en una sola vista.
 //  - Carta: Tamaños de los platos.
-//  - Movimientos: Compras y Utensilios rotos.
+//  - Movimientos: compras, mermas y ajustes, y roturas en una sola vista, con
+//    filtros.
+//  - Anulaciones: consulta aparte; no mueve el stock.
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
 
@@ -45,11 +46,18 @@ class _InventarioScreenState extends State<InventarioScreen> {
 
   static const _subvistasAlmacen = {'productos', 'catalogos', 'tapers'};
 
-  // Las tres subvistas de Almacén viven en una sola página.
+  // Filtro de Movimientos: 'todos' | 'compras' | 'ajustes' | 'roturas'.
+  String _filtroMovimientos = 'todos';
+
+  // Las tres subvistas de Almacén viven en una sola página, y Compras y
+  // Utensilios rotos son filtros de la página Movimientos.
   void _irA(String clave) => setState(() {
     if (_subvistasAlmacen.contains(clave)) {
       _subAlmacen = clave;
       _clave = 'almacen';
+    } else if (clave == 'compras' || clave == 'utensilios') {
+      _filtroMovimientos = clave == 'compras' ? 'compras' : 'roturas';
+      _clave = 'movimientos';
     } else {
       _clave = clave;
     }
@@ -60,8 +68,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
   static const _iconos = {
     'resumen': LucideIcons.layoutDashboard,
     'almacen': LucideIcons.warehouse,
-    'compras': LucideIcons.shoppingCart,
-    'utensilios': LucideIcons.triangleAlert,
+    'movimientos': LucideIcons.arrowLeftRight,
     'anulaciones': LucideIcons.ban,
   };
 
@@ -99,21 +106,18 @@ class _InventarioScreenState extends State<InventarioScreen> {
     //   contenido: () => const TamanosTab(),
     // ),
     (
-      clave: 'compras',
-      etiqueta: 'Compras',
-      seccion: 'Movimientos',
-      contenido: () => const PaginaCompras(),
-    ),
-    (
-      clave: 'utensilios',
-      etiqueta: 'Utensilios rotos',
-      seccion: 'Movimientos',
-      contenido: () => const PaginaUtensilios(),
+      clave: 'movimientos',
+      etiqueta: 'Movimientos',
+      seccion: null,
+      contenido: () => PaginaMovimientos(
+        filtro: _filtroMovimientos,
+        onFiltro: (f) => setState(() => _filtroMovimientos = f),
+      ),
     ),
     (
       clave: 'anulaciones',
       etiqueta: 'Anulaciones',
-      seccion: 'Movimientos',
+      seccion: null,
       contenido: () => const PaginaAnulaciones(),
     ),
   ];
@@ -178,7 +182,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
             onSeleccionar: _irA,
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(32, 24, 32, 4),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 4),
             child: Row(
               children: [
                 Expanded(
@@ -209,7 +213,7 @@ class _PaginaAlmacen extends StatelessWidget {
       ('productos', 'Productos'),
       ('tapers', 'Tápers'),
     ];
-    final margen = AppBreakpoints.esMobile(context) ? 16.0 : 32.0;
+    final margen = AppBreakpoints.esMobile(context) ? 16.0 : 24.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

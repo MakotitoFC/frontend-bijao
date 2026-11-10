@@ -212,57 +212,53 @@ class _PaginaProductosState extends State<PaginaProductos> {
     final visibles = _visibles;
     final compacto = MediaQuery.sizeOf(context).width < 760;
     final sinDatos = productosInventario.isEmpty;
-    return PaginaInventario(
-      secciones: [
-        SeccionInventario(
-          titulo: 'Productos',
-          descripcion:
-              'Todo lo que llevas en stock. Toca un producto para ver sus '
-              'movimientos.',
-          accion: BotonNuevo(etiqueta: 'Producto', onPressed: _crear),
-          // Un solo renglón de herramientas: buscador y filtro por tipo.
-          barra: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              AppSearchField(
-                hint: 'Buscar...',
-                onChanged: (v) => setState(() => _busqueda = v),
-              ),
-              if (tiposProducto.isNotEmpty)
-                FiltroMenu(
-                  ancho: 190,
-                  tooltip: 'Filtrar por tipo de producto',
-                  texto: _filtroTipo == null
-                      ? 'Tipo de producto'
-                      : (tiposProducto
-                                .where((t) => t.id == _filtroTipo)
-                                .firstOrNull
-                                ?.tipoProducto ??
-                            'Tipo de producto'),
-                  seleccionada: _filtroTipo ?? 'todos',
-                  opciones: [
-                    const OpcionMenu(
-                      valor: 'todos',
-                      etiqueta: 'Todos los tipos',
-                    ),
-                    for (final t in tiposProducto)
-                      OpcionMenu(valor: t.id, etiqueta: t.tipoProducto),
-                  ],
-                  onSeleccionar: (v) =>
-                      setState(() => _filtroTipo = v == 'todos' ? null : v),
-                ),
-            ],
+    return PaginaListaFija(
+      reiniciarCon: '$_busqueda|$_filtroTipo',
+      cabecera: CabeceraSeccion(
+        titulo: 'Productos',
+        descripcion:
+            'Todo lo que llevas en stock. Toca un producto para ver sus '
+            'movimientos.',
+        accion: BotonNuevo(etiqueta: 'Producto', onPressed: _crear),
+      ),
+      // Un solo renglón de herramientas: buscador y filtro por tipo.
+      barra: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          AppSearchField(
+            hint: 'Buscar...',
+            onChanged: (v) => setState(() => _busqueda = v),
           ),
-          mensajeVacio: _cargando && sinDatos
-              ? 'Cargando…'
-              : (sinDatos
-                    ? 'Aún no hay productos. Crea el primero con "Producto".'
-                    : 'Ningún producto coincide con la búsqueda.'),
-          filas: [for (final p in visibles) _fila(p, compacto)],
-        ),
-      ],
+          if (tiposProducto.isNotEmpty)
+            FiltroMenu(
+              ancho: 190,
+              tooltip: 'Filtrar por tipo de producto',
+              texto: _filtroTipo == null
+                  ? 'Tipo de producto'
+                  : (tiposProducto
+                            .where((t) => t.id == _filtroTipo)
+                            .firstOrNull
+                            ?.tipoProducto ??
+                        'Tipo de producto'),
+              seleccionada: _filtroTipo ?? 'todos',
+              opciones: [
+                const OpcionMenu(valor: 'todos', etiqueta: 'Todos los tipos'),
+                for (final t in tiposProducto)
+                  OpcionMenu(valor: t.id, etiqueta: t.tipoProducto),
+              ],
+              onSeleccionar: (v) =>
+                  setState(() => _filtroTipo = v == 'todos' ? null : v),
+            ),
+        ],
+      ),
+      mensajeVacio: _cargando && sinDatos
+          ? 'Cargando…'
+          : (sinDatos
+                ? 'Aún no hay productos. Crea el primero con "Producto".'
+                : 'Ningún producto coincide con la búsqueda.'),
+      filas: [for (final p in visibles) _fila(p, compacto)],
     );
   }
 }

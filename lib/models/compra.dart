@@ -32,11 +32,37 @@ class Compra {
     );
   }
 
-  Compra copyWith({double? total, bool? guardada}) => Compra(
+  // Una compra guardada no se borra (sus movimientos de stock quedan en el
+  // libro): se anula y el motivo queda al inicio de las notas.
+  static const prefijoAnulada = 'ANULADA: ';
+
+  bool get anulada => (notas ?? '').startsWith(prefijoAnulada);
+
+  // Motivo de la anulación (primera línea de las notas) o null.
+  String? get motivoAnulacion {
+    if (!anulada) return null;
+    final primera = notas!.substring(prefijoAnulada.length).split('\n').first;
+    return primera.trim();
+  }
+
+  // Las notas de la compra sin la marca de anulación.
+  String? get notasLimpias {
+    if (!anulada) return notas;
+    final partes = notas!.split('\n');
+    final resto = partes.skip(1).join('\n').trim();
+    return resto.isEmpty ? null : resto;
+  }
+
+  Compra copyWith({
+    double? total,
+    bool? guardada,
+    String? notas,
+    DateTime? fechaCompra,
+  }) => Compra(
     id: id,
-    fechaCompra: fechaCompra,
+    fechaCompra: fechaCompra ?? this.fechaCompra,
     total: total ?? this.total,
-    notas: notas,
+    notas: notas ?? this.notas,
     guardada: guardada ?? this.guardada,
   );
 

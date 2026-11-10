@@ -5,9 +5,8 @@ import '../../services/pedido_mozo_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
 import '../app_search_field.dart';
-import '../app_tag.dart';
 import '../dialogo_app.dart';
-import '../tabla_app.dart';
+import 'inventario_comun.dart';
 import '../tabs_texto.dart';
 
 class PaginaAnulaciones extends StatefulWidget {
@@ -126,39 +125,23 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
       return true;
     }).toList();
 
-    // Mismo margen lateral que las demás páginas de Inventario. Sin ancho
-    // máximo: la tabla necesita todo el espacio disponible. La página no se
-    // desplaza: solo la tabla tiene scroll.
-    return Padding(
-      padding: EdgeInsets.all(AppBreakpoints.esMobile(context) ? 16 : 32),
-      child: Column(
+    final hayFiltros = _busqueda.isNotEmpty || _filtro != 'todas';
+    return PaginaListaFija(
+      reiniciarCon: '$_busqueda|$_filtro',
+      cabecera: const CabeceraSeccion(
+        titulo: 'Anulaciones',
+        descripcion:
+            'Platos y pedidos anulados. Solo consulta: no cambia el stock.',
+      ),
+      barra: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // El buscador termina en la columna "Cant." de la tabla (Fecha 150 +
-          // Plato + Cant. 80); no se estira hasta el borde.
-          LayoutBuilder(
-            builder: (context, c) {
-              const fijas = 150.0 + 80 + 190 + 100; // columnas de ancho fijo
-              const minimo = 1150.0; // ancho mínimo de la tabla
-              final ancho = c.maxWidth >= minimo
-                  ? 150 + 80 + (c.maxWidth - fijas) * 14 / 50
-                  : 150 + 80 + 170.0;
-              return Row(
-                children: [
-                  SizedBox(
-                    // En pantallas angostas el buscador ocupa todo el ancho.
-                    width: c.maxWidth < 560
-                        ? c.maxWidth
-                        : ancho.clamp(260.0, c.maxWidth - 56),
-                    child: AppSearchField(
-                      hint: 'Buscar...',
-                      ajustarAlTexto: false,
-                      onChanged: (v) => setState(() => _busqueda = v),
-                    ),
-                  ),
-                ],
-              );
-            },
+          Align(
+            alignment: Alignment.centerLeft,
+            child: AppSearchField(
+              hint: 'Buscar...',
+              onChanged: (v) => setState(() => _busqueda = v),
+            ),
           ),
           const SizedBox(height: 12),
           TabsTexto(
@@ -187,210 +170,53 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: _cargando
-                ? Center(child: CircularProgressIndicator())
-                : filtradas.isEmpty
-                ? Center(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 48),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              Icon(
-                                LucideIcons.ban,
-                                size: 40,
-                                color: Colors.grey.shade400,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                _busqueda.isNotEmpty || _filtro != 'todas'
-                                    ? 'No se encontraron anulaciones con los filtros aplicados'
-                                    : 'No se registran anulaciones de pedidos o platos',
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                : TablaApp<Map<String, dynamic>>(
-                    scrollInterno: true,
-                    porPagina: 8,
-                    filas: filtradas,
-                    altoFila: 62,
-                    columnas: [
-                      ColumnaTabla(
-                        titulo: 'Fecha y hora',
-                        ancho: 150,
-                        ordenarPor: (a) => _fecha(a['fecha']),
-                        celda: (a) => TablaApp.texto(_fecha(a['fecha'])),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Plato / Ítem',
-                        rol: RolTarjeta.titulo,
-                        flex: 1.4,
-                        anchoMin: 170,
-                        ordenarPor: (a) =>
-                            (a['plato_nombre'] ?? 'Pedido Completo').toString(),
-                        celda: (a) => Row(
-                          children: [
-                            Icon(
-                              a['pedido_detalle_id'] == null
-                                  ? LucideIcons.receiptText
-                                  : LucideIcons.utensils,
-                              size: 16,
-                              color: AppColors.naranja,
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: TablaApp.texto(
-                                (a['plato_nombre'] ?? 'Pedido Completo')
-                                    .toString(),
-                                fuerte: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Cant.',
-                        ancho: 80,
-                        ordenarPor: (a) => (a['cantidad'] ?? 1) as num,
-                        celda: (a) => Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '${a['cantidad'] ?? 1}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Pedido / Origen',
-                        anchoMin: 130,
-                        celda: (a) => Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TablaApp.texto(
-                              (a['mesa_numero'] != null && a['mesa_numero'] > 0)
-                                  ? 'Mesa ${a['mesa_numero']}'
-                                  : (a['tipo_pedido'] ?? 'Pedido')
-                                        .toString()
-                                        .toUpperCase(),
-                              fuerte: true,
-                            ),
-                            Text(
-                              '${a['tipo_pedido'] ?? 'normal'}',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Anulado por',
-                        anchoMin: 130,
-                        ordenarPor: (a) =>
-                            (a['usuario_nombre'] ?? '—').toString(),
-                        celda: (a) => Row(
-                          children: [
-                            const Icon(
-                              LucideIcons.user,
-                              size: 14,
-                              color: Colors.grey,
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: TablaApp.texto(
-                                (a['usuario_nombre'] ?? '—').toString(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ColumnaTabla(
-                        titulo: '¿Fue servido?',
-                        rol: RolTarjeta.estado,
-                        ancho: 190,
-                        ordenarPor: (a) => a['fue_servido'] == true ? 1 : 0,
-                        celda: (a) => a['fue_servido'] == true
-                            ? const AppTag(
-                                etiqueta: 'Servido (Consumido)',
-                                activo: false,
-                                color: AppColors.naranja,
-                              )
-                            : const AppTag(
-                                etiqueta: 'No servido (Retornado)',
-                                activo: false,
-                                color: AppColors.primaryGreen,
-                              ),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Motivo / Comentario',
-                        flex: 1.6,
-                        anchoMin: 200,
-                        celda: (a) => Tooltip(
-                          message: (a['comentario'] ?? '').toString(),
-                          child: Text(
-                            _limpiarComentario(
-                              (a['comentario'] ?? '').toString(),
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TablaApp.estiloTexto.copyWith(
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ColumnaTabla(
-                        titulo: 'Evidencia',
-                        ancho: 100,
-                        celda: (a) =>
-                            (a['url_evidencia'] != null &&
-                                (a['url_evidencia'] as String).isNotEmpty)
-                            ? IconButton(
-                                tooltip: 'Ver foto de evidencia',
-                                icon: const Icon(
-                                  LucideIcons.image,
-                                  size: 18,
-                                  color: AppColors.primaryGreen,
-                                ),
-                                onPressed: () =>
-                                    _verEvidencia(a['url_evidencia'] as String),
-                              )
-                            : Text(
-                                'Sin foto',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade400,
-                                ),
-                              ),
-                      ),
-                    ],
-                  ),
+        ],
+      ),
+      mensajeVacio: _cargando
+          ? 'Cargando…'
+          : (hayFiltros
+                ? 'No se encontraron anulaciones con los filtros aplicados.'
+                : 'No se registran anulaciones de pedidos o platos.'),
+      filas: [for (final a in filtradas) _fila(a)],
+    );
+  }
+
+  // Una anulación: plato y cantidad con su estado de servido, y debajo la
+  // fecha, el origen, quién la anuló y el motivo.
+  Widget _fila(Map<String, dynamic> a) {
+    final servido = a['fue_servido'] == true;
+    final mesa = a['mesa_numero'];
+    final origen = (mesa is num && mesa > 0)
+        ? 'Mesa ${mesa.toInt()}'
+        : (a['tipo_pedido'] ?? 'Pedido').toString().toUpperCase();
+    final motivo = _limpiarComentario((a['comentario'] ?? '').toString());
+    final evidencia = (a['url_evidencia'] ?? '').toString();
+    return FilaInventario(
+      titulo: tituloConEtiquetas(
+        '${a['cantidad'] ?? 1}x ${(a['plato_nombre'] ?? 'Pedido completo')}',
+        [
+          EtiquetaFila(
+            servido ? 'Servido (consumido)' : 'No servido (retornado)',
+            color: servido ? AppColors.naranja : AppColors.primaryGreen,
           ),
         ],
       ),
+      detalle:
+          '${_fecha(a['fecha'])} · $origen · '
+          'Anulado por ${(a['usuario_nombre'] ?? '—')}'
+          '${motivo.isEmpty ? '' : ' · $motivo'}',
+      controles: [
+        if (evidencia.isNotEmpty)
+          IconButton(
+            tooltip: 'Ver foto de evidencia',
+            onPressed: () => _verEvidencia(evidencia),
+            icon: const Icon(
+              LucideIcons.image,
+              size: 18,
+              color: AppColors.primaryGreen,
+            ),
+          ),
+      ],
     );
   }
 }

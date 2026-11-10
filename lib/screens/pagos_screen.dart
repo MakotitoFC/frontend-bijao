@@ -39,6 +39,7 @@ import '../widgets/comprobantes_caja_panel.dart';
 import '../widgets/lista_paginada.dart';
 import '../widgets/detalle_pedido_panel.dart';
 import '../widgets/emitir_comprobante_dialog.dart';
+import '../widgets/alquiler_dialog.dart';
 import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/app_select.dart';
 import '../widgets/selector_rango_fechas.dart';
@@ -1089,6 +1090,23 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
+  // Alquiler de menaje: cobra como ingreso de Caja y saca el producto del
+  // almacén.
+  Future<void> _alquilar() async {
+    final r = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => const AlquilerDialog(),
+    );
+    if (r != true || !mounted) return;
+    setState(() {});
+    showAppToast(
+      context,
+      'Alquiler cobrado y registrado en Caja.',
+      type: ToastType.success,
+    );
+    await _refrescarCaja();
+  }
+
   Future<void> _registrar(TipoMovimiento tipo) async {
     final r = await showBlurDialog<MovimientoNuevo>(
       context: context,
@@ -2058,6 +2076,12 @@ class _CajaScreenState extends State<CajaScreen> {
                     onPressed: _cajaCerrada
                         ? null
                         : () => _registrar(TipoMovimiento.egreso),
+                  ),
+                  BotonIconoExpandible(
+                    icono: LucideIcons.armchair,
+                    etiqueta: 'Alquiler',
+                    color: AppColors.primaryGreen,
+                    onPressed: _cajaCerrada ? null : _alquilar,
                   ),
                   BotonIconoExpandible(
                     icono: LucideIcons.tag,

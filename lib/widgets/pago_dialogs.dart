@@ -3,15 +3,19 @@ import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cargos_extra_store.dart';
+import '../data/catalogos_store.dart' show movSalidaManualId;
 import '../data/configuracion_store.dart';
 import '../data/inventario_store.dart';
 import '../models/producto_inventario.dart';
+import '../models/utensilio_roto.dart';
+import '../services/auth_service.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../utils/uuid_helper.dart';
 import '../data/pedidos_store.dart' show establecerPropinaPedido;
 import '../models/movimiento_caja.dart';
 import '../services/movimiento_caja_service.dart';
+import '../utils/nota_pedido.dart' show nombreEnComentarios;
 import 'app_select.dart';
 import '../services/api_client.dart';
 import '../services/pago_service.dart';
@@ -310,6 +314,23 @@ class PagarPedidoDialog extends StatefulWidget {
   State<PagarPedidoDialog> createState() => _PagarPedidoDialogState();
 }
 
+// Rotura de un mozo anotada en el modal; se guarda al confirmar el cobro.
+class _RoturaMozo {
+  final String productoId;
+  final String producto;
+  final String mozoId;
+  final String mozo;
+  final double monto;
+
+  const _RoturaMozo({
+    required this.productoId,
+    required this.producto,
+    required this.mozoId,
+    required this.mozo,
+    required this.monto,
+  });
+}
+
 // Un medio de pago y cuánto de la cuenta se paga con él (pago con varios medios).
 class _FilaMedio {
   MedioPago medio;
@@ -347,21 +368,41 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     text: _propinaInicial > 0.005 ? _propinaInicial.toStringAsFixed(2) : '',
   );
   bool _conRoturas = false;
+  // Cargos del cliente: se suman a la cuenta y se cobran con ella.
   final List<CargoExtra> _cargos = [];
+  // Producto de inventario de cada cargo del cliente y si se descuenta del stock.
+  final Map<CargoExtra, ({String productoId, bool descontar})> _detalleCargo =
+      {};
+  // Roturas de un mozo: no cambian la cuenta del cliente. Se registran en
+  // Inventario (a cuenta de su sueldo) solo cuando el cobro se confirma.
+  final List<_RoturaMozo> _rotosMozo = [];
+  // Quién causó la rotura: 'cliente' o 'mozo'.
+  String _quienRotura = 'cliente';
+  bool _descontarStock = false;
   // Producto de inventario elegido (su id).
   String? _menajeElegido;
   final _costoCargoCtrl = TextEditingController();
 
-  // El menaje sale del inventario: los productos de tipo menaje y, si no hay
-  // ninguno marcado así, todos los productos (igual que "Utensilios rotos").
+  // El menaje sale del inventario: los productos de tipo menaje o alquiler y,
+  // si no hay ninguno marcado así, todos los productos (igual que "Utensilios
+  // rotos").
   List<ProductoInventario> get _menaje {
     final todos = productosInventario.where((p) => p.estado).toList();
-    final menaje = todos
-        .where(
-          (p) => (p.tipoProductoNombre ?? '').toLowerCase().contains('menaje'),
-        )
-        .toList();
+    final menaje = todos.where((p) {
+      final tipo = (p.tipoProductoNombre ?? '').toLowerCase();
+      return tipo.contains('menaje') || tipo.contains('alquiler');
+    }).toList();
     return menaje.isNotEmpty ? menaje : todos;
+  }
+
+  // Un alquiler no descuenta stock: el producto vuelve.
+  bool _esAlquiler(ProductoInventario? p) =>
+      (p?.tipoProductoNombre ?? '').toLowerCase().contains('alquiler');
+
+  // El mozo de una rotura es el que atendió el pedido que se está cobrando.
+  String get _mozoDelPedido {
+    final n = widget.pedido.mozoNombre;
+    return (n != null && n.isNotEmpty) ? n : '—';
   }
 
   double get _totalCargos => _cargos.fold(0.0, (s, c) => s + c.monto);
@@ -660,6 +701,25 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     } else {
       cobros.add((medio: _medio, monto: _montoCobroUnico, propina: _propina));
     }
+    // Las roturas del cliente no van dentro del pago del pedido: se separan de
+    // los cobros (empezando por el último) y se registran en Caja como
+    // movimientos de la categoría "Roturas", con el medio con que se pagaron.
+    final rotMovs = <({String nombre, double monto, MedioPago medio})>[];
+    for (final c in _cargos) {
+      var resta = c.monto;
+      for (var i = cobros.length - 1; i >= 0 && resta > 0.005; i--) {
+        final disp = cobros[i].monto;
+        if (disp <= 0.005) continue;
+        final d = resta < disp ? resta : disp;
+        cobros[i] = (
+          medio: cobros[i].medio,
+          monto: disp - d,
+          propina: cobros[i].propina,
+        );
+        rotMovs.add((nombre: c.nombre, monto: d, medio: cobros[i].medio));
+        resta -= d;
+      }
+    }
     // El vuelto y lo recibido se anotan en un solo pago en efectivo.
     var efectivoAnotado = false;
     setState(() => _guardando = true);
@@ -685,7 +745,6 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           categoriaMovimientoId: _categoriaSeleccionada?.id,
           montoRecibido: anotaEfectivo && _recibido > 0.005 ? _recibido : null,
           vuelto: anotaEfectivo && _vuelto > 0.005 ? _vuelto : null,
-          cargosExtra: registrados == 0 && _cargos.isNotEmpty ? _cargos : null,
         );
         registrados++;
         ultimoPagoId = pago.id;
@@ -723,7 +782,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       return;
     }
     if (!mounted) return;
-    registrarCargosExtra(widget.pedido.id, _cargos);
+    // El cobro ya quedó confirmado: recién ahora se registran en Caja las
+    // roturas del cliente, se guardan las del mozo y se descuenta el stock
+    // marcado.
+    await _registrarRoturasEnCaja(rotMovs);
+    await _registrarRoturas();
+    if (!mounted) return;
     if (_vuelto > 0.005) {
       efectivoRecibidoPorPedido[widget.pedido.id] = (
         recibido: _recibido,
@@ -755,6 +819,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
       try {
         await PagoService.instance.cargarDePedido(widget.pedido);
       } catch (_) {}
+      if (!mounted) return;
       final saldoRestante = faltaPorPagarDePedido(widget.pedido.id);
       final abonosPrevios =
           abonosDePedido(widget.pedido.id).length - registrados;
@@ -1110,20 +1175,139 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   String get _nombreMenaje => _productoMenaje?.nombre ?? '';
 
   bool get _cargoValido =>
-      _nombreMenaje.isNotEmpty && leerMonto(_costoCargoCtrl.text) > 0;
+      _nombreMenaje.isNotEmpty &&
+      leerMonto(_costoCargoCtrl.text) > 0 &&
+      (_quienRotura == 'cliente' || _mozoDelPedidoId != null);
+
+  // Id del mozo que atendió el pedido (si el pedido lo trae).
+  String? get _mozoDelPedidoId {
+    final id = widget.pedido.usuarioId;
+    return (id != null && UuidHelper.isValid(id)) ? id : null;
+  }
 
   void _agregarCargo() {
     if (!_cargoValido) return;
+    final producto = _productoMenaje!;
+    final monto = leerMonto(_costoCargoCtrl.text);
     setState(() {
-      _cargos.add(
-        CargoExtra(
-          nombre: _nombreMenaje,
-          monto: leerMonto(_costoCargoCtrl.text),
-        ),
-      );
+      if (_quienRotura == 'mozo') {
+        _rotosMozo.add(
+          _RoturaMozo(
+            productoId: producto.id,
+            producto: producto.nombre,
+            mozoId: _mozoDelPedidoId!,
+            mozo: _mozoDelPedido,
+            monto: monto,
+          ),
+        );
+      } else {
+        final cargo = CargoExtra(nombre: producto.nombre, monto: monto);
+        _cargos.add(cargo);
+        _detalleCargo[cargo] = (
+          productoId: producto.id,
+          descontar: _descontarStock && !_esAlquiler(producto),
+        );
+      }
       _menajeElegido = null;
+      _descontarStock = false;
       _costoCargoCtrl.clear();
     });
+  }
+
+  // Registra en Caja, como ingresos de la categoría "Roturas", lo que el
+  // cliente pagó por roturas, con el detalle de quién fue. Si falla no se
+  // deshace el cobro: se avisa.
+  Future<void> _registrarRoturasEnCaja(
+    List<({String nombre, double monto, MedioPago medio})> movs,
+  ) async {
+    if (movs.isEmpty) return;
+    final cliente = nombreEnComentarios(widget.pedido.notas) ?? widget.titulo;
+    final fallos = <String>[];
+    try {
+      final categoria = await MovimientoCajaService.instance.categoriaAsegurada(
+        'Roturas',
+        TipoMovimiento.ingreso,
+      );
+      for (final m in movs) {
+        try {
+          await MovimientoCajaService.instance.registrar(
+            categoria: categoria,
+            monto: m.monto,
+            medio: m.medio,
+            nota:
+                'Rotura · ${m.nombre} · Cliente: $cliente · '
+                'Pedido #${widget.pedido.numeroPedido}',
+          );
+        } catch (_) {
+          fallos.add(m.nombre);
+        }
+      }
+    } catch (_) {
+      fallos.addAll(movs.map((m) => m.nombre));
+    }
+    if (fallos.isNotEmpty && mounted) {
+      showAppToast(
+        context,
+        'El cobro se registró, pero no se pudo anotar en Caja: '
+        '${fallos.join(', ')}. Regístralo como ingreso "Roturas".',
+        type: ToastType.error,
+        titulo: 'Roturas sin anotar en Caja',
+        duration: const Duration(seconds: 7),
+      );
+    }
+  }
+
+  // Después de un cobro confirmado: registra en Inventario las roturas del mozo
+  // (a cuenta de su sueldo) y descuenta el stock de las que se marcaron. Si algo
+  // falla no se deshace el cobro: se avisa para repetirlo desde Inventario.
+  Future<void> _registrarRoturas() async {
+    final fallos = <String>[];
+    final nota = 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}';
+    for (final r in _rotosMozo) {
+      try {
+        await CatalogService.instance.crearUtensilioRoto(
+          UtensilioRoto(
+            id: '',
+            productoInventarioId: r.productoId,
+            productoNombre: r.producto,
+            empleadoId: r.mozoId,
+            empleadoNombre: r.mozo,
+            cantidad: 1,
+            costoTotal: r.monto,
+            usuarioId: AuthService.instance.usuarioActual?.id,
+            fecha: DateTime.now(),
+            notas: nota,
+            isPagado: true,
+          ),
+        );
+      } catch (_) {
+        fallos.add('${r.producto} (${r.mozo})');
+      }
+    }
+    for (final c in _cargos) {
+      final d = _detalleCargo[c];
+      if (d == null || !d.descontar) continue;
+      try {
+        await CatalogService.instance.registrarAjusteInventario(
+          productoInventarioId: d.productoId,
+          tipoMovimientoId: movSalidaManualId,
+          cantidad: 1,
+          notas: 'Rotura de cliente · $nota',
+        );
+      } catch (_) {
+        fallos.add('${c.nombre} (stock)');
+      }
+    }
+    if (fallos.isNotEmpty && mounted) {
+      showAppToast(
+        context,
+        'El cobro se registró, pero no se pudo guardar en Inventario: '
+        '${fallos.join(', ')}. Regístralo desde Inventario.',
+        type: ToastType.error,
+        titulo: 'Roturas sin registrar',
+        duration: const Duration(seconds: 7),
+      );
+    }
   }
 
   // Título gris de cada bloque de Extras.
@@ -1162,7 +1346,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                 _conRoturas = v;
                 if (!v) {
                   _cargos.clear();
+                  _detalleCargo.clear();
+                  _rotosMozo.clear();
                   _menajeElegido = null;
+                  _descontarStock = false;
+                  _quienRotura = 'cliente';
                   _costoCargoCtrl.clear();
                 }
               }),
@@ -1174,9 +1362,64 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     );
   }
 
+  // Casilla de "Cliente" / "Mozo": marcarla desmarca la otra; la marcada no se
+  // puede desmarcar (siempre hay un responsable).
+  Widget _casillaQuien(String etiqueta, String valor) {
+    final marcada = _quienRotura == valor;
+    return InkWell(
+      onTap: () => setState(() => _quienRotura = valor),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: Checkbox(
+                value: marcada,
+                onChanged: (_) => setState(() => _quienRotura = valor),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              etiqueta,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: marcada ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Widget> _camposRoturas() {
+    final producto = _productoMenaje;
+    final esMozo = _quienRotura == 'mozo';
     return [
       const SizedBox(height: 8),
+      // Quién lo rompió: un cliente (se cobra con la cuenta) o un mozo (se
+      // registra en Inventario).
+      // Casillas en horizontal; se marca una a la vez.
+      Row(
+        children: [
+          _casillaQuien('Cliente', 'cliente'),
+          const SizedBox(width: 20),
+          _casillaQuien('Mozo', 'mozo'),
+        ],
+      ),
+      const SizedBox(height: 8),
+      // El mozo es el que atendió este pedido: no se busca.
+      if (esMozo) ...[
+        Text(
+          'Mozo del pedido: $_mozoDelPedido',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+      ],
       // Buscador, costo y botón de agregar, en la misma fila.
       Row(
         children: [
@@ -1189,10 +1432,20 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               hint: 'Buscar menaje',
               items: [
                 for (final m in _menaje)
-                  AppSelectItem(value: m.id, label: m.nombre),
+                  AppSelectItem(
+                    value: m.id,
+                    label: (m.tipoProductoNombre ?? '').isEmpty
+                        ? m.nombre
+                        : '${m.nombre} · ${m.tipoProductoNombre}',
+                  ),
               ],
               onChanged: (v) => setState(() {
                 _menajeElegido = v;
+                // El costo del producto sale solo; se puede cambiar.
+                final p = _productoMenaje;
+                final costo = p?.costoReposicion ?? p?.costoPromedio ?? 0;
+                if (costo > 0) _costoCargoCtrl.text = costo.toStringAsFixed(2);
+                if (_esAlquiler(p)) _descontarStock = false;
               }),
             ),
           ),
@@ -1214,6 +1467,85 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           ),
         ],
       ),
+      if (!esMozo && producto != null && !_esAlquiler(producto))
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: Checkbox(
+                  value: _descontarStock,
+                  onChanged: (v) =>
+                      setState(() => _descontarStock = v ?? false),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Descontar del stock (${producto.stockActual.toStringAsFixed(0)} disponibles)',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          esMozo
+              ? 'Se registra en Inventario, a cuenta de su sueldo. No cambia '
+                    'la cuenta del cliente.'
+              : (_esAlquiler(producto)
+                    ? 'Se suma a la cuenta. El alquiler no descuenta stock: '
+                          'el producto vuelve.'
+                    : 'Se suma a la cuenta y el cliente lo paga con el pedido.'),
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+      ),
+      if (_rotosMozo.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(
+            'Para el mozo (en Inventario)',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ),
+      for (var i = 0; i < _rotosMozo.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${_rotosMozo[i].producto} · ${_rotosMozo[i].mozo}',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+              Text(
+                'S/ ${_rotosMozo[i].monto.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              BotonCerrarCircular(
+                tamano: 28,
+                onPressed: () => setState(() => _rotosMozo.removeAt(i)),
+              ),
+            ],
+          ),
+        ),
+      if (_cargos.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(
+            'Para el cliente (en la cuenta)',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ),
       for (var i = 0; i < _cargos.length; i++)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -1235,7 +1567,10 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
               const SizedBox(width: 8),
               BotonCerrarCircular(
                 tamano: 28,
-                onPressed: () => setState(() => _cargos.removeAt(i)),
+                onPressed: () => setState(() {
+                  _detalleCargo.remove(_cargos[i]);
+                  _cargos.removeAt(i);
+                }),
               ),
             ],
           ),

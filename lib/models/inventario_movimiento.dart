@@ -14,6 +14,10 @@ class InventarioMovimiento {
   final String? usuarioNombre;
   final String? notas;
   final DateTime fecha;
+  // Línea de compra que originó el movimiento (ingresos por compra).
+  final String? compraDetalleId;
+  // Si es una reversa, el movimiento que corrige.
+  final String? revierteId;
 
   const InventarioMovimiento({
     this.id = '',
@@ -26,6 +30,8 @@ class InventarioMovimiento {
     this.usuarioNombre,
     this.notas,
     required this.fecha,
+    this.compraDetalleId,
+    this.revierteId,
   });
 
   String get tipoMovimientoId => tipoMovimiento.id;
@@ -57,6 +63,8 @@ class InventarioMovimiento {
       usuarioNombre: json['usuario_nombre']?.toString(),
       notas: json['notas']?.toString(),
       fecha: fecha?.toLocal() ?? DateTime.now(),
+      compraDetalleId: json['compra_detalle_id']?.toString(),
+      revierteId: json['revierte_id']?.toString(),
     );
   }
 }

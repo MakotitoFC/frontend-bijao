@@ -1107,6 +1107,121 @@ class CatalogService {
     }
   }
 
+  // Cambia la fecha y las notas de una compra ya guardada. Los productos y
+  // cantidades no se editan: para corregirlos se anula la compra y se registra
+  // otra, así el libro de inventario queda completo.
+  Future<void> actualizarCompra(Compra compra) async {
+    final res = await _api.put(
+      '/api/compras/${compra.id}',
+      body: {
+        'fecha_compra': compra.toJson()['fecha_compra'],
+        'notas': compra.notas ?? '',
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('No se pudo actualizar la compra');
+    }
+    final i = compras.indexWhere((c) => c.id == compra.id);
+    if (i != -1) {
+      compras[i] = compras[i].copyWith(
+        notas: compra.notas ?? '',
+        fechaCompra: compra.fechaCompra,
+      );
+    }
+  }
+
+  // Movimientos de ingreso de una compra que todavía no fueron revertidos.
+  Future<List<InventarioMovimiento>> _ingresosPorRevertir(
+    String compraId,
+  ) async {
+    final detalleIds = {
+      for (final d in detallesPorCompra[compraId] ?? const <CompraDetalle>[])
+        d.id,
+    };
+    final todos = await cargarMovimientosInventario();
+    final revertidos = {
+      for (final m in todos)
+        if (m.revierteId != null) m.revierteId,
+    };
+    return [
+      for (final m in todos)
+        if (m.compraDetalleId != null &&
+            detalleIds.contains(m.compraDetalleId) &&
+            m.revierteId == null &&
+            !revertidos.contains(m.id))
+          m,
+    ];
+  }
+
+  // Lo que dejaría de haber en el almacén si se anula la compra, por producto.
+  // Sirve para avisar antes de anular y para frenar si ya se consumió parte.
+  Future<Map<String, double>> stockQueSeDescontaria(String compraId) async {
+    final porRevertir = await _ingresosPorRevertir(compraId);
+    final suma = <String, double>{};
+    for (final m in porRevertir) {
+      suma[m.productoInventarioId] =
+          (suma[m.productoInventarioId] ?? 0) + m.cantidad;
+    }
+    return suma;
+  }
+
+  // Anula una compra guardada: revierte el stock que sumó (con la ruta de
+  // reversa del libro) y deja el motivo al inicio de sus notas. No borra nada.
+  Future<void> anularCompra(String compraId, String motivo) async {
+    final i = compras.indexWhere((c) => c.id == compraId);
+    if (i == -1) throw Exception('Compra no encontrada');
+    final compra = compras[i];
+    if (compra.anulada) throw Exception('La compra ya está anulada');
+
+    final porRevertir = await _ingresosPorRevertir(compraId);
+    await cargarProductosInventario();
+    final necesario = <String, double>{};
+    for (final m in porRevertir) {
+      necesario[m.productoInventarioId] =
+          (necesario[m.productoInventarioId] ?? 0) + m.cantidad;
+    }
+    for (final e in necesario.entries) {
+      final p = productosInventario.where((x) => x.id == e.key).firstOrNull;
+      if (p != null && p.stockActual + 1e-9 < e.value) {
+        throw Exception(
+          'No se puede anular: de "${p.nombre}" quedan '
+          '${p.stockActual} y esta compra sumó ${e.value}. Ya se consumió '
+          'parte; haz un ajuste de stock si quieres corregirlo.',
+        );
+      }
+    }
+    for (final m in porRevertir) {
+      await _api.post(
+        '/api/inventario-movimientos/${m.id}/revertir',
+        body: const {},
+      );
+    }
+    final notasPrevias = (compra.notas ?? '').trim();
+    final nuevas =
+        '${Compra.prefijoAnulada}${motivo.trim()}'
+        '${notasPrevias.isEmpty ? '' : '\n$notasPrevias'}';
+    try {
+      await _api.put(
+        '/api/compras/$compraId',
+        body: {
+          'fecha_compra': compra.toJson()['fecha_compra'],
+          'notas': nuevas,
+        },
+      );
+    } catch (e) {
+      // El stock ya se revirtió: al reintentar solo se guarda la marca.
+      await cargarProductosInventario();
+      throw Exception(
+        'El stock ya se revirtió, pero no se pudo guardar la anulación '
+        '(${e.toString().replaceFirst('Exception: ', '')}). Vuelve a pulsar '
+        '"Anular compra" para guardar el motivo.',
+      );
+    }
+    compras[i] = compra.copyWith(notas: nuevas);
+    await cargarProductosInventario();
+    await cargarMovimientosInventario();
+  }
+
   String _fechaCorta(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
@@ -1543,6 +1658,13 @@ class CatalogService {
         .putIfAbsent(movimiento.productoInventarioId, () => [])
         .insert(0, movimiento);
     return movimiento;
+  }
+
+  // Revierte un movimiento del libro (crea el movimiento contrario). El stock
+  // lo actualiza el backend; aquí se vuelve a leer.
+  Future<void> revertirMovimientoInventario(String id) async {
+    await _api.post('/api/inventario-movimientos/$id/revertir', body: const {});
+    await cargarProductosInventario();
   }
 
   // ==========================================

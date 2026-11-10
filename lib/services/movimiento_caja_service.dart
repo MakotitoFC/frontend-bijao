@@ -31,6 +31,31 @@ class MovimientoCajaService {
       );
   }
 
+  // La categoría [nombre] del tipo dado: la busca (cargándolas si hace falta) y,
+  // si no existe, la crea. Si tampoco se puede crear, usa la primera de ese
+  // tipo para que el movimiento no se pierda.
+  Future<CategoriaMovimiento> categoriaAsegurada(
+    String nombre,
+    TipoMovimiento tipo,
+  ) async {
+    CategoriaMovimiento? buscar() => categoriasMovimiento
+        .where((c) => c.nombre.toLowerCase() == nombre.toLowerCase())
+        .where((c) => c.tipo == tipo && c.activo)
+        .firstOrNull;
+    if (categoriasMovimiento.isEmpty) {
+      try {
+        await cargarCategorias();
+      } catch (_) {}
+    }
+    final existente = buscar();
+    if (existente != null) return existente;
+    try {
+      return await crearCategoria(nombre: nombre, tipo: tipo);
+    } catch (_) {
+      return categoriasDeTipo(tipo).first;
+    }
+  }
+
   Future<CategoriaMovimiento> crearCategoria({
     required String nombre,
     required TipoMovimiento tipo,
