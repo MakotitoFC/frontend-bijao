@@ -18,7 +18,18 @@ String _error(Object e) => e is ApiException
     ? e.message
     : e.toString().replaceFirst('Exception: ', '');
 
-// Pide el motivo para anular un comprobante. Devuelve el motivo o null.
+class _ResultadoAnulacion {
+  final bool esNotaCredito;
+  final String codigo;
+  final String motivo;
+  const _ResultadoAnulacion({
+    required this.esNotaCredito,
+    required this.codigo,
+    required this.motivo,
+  });
+}
+
+// Pide el motivo para anular un comprobante o emitir nota de crédito.
 class _MotivoAnulacionDialog extends StatefulWidget {
   final Comprobante comprobante;
   const _MotivoAnulacionDialog({required this.comprobante});
@@ -28,7 +39,18 @@ class _MotivoAnulacionDialog extends StatefulWidget {
 }
 
 class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
-  final _motivo = TextEditingController();
+  String _tipoAccion = 'nota_credito';
+  String _codigoMotivo = '01';
+  final _motivo = TextEditingController(text: 'ANULACION DE LA OPERACION');
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.comprobante.esInterno) {
+      _tipoAccion = 'baja';
+      _motivo.text = 'Ticket interno anulado manualmente';
+    }
+  }
 
   @override
   void dispose() {
@@ -39,9 +61,11 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
   @override
   Widget build(BuildContext context) {
     final c = widget.comprobante;
+    final esNota = !c.esInterno && _tipoAccion == 'nota_credito';
+
     return DialogoApp(
-      titulo: 'Anular ${c.tipoEtiqueta.toLowerCase()}',
-      ancho: 420,
+      titulo: c.esInterno ? 'Anular ticket interno' : 'Anulación / Nota de Crédito',
+      ancho: 480,
       acciones: [
         OutlinedButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -50,25 +74,126 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
         FilledButton(
           onPressed: _motivo.text.trim().isEmpty
               ? null
-              : () => Navigator.of(context).pop(_motivo.text.trim()),
+              : () => Navigator.of(context).pop(
+                    _ResultadoAnulacion(
+                      esNotaCredito: esNota,
+                      codigo: _codigoMotivo,
+                      motivo: _motivo.text.trim(),
+                    ),
+                  ),
           style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-          child: const Text('Anular'),
+          child: Text(esNota ? 'Emitir Nota de Crédito' : 'Anular'),
         ),
       ],
       children: [
         Text(
           '${c.numeroComprobante} · S/ ${c.total.toStringAsFixed(2)}. '
-          '${c.esInterno ? 'Es un ticket interno: no se envía a SUNAT.' : 'Se envía la comunicación de baja a SUNAT.'}',
+          '${c.esInterno ? 'Es un ticket interno: no se envía a SUNAT.' : 'Comprobante fiscal ante SUNAT.'}',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 14),
+        if (!c.esInterno) ...[
+          const Text(
+            'Mecanismo de anulación:',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  label: const Center(
+                    child: Text('Nota de Crédito (07)', style: TextStyle(fontSize: 12)),
+                  ),
+                  selected: _tipoAccion == 'nota_credito',
+                  onSelected: (sel) {
+                    if (sel) setState(() => _tipoAccion = 'nota_credito');
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Center(
+                    child: Text('Baja / Anulación', style: TextStyle(fontSize: 12)),
+                  ),
+                  selected: _tipoAccion == 'baja',
+                  onSelected: (sel) {
+                    if (sel) setState(() => _tipoAccion = 'baja');
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_tipoAccion == 'nota_credito') ...[
+            const Text(
+              'Motivo SUNAT (Catálogo 09):',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _codigoMotivo,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: '01',
+                      child: Text('01 — Anulación de la operación'),
+                    ),
+                    DropdownMenuItem(
+                      value: '02',
+                      child: Text('02 — Anulación por error en RUC/DNI'),
+                    ),
+                    DropdownMenuItem(
+                      value: '03',
+                      child: Text('03 — Corrección por error en descripción'),
+                    ),
+                    DropdownMenuItem(
+                      value: '07',
+                      child: Text('07 — Devolución total'),
+                    ),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _codigoMotivo = val;
+                        switch (val) {
+                          case '01':
+                            _motivo.text = 'ANULACION DE LA OPERACION';
+                            break;
+                          case '02':
+                            _motivo.text = 'ANULACION POR ERROR EN EL RUC / DNI';
+                            break;
+                          case '03':
+                            _motivo.text = 'CORRECCION POR ERROR EN LA DESCRIPCION';
+                            break;
+                          case '07':
+                            _motivo.text = 'DEVOLUCION TOTAL';
+                            break;
+                        }
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
         CampoTexto(
           controller: _motivo,
           autofocus: true,
           maxLength: 120,
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
-            labelText: 'Motivo de la anulación',
+            labelText: 'Descripción / Motivo',
             counterText: '',
           ),
         ),
@@ -160,15 +285,26 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
   }
 
   Future<void> _anular(Comprobante c) async {
-    final motivo = await showBlurDialog<String>(
+    final res = await showBlurDialog<_ResultadoAnulacion>(
       context: context,
       builder: (_) => _MotivoAnulacionDialog(comprobante: c),
     );
-    if (motivo == null) return;
-    await _accion(
-      () => FacturacionService.instance.anular(c.id, motivo: motivo),
-      'Comprobante anulado.',
-    );
+    if (res == null) return;
+    if (res.esNotaCredito) {
+      await _accion(
+        () => FacturacionService.instance.emitirNotaCredito(
+          c.id,
+          motivoCodigo: res.codigo,
+          motivoDescripcion: res.motivo,
+        ),
+        'Nota de Crédito emitida y comprobante anulado.',
+      );
+    } else {
+      await _accion(
+        () => FacturacionService.instance.anular(c.id, motivo: res.motivo),
+        'Comprobante anulado ante SUNAT.',
+      );
+    }
   }
 
   Color _color(Comprobante c) {

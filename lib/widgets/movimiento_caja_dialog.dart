@@ -4,6 +4,7 @@ import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../models/medio_pago.dart';
 import '../models/movimiento_caja.dart';
+import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'campo_texto.dart';
 import 'dialogo_app.dart';
@@ -200,6 +201,70 @@ class _AnularMovimientoDialogState extends State<AnularMovimientoDialog> {
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
             labelText: 'Motivo de la anulación',
+            counterText: '',
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
+// Pide confirmación y motivo para reactivar un movimiento previamente anulado
+class ReactivarMovimientoDialog extends StatefulWidget {
+  final MovimientoCaja movimiento;
+
+  const ReactivarMovimientoDialog({super.key, required this.movimiento});
+
+  @override
+  State<ReactivarMovimientoDialog> createState() => _ReactivarMovimientoDialogState();
+}
+
+class _ReactivarMovimientoDialogState extends State<ReactivarMovimientoDialog> {
+  final _motivo = TextEditingController(text: 'Corrección de anulación involuntaria');
+
+  @override
+  void dispose() {
+    _motivo.dispose();
+    super.dispose();
+  }
+
+  bool get _valido => _motivo.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.movimiento;
+    return DialogoApp(
+      titulo: 'Reactivar movimiento de caja',
+      ancho: 420,
+      acciones: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _valido
+              ? () => Navigator.of(context).pop(_motivo.text.trim())
+              : null,
+          style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+          child: const Text('Reactivar'),
+        ),
+      ],
+      children: [
+        Text(
+          'Reactivar: ${m.categoriaNombre} · S/ ${m.monto.toStringAsFixed(2)}.\n'
+          'Este movimiento y su cobro asociado volverán a estar activos, '
+          'recuperando el estado pagado del pedido si corresponde.',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 14),
+        CampoTexto(
+          controller: _motivo,
+          autofocus: true,
+          maxLength: 120,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            labelText: 'Motivo de la reactivación',
             counterText: '',
           ),
         ),

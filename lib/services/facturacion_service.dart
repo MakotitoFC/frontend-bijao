@@ -244,6 +244,25 @@ class FacturacionService {
     await _api.post('$_base/comprobantes/$id/anular', body: {'motivo': motivo});
   }
 
+  // Emite Nota de Crédito Electrónica ante SUNAT para anular o corregir un comprobante
+  Future<Comprobante> emitirNotaCredito(
+    String id, {
+    required String motivoCodigo,
+    required String motivoDescripcion,
+  }) async {
+    final res = await _api.post(
+      '$_base/comprobantes/$id/nota-credito',
+      body: {
+        'motivo_codigo': motivoCodigo,
+        'motivo_descripcion': motivoDescripcion,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió la confirmación de la nota de crédito');
+    }
+    return Comprobante.fromJson(res);
+  }
+
   // Reenvía el comprobante a la ticketera de caja.
   Future<void> reimprimir(String id) async {
     await _api.post('$_base/comprobantes/$id/imprimir', body: {});

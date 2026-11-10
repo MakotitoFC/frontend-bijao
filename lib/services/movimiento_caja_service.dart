@@ -230,6 +230,27 @@ class MovimientoCajaService {
     return anulado;
   }
 
+  Future<MovimientoCaja> reactivar(
+    MovimientoCaja m, {
+    required String motivo,
+  }) async {
+    final texto = motivo.trim();
+    if (texto.isEmpty) throw Exception('Escribe el motivo de la reactivación');
+    var reactivado = m.copyWith(anulado: false, motivoAnulacion: null);
+    if (UuidHelper.isValid(m.id)) {
+      final res = await _api.post(
+        '/api/movimientos/${m.id}/reactivar',
+        body: {'motivo': texto},
+      );
+      if (res is Map<String, dynamic>) {
+        final delServidor = MovimientoCaja.fromJson(res);
+        reactivado = delServidor;
+      }
+    }
+    _reemplazar(reactivado);
+    return reactivado;
+  }
+
   void _reemplazar(MovimientoCaja m) {
     final i = movimientosCaja.indexWhere((x) => x.id == m.id);
     if (i >= 0) {

@@ -47,6 +47,7 @@ import '../widgets/tabs_texto.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
 import '../widgets/campo_texto.dart';
 import '../widgets/descargo_pago_dialog.dart';
+import '../widgets/redistribuir_pagos_dialog.dart';
 
 // Historial de pedidos y Caja: vistas individuales (ver nav_items.dart).
 
@@ -1130,6 +1131,210 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
+  Future<void> _reactivar(MovimientoCaja m) async {
+    final motivo = await showBlurDialog<String>(
+      context: context,
+      builder: (_) => ReactivarMovimientoDialog(movimiento: m),
+    );
+    if (motivo == null || !mounted) return;
+    try {
+      await MovimientoCajaService.instance.reactivar(m, motivo: motivo);
+      if (!mounted) return;
+      showAppToast(
+        context,
+        'Movimiento reactivado correctamente. El cobro volvió a estar activo.',
+        type: ToastType.success,
+      );
+      await _refrescarCaja();
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
+    }
+  }
+
+  Future<void> _redistribuir(MovimientoCaja m) async {
+    final pId = m.pedidosId;
+    if (pId == null || pId.isEmpty) {
+      showAppToast(context, 'Este movimiento no está asociado a un pedido', type: ToastType.error);
+      return;
+    }
+    final r = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => RedistribuirPagosDialog(pedidoId: pId),
+    );
+    if (r == true && mounted) {
+      showAppToast(
+        context,
+        'Pagos reasignados y divididos correctamente.',
+        type: ToastType.success,
+      );
+      await _refrescarCaja();
+    }
+  }
+
+  Future<void> _buscarComanda() async {
+    final ctrl = TextEditingController();
+    final comandaNum = await showBlurDialog<int>(
+      context: context,
+      builder: (ctx) => DialogoApp(
+        titulo: 'Buscar pedido por # Comanda',
+        ancho: 380,
+        acciones: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final n = int.tryParse(ctrl.text.trim());
+              if (n != null && n > 0) {
+                Navigator.of(ctx).pop(n);
+              }
+            },
+            icon: const Icon(LucideIcons.search, size: 16),
+            label: const Text('Buscar'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+          ),
+        ],
+        children: [
+          const Text(
+            'Ingresa el número de orden de la comanda impresa para localizar de inmediato todos sus movimientos y pagos.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 14),
+          CampoTexto(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'N° de Comanda',
+              prefixText: '# ',
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+
+    if (comandaNum == null || !mounted) return;
+
+    try {
+      final res = await PagoService.instance.buscarPedidoPorComanda(comandaNum);
+      if (!mounted) return;
+      final pId = res['pedido_id']?.toString() ?? '';
+      if (pId.isEmpty) {
+        showAppToast(context, 'No se encontró el pedido para la comanda #$comandaNum', type: ToastType.error);
+        return;
+      }
+
+      await showBlurDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDState) {
+            final tot = (res['total_pedido'] is num)
+                ? (res['total_pedido'] as num).toDouble()
+                : 0.0;
+            final clNom = res['cliente_nombre']?.toString() ?? 'Cliente';
+            final est = res['estado_pedido']?.toString() ?? '';
+
+            return DialogoApp(
+              titulo: 'Comanda #$comandaNum',
+              ancho: 520,
+              acciones: [
+                OutlinedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cerrar'),
+                ),
+                FilledButton.icon(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    final r = await showBlurDialog<bool>(
+                      context: context,
+                      builder: (_) => RedistribuirPagosDialog(
+                        pedidoId: pId,
+                        comandaOrden: comandaNum,
+                      ),
+                    );
+                    if (r == true && mounted) {
+                      showAppToast(context, 'Pagos reasignados.', type: ToastType.success);
+                      await _refrescarCaja();
+                    }
+                  },
+                  icon: const Icon(LucideIcons.split, size: 16),
+                  label: const Text('Dividir / Reasignar Pagos'),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.teal.shade700),
+                ),
+              ],
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.teal.shade200),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Cliente: $clNom', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(height: 2),
+                          Text('Estado: ${est.toUpperCase()}', style: TextStyle(fontSize: 12, color: Colors.teal.shade800)),
+                        ],
+                      ),
+                      Text(
+                        'Total: S/ ${tot.toStringAsFixed(2)}',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.teal.shade900),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Cobros registrados:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 6),
+                Builder(
+                  builder: (_) {
+                    final pagosL = (res['pagos'] as List?) ?? [];
+                    if (pagosL.isEmpty) {
+                      return const Text('No hay cobros activos.', style: TextStyle(color: Colors.grey, fontSize: 12));
+                    }
+                    return Column(
+                      children: [
+                        for (final p in pagosL)
+                          if (p is Map<String, dynamic>)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('· ${p['medio_pago_nombre'] ?? 'Método'}', style: const TextStyle(fontSize: 13)),
+                                  Text(
+                                    'S/ ${(p['monto_abonado'] ?? 0.0).toString()}',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Si necesitas corregir métodos de pago, presiona "Dividir / Reasignar Pagos".',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) showAppToast(context, e.toString().replaceAll('Exception: ', ''), type: ToastType.error);
+    }
+  }
+
   Future<void> _editar(MovimientoCaja m) async {
     final r = await showBlurDialog<MovimientoNuevo>(
       context: context,
@@ -1829,6 +2034,12 @@ class _CajaScreenState extends State<CajaScreen> {
                     etiqueta: 'Categorías',
                     onPressed: _administrarCategorias,
                   ),
+                  BotonIconoExpandible(
+                    icono: LucideIcons.search,
+                    etiqueta: 'Buscar Comanda #',
+                    color: Colors.teal.shade700,
+                    onPressed: _buscarComanda,
+                  ),
                 ],
               );
               if (angosto) {
@@ -2115,41 +2326,68 @@ class _CajaScreenState extends State<CajaScreen> {
             child: Wrap(
               spacing: 4,
               children: [
-                if (m.esCobroPedido) ...[
+                if (m.anulado) ...[
                   Tooltip(
-                    message: puedeCambiar
-                        ? 'Rectificar medio de pago (descargo)'
-                        : tooltipBloqueado,
+                    message: 'Reactivar movimiento y recuperar cobro de la venta',
                     child: TextButton.icon(
-                      onPressed: puedeCambiar ? () => _descargo(m) : null,
-                      icon: const Icon(LucideIcons.arrowLeftRight, size: 14),
-                      label: const Text('Descargo'),
+                      onPressed: () => _reactivar(m),
+                      icon: const Icon(LucideIcons.undo2, size: 14),
+                      label: const Text('Reactivar / Des-anular'),
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.primaryGreen,
                       ),
                     ),
                   ),
                 ] else ...[
+                  if (m.esCobroPedido) ...[
+                    Tooltip(
+                      message: puedeCambiar
+                          ? 'Rectificar medio de pago (descargo)'
+                          : tooltipBloqueado,
+                      child: TextButton.icon(
+                        onPressed: puedeCambiar ? () => _descargo(m) : null,
+                        icon: const Icon(LucideIcons.arrowLeftRight, size: 14),
+                        label: const Text('Descargo'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primaryGreen,
+                        ),
+                      ),
+                    ),
+                    Tooltip(
+                      message: puedeCambiar
+                          ? 'Dividir o reasignar pagos del pedido'
+                          : tooltipBloqueado,
+                      child: TextButton.icon(
+                        onPressed: puedeCambiar ? () => _redistribuir(m) : null,
+                        icon: const Icon(LucideIcons.split, size: 14),
+                        label: const Text('Dividir pagos'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.teal.shade700,
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Tooltip(
+                      message: puedeCambiar ? '' : tooltipBloqueado,
+                      child: TextButton.icon(
+                        onPressed: puedeCambiar ? () => _editar(m) : null,
+                        icon: const Icon(LucideIcons.pencil, size: 14),
+                        label: const Text('Editar'),
+                      ),
+                    ),
+                  ],
                   Tooltip(
                     message: puedeCambiar ? '' : tooltipBloqueado,
                     child: TextButton.icon(
-                      onPressed: puedeCambiar ? () => _editar(m) : null,
-                      icon: const Icon(LucideIcons.pencil, size: 14),
-                      label: const Text('Editar'),
+                      onPressed: puedeCambiar ? () => _anular(m) : null,
+                      icon: const Icon(LucideIcons.ban, size: 14),
+                      label: const Text('Anular'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.error,
+                      ),
                     ),
                   ),
                 ],
-                Tooltip(
-                  message: puedeCambiar ? '' : tooltipBloqueado,
-                  child: TextButton.icon(
-                    onPressed: puedeCambiar ? () => _anular(m) : null,
-                    icon: const Icon(LucideIcons.ban, size: 14),
-                    label: const Text('Anular'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.error,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),

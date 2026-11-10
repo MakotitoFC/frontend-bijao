@@ -233,4 +233,37 @@ class PagoService {
     }
     return res;
   }
+
+  // Busca todos los datos de pago y movimientos de un pedido por su número de orden de comanda
+  Future<Map<String, dynamic>> buscarPedidoPorComanda(int comandaNumero, {DateTime? fecha}) async {
+    String q = '';
+    if (fecha != null) {
+      final fStr = '${fecha.year}-${fecha.month.toString().padLeft(2, '0')}-${fecha.day.toString().padLeft(2, '0')}';
+      q = '?fecha=$fStr';
+    }
+    final res = await _api.get('/api/caja/pedidos/comanda/$comandaNumero$q');
+    if (res is! Map<String, dynamic>) {
+      throw Exception('No se encontró pedido con el número de comanda indicado');
+    }
+    return res;
+  }
+
+  // Reasigna o divide los pagos de un pedido entre varios métodos sin destruir la venta
+  Future<Map<String, dynamic>> redistribuirPagos({
+    required String pedidoId,
+    required String motivo,
+    required List<Map<String, dynamic>> distribucion,
+  }) async {
+    final res = await _api.post(
+      '/api/pedidos/$pedidoId/redistribuir-pagos',
+      body: {
+        'motivo': motivo.trim(),
+        'distribucion': distribucion,
+      },
+    );
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió la confirmación de la reasignación');
+    }
+    return res;
+  }
 }
