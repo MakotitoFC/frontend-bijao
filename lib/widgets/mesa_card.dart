@@ -342,6 +342,26 @@ class MesaCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Desunir también en la tarjeta compacta (la que se ve en el
+                  // celular): sin esto, en el APK no había cómo separar mesas.
+                  if (_unida && onDesunir != null)
+                    Tooltip(
+                      message: 'Desunir mesas',
+                      child: InkWell(
+                        onTap: onDesunir,
+                        borderRadius: BorderRadius.circular(20),
+                        child: SizedBox.square(
+                          dimension: 32,
+                          child: Center(
+                            child: Icon(
+                              LucideIcons.unlink,
+                              size: 16,
+                              color: textoPrincipal,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   if (onEditar != null)
                     InkWell(
                       onTap: onEditar,

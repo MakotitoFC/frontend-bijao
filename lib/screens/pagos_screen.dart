@@ -1189,7 +1189,9 @@ class _CajaScreenState extends State<CajaScreen> {
             },
             icon: const Icon(LucideIcons.search, size: 16),
             label: const Text('Buscar'),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryGreen,
+            ),
           ),
         ],
         children: [
@@ -1219,7 +1221,11 @@ class _CajaScreenState extends State<CajaScreen> {
       if (!mounted) return;
       final pId = res['pedido_id']?.toString() ?? '';
       if (pId.isEmpty) {
-        showAppToast(context, 'No se encontró el pedido para la comanda #$comandaNum', type: ToastType.error);
+        showAppToast(
+          context,
+          'No se encontró el pedido para la comanda #$comandaNum',
+          type: ToastType.error,
+        );
         return;
       }
 
@@ -1236,7 +1242,9 @@ class _CajaScreenState extends State<CajaScreen> {
             final totConsumo = parseM(res['total_pedido']);
             final totPropina = parseM(res['total_propina']);
             final totCobradoRaw = parseM(res['total_cobrado']);
-            final tot = totCobradoRaw > 0 ? totCobradoRaw : (totConsumo + totPropina);
+            final tot = totCobradoRaw > 0
+                ? totCobradoRaw
+                : (totConsumo + totPropina);
 
             final clNom = res['cliente_nombre']?.toString() ?? 'Cliente';
             final est = res['estado_pedido']?.toString() ?? '';
@@ -1264,32 +1272,63 @@ class _CajaScreenState extends State<CajaScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Cliente: $clNom', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text(
+                            'Cliente: $clNom',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
                           const SizedBox(height: 2),
-                          Text('Estado: ${est.toUpperCase()}', style: TextStyle(fontSize: 12, color: Colors.teal.shade800)),
+                          Text(
+                            'Estado: ${est.toUpperCase()}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.teal.shade800,
+                            ),
+                          ),
                           if (totPropina > 0)
                             Text(
                               'Consumo: S/ ${totConsumo.toStringAsFixed(2)} · Propina: S/ ${totPropina.toStringAsFixed(2)}',
-                              style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.teal.shade700,
+                              ),
                             ),
                         ],
                       ),
                       Text(
                         'Total: S/ ${tot.toStringAsFixed(2)}',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.teal.shade900),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          color: Colors.teal.shade900,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Text('Cobros registrados:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text(
+                  'Cobros registrados:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
                 const SizedBox(height: 6),
                 Builder(
                   builder: (_) {
                     final pagosL = (res['pagos'] as List?) ?? [];
-                    final pagosActivos = pagosL.where((p) => p is Map<String, dynamic> && p['estado'] != 'anulado').toList();
+                    final pagosActivos = pagosL
+                        .where(
+                          (p) =>
+                              p is Map<String, dynamic> &&
+                              p['estado'] != 'anulado',
+                        )
+                        .toList();
                     if (pagosActivos.isEmpty) {
-                      return const Text('No hay cobros activos.', style: TextStyle(color: Colors.grey, fontSize: 12));
+                      return const Text(
+                        'No hay cobros activos.',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      );
                     }
                     return Column(
                       children: [
@@ -1300,47 +1339,84 @@ class _CajaScreenState extends State<CajaScreen> {
                                 final pIdStr = p['id']?.toString() ?? '';
                                 final mCobrado = parseM(p['monto_cobrado']);
                                 final mAbonado = parseM(p['monto_abonado']);
-                                final mFinal = mCobrado > 0 ? mCobrado : mAbonado;
+                                final mFinal = mCobrado > 0
+                                    ? mCobrado
+                                    : mAbonado;
                                 final prop = parseM(p['propina']);
-                                final todosMovs = _rangoMov == null ? movimientosCaja : _movRango;
-                                final movRel = todosMovs.where((m) => (pIdStr.isNotEmpty && m.pagoId == pIdStr)).firstOrNull ??
-                                    todosMovs.where((m) => m.pedidosId == pId && !m.anulado).firstOrNull;
+                                final todosMovs = _rangoMov == null
+                                    ? movimientosCaja
+                                    : _movRango;
+                                final movRel =
+                                    todosMovs
+                                        .where(
+                                          (m) =>
+                                              (pIdStr.isNotEmpty &&
+                                              m.pagoId == pIdStr),
+                                        )
+                                        .firstOrNull ??
+                                    todosMovs
+                                        .where(
+                                          (m) =>
+                                              m.pedidosId == pId && !m.anulado,
+                                        )
+                                        .firstOrNull;
 
                                 return Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                    horizontal: 8,
+                                  ),
                                   margin: const EdgeInsets.only(bottom: 6),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.shade50,
                                     borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: Colors.grey.shade200),
+                                    border: Border.all(
+                                      color: Colors.grey.shade200,
+                                    ),
                                   ),
                                   child: Row(
                                     children: [
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              p['medio_pago_nombre']?.toString() ?? 'Método de pago',
-                                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                              p['medio_pago_nombre']
+                                                      ?.toString() ??
+                                                  'Método de pago',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                              ),
                                             ),
                                             if (prop > 0)
                                               Text(
                                                 'Incluye propina: S/ ${prop.toStringAsFixed(2)}',
-                                                style: TextStyle(fontSize: 11, color: Colors.teal.shade700),
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.teal.shade700,
+                                                ),
                                               ),
                                           ],
                                         ),
                                       ),
                                       Text(
                                         'S/ ${mFinal.toStringAsFixed(2)}',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
                                       ),
                                       if (movRel != null) ...[
                                         const SizedBox(width: 8),
                                         IconButton(
-                                          icon: const Icon(LucideIcons.arrowLeftRight, size: 16),
-                                          tooltip: 'Hacer descargo (cambiar método)',
+                                          icon: const Icon(
+                                            LucideIcons.arrowLeftRight,
+                                            size: 16,
+                                          ),
+                                          tooltip:
+                                              'Hacer descargo (cambiar método)',
                                           color: AppColors.primaryGreen,
                                           visualDensity: VisualDensity.compact,
                                           onPressed: () async {
@@ -1349,7 +1425,10 @@ class _CajaScreenState extends State<CajaScreen> {
                                           },
                                         ),
                                         IconButton(
-                                          icon: const Icon(LucideIcons.ban, size: 16),
+                                          icon: const Icon(
+                                            LucideIcons.ban,
+                                            size: 16,
+                                          ),
                                           tooltip: 'Anular cobro',
                                           color: AppColors.error,
                                           visualDensity: VisualDensity.compact,
@@ -1379,7 +1458,12 @@ class _CajaScreenState extends State<CajaScreen> {
         ),
       );
     } catch (e) {
-      if (mounted) showAppToast(context, e.toString().replaceAll('Exception: ', ''), type: ToastType.error);
+      if (mounted)
+        showAppToast(
+          context,
+          e.toString().replaceAll('Exception: ', ''),
+          type: ToastType.error,
+        );
     }
   }
 
@@ -1853,7 +1937,20 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
-  // A qué tarjeta pertenece un medio: efectivo, digital (Yape/Plin) o tarjeta.
+  // Un medio de crédito o descuento de planilla: se cobra a nivel de cuenta,
+  // pero no entra efectivo ni pasa por el POS. Mismo criterio que el servidor.
+  static bool _esCredito(FilaResumenMedio f) {
+    final grupo = f.grupo.toLowerCase();
+    final medio = f.medio.toLowerCase();
+    if (grupo == 'efectivo' || grupo == 'digital') return false;
+    return grupo == 'credito' ||
+        grupo == 'planilla' ||
+        medio.contains('planilla') ||
+        medio.contains('cuenta empleado');
+  }
+
+  // A qué tarjeta pertenece un medio: efectivo, digital (Yape/Plin), crédito o
+  // planilla, o tarjeta.
   String _grupoDeMedio(FilaResumenMedio f) {
     final grupo = f.grupo.toLowerCase();
     final medio = f.medio.toLowerCase();
@@ -1863,6 +1960,7 @@ class _CajaScreenState extends State<CajaScreen> {
         medio.contains('plin')) {
       return 'digital';
     }
+    if (_esCredito(f)) return 'credito';
     return 'tarjeta';
   }
 
@@ -1870,6 +1968,7 @@ class _CajaScreenState extends State<CajaScreen> {
     'efectivo': 'Efectivo',
     'tarjeta': 'Tarjetas / POS',
     'digital': 'Yape / Plin',
+    'credito': 'Crédito / Planilla',
   };
 
   Widget _vistaCierres(List<CierreCaja> cierres) {
@@ -1934,6 +2033,7 @@ class _CajaScreenState extends State<CajaScreen> {
       'efectivo': Color(0xFF16A34A),
       'tarjeta': Color(0xFF3B82F6),
       'digital': Color(0xFFD946EF),
+      'credito': Color(0xFFF59E0B),
     };
     final ordenadas = [
       ...filas,
@@ -2382,7 +2482,8 @@ class _CajaScreenState extends State<CajaScreen> {
               children: [
                 if (m.anulado) ...[
                   Tooltip(
-                    message: 'Reactivar movimiento y recuperar cobro de la venta',
+                    message:
+                        'Reactivar movimiento y recuperar cobro de la venta',
                     child: TextButton.icon(
                       onPressed: () => _reactivar(m),
                       icon: const Icon(LucideIcons.undo2, size: 14),
@@ -2584,6 +2685,7 @@ class _CajaScreenState extends State<CajaScreen> {
     required double efectivo,
     required double tarjeta,
     required double digital,
+    double credito = 0,
   }) {
     Widget cifra(String etiqueta, double v) => Expanded(
       child: Container(
@@ -2757,6 +2859,16 @@ class _CajaScreenState extends State<CajaScreen> {
                 digital,
                 'digital',
               ),
+              if (credito > 0.004) ...[
+                Divider(height: 1, color: Colors.grey.shade200),
+                medio(
+                  LucideIcons.userRound,
+                  const Color(0xFFF59E0B),
+                  'Crédito / Planilla',
+                  credito,
+                  'credito',
+                ),
+              ],
             ],
           ),
         ),
@@ -2787,12 +2899,18 @@ class _CajaScreenState extends State<CajaScreen> {
     final totalTarjeta = filas
         .where(
           (f) =>
-              f.grupo.toLowerCase() == 'tarjeta' ||
-              (!f.medio.toLowerCase().contains('efectivo') &&
-                  !f.medio.toLowerCase().contains('yape') &&
-                  !f.medio.toLowerCase().contains('plin') &&
-                  f.grupo.toLowerCase() != 'digital'),
+              !_esCredito(f) &&
+              (f.grupo.toLowerCase() == 'tarjeta' ||
+                  (!f.medio.toLowerCase().contains('efectivo') &&
+                      !f.medio.toLowerCase().contains('yape') &&
+                      !f.medio.toLowerCase().contains('plin') &&
+                      f.grupo.toLowerCase() != 'digital')),
         )
+        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+    // Lo descontado de planilla o cobrado a crédito: se muestra aparte y no
+    // cuenta como tarjeta.
+    final totalCredito = filas
+        .where(_esCredito)
         .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
     final totalDigital = filas
         .where(
@@ -2817,6 +2935,7 @@ class _CajaScreenState extends State<CajaScreen> {
         efectivo: totalEfectivo,
         tarjeta: totalTarjeta,
         digital: totalDigital,
+        credito: totalCredito,
       );
     }
 
@@ -2889,6 +3008,16 @@ class _CajaScreenState extends State<CajaScreen> {
         'Total cobrado por billeteras',
         grupo: 'digital',
       ),
+      if (totalCredito > 0.004)
+        _tarjetaCaja(
+          LucideIcons.userRound,
+          const Color(0xFFF59E0B),
+          const Color(0xFFFEF6E7),
+          'Crédito / Planilla',
+          totalCredito,
+          'Descontado de planilla (no es efectivo)',
+          grupo: 'credito',
+        ),
     ];
     if (mini) {
       // Dos columnas fijas: todas las tarjetas a la vista, sin deslizar.

@@ -25,5 +25,10 @@ class AppConfig {
     defaultValue: true,
   );
 
+  // "Abrir el día" (botón de la Carta y sección "Apertura del día" de
+  // Configuración > Stock diario). Oculto por ahora; para volver a mostrarlo,
+  // poner en true.
+  static const bool mostrarAperturaDia = false;
+
   static String get defaultBaseUrl => 'http://$serverIp:$serverPort';
 }

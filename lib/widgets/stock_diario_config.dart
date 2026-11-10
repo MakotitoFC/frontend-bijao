@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_config.dart';
+
 import '../data/disponibilidad_store.dart';
 import '../models/disponibilidad.dart';
 import '../services/disponibilidad_service.dart';
@@ -100,49 +102,54 @@ class _StockDiarioConfigState extends State<StockDiarioConfig> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
-                  SeccionConfig(
-                    titulo: 'Apertura del día',
-                    descripcion:
-                        'Cada mañana indica cuántas porciones tendrás de cada '
-                        'plato. Así el sistema te avisa cuando se acaban.',
-                    filas: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              OutlinedButton.icon(
-                                onPressed: () => showBlurDialog<bool>(
-                                  context: context,
-                                  builder: (_) => const StockBaseDialog(),
+                  if (AppConfig.mostrarAperturaDia) ...[
+                    const SizedBox(height: 32),
+                    SeccionConfig(
+                      titulo: 'Apertura del día',
+                      descripcion:
+                          'Cada mañana indica cuántas porciones tendrás de cada '
+                          'plato. Así el sistema te avisa cuando se acaban.',
+                      filas: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () => showBlurDialog<bool>(
+                                    context: context,
+                                    builder: (_) => const StockBaseDialog(),
+                                  ),
+                                  icon: const Icon(Icons.tune, size: 18),
+                                  label: const Text(
+                                    '1. Definir cantidades base',
+                                  ),
                                 ),
-                                icon: const Icon(Icons.tune, size: 18),
-                                label: const Text('1. Definir cantidades base'),
-                              ),
-                              FilledButton.icon(
-                                onPressed: () => showBlurDialog<bool>(
-                                  context: context,
-                                  builder: (_) => const AperturaDiariaDialog(),
+                                FilledButton.icon(
+                                  onPressed: () => showBlurDialog<bool>(
+                                    context: context,
+                                    builder: (_) =>
+                                        const AperturaDiariaDialog(),
+                                  ),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.primaryGreen,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.event_available,
+                                    size: 18,
+                                  ),
+                                  label: const Text('2. Abrir el día de hoy'),
                                 ),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.primaryGreen,
-                                ),
-                                icon: const Icon(
-                                  Icons.event_available,
-                                  size: 18,
-                                ),
-                                label: const Text('2. Abrir el día de hoy'),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ],
               );
             },

@@ -18,6 +18,8 @@ import '../utils/abrir_enlace.dart';
 import '../utils/whatsapp_cuenta.dart';
 import 'app_toast.dart';
 import 'comprobante_en_cobro.dart';
+import 'app_select.dart';
+import 'campo_texto.dart';
 import 'dialogo_app.dart';
 import 'whatsapp_cuenta_dialog.dart';
 
@@ -74,7 +76,12 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   }
 
   Comprobante? get _comprobanteFiscalActivo => _comprobantes
-      .where((c) => c.esFiscal && c.estadoSunat != 'ANULADO' && c.estadoSunat != 'RECHAZADO')
+      .where(
+        (c) =>
+            c.esFiscal &&
+            c.estadoSunat != 'ANULADO' &&
+            c.estadoSunat != 'RECHAZADO',
+      )
       .firstOrNull;
 
   Comprobante? get _comprobanteRechazado => _comprobantes
@@ -172,9 +179,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
         if (res.estadoSunat == 'ERROR_CONEXION') {
           showAppToast(
             context,
-            res.mensaje?.isNotEmpty == true
-                ? res.mensaje!
-                : 'SUNAT no tiene registrado este comprobante aún. Presione "Reintentar Envío a SUNAT".',
+            res.mensaje?.isNotEmpty == true ? res.mensaje! : 'SUNAT no tiene registrado este comprobante aún. Presione "Reintentar Envío a SUNAT".',
             type: ToastType.warning,
           );
         } else {
@@ -237,9 +242,13 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       widget.pedido.clienteNombre,
       c.clienteDenominacion,
     );
-    final negocio = nombreDelNegocio().isEmpty ? 'nuestro restaurante' : nombreDelNegocio();
+    final negocio = nombreDelNegocio().isEmpty
+        ? 'nuestro restaurante'
+        : nombreDelNegocio();
     final buf = StringBuffer()
-      ..writeln('Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.')
+      ..writeln(
+        'Hola${nombreCliente.isEmpty ? '' : ' $nombreCliente'}, te enviamos tu ${c.tipoEtiqueta.toLowerCase()} ${c.numeroComprobante} de $negocio.',
+      )
       ..writeln('Total: S/ ${c.total.toStringAsFixed(2)}')
       ..writeln();
 
@@ -483,17 +492,16 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     ),
-                    if (fiscal.ticketUrl != null || fiscal.a4Url != null || fiscal.xmlDescargaUrl != null)
+                    if (fiscal.ticketUrl != null ||
+                        fiscal.a4Url != null ||
+                        fiscal.xmlDescargaUrl != null)
                       FilledButton.icon(
                         onPressed: () => _whatsapp(fiscal),
                         icon: const Icon(LucideIcons.messageCircle, size: 15),
                         label: const Text('WhatsApp'),
                         style: estiloBotonWhatsapp.copyWith(
                           padding: const WidgetStatePropertyAll(
-                            EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
                         ),
                       ),
@@ -536,11 +544,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  LucideIcons.xCircle,
-                  size: 18,
-                  color: Colors.red.shade800,
-                ),
+                Icon(LucideIcons.xCircle, size: 18, color: Colors.red.shade800),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1093,7 +1097,7 @@ class _AnularComprobanteDialog extends StatefulWidget {
 }
 
 class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
-  String _tipoAccion = 'nota_credito'; // 'nota_credito' o 'baja'
+  String _tipoAccion = 'baja'; // 'baja' (por defecto) o 'nota_credito'
   String _codigoMotivo = '01';
   final _motivoController = TextEditingController(
     text: 'ANULACION DE LA OPERACION',
@@ -1172,7 +1176,9 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
     final c = widget.comprobante;
 
     return DialogoApp(
-      titulo: c.esInterno ? 'Anular ticket interno' : 'Anulación / Nota de Crédito SUNAT',
+      titulo: c.esInterno
+          ? 'Anular ticket interno'
+          : 'Anulación / Nota de Crédito SUNAT',
       ancho: 500,
       acciones: [
         OutlinedButton(
@@ -1263,19 +1269,10 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
               Expanded(
                 child: ChoiceChip(
                   label: const Center(
-                    child: Text('Nota de Crédito (Tipo 07)', style: TextStyle(fontSize: 12)),
-                  ),
-                  selected: _tipoAccion == 'nota_credito',
-                  onSelected: (sel) {
-                    if (sel) setState(() => _tipoAccion = 'nota_credito');
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Center(
-                    child: Text('Comunicación de Baja', style: TextStyle(fontSize: 12)),
+                    child: Text(
+                      'Comunicación de Baja',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                   selected: _tipoAccion == 'baja',
                   onSelected: (sel) {
@@ -1283,72 +1280,69 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
                   },
                 ),
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Center(
+                    child: Text(
+                      'Nota de Crédito (Tipo 07)',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  selected: _tipoAccion == 'nota_credito',
+                  onSelected: (sel) {
+                    if (sel) setState(() => _tipoAccion = 'nota_credito');
+                  },
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           if (_tipoAccion == 'nota_credito') ...[
-            const Text(
-              'Código de motivo (Catálogo N° 09 SUNAT):',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _codigoMotivo,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                      value: '01',
-                      child: Text('01 — Anulación de la operación (Cobro errado, etc.)'),
-                    ),
-                    DropdownMenuItem(
-                      value: '02',
-                      child: Text('02 — Anulación por error en RUC / DNI'),
-                    ),
-                    DropdownMenuItem(
-                      value: '03',
-                      child: Text('03 — Corrección por error en la descripción'),
-                    ),
-                    DropdownMenuItem(
-                      value: '07',
-                      child: Text('07 — Devolución total'),
-                    ),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() {
-                        _codigoMotivo = val;
-                        switch (val) {
-                          case '01':
-                            _motivoController.text = 'ANULACION DE LA OPERACION';
-                            break;
-                          case '02':
-                            _motivoController.text = 'ANULACION POR ERROR EN EL RUC / DNI';
-                            break;
-                          case '03':
-                            _motivoController.text = 'CORRECCION POR ERROR EN LA DESCRIPCION';
-                            break;
-                          case '07':
-                            _motivoController.text = 'DEVOLUCION TOTAL';
-                            break;
-                        }
-                      });
-                    }
-                  },
+            AppSelect<String>(
+              label: 'Código de motivo (Catálogo N° 09 SUNAT)',
+              value: _codigoMotivo,
+              items: const [
+                AppSelectItem(
+                  value: '01',
+                  label: '01 — Anulación de la operación',
                 ),
-              ),
+                AppSelectItem(value: '02', label: '02 — Error en RUC / DNI'),
+                AppSelectItem(
+                  value: '03',
+                  label: '03 — Error en la descripción',
+                ),
+                AppSelectItem(value: '07', label: '07 — Devolución total'),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _codigoMotivo = val;
+                    switch (val) {
+                      case '01':
+                        _motivoController.text = 'ANULACION DE LA OPERACION';
+                        break;
+                      case '02':
+                        _motivoController.text =
+                            'ANULACION POR ERROR EN EL RUC / DNI';
+                        break;
+                      case '03':
+                        _motivoController.text =
+                            'CORRECCION POR ERROR EN LA DESCRIPCION';
+                        break;
+                      case '07':
+                        _motivoController.text = 'DEVOLUCION TOTAL';
+                        break;
+                    }
+                  });
+                }
+              },
             ),
             const SizedBox(height: 12),
           ],
         ],
 
-        TextField(
+        CampoTexto(
           controller: _motivoController,
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(

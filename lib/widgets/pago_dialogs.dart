@@ -29,6 +29,7 @@ import 'campo_texto.dart';
 import 'comprobante_en_cobro.dart';
 import 'dialogo_app.dart';
 import 'indicador_abajo.dart';
+import 'tabs_texto.dart';
 
 const naranjaPago = Color(0xFFF07F13);
 
@@ -341,10 +342,48 @@ class _FilaMedio {
 
 class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // Por defecto, efectivo (o el primero activo si no hay uno en efectivo).
-  late MedioPago _medio = mediosPagoActivos.firstWhere(
+  late MedioPago _medio = _mediosVisibles.firstWhere(
     (m) => m.grupo == 'efectivo',
-    orElse: () => mediosPagoActivos.first,
+    orElse: () => _mediosVisibles.first,
   );
+  // Solo en pedidos de empleado: si el pago figura en Caja (medios normales) o
+  // no (descuento de planilla, que no mueve efectivo).
+  bool _vaACaja = true;
+
+  bool _esCredito(MedioPago m) => m.grupo == 'credito' || m.grupo == 'planilla';
+
+  // Los medios que se ofrecen. En un pedido de empleado dependen de si el pago
+  // va a caja; en los demás pedidos son todos.
+  List<MedioPago> get _mediosVisibles {
+    final todos = mediosPagoActivos;
+    if (!widget.pedido.esEmpleado) return todos;
+    final lista = todos.where((m) => _esCredito(m) != _vaACaja).toList();
+    return lista.isNotEmpty ? lista : todos;
+  }
+
+  // Se ofrece elegir solo si hay medios de las dos clases.
+  bool get _ofreceVaACaja =>
+      widget.pedido.esEmpleado &&
+      mediosPagoActivos.any(_esCredito) &&
+      mediosPagoActivos.any((m) => !_esCredito(m));
+
+  void _cambiarVaACaja(bool v) {
+    if (_vaACaja == v) return;
+    setState(() {
+      _vaACaja = v;
+      final visibles = _mediosVisibles;
+      MedioPago elegido() => visibles.firstWhere(
+        (m) => m.grupo == 'efectivo',
+        orElse: () => visibles.first,
+      );
+      _medio = elegido();
+      for (final f in _filas) {
+        f.medio =
+            visibles.where((m) => m.id == f.medio.id).firstOrNull ?? elegido();
+      }
+    });
+  }
+
   // Comprobante a emitir al cobrar (solo administración y caja lo eligen).
   ComprobanteEnCobro? _comprobante;
   // La misma persona puede pagar con varios medios y montos (por ejemplo, una
@@ -542,9 +581,9 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   void _agregarFila() {
     final restante = _faltante > 0.005 ? _faltante : 0.0;
     final usados = _filas.map((f) => f.medio.id).toSet();
-    final otro = mediosPagoActivos.firstWhere(
+    final otro = _mediosVisibles.firstWhere(
       (m) => !usados.contains(m.id),
-      orElse: () => mediosPagoActivos.first,
+      orElse: () => _mediosVisibles.first,
     );
     setState(
       () => _filas.add(
@@ -619,8 +658,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         .then((_) {
           if (!mounted || mediosPagoActivos.isEmpty) return;
           MedioPago vigente(MedioPago m) =>
-              mediosPagoActivos.where((x) => x.id == m.id).firstOrNull ??
-              mediosPagoActivos.first;
+              _mediosVisibles.where((x) => x.id == m.id).firstOrNull ??
+              _mediosVisibles.first;
           setState(() {
             _medio = vigente(_medio);
             for (final f in _filas) {
@@ -936,7 +975,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // (2 por fila en celular, más en pantallas anchas).
   Widget _cuadriculaMedios() {
     final medios = [
-      for (final e in agruparMediosPago(mediosPagoActivos).entries) ...e.value,
+      for (final e in agruparMediosPago(_mediosVisibles).entries) ...e.value,
     ];
     return LayoutBuilder(
       builder: (context, c) {
@@ -1022,7 +1061,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                     value: _filas[i].medio.id,
                     hint: 'Buscar medio',
                     items: [
-                      for (final m in mediosPagoActivos)
+                      for (final m in _mediosVisibles)
                         AppSelectItem(
                           value: m.id,
                           label: m.aplicaComision
@@ -1032,7 +1071,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
                     ],
                     onChanged: (v) => setState(() {
                       if (v != null) {
-                        _filas[i].medio = mediosPagoActivos.firstWhere(
+                        _filas[i].medio = _mediosVisibles.firstWhere(
                           (m) => m.id == v,
                         );
                       }
@@ -1768,6 +1807,33 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         children: [
           _tarjetaTotal(total, saldo),
           const SizedBox(height: 20),
+          if (_ofreceVaACaja) ...[
+            _titulo('¿El pago va a caja?'),
+            TabsTexto(
+              tabs: [
+                TabTexto(
+                  etiqueta: 'Sí, figura en caja',
+                  activa: _vaACaja,
+                  onTap: () => _cambiarVaACaja(true),
+                ),
+                TabTexto(
+                  etiqueta: 'No, no figura en caja',
+                  activa: !_vaACaja,
+                  onTap: () => _cambiarVaACaja(false),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 14),
+              child: Text(
+                _vaACaja
+                    ? 'El pago entra a la caja con el medio que elijas.'
+                    : 'Se descuenta de la planilla del empleado: no entra '
+                          'dinero a la caja.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ),
+          ],
           _titulo('Método de pago'),
           if (!_dividir) _cuadriculaMedios(),
           const SizedBox(height: 14),

@@ -99,13 +99,10 @@ void main() {
         expect(find.text('Exigir apertura diaria'), findsOneWidget);
         expect(find.text('Permitir sobreventa'), findsOneWidget);
         expect(find.text('Marcar agotado automáticamente'), findsOneWidget);
-        await tester.scrollUntilVisible(
-          find.text('1. Definir cantidades base'),
-          200,
-          scrollable: find.byType(Scrollable).first,
-        );
-        expect(find.text('1. Definir cantidades base'), findsOneWidget);
-        expect(find.text('2. Abrir el día de hoy'), findsOneWidget);
+        // La apertura del día está oculta (AppConfig.mostrarAperturaDia).
+        expect(find.text('Apertura del día'), findsNothing);
+        expect(find.text('1. Definir cantidades base'), findsNothing);
+        expect(find.text('2. Abrir el día de hoy'), findsNothing);
       });
 
       testWidgets('Promociones — $nombre', (tester) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_config.dart';
+
 import 'dialogo_app.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -49,8 +51,10 @@ class _CartaCabeceraState extends State<CartaCabecera> {
   bool get _puedeCrearProducto =>
       widget.esAdmin || (widget.usuario?.tienePermiso('CREAR.CARTA') ?? false);
   bool get _puedeAbrirDia =>
-      widget.esAdmin ||
-      (widget.usuario?.tienePermiso('CREAR.CARTA_DISPONIBILIDAD') ?? false);
+      AppConfig.mostrarAperturaDia &&
+      (widget.esAdmin ||
+          (widget.usuario?.tienePermiso('CREAR.CARTA_DISPONIBILIDAD') ??
+              false));
   bool get _puedeCrearCategoria =>
       widget.esAdmin ||
       (widget.usuario?.tienePermiso('CREAR.CATEGORIA_COMIDA') ?? false);
@@ -238,12 +242,14 @@ class _CartaCabeceraState extends State<CartaCabecera> {
               ),
               if (widget.esAdmin) ...[
                 const SizedBox(width: 8),
-                IconButton.outlined(
-                  tooltip: 'Apertura del día',
-                  onPressed: _abrirDia,
-                  icon: const Icon(LucideIcons.calendarCheck),
-                ),
-                const SizedBox(width: 6),
+                if (AppConfig.mostrarAperturaDia) ...[
+                  IconButton.outlined(
+                    tooltip: 'Apertura del día',
+                    onPressed: _abrirDia,
+                    icon: const Icon(LucideIcons.calendarCheck),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 IconButton.outlined(
                   tooltip: 'Nueva categoría',
                   onPressed: _agregar,

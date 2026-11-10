@@ -39,7 +39,7 @@ class _MotivoAnulacionDialog extends StatefulWidget {
 }
 
 class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
-  String _tipoAccion = 'nota_credito';
+  String _tipoAccion = 'baja'; // 'baja' (por defecto) o 'nota_credito'
   String _codigoMotivo = '01';
   final _motivo = TextEditingController(text: 'ANULACION DE LA OPERACION');
 
@@ -64,7 +64,9 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
     final esNota = !c.esInterno && _tipoAccion == 'nota_credito';
 
     return DialogoApp(
-      titulo: c.esInterno ? 'Anular ticket interno' : 'Anulación / Nota de Crédito',
+      titulo: c.esInterno
+          ? 'Anular ticket interno'
+          : 'Anulación / Nota de Crédito',
       ancho: 480,
       acciones: [
         OutlinedButton(
@@ -75,12 +77,12 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
           onPressed: _motivo.text.trim().isEmpty
               ? null
               : () => Navigator.of(context).pop(
-                    _ResultadoAnulacion(
-                      esNotaCredito: esNota,
-                      codigo: _codigoMotivo,
-                      motivo: _motivo.text.trim(),
-                    ),
+                  _ResultadoAnulacion(
+                    esNotaCredito: esNota,
+                    codigo: _codigoMotivo,
+                    motivo: _motivo.text.trim(),
                   ),
+                ),
           style: FilledButton.styleFrom(backgroundColor: AppColors.error),
           child: Text(esNota ? 'Emitir Nota de Crédito' : 'Anular'),
         ),
@@ -103,19 +105,10 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
               Expanded(
                 child: ChoiceChip(
                   label: const Center(
-                    child: Text('Nota de Crédito (07)', style: TextStyle(fontSize: 12)),
-                  ),
-                  selected: _tipoAccion == 'nota_credito',
-                  onSelected: (sel) {
-                    if (sel) setState(() => _tipoAccion = 'nota_credito');
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Center(
-                    child: Text('Baja / Anulación', style: TextStyle(fontSize: 12)),
+                    child: Text(
+                      'Baja / Anulación',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                   selected: _tipoAccion == 'baja',
                   onSelected: (sel) {
@@ -123,66 +116,61 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
                   },
                 ),
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Center(
+                    child: Text(
+                      'Nota de Crédito (07)',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  selected: _tipoAccion == 'nota_credito',
+                  onSelected: (sel) {
+                    if (sel) setState(() => _tipoAccion = 'nota_credito');
+                  },
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           if (_tipoAccion == 'nota_credito') ...[
-            const Text(
-              'Motivo SUNAT (Catálogo 09):',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _codigoMotivo,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                      value: '01',
-                      child: Text('01 — Anulación de la operación'),
-                    ),
-                    DropdownMenuItem(
-                      value: '02',
-                      child: Text('02 — Anulación por error en RUC/DNI'),
-                    ),
-                    DropdownMenuItem(
-                      value: '03',
-                      child: Text('03 — Corrección por error en descripción'),
-                    ),
-                    DropdownMenuItem(
-                      value: '07',
-                      child: Text('07 — Devolución total'),
-                    ),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() {
-                        _codigoMotivo = val;
-                        switch (val) {
-                          case '01':
-                            _motivo.text = 'ANULACION DE LA OPERACION';
-                            break;
-                          case '02':
-                            _motivo.text = 'ANULACION POR ERROR EN EL RUC / DNI';
-                            break;
-                          case '03':
-                            _motivo.text = 'CORRECCION POR ERROR EN LA DESCRIPCION';
-                            break;
-                          case '07':
-                            _motivo.text = 'DEVOLUCION TOTAL';
-                            break;
-                        }
-                      });
-                    }
-                  },
+            AppSelect<String>(
+              label: 'Motivo SUNAT (Catálogo 09)',
+              value: _codigoMotivo,
+              items: const [
+                AppSelectItem(
+                  value: '01',
+                  label: '01 — Anulación de la operación',
                 ),
-              ),
+                AppSelectItem(value: '02', label: '02 — Error en RUC / DNI'),
+                AppSelectItem(
+                  value: '03',
+                  label: '03 — Error en la descripción',
+                ),
+                AppSelectItem(value: '07', label: '07 — Devolución total'),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _codigoMotivo = val;
+                    switch (val) {
+                      case '01':
+                        _motivo.text = 'ANULACION DE LA OPERACION';
+                        break;
+                      case '02':
+                        _motivo.text = 'ANULACION POR ERROR EN EL RUC / DNI';
+                        break;
+                      case '03':
+                        _motivo.text = 'CORRECCION POR ERROR EN LA DESCRIPCION';
+                        break;
+                      case '07':
+                        _motivo.text = 'DEVOLUCION TOTAL';
+                        break;
+                    }
+                  });
+                }
+              },
             ),
             const SizedBox(height: 12),
           ],
