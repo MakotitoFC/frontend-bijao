@@ -98,6 +98,7 @@ class PagoService {
     double? montoRecibido,
     double? vuelto,
     List<CargoExtra>? cargosExtra,
+    List<Map<String, dynamic>>? detalles,
   }) async {
     // Un pedido del servidor no puede cobrarse con un método que no lo es (p. ej.
     // los de respaldo que se muestran cuando el servidor no tiene ninguno): el
@@ -154,6 +155,7 @@ class PagoService {
         if (montoRecibido != null && montoRecibido > 0)
           'monto_recibido': montoRecibido,
         if (vuelto != null && vuelto > 0) 'vuelto': vuelto,
+        if (detalles != null && detalles.isNotEmpty) 'detalles': detalles,
         if (cargosExtra != null && cargosExtra.isNotEmpty)
           'cargos_extra': cargosExtra
               .map(

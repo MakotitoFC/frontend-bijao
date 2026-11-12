@@ -49,6 +49,7 @@ import 'descuento_dialog.dart';
 import 'menu_flotante.dart';
 import 'indicador_abajo.dart';
 import 'pago_dialogs.dart';
+import 'pago_compartido_dialog.dart';
 import 'promocion_pedido_dialogs.dart';
 import 'propina_dialog.dart';
 import 'reportar_problema_dialog.dart';
@@ -690,6 +691,19 @@ class DetallePedidoPanel extends StatelessWidget {
       context: context,
       builder: (_) =>
           PagarPedidoDialog(pedido: pedido, titulo: tituloPedido(pedido)),
+    );
+    if (r == true) onCambio();
+  }
+
+  Future<void> _dividirCuenta(BuildContext context) async {
+    if (!await _hayMediosPago(context)) return;
+    if (!context.mounted) return;
+    final r = await showBlurDialog<Object>(
+      context: context,
+      builder: (_) => PagoCompartidoDialog(
+        pedido: pedido,
+        titulo: tituloPedido(pedido),
+      ),
     );
     if (r == true) onCambio();
   }
@@ -3239,6 +3253,29 @@ class DetallePedidoPanel extends StatelessWidget {
                   ),
                 ),
               ),
+              if (puedePagar && !_esCuentaCero) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _dividirCuenta(context),
+                    icon: const Icon(LucideIcons.users, size: 16),
+                    label: Text(
+                      'Dividir cuenta',
+                      style: texto.copyWith(color: AppColors.primaryGreenDark),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.primaryGreen),
+                      foregroundColor: AppColors.primaryGreenDark,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      minimumSize: Size(0, alto),
+                      maximumSize: Size(double.infinity, alto),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ],
         ),

@@ -31,6 +31,8 @@ import 'comprobante_en_cobro.dart';
 import 'dialogo_app.dart';
 import 'indicador_abajo.dart';
 import 'tabs_texto.dart';
+import '../utils/blur_dialog.dart';
+import 'pago_compartido_dialog.dart';
 
 const naranjaPago = Color(0xFFF07F13);
 
@@ -1821,7 +1823,46 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _tarjetaTotal(total, saldo),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: () async {
+              Navigator.of(context).pop();
+              await showBlurDialog(
+                context: context,
+                builder: (_) => PagoCompartidoDialog(
+                  pedido: widget.pedido,
+                  titulo: widget.titulo,
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.users, size: 16, color: AppColors.primaryGreenDark),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      '¿Desean pagar por separado? Dividir cuenta por comensal',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryGreenDark,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios, size: 12, color: AppColors.primaryGreenDark),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           if (_ofreceVaACaja) ...[
             _titulo('¿El pago va a caja?'),
             TabsTexto(
