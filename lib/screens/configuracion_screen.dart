@@ -33,6 +33,7 @@ import '../widgets/usuario_permisos_dialog.dart';
 import '../widgets/stock_diario_config.dart';
 import '../widgets/turnos_config_widget.dart';
 import '../widgets/app_switch.dart';
+import '../widgets/actualizaciones_sistema_widget.dart';
 import '../services/auth_service.dart';
 
 // Configuración: submódulos Servicio, Restaurantes, Métodos de pago,
@@ -86,6 +87,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     'impresion_cocina': LucideIcons.chefHat,
     'sede_fiscal': LucideIcons.fileText,
     'turnos_caja': LucideIcons.clock,
+    'sistema_updates': LucideIcons.sparkles,
     'negocio': LucideIcons.settings,
   };
 
@@ -296,6 +298,13 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         etiqueta: 'Turnos de Caja',
         seccion: 'Negocio',
         contenido: () => _pagina([const TurnosConfigWidget()]),
+      ),
+    if (widget.usuario.esAdmin)
+      (
+        clave: 'sistema_updates',
+        etiqueta: 'Actualizaciones',
+        seccion: 'Negocio',
+        contenido: () => _pagina([const ActualizacionesSistemaWidget()]),
       ),
     (
       clave: 'negocio',
