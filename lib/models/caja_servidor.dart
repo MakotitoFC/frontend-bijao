@@ -14,6 +14,12 @@ class AperturaCaja {
   final String? fechaOperativa;
   final String? cajaId;
   final String? cajaNombre;
+  final String? estado;
+  final String? cierreCajaId;
+  final DateTime? fechaCierre;
+  final double? totalGeneral;
+
+  bool get abierta => estado == 'abierta';
 
   const AperturaCaja({
     required this.id,
@@ -26,6 +32,10 @@ class AperturaCaja {
     this.fechaOperativa,
     this.cajaId,
     this.cajaNombre,
+    this.estado,
+    this.cierreCajaId,
+    this.fechaCierre,
+    this.totalGeneral,
   });
 
   factory AperturaCaja.fromJson(Map<String, dynamic> json) => AperturaCaja(
@@ -42,6 +52,10 @@ class AperturaCaja {
     fechaOperativa: json['fecha_operativa']?.toString(),
     cajaId: json['caja_id']?.toString(),
     cajaNombre: json['caja_nombre']?.toString(),
+    estado: json['estado']?.toString(),
+    cierreCajaId: json['cierre_caja_id']?.toString(),
+    fechaCierre: DateTime.tryParse(json['fecha_cierre']?.toString() ?? '')?.toLocal(),
+    totalGeneral: jsonDouble(json['total_general']),
   );
 }
 

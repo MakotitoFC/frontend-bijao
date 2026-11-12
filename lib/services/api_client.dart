@@ -373,4 +373,35 @@ class ApiClient {
       );
     }
   }
+
+  /// Envía silenciosamente errores no capturados del cliente al servidor para trazabilidad en logs
+  static Future<void> registrarErrorRemoto({
+    required String mensaje,
+    String? stack,
+    String nivel = 'ERROR',
+    String? ruta,
+    String? usuario,
+  }) async {
+    try {
+      final base = ApiClient.instance.baseUrl;
+      final uri = Uri.parse('$base/api/v1/telemetria/frontend-log');
+      final payload = jsonEncode({
+        'nivel': nivel,
+        'mensaje': mensaje,
+        'stack': stack ?? '',
+        'ruta': ruta ?? (kIsWeb ? Uri.base.toString() : ''),
+        'usuario': usuario ?? 'desconocido',
+        'user_agent': kIsWeb ? 'Flutter Web' : defaultTargetPlatform.name,
+      });
+      await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Ignorar errores de conexión al reportar telemetría para evitar bucles
+    }
+  }
 }

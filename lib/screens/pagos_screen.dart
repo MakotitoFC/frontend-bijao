@@ -740,6 +740,27 @@ class _CajaScreenState extends State<CajaScreen> {
   // Tarjeta de medio elegida (efectivo, tarjeta o digital) para ver su resumen.
   String? _grupoElegido;
 
+  // Día y turno visualizados en Caja (por defecto hoy y el turno actual)
+  DateTime _dia = DateUtils.dateOnly(DateTime.now());
+  bool _cargandoDia = false;
+  List<AperturaCaja> _aperturasDia = [];
+  String? _aperturaSeleccionadaId; // null = consolidado del día
+  TotalesCajaServidor? _totalesVista;
+  List<MovimientoCaja> _movimientosTurno = [];
+  String _filtroEstadoMovimiento = 'todos'; // 'todos' | 'activos' | 'anulados'
+
+  bool get _esHoy => !DateUtils.dateOnly(_dia).isBefore(DateUtils.dateOnly(DateTime.now()));
+  bool get _esHistorico => !_esHoy || (_aperturaSeleccionadaId != null && _aperturaSeleccionadaId != estadoCajaServidor?.apertura?.id);
+
+  AperturaCaja? get _aperturaSeleccionada =>
+      _aperturasDia.where((a) => a.id == _aperturaSeleccionadaId).firstOrNull ??
+      (_esHoy ? estadoCajaServidor?.apertura : null);
+
+  String _fechaFormato(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
   // Días de ingresos y salidas que se ven (null = la caja actual).
   DateTimeRange? _rangoMov;
   List<MovimientoCaja> _movRango = const [];
@@ -781,6 +802,73 @@ class _CajaScreenState extends State<CajaScreen> {
     if (CajaService.instance.enServidor) precargarComprobantesCaja();
   }
 
+  Future<void> _cambiarDia(DateTime d) async {
+    setState(() {
+      _dia = DateUtils.dateOnly(d);
+      _cargandoDia = true;
+    });
+    await _cargarAperturasYTotales();
+  }
+
+  Future<void> _seleccionarApertura(String? aperturaId) async {
+    setState(() {
+      _aperturaSeleccionadaId = aperturaId;
+      _cargandoDia = true;
+    });
+    await _cargarTotalesYMovimientos();
+  }
+
+  Future<void> _cargarAperturasYTotales() async {
+    List<AperturaCaja> aperturas = [];
+    try {
+      aperturas = await CajaService.instance.cargarAperturasDia(_dia);
+    } catch (_) {}
+
+    String? seleccionId = _aperturaSeleccionadaId;
+    if (_esHoy) {
+      if (estadoCajaServidor?.abierta == true) {
+        seleccionId = estadoCajaServidor?.apertura?.id;
+      } else {
+        seleccionId = aperturas.lastOrNull?.id;
+      }
+    } else {
+      seleccionId = aperturas.lastOrNull?.id;
+    }
+
+    if (mounted) {
+      setState(() {
+        _aperturasDia = aperturas;
+        _aperturaSeleccionadaId = seleccionId;
+      });
+    }
+    await _cargarTotalesYMovimientos();
+  }
+
+  Future<void> _cargarTotalesYMovimientos() async {
+    TotalesCajaServidor? totales;
+    List<MovimientoCaja> movs = [];
+    final fStr = _fechaFormato(_dia);
+    try {
+      if (_aperturaSeleccionadaId != null) {
+        totales = await CajaService.instance.cargarTotales(aperturaId: _aperturaSeleccionadaId);
+        movs = await MovimientoCajaService.instance.listarApertura(_aperturaSeleccionadaId!);
+      } else {
+        totales = await CajaService.instance.cargarTotales(fechaOperativa: fStr);
+        movs = await MovimientoCajaService.instance.listarRango(_dia, _dia);
+      }
+    } catch (e) {
+      // Ignorar error de red puntual
+    }
+
+    if (mounted) {
+      setState(() {
+        _totalesVista = totales;
+        _movimientosTurno = movs;
+        _cargandoDia = false;
+      });
+    }
+  }
+
   // Trae lo que vive en el servidor: los cobros del día y los ingresos y
   // salidas de la caja actual.
   Future<void> _cargar() async {
@@ -808,6 +896,7 @@ class _CajaScreenState extends State<CajaScreen> {
     } catch (e) {
       if (mounted) setState(() => _errorMovimientos = e.toString());
     }
+    await _cargarAperturasYTotales();
   }
 
   // Vuelve a pedir al servidor los totales de la caja, cobros y movimientos en tiempo real.
@@ -992,14 +1081,17 @@ class _CajaScreenState extends State<CajaScreen> {
     }
   }
 
-  Future<void> _imprimirReporteTurno({String? cierreId}) async {
+  Future<void> _imprimirReporteTurno({String? aperturaId, String? cierreId}) async {
     try {
       showAppToast(
         context,
         'Enviando resumen de turno a la impresora...',
         type: ToastType.info,
       );
-      await CajaService.instance.imprimirReporteTurno(cierreId: cierreId);
+      await CajaService.instance.imprimirReporteTurno(
+        aperturaId: aperturaId ?? _aperturaSeleccionadaId,
+        cierreId: cierreId,
+      );
       if (mounted) {
         showAppToast(
           context,
@@ -1021,7 +1113,7 @@ class _CajaScreenState extends State<CajaScreen> {
         type: ToastType.info,
       );
       await CajaService.instance.imprimirReporteDiaConsolidado(
-        fechaOperativa: fechaOperativa,
+        fechaOperativa: fechaOperativa ?? _fechaFormato(_dia),
       );
       if (mounted) {
         showAppToast(
@@ -1042,9 +1134,8 @@ class _CajaScreenState extends State<CajaScreen> {
     String? cierreId,
   }) async {
     final url = CajaService.instance.urlReporteDiaDetalladoHTML(
-      fechaOperativa:
-          fechaOperativa ?? estadoCajaServidor?.apertura?.fechaOperativa,
-      aperturaId: aperturaId,
+      fechaOperativa: fechaOperativa ?? _fechaFormato(_dia),
+      aperturaId: aperturaId ?? _aperturaSeleccionadaId,
       cierreId: cierreId,
     );
     try {
@@ -1684,17 +1775,23 @@ class _CajaScreenState extends State<CajaScreen> {
         ),
       ],
       onSeleccionar: (val) {
-        if (val == 'turno') _imprimirReporteTurno();
-        if (val == 'dia_print') _imprimirReporteDiaConsolidado();
+        if (val == 'turno') {
+          if (_aperturaSeleccionadaId != null) {
+            _imprimirReporteTurno(aperturaId: _aperturaSeleccionadaId);
+          } else {
+            _imprimirReporteDiaConsolidado(fechaOperativa: _fechaFormato(_dia));
+          }
+        }
+        if (val == 'dia_print') _imprimirReporteDiaConsolidado(fechaOperativa: _fechaFormato(_dia));
         if (val == 'turno_pdf') {
           _abrirReporteDiaDetallado(
-            aperturaId: estadoCajaServidor?.apertura?.id,
-            fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
+            aperturaId: _aperturaSeleccionadaId,
+            fechaOperativa: _fechaFormato(_dia),
           );
         }
         if (val == 'dia_pdf') {
           _abrirReporteDiaDetallado(
-            fechaOperativa: estadoCajaServidor?.apertura?.fechaOperativa,
+            fechaOperativa: _fechaFormato(_dia),
           );
         }
         if (val == 'otra_fecha') _reportesDeOtraFecha();
@@ -1823,6 +1920,124 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
+  Widget _selectorDiaYTurnos() {
+    final m = _dia.month.toString().padLeft(2, '0');
+    final d = _dia.day.toString().padLeft(2, '0');
+    final fStr = '${_dia.year}-$m-$d';
+
+    return Container(
+      decoration: _panel,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.calendar, size: 18, color: AppColors.primaryGreen),
+                  const SizedBox(width: 8),
+                  SelectorDia(
+                    dia: _dia,
+                    onChanged: (d) => _cambiarDia(d),
+                  ),
+                  if (!_esHoy) ...[
+                    const SizedBox(width: 8),
+                    ActionChip(
+                      avatar: const Icon(LucideIcons.arrowRight, size: 14),
+                      label: const Text('Volver a Hoy'),
+                      onPressed: () => _cambiarDia(DateTime.now()),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          if (_aperturasDia.isNotEmpty || _esHoy) ...[
+            const SizedBox(height: 10),
+            Divider(height: 1, color: Colors.grey.shade200),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'Turnos del día:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                for (int i = 0; i < _aperturasDia.length; i++) ...[
+                  Builder(
+                    builder: (context) {
+                      final ap = _aperturasDia[i];
+                      final esSel = _aperturaSeleccionadaId == ap.id;
+                      final esActiva = ap.abierta;
+                      return ChoiceChip(
+                        avatar: Icon(
+                          esActiva ? LucideIcons.lockOpen : LucideIcons.lock,
+                          size: 13,
+                          color: esSel ? Colors.white : (esActiva ? AppColors.primaryGreen : Colors.grey.shade600),
+                        ),
+                        label: Text(
+                          '${ap.turnoNombre ?? "Turno ${i + 1}"}${esActiva ? " (En curso)" : ""}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: esSel ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                        ),
+                        selected: esSel,
+                        selectedColor: AppColors.primaryGreen,
+                        labelStyle: TextStyle(color: esSel ? Colors.white : Colors.black87),
+                        onSelected: (sel) {
+                          if (sel) _seleccionarApertura(ap.id);
+                        },
+                      );
+                    },
+                  ),
+                ],
+                ChoiceChip(
+                  avatar: Icon(
+                    LucideIcons.calendarCheck,
+                    size: 13,
+                    color: _aperturaSeleccionadaId == null ? Colors.white : Colors.grey.shade600,
+                  ),
+                  label: Text(
+                    'Consolidado del día',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: _aperturaSeleccionadaId == null ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                  selected: _aperturaSeleccionadaId == null,
+                  selectedColor: AppColors.primaryGreen,
+                  labelStyle: TextStyle(
+                    color: _aperturaSeleccionadaId == null ? Colors.white : Colors.black87,
+                  ),
+                  onSelected: (sel) {
+                    if (sel) _seleccionarApertura(null);
+                  },
+                ),
+              ],
+            ),
+          ],
+          if (_cargandoDia) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _vistaCaja(
     List<CierreCaja> cierres,
     List<MovimientoCaja> movimientos,
@@ -1831,16 +2046,15 @@ class _CajaScreenState extends State<CajaScreen> {
     final desde = inicioCajaActual;
     final resumen = resumenPorMedio(desde);
     final extra = totalesMovimientos(desde);
-    final srv = estadoCajaServidor?.totales;
-    final filas = _cajaCerrada
-        ? <FilaResumenMedio>[]
-        : (srv?.porMedio ?? resumen);
-    final ventas = _cajaCerrada
-        ? 0.0
-        : (srv?.ventas ?? resumen.fold<double>(0.0, (s, f) => s + f.ventas));
-    final ingresos = _cajaCerrada ? 0.0 : (srv?.ingresos ?? extra.ingresos);
-    final salidas = _cajaCerrada ? 0.0 : (srv?.salidas ?? extra.egresos);
-    final numPedidos = _cajaCerrada ? 0 : (srv?.numPedidos ?? t.pedidos);
+
+    // Totales calculados según día y turno seleccionado
+    final srv = _totalesVista ?? (_esHoy && !_cajaCerrada ? estadoCajaServidor?.totales : null);
+    final filas = srv?.porMedio ?? (_esHoy && !_cajaCerrada ? resumen : <FilaResumenMedio>[]);
+    final ventas = srv?.ventas ?? (_esHoy && !_cajaCerrada ? resumen.fold<double>(0.0, (s, f) => s + f.ventas) : 0.0);
+    final ingresos = srv?.ingresos ?? (_esHoy && !_cajaCerrada ? extra.ingresos : 0.0);
+    final salidas = srv?.salidas ?? (_esHoy && !_cajaCerrada ? extra.egresos : 0.0);
+    final numPedidos = srv?.numPedidos ?? (_esHoy && !_cajaCerrada ? t.pedidos : 0);
+    final ap = _aperturaSeleccionada;
     final filasVistas = _grupoElegido == null
         ? filas
         : [
@@ -1856,7 +2070,9 @@ class _CajaScreenState extends State<CajaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_cajaCerrada) ...[
+            _selectorDiaYTurnos(),
+            const SizedBox(height: 14),
+            if (_cajaCerrada && _esHoy) ...[
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -1921,7 +2137,7 @@ class _CajaScreenState extends State<CajaScreen> {
             ),
             const SizedBox(height: 14),
             _tarjetasCaja(
-              apertura: estadoCajaServidor?.apertura,
+              apertura: ap,
               filas: filas,
               ventas: ventas,
               delivery: srv?.delivery ?? 0,
@@ -1959,11 +2175,18 @@ class _CajaScreenState extends State<CajaScreen> {
             const SizedBox(height: 12),
             if (_pestanaCaja == 'comprobantes' &&
                 CajaService.instance.enServidor)
-              ComprobantesCajaPanel(key: ValueKey(_recarga))
+              ComprobantesCajaPanel(
+                key: ValueKey('$_recarga-$_dia-$_aperturaSeleccionadaId'),
+                dia: _dia,
+              )
             else if (_pestanaCaja == 'cierres')
               _vistaCierres(cierres)
             else
-              _panelMovimientos(movimientos),
+              _panelMovimientos(
+                (_movimientosTurno.isNotEmpty || !_esHoy || _aperturaSeleccionadaId != null)
+                    ? _movimientosTurno
+                    : movimientos,
+              ),
           ],
         ),
       ),
@@ -2166,7 +2389,14 @@ class _CajaScreenState extends State<CajaScreen> {
         ? categoriasMovimiento
         : categoriasDeTipo(_filtroTipoMovimiento!);
 
+    final numAnulados = movimientos.where((m) => m.anulado).length;
     final movimientosFiltrados = movimientos.where((m) {
+      if (_filtroEstadoMovimiento == 'activos' && m.anulado) {
+        return false;
+      }
+      if (_filtroEstadoMovimiento == 'anulados' && !m.anulado) {
+        return false;
+      }
       if (_filtroTipoMovimiento != null && m.tipo != _filtroTipoMovimiento) {
         return false;
       }
@@ -2198,7 +2428,7 @@ class _CajaScreenState extends State<CajaScreen> {
                     icono: LucideIcons.plus,
                     etiqueta: 'Ingreso',
                     color: AppColors.primaryGreen,
-                    onPressed: _cajaCerrada
+                    onPressed: (_cajaCerrada || _esHistorico)
                         ? null
                         : () => _registrar(TipoMovimiento.ingreso),
                   ),
@@ -2206,7 +2436,7 @@ class _CajaScreenState extends State<CajaScreen> {
                     icono: LucideIcons.minus,
                     etiqueta: 'Salida',
                     color: AppColors.error,
-                    onPressed: _cajaCerrada
+                    onPressed: (_cajaCerrada || _esHistorico)
                         ? null
                         : () => _registrar(TipoMovimiento.egreso),
                   ),
@@ -2214,7 +2444,7 @@ class _CajaScreenState extends State<CajaScreen> {
                     icono: LucideIcons.armchair,
                     etiqueta: 'Alquiler',
                     color: AppColors.primaryGreen,
-                    onPressed: _cajaCerrada ? null : _alquilar,
+                    onPressed: (_cajaCerrada || _esHistorico) ? null : _alquilar,
                   ),
                   BotonIconoExpandible(
                     icono: LucideIcons.tag,
@@ -2248,6 +2478,54 @@ class _CajaScreenState extends State<CajaScreen> {
           RoturasPorCobrarAviso(
             cajaCerrada: _cajaCerrada,
             onCobrado: _refrescarCaja,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Filtro de movimientos:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              ChoiceChip(
+                label: Text('Todos (${movimientos.length})', style: const TextStyle(fontSize: 12)),
+                selected: _filtroEstadoMovimiento == 'todos',
+                onSelected: (s) {
+                  if (s) setState(() => _filtroEstadoMovimiento = 'todos');
+                },
+              ),
+              ChoiceChip(
+                label: Text('Activos (${movimientos.where((m) => !m.anulado).length})', style: const TextStyle(fontSize: 12)),
+                selected: _filtroEstadoMovimiento == 'activos',
+                onSelected: (s) {
+                  if (s) setState(() => _filtroEstadoMovimiento = 'activos');
+                },
+              ),
+              ChoiceChip(
+                avatar: numAnulados > 0
+                    ? const Icon(LucideIcons.ban, size: 13, color: AppColors.error)
+                    : null,
+                label: Text(
+                  'Anulaciones ($numAnulados)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: numAnulados > 0 ? AppColors.error : null,
+                    fontWeight: numAnulados > 0 ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                selected: _filtroEstadoMovimiento == 'anulados',
+                selectedColor: AppColors.error.withValues(alpha: 0.15),
+                onSelected: (s) {
+                  if (s) setState(() => _filtroEstadoMovimiento = 'anulados');
+                },
+              ),
+            ],
           ),
           Align(
             alignment: Alignment.centerLeft,
