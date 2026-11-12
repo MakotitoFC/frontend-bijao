@@ -20,23 +20,65 @@ class CajaService {
   bool get enServidor =>
       UuidHelper.isValid(AuthService.instance.currentUser?.sedeId ?? '');
 
+  // Trae las aperturas de un día específico
+  Future<List<AperturaCaja>> cargarAperturasDia(DateTime dia) async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final m = dia.month.toString().padLeft(2, '0');
+    final d = dia.day.toString().padLeft(2, '0');
+    final fechaStr = '${dia.year}-$m-$d';
+    final res = await _api.get(
+      '/api/v1/caja/aperturas',
+      queryParams: {
+        if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
+        'fecha': fechaStr,
+      },
+    );
+    if (res is! List) return [];
+    return res.whereType<Map<String, dynamic>>().map(AperturaCaja.fromJson).toList();
+  }
+
+  // Trae los totales calculados de una apertura o día consolidado
+  Future<TotalesCajaServidor?> cargarTotales({
+    String? aperturaId,
+    String? fechaOperativa,
+  }) async {
+    final sedeId = AuthService.instance.currentUser?.sedeId;
+    final res = await _api.get(
+      '/api/v1/caja/totales-actual',
+      queryParams: {
+        if (sedeId != null && sedeId.isNotEmpty) 'sede_id': sedeId,
+        if (aperturaId != null && aperturaId.isNotEmpty) 'apertura_id': aperturaId,
+        if (fechaOperativa != null && fechaOperativa.isNotEmpty)
+          'fecha_operativa': fechaOperativa,
+      },
+    );
+    if (res is Map<String, dynamic>) {
+      return TotalesCajaServidor.fromJson(res);
+    }
+    return null;
+  }
+
   // Lee el estado de la caja (abierta o cerrada) con sus totales y deja todo en
   // memoria. Si el estado no trae los totales, los pide aparte.
-  Future<EstadoCaja> cargarEstado() async {
+  Future<EstadoCaja> cargarEstado({
+    String? aperturaId,
+    String? fechaOperativa,
+  }) async {
     final res = await _api.get('/api/v1/caja/estado-actual');
     if (res is! Map<String, dynamic>) {
       throw Exception('El servidor no devolvió el estado de la caja');
     }
     var estado = EstadoCaja.fromJson(res);
-    if (estado.totales == null) {
-      final t = await _api.get('/api/v1/caja/totales-actual');
-      if (t is Map<String, dynamic>) {
-        estado = EstadoCaja(
-          abierta: estado.abierta,
-          apertura: estado.apertura,
-          totales: TotalesCajaServidor.fromJson(t),
-        );
-      }
+    final t = await cargarTotales(
+      aperturaId: aperturaId ?? (estado.abierta ? estado.apertura?.id : null),
+      fechaOperativa: fechaOperativa,
+    );
+    if (t != null) {
+      estado = EstadoCaja(
+        abierta: estado.abierta,
+        apertura: estado.apertura,
+        totales: t,
+      );
     }
     estadoCajaServidor = estado;
     return estado;

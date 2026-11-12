@@ -194,7 +194,8 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
 // Historial de comprobantes del día en Caja: estado ante SUNAT, PDF, reimprimir,
 // consultar el estado de los pendientes y anular.
 class ComprobantesCajaPanel extends StatefulWidget {
-  const ComprobantesCajaPanel({super.key});
+  final DateTime? dia;
+  const ComprobantesCajaPanel({super.key, this.dia});
 
   @override
   State<ComprobantesCajaPanel> createState() => _ComprobantesCajaPanelState();
@@ -204,16 +205,20 @@ class ComprobantesCajaPanel extends StatefulWidget {
 // actualiza por detrás.
 List<Comprobante>? _cacheComprobantes;
 
-// Comprobantes de hoy dentro del turno actual.
-Future<List<Comprobante>> _leerComprobantesDeHoy() async {
-  if (estadoCajaServidor != null && !estadoCajaServidor!.abierta) {
+// Comprobantes del día solicitado o de hoy dentro del turno actual.
+Future<List<Comprobante>> _leerComprobantesDeDia(DateTime? diaParam) async {
+  final dia = diaParam ?? DateTime.now();
+  final esHoy = !DateUtils.dateOnly(dia).isBefore(DateUtils.dateOnly(DateTime.now()));
+  if (esHoy && estadoCajaServidor != null && !estadoCajaServidor!.abierta) {
     return const [];
   }
-  final hoy = DateTime.now();
   final lista = await FacturacionService.instance.listar(
-    desde: hoy,
-    hasta: hoy,
+    desde: dia,
+    hasta: dia,
   );
+  if (!esHoy) {
+    return lista;
+  }
   final desdeTurno = inicioCajaActual;
   return lista.where((c) {
     final fh = c.fechaHora;
@@ -225,7 +230,7 @@ Future<List<Comprobante>> _leerComprobantesDeHoy() async {
 // Lee la lista de antemano para que la vista abra sin espera.
 Future<void> precargarComprobantesCaja() async {
   try {
-    _cacheComprobantes = await _leerComprobantesDeHoy();
+    _cacheComprobantes = await _leerComprobantesDeDia(null);
   } catch (_) {}
 }
 
@@ -251,7 +256,7 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
       });
     }
     try {
-      final lista = await _leerComprobantesDeHoy();
+      final lista = await _leerComprobantesDeDia(widget.dia);
       _cacheComprobantes = lista;
       if (mounted) setState(() => _lista = lista);
     } catch (e) {

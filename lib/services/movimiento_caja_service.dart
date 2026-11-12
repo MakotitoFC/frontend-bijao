@@ -126,8 +126,9 @@ class MovimientoCajaService {
   // actual. Los anulados vienen marcados.
   Future<List<MovimientoCaja>> listarRango(
     DateTime desde,
-    DateTime hasta,
-  ) async {
+    DateTime hasta, {
+    String? aperturaId,
+  }) async {
     String dia(DateTime d) =>
         '${d.year.toString().padLeft(4, '0')}-'
         '${d.month.toString().padLeft(2, '0')}-'
@@ -137,6 +138,27 @@ class MovimientoCajaService {
       queryParams: {
         'fecha_desde': dia(desde),
         'fecha_hasta': dia(hasta),
+        'incluir_anulados': 'true',
+        if (aperturaId != null && aperturaId.isNotEmpty)
+          'apertura_id': aperturaId,
+      },
+    );
+    if (res is! List) return const [];
+    return [
+      for (final j in res.whereType<Map<String, dynamic>>())
+        MovimientoCaja.fromJson(
+          j,
+          notaLocal: notasMovimientoLocales[j['id']?.toString()],
+        ),
+    ]..sort((a, b) => b.fecha.compareTo(a.fecha));
+  }
+
+  // Movimientos de una apertura de turno específica
+  Future<List<MovimientoCaja>> listarApertura(String aperturaId) async {
+    final res = await _api.get(
+      '/api/movimientos',
+      queryParams: {
+        'apertura_id': aperturaId,
         'incluir_anulados': 'true',
       },
     );
