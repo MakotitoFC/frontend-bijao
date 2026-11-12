@@ -1775,7 +1775,13 @@ class _CajaScreenState extends State<CajaScreen> {
         ),
       ],
       onSeleccionar: (val) {
-        if (val == 'turno') _imprimirReporteTurno(aperturaId: _aperturaSeleccionadaId);
+        if (val == 'turno') {
+          if (_aperturaSeleccionadaId != null) {
+            _imprimirReporteTurno(aperturaId: _aperturaSeleccionadaId);
+          } else {
+            _imprimirReporteDiaConsolidado(fechaOperativa: _fechaFormato(_dia));
+          }
+        }
         if (val == 'dia_print') _imprimirReporteDiaConsolidado(fechaOperativa: _fechaFormato(_dia));
         if (val == 'turno_pdf') {
           _abrirReporteDiaDetallado(
@@ -1948,42 +1954,6 @@ class _CajaScreenState extends State<CajaScreen> {
                       onPressed: () => _cambiarDia(DateTime.now()),
                     ),
                   ],
-                ],
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      side: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    icon: const Icon(LucideIcons.printer, size: 14, color: AppColors.primaryGreen),
-                    label: Text(
-                      _aperturaSeleccionadaId != null ? 'Ticket de turno' : 'Ticket consolidado',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    onPressed: () {
-                      if (_aperturaSeleccionadaId != null) {
-                        _imprimirReporteTurno(aperturaId: _aperturaSeleccionadaId);
-                      } else {
-                        _imprimirReporteDiaConsolidado(fechaOperativa: fStr);
-                      }
-                    },
-                  ),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      side: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    icon: const Icon(LucideIcons.fileText, size: 14, color: Color(0xFF9333EA)),
-                    label: const Text('PDF Detallado', style: TextStyle(fontSize: 12)),
-                    onPressed: () => _abrirReporteDiaDetallado(
-                      fechaOperativa: fStr,
-                      aperturaId: _aperturaSeleccionadaId,
-                    ),
-                  ),
                 ],
               ),
             ],
