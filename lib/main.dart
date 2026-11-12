@@ -9,6 +9,7 @@ import 'screens/login_screen.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/elevacion_teclado.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +46,10 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       scrollBehavior: const _DesplazamientoDeLaApp(),
+      // En celular y tablet, el campo que se está escribiendo sube sobre el
+      // teclado en toda la app.
+      builder: (context, child) =>
+          ElevacionTeclado(child: child ?? const SizedBox.shrink()),
       home: ValueListenableBuilder<Usuario?>(
         valueListenable: AuthService.instance.userNotifier,
         builder: (context, user, _) {

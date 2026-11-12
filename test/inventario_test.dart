@@ -105,6 +105,7 @@ void main() {
       'Tipos y unidades',
       'Movimientos',
       'Anulaciones',
+      'Reportes',
       'Resumen',
     ]) {
       await ir(tester, p);
@@ -200,6 +201,7 @@ void main() {
         'Tipos y unidades',
         'Movimientos',
         'Anulaciones',
+        'Reportes',
         'Resumen',
       ]) {
         await ir(tester, p);

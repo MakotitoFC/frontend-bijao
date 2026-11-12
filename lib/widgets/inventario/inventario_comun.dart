@@ -138,6 +138,13 @@ class _PaginaListaFijaState extends State<PaginaListaFija> {
                     : ListView.separated(
                         // Cada página empieza arriba.
                         key: ValueKey('pagina-$pagina'),
+                        // Aire a la derecha (la barra de desplazamiento no
+                        // tapa las filas) y abajo (la última fila no queda
+                        // pegada al paginador).
+                        padding: EdgeInsets.only(
+                          right: AppBreakpoints.esMobile(context) ? 0 : 12,
+                          bottom: 16,
+                        ),
                         itemCount: filas.length,
                         separatorBuilder: (_, _) => widget.tarjetas
                             ? const SizedBox(height: 10)

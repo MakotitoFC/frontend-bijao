@@ -11,6 +11,7 @@ import '../widgets/inventario/pagina_movimientos.dart';
 import '../widgets/inventario/pagina_productos.dart';
 import '../widgets/inventario/pagina_resumen.dart';
 import '../widgets/inventario/pagina_anulaciones.dart';
+import '../widgets/inventario/pagina_reportes.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/tabs_texto.dart';
 
@@ -25,6 +26,8 @@ import '../widgets/tabs_texto.dart';
 //  - Movimientos: compras, mermas y ajustes, y roturas en una sola vista, con
 //    filtros.
 //  - Anulaciones: consulta aparte; no mueve el stock.
+//  - Reportes: lo que entró y salió cada día y cómo quedó el stock; se descarga
+//    en CSV.
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
 
@@ -70,6 +73,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
     'almacen': LucideIcons.warehouse,
     'movimientos': LucideIcons.arrowLeftRight,
     'anulaciones': LucideIcons.ban,
+    'reportes': LucideIcons.fileText,
   };
 
   List<
@@ -119,6 +123,12 @@ class _InventarioScreenState extends State<InventarioScreen> {
       etiqueta: 'Anulaciones',
       seccion: null,
       contenido: () => const PaginaAnulaciones(),
+    ),
+    (
+      clave: 'reportes',
+      etiqueta: 'Reportes',
+      seccion: null,
+      contenido: () => const PaginaReportes(),
     ),
   ];
 

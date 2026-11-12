@@ -171,7 +171,10 @@ class EventosService {
     if (evento.nombre == 'TRASPASO_RESUELTO' && evento.json != null) {
       final t = TraspasoPedido.fromJson(evento.json!);
       final yo = AuthService.instance.currentUser?.id;
-      if (t.estado == 'rechazado' && yo != null && t.origenId.isNotEmpty && t.origenId == yo) {
+      if (t.estado == 'rechazado' &&
+          yo != null &&
+          t.origenId.isNotEmpty &&
+          t.origenId == yo) {
         if (!traspasosRechazados.any((x) => x.id == t.id)) {
           traspasosRechazados.add(t);
           traspasosRevision.value++;
@@ -206,6 +209,13 @@ class EventosService {
         if (acciones.pedidos) PedidoService.instance.cargarPedidos(),
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
+        // El aviso de stock bajo de la campana: solo para quien ve Inventario.
+        if (acciones.stock &&
+            (AuthService.instance.currentUser?.tienePermiso(
+                  'VER.VISTA_INVENTARIO',
+                ) ??
+                false))
+          CatalogService.instance.cargarProductosInventario(),
         if (acciones.carta) CatalogService.instance.recargarCarta(),
         if (acciones.traspasos && PedidoMozoService.instance.activo)
           TraspasoService.instance.cargar(),

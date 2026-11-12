@@ -1144,9 +1144,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
     return LayoutBuilder(
       builder: (context, c) {
-        // Con menos de 760 px el buscador quedaría corto junto a los botones:
-        // pasa a ocupar su propia línea, a todo el ancho.
-        final ancha = c.maxWidth >= 760;
+        // En tablet (hasta 1024 px de pantalla) el buscador ocupa su propia
+        // línea, a todo el ancho. En escritorio comparte la fila con los
+        // botones aunque el listado quede algo angosto (el detalle ocupa 420
+        // px y la pantalla puede estar ampliada); solo si de verdad no cabe
+        // (menos de 480 px) también se apila.
+        final ancha =
+            MediaQuery.sizeOf(context).width > 1024 && c.maxWidth >= 480;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

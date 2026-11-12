@@ -1732,6 +1732,7 @@ class CatalogService {
         productosInventario
           ..clear()
           ..addAll(lista);
+        recalcularStockBajo();
         return lista;
       }
     } catch (e) {
@@ -1772,6 +1773,7 @@ class CatalogService {
       } else {
         productosInventario.add(nuevo);
       }
+      recalcularStockBajo();
       return nuevo;
     }
     throw Exception('Error al crear producto de inventario');
@@ -1802,6 +1804,7 @@ class CatalogService {
       final act = ProductoInventario.fromJson(res);
       final idx = productosInventario.indexWhere((p) => p.id == act.id);
       if (idx != -1) productosInventario[idx] = act;
+      recalcularStockBajo();
       return act;
     }
     throw Exception('Error al actualizar producto');
@@ -1823,6 +1826,7 @@ class CatalogService {
   Future<void> eliminarProductoInventario(String id) async {
     await _api.delete('/api/productos-inventario/$id');
     productosInventario.removeWhere((p) => p.id == id);
+    recalcularStockBajo();
   }
 
   // ==========================================

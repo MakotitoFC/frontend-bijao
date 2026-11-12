@@ -328,6 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
               usuario: widget.usuario,
               mostrarLogo: true,
               onLogout: () => _logout(context),
+              onIrAInventario: () => _irA('inventario'),
             ),
             Expanded(
               child: KeyedSubtree(
@@ -390,6 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       : tituloVista,
                   descripcion: _titulos[_seleccionado]?.descripcion,
                   onLogout: () => _logout(context),
+                  onIrAInventario: () => _irA('inventario'),
                 ),
                 // Subvistas del módulo (Ventas: historial, caja, reportes).
                 if (grupoActivo != null)
@@ -426,8 +428,11 @@ class _GlobalHeader extends StatelessWidget {
   final String? titulo;
   final String? descripcion;
   final VoidCallback onLogout;
+  // Lleva a Inventario desde un aviso de stock de la campana.
+  final VoidCallback? onIrAInventario;
 
   const _GlobalHeader({
+    this.onIrAInventario,
     required this.usuario,
     this.mostrarLogo = false,
     this.barraFija = false,
@@ -477,7 +482,7 @@ class _GlobalHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                const CampanaNotificaciones(),
+                CampanaNotificaciones(onIrAInventario: onIrAInventario),
               ],
             ),
           ],
@@ -502,7 +507,7 @@ class _GlobalHeader extends StatelessWidget {
         children: [
           const _Logo(),
           const Spacer(),
-          const CampanaNotificaciones(),
+          CampanaNotificaciones(onIrAInventario: onIrAInventario),
           const SizedBox(width: 10),
           _MenuUsuario(
             usuario: usuario,
