@@ -30,6 +30,7 @@ import '../models/taper.dart';
 import '../models/tipo_producto.dart';
 import '../models/unidad_producto.dart';
 import '../models/utensilio_roto.dart';
+import '../models/vinculo_carta.dart';
 import '../models/zona.dart';
 import '../utils/uuid_helper.dart';
 import 'api_client.dart';
@@ -1312,6 +1313,51 @@ class CatalogService {
   Future<void> eliminarTaper(String id) async {
     await _api.delete('/api/tapers/$id');
     tapers.removeWhere((t) => t.id == id);
+  }
+
+  // ==========================================
+  // VÍNCULOS CARTA → INVENTARIO (qué producto de la carta descuenta stock)
+  // ==========================================
+
+  // Trae todos los vínculos (`GET /api/carta-insumos`).
+  Future<List<VinculoCarta>> cargarVinculosCarta() async {
+    final res = await _api.get('/api/carta-insumos');
+    if (res is! List) return vinculosCarta;
+    final lista = [
+      for (final j in res.whereType<Map<String, dynamic>>())
+        VinculoCarta.fromJson(j),
+    ];
+    vinculosCarta
+      ..clear()
+      ..addAll(lista);
+    return lista;
+  }
+
+  // Deja como únicos vínculos del producto de inventario los indicados: cada
+  // producto de la carta descuenta [cantidad] por unidad vendida. Con la lista
+  // vacía, el producto deja de descontarse al vender.
+  Future<void> guardarVinculosProducto(
+    String productoId,
+    List<({String cartaId, double cantidad})> vinculos,
+  ) async {
+    final res = await _api.put(
+      '/api/productos-inventario/$productoId/vinculos-carta',
+      body: {
+        'vinculos': [
+          for (final v in vinculos)
+            {'carta_id': v.cartaId, 'cantidad': v.cantidad},
+        ],
+      },
+    );
+    final nuevos = res is List
+        ? [
+            for (final j in res.whereType<Map<String, dynamic>>())
+              VinculoCarta.fromJson(j),
+          ]
+        : <VinculoCarta>[];
+    vinculosCarta
+      ..removeWhere((v) => v.productoInventarioId == productoId)
+      ..addAll(nuevos);
   }
 
   // ==========================================

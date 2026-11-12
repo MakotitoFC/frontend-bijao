@@ -7,6 +7,7 @@ import '../models/producto_inventario.dart';
 import '../models/rbac.dart';
 import '../models/utensilio_roto.dart';
 import '../services/auth_service.dart';
+import '../services/rotura_service.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
@@ -196,9 +197,7 @@ class _UtensilioRotoFormDialogState extends State<UtensilioRotoFormDialog> {
         usuarioId: userActual?.id,
         usuarioNombre: userActual?.nombre,
         fecha: DateTime.now(),
-        notas: _notasController.text.trim().isEmpty
-            ? null
-            : _notasController.text.trim(),
+        notas: notaConCodigo(_notasController.text.trim(), nuevoCodigoRotura()),
         isPagado: _isPagado,
         isRepuesto: _isRepuesto,
         done: false, // Inicia sin pagar/reponer

@@ -77,6 +77,8 @@ class SelectorRangoFechas extends StatefulWidget {
   // Con true se pueden elegir fechas futuras (por ejemplo, la vigencia de una
   // promoción).
   final bool permiteFuturo;
+  // Con true se elige un solo día: al tocar un día queda aplicado, sin "Aplicar".
+  final bool soloDia;
 
   const SelectorRangoFechas({
     super.key,
@@ -88,6 +90,7 @@ class SelectorRangoFechas extends StatefulWidget {
     this.conAtajos = true,
     this.soloHoy = false,
     this.permiteFuturo = false,
+    this.soloDia = false,
   });
 
   @override
@@ -167,6 +170,7 @@ class _SelectorRangoFechasState extends State<SelectorRangoFechas> {
                     conAtajos: widget.conAtajos,
                     soloHoy: widget.soloHoy,
                     permiteFuturo: widget.permiteFuturo,
+                    soloDia: widget.soloDia,
                     onAplicar: (r) {
                       widget.onChanged(r);
                       _cerrar();
@@ -259,6 +263,7 @@ class _TarjetaRango extends StatefulWidget {
   final bool conAtajos;
   final bool soloHoy;
   final bool permiteFuturo;
+  final bool soloDia;
   final ValueChanged<DateTimeRange?> onAplicar;
 
   const _TarjetaRango({
@@ -269,6 +274,7 @@ class _TarjetaRango extends StatefulWidget {
     required this.conAtajos,
     required this.soloHoy,
     required this.permiteFuturo,
+    required this.soloDia,
     required this.onAplicar,
   });
 
@@ -297,7 +303,15 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
     _mes = DateTime(base.year, base.month);
   }
 
-  void _tocarDia(DateTime d) => setState(() {
+  void _tocarDia(DateTime d) {
+    if (widget.soloDia) {
+      widget.onAplicar(DateTimeRange(start: d, end: d));
+      return;
+    }
+    _elegirDia(d);
+  }
+
+  void _elegirDia(DateTime d) => setState(() {
     if (_inicio == null || _fin != null) {
       _inicio = d;
       _fin = null;
@@ -673,39 +687,41 @@ class _TarjetaRangoState extends State<_TarjetaRango> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _calendario(),
-            const SizedBox(height: 8),
-            Divider(height: 1, color: Colors.grey.shade200),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                // Quitar las fechas (solo donde se permite) sigue disponible.
-                if (widget.permiteTodas) ...[
-                  _rapido(widget.textoTodas, () => widget.onAplicar(null)),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(
-                    seleccion,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
+            if (!widget.soloDia) ...[
+              const SizedBox(height: 8),
+              Divider(height: 1, color: Colors.grey.shade200),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  // Quitar las fechas (solo donde se permite) sigue disponible.
+                  if (widget.permiteTodas) ...[
+                    _rapido(widget.textoTodas, () => widget.onAplicar(null)),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: Text(
+                      seleccion,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade700,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _inicio == null ? null : _aplicar,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 36),
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _inicio == null ? null : _aplicar,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                    ),
+                    child: const Text('Aplicar'),
                   ),
-                  child: const Text('Aplicar'),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

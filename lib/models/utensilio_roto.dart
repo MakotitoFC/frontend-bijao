@@ -38,6 +38,14 @@ class UtensilioRoto {
 
   bool get isRespuesto => isRepuesto; // alias para compatibilidad
 
+  // Una rotura anulada queda guardada, con el motivo al inicio de sus notas.
+  bool get anulada => (notas ?? '').startsWith('ANULADA: ');
+
+  // Lo que falta cobrar al mozo (solo roturas que se pagan a cuenta de sueldo).
+  double get saldo => (costoTotal - totalPagado).clamp(0.0, costoTotal);
+
+  bool get porCobrar => isPagado && !done && !anulada && saldo > 0.009;
+
   factory UtensilioRoto.fromJson(Map<String, dynamic> json) => UtensilioRoto(
     id: json['id']?.toString() ?? '',
     productoInventarioId: json['producto_inventario_id']?.toString() ?? '',

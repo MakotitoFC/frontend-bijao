@@ -6,9 +6,11 @@ import '../../data/utensilios_store.dart';
 import '../../models/rbac.dart';
 import '../../models/utensilio_roto.dart';
 import '../../services/catalog_service.dart';
+import '../../services/rotura_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
 import '../app_search_field.dart';
+import '../anular_rotura_dialog.dart';
 import '../app_toast.dart';
 import '../pago_cuenta_empleado_dialog.dart';
 import '../tabs_texto.dart';
@@ -120,28 +122,23 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
     }
   }
 
-  Future<void> _eliminar(UtensilioRoto u) async {
-    final ok = await confirmarAccion(
-      context,
-      titulo: 'Eliminar registro',
-      mensaje: '¿Eliminar el registro de rotura de "${_nombreProducto(u)}"?',
+  // Anula la rotura: devuelve el stock y anula sus ingresos de Caja, todo junto.
+  // El registro queda como anulado, con su motivo.
+  Future<void> _anular(UtensilioRoto u) async {
+    final ok = await showBlurDialog<bool>(
+      context: context,
+      builder: (_) => AnularRoturaDialog(rotura: u),
     );
-    if (!ok) return;
-    try {
-      await CatalogService.instance.eliminarUtensilioRoto(u.id);
-      if (!mounted) return;
-      showAppToast(context, 'Registro eliminado', type: ToastType.success);
-      _cargar();
-    } catch (e) {
-      if (mounted) {
-        showAppToast(context, 'Error al eliminar: $e', type: ToastType.error);
-      }
-    }
+    if (ok != true || !mounted) return;
+    showAppToast(context, 'Rotura anulada', type: ToastType.success);
+    _cargar();
   }
 
   List<UtensilioRoto> get _filtrados {
     final q = _busqueda.trim().toLowerCase();
     return utensiliosRotos.where((u) {
+      if (_filtro != 'anuladas' && u.anulada) return false;
+      if (_filtro == 'anuladas' && !u.anulada) return false;
       if (q.isNotEmpty) {
         final enNombre = _nombreProducto(u).toLowerCase().contains(q);
         final enEmpleado = _nombreEmpleado(u).toLowerCase().contains(q);
@@ -158,6 +155,7 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
   }
 
   Widget _estado(UtensilioRoto u) {
+    if (u.anulada) return EtiquetaFila('Anulada', color: AppColors.error);
     if (u.done) {
       return const EtiquetaFila('Resuelto', color: AppColors.primaryGreen);
     }
@@ -175,7 +173,8 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
     final progreso = u.costoTotal > 0
         ? (u.totalPagado / u.costoTotal).clamp(0.0, 1.0)
         : 1.0;
-    final notas = (u.notas ?? '').isNotEmpty ? ' · ${u.notas}' : '';
+    final texto = notaSinCodigo(u.notas);
+    final notas = texto.isNotEmpty ? ' · $texto' : '';
     return FilaInventario(
       titulo: tituloConEtiquetas('${u.cantidad}x ${_nombreProducto(u)}', [
         _estado(u),
@@ -186,7 +185,7 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
           'S/ ${u.costoTotal.toStringAsFixed(2)}',
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
         ),
-        if (!u.done && u.isPagado)
+        if (!u.done && !u.anulada && u.isPagado)
           Padding(
             padding: const EdgeInsets.only(left: 8),
             child: TextButton(
@@ -194,7 +193,7 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
               child: const Text('Abonar pago'),
             ),
           ),
-        if (!u.done && u.isRepuesto)
+        if (!u.done && !u.anulada && u.isRepuesto)
           Padding(
             padding: const EdgeInsets.only(left: 8),
             child: TextButton(
@@ -202,17 +201,14 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
               child: const Text('Confirmar reposición'),
             ),
           ),
-        IconButton(
-          tooltip: 'Eliminar registro',
-          onPressed: () => _eliminar(u),
-          icon: const Icon(
-            LucideIcons.trash2,
-            size: 16,
-            color: AppColors.error,
+        if (!u.anulada)
+          IconButton(
+            tooltip: 'Anular rotura',
+            onPressed: () => _anular(u),
+            icon: const Icon(LucideIcons.ban, size: 16, color: AppColors.error),
           ),
-        ),
       ],
-      extra: u.isPagado
+      extra: u.isPagado && !u.anulada
           ? Padding(
               padding: const EdgeInsets.only(top: 10),
               child: Column(
@@ -269,9 +265,10 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
 
   @override
   Widget build(BuildContext context) {
-    final costo = utensiliosRotos.fold(0.0, (s, u) => s + u.costoTotal);
-    final pendientes = utensiliosRotos.where((u) => !u.done).length;
-    final resueltos = utensiliosRotos.where((u) => u.done).length;
+    final vigentes = utensiliosRotos.where((u) => !u.anulada).toList();
+    final costo = vigentes.fold(0.0, (s, u) => s + u.costoTotal);
+    final pendientes = vigentes.where((u) => !u.done).length;
+    final resueltos = vigentes.where((u) => u.done).length;
     final lista = _filtrados;
     return PaginaListaFija(
       reiniciarCon: '$_busqueda|$_filtro',
@@ -327,6 +324,7 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
               _filtroChip('Por cobrar', 'cobro'),
               _filtroChip('Por reponer', 'reposicion'),
               _filtroChip('Resueltos', 'resueltos'),
+              _filtroChip('Anuladas', 'anuladas'),
             ],
           ),
         ],

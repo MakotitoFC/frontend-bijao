@@ -64,6 +64,27 @@ void registrarPedido(Pedido pedido, List<PedidoLine> detalles) {
   detallesPorPedido[pedido.id] = detalles;
 }
 
+// Pedidos de días anteriores que el historial de ventas trajo del servidor.
+final Set<String> idsDeOtrosDias = {};
+
+// Suma pedidos de otro día a la lista sin quitar nada de lo que ya hay: los
+// pedidos activos y los de hoy siguen como estaban. Un pedido que ya está en la
+// lista no se toca (esa copia es la más completa).
+void fusionarPedidosDeOtroDia(
+  List<Pedido> nuevosPedidos,
+  Map<String, List<PedidoLine>> nuevosDetalles,
+) {
+  for (final p in nuevosPedidos) {
+    if (pedidos.any((x) => x.id == p.id)) continue;
+    pedidos.add(p);
+    idsDeOtrosDias.add(p.id);
+    final lineas = nuevosDetalles[p.id];
+    if (lineas != null) detallesPorPedido[p.id] = lineas;
+    final propina = propinaEnComentarios(p.notas);
+    if (propina != null) establecerPropinaPedido(p.id, propina);
+  }
+}
+
 void sincronizarPedidosDesdeServidor(
   List<Pedido> nuevosPedidos,
   Map<String, List<PedidoLine>> nuevosDetalles,
@@ -86,10 +107,22 @@ void sincronizarPedidosDesdeServidor(
     );
     porId[p.id] = (ocupada && !nuevaOcupada) ? previo : p;
   }
+  // Los pedidos de otros días que se consultaron en el historial no vienen en
+  // esta lista (solo trae lo activo y lo de hoy): se conservan.
+  final deOtrosDias = [
+    for (final p in pedidos)
+      if (idsDeOtrosDias.contains(p.id) && !porId.containsKey(p.id)) p,
+  ];
+  final detallesOtrosDias = {
+    for (final p in deOtrosDias)
+      if (detallesPorPedido[p.id] != null) p.id: detallesPorPedido[p.id]!,
+  };
   pedidos.clear();
   pedidos.addAll(porId.values);
+  pedidos.addAll(deOtrosDias);
   detallesPorPedido.clear();
   detallesPorPedido.addAll(nuevosDetalles);
+  detallesPorPedido.addAll(detallesOtrosDias);
   // La propina que se anotó en las notas del pedido (en otro equipo) llega aquí.
   for (final p in porId.values) {
     final propina = propinaEnComentarios(p.notas);

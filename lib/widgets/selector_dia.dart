@@ -4,24 +4,14 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../theme/app_theme.dart';
 import 'selector_rango_fechas.dart';
 
-// Elige un solo día: flechas para ir al día anterior o al siguiente y un botón
-// con la fecha que abre el calendario. No deja pasar de hoy.
+// Elige un solo día: flechas para ir al día anterior o al siguiente y, entre
+// ellas, el calendario de la app (el mismo de los rangos, pero de un día). No
+// deja pasar de hoy.
 class SelectorDia extends StatelessWidget {
   final DateTime dia;
   final ValueChanged<DateTime> onChanged;
 
   const SelectorDia({super.key, required this.dia, required this.onChanged});
-
-  Future<void> _elegir(BuildContext context) async {
-    final hoy = DateUtils.dateOnly(DateTime.now());
-    final r = await showDatePicker(
-      context: context,
-      initialDate: dia.isAfter(hoy) ? hoy : dia,
-      firstDate: DateTime(2020),
-      lastDate: hoy,
-    );
-    if (r != null) onChanged(DateUtils.dateOnly(r));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +23,14 @@ class SelectorDia extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.tag),
         onTap: onTap,
-        child: SizedBox(
+        child: Container(
           width: AppSizes.control,
           height: AppSizes.control,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(AppRadii.tag),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
           child: Icon(
             icono,
             size: 18,
@@ -44,48 +39,32 @@ class SelectorDia extends StatelessWidget {
         ),
       ),
     );
-    return Container(
-      height: AppSizes.control,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadii.tag),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          flecha(
-            'Día anterior',
-            LucideIcons.chevronLeft,
-            () => onChanged(d.subtract(const Duration(days: 1))),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        flecha(
+          'Día anterior',
+          LucideIcons.chevronLeft,
+          () => onChanged(d.subtract(const Duration(days: 1))),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: SelectorRangoFechas(
+            valor: DateTimeRange(start: d, end: d),
+            conAtajos: false,
+            soloDia: true,
+            onChanged: (r) {
+              if (r != null) onChanged(DateUtils.dateOnly(r.start));
+            },
           ),
-          InkWell(
-            borderRadius: BorderRadius.circular(AppRadii.tag),
-            onTap: () => _elegir(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  const Icon(LucideIcons.calendar, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    etiquetaRangoFechas(DateTimeRange(start: d, end: d)),
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          flecha(
-            'Día siguiente',
-            LucideIcons.chevronRight,
-            esHoy ? null : () => onChanged(d.add(const Duration(days: 1))),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 6),
+        flecha(
+          'Día siguiente',
+          LucideIcons.chevronRight,
+          esHoy ? null : () => onChanged(d.add(const Duration(days: 1))),
+        ),
+      ],
     );
   }
 }

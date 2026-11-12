@@ -19,6 +19,7 @@ import '../utils/nota_pedido.dart' show nombreEnComentarios;
 import 'app_select.dart';
 import '../services/api_client.dart';
 import '../services/pago_service.dart';
+import '../services/rotura_service.dart';
 import '../services/catalog_service.dart';
 import '../models/medio_pago.dart';
 import '../models/pedido.dart';
@@ -415,6 +416,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // Roturas de un mozo: no cambian la cuenta del cliente. Se registran en
   // Inventario (a cuenta de su sueldo) solo cuando el cobro se confirma.
   final List<_RoturaMozo> _rotosMozo = [];
+
+  // Código de cada rotura (ver rotura_service.dart): el mismo en Caja, en el
+  // stock y en el registro, para anularlos juntos.
+  final Map<Object, String> _codigos = {};
+  String _codigoDe(Object rotura) =>
+      _codigos.putIfAbsent(rotura, nuevoCodigoRotura);
   // Quién causó la rotura: 'cliente' o 'mozo'.
   String _quienRotura = 'cliente';
   bool _descontarStock = false;
@@ -743,7 +750,8 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     // Las roturas del cliente no van dentro del pago del pedido: se separan de
     // los cobros (empezando por el último) y se registran en Caja como
     // movimientos de la categoría "Roturas", con el medio con que se pagaron.
-    final rotMovs = <({String nombre, double monto, MedioPago medio})>[];
+    final rotMovs =
+        <({String nombre, double monto, MedioPago medio, String codigo})>[];
     for (final c in _cargos) {
       var resta = c.monto;
       for (var i = cobros.length - 1; i >= 0 && resta > 0.005; i--) {
@@ -755,7 +763,12 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           monto: disp - d,
           propina: cobros[i].propina,
         );
-        rotMovs.add((nombre: c.nombre, monto: d, medio: cobros[i].medio));
+        rotMovs.add((
+          nombre: c.nombre,
+          monto: d,
+          medio: cobros[i].medio,
+          codigo: _codigoDe(c),
+        ));
         resta -= d;
       }
     }
@@ -1257,7 +1270,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
   // cliente pagó por roturas, con el detalle de quién fue. Si falla no se
   // deshace el cobro: se avisa.
   Future<void> _registrarRoturasEnCaja(
-    List<({String nombre, double monto, MedioPago medio})> movs,
+    List<({String nombre, double monto, MedioPago medio, String codigo})> movs,
   ) async {
     if (movs.isEmpty) return;
     final cliente = nombreEnComentarios(widget.pedido.notas) ?? widget.titulo;
@@ -1273,9 +1286,11 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             categoria: categoria,
             monto: m.monto,
             medio: m.medio,
-            nota:
-                'Rotura · ${m.nombre} · Cliente: $cliente · '
-                'Pedido #${widget.pedido.numeroPedido}',
+            nota: notaConCodigo(
+              'Rotura · ${m.nombre} · Cliente: $cliente · '
+              'Pedido #${widget.pedido.numeroPedido}',
+              m.codigo,
+            ),
           );
         } catch (_) {
           fallos.add(m.nombre);
@@ -1315,7 +1330,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             costoTotal: r.monto,
             usuarioId: AuthService.instance.usuarioActual?.id,
             fecha: DateTime.now(),
-            notas: nota,
+            notas: notaConCodigo(nota, _codigoDe(r)),
             isPagado: true,
           ),
         );
@@ -1331,7 +1346,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
           productoInventarioId: d.productoId,
           tipoMovimientoId: movSalidaManualId,
           cantidad: 1,
-          notas: 'Rotura de cliente · $nota',
+          notas: notaConCodigo('Rotura de cliente · $nota', _codigoDe(c)),
         );
       } catch (_) {
         fallos.add('${c.nombre} (stock)');

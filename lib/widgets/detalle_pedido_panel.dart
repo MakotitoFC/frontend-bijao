@@ -2983,7 +2983,8 @@ class DetallePedidoPanel extends StatelessWidget {
 
   // Pagar una cuenta cero: pregunta si se imprime el ticket. Siempre queda
   // registrado en el sistema como consumo de familia por S/ 0.00; imprimir o
-  // no solo cambia si sale por la ticketera.
+  // no solo cambia si sale por la ticketera. La cuenta se cierra primero en el
+  // servidor: si no la acepta, se avisa y el pedido NO se esconde.
   Future<void> _pagarCuentaCero(BuildContext context) async {
     final imprimir = await showBlurDialog<bool>(
       context: context,
@@ -3011,6 +3012,26 @@ class DetallePedidoPanel extends StatelessWidget {
       ),
     );
     if (imprimir == null || !context.mounted) return;
+
+    // 1. Cierra la cuenta en el servidor con un cobro de S/ 0.
+    try {
+      final medios = mediosPagoActivos;
+      final medio = medios.firstWhere(
+        (m) => m.grupo == 'efectivo',
+        orElse: () => medios.first,
+      );
+      await PagoService.instance.registrar(
+        pedido: pedido,
+        medio: medio,
+        montoAbonado: 0,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      await _avisoCuentaCeroNoCerrada(context, e);
+      return;
+    }
+
+    // 2. Ya cerrada: se registra el ticket de S/ 0.00.
     try {
       final nombre = (pedido.clienteNombre ?? '').trim();
       final c = await FacturacionService.instance.emitir(
@@ -3022,23 +3043,6 @@ class DetallePedidoPanel extends StatelessWidget {
             : '${_rotuloCuentaCero(motivoCuentaCero(pedido))} - '
                   '${nombre.toUpperCase()}',
       );
-      // Cierra la cuenta con un pago en cero (efectivo).
-      try {
-        final medios = mediosPagoActivos;
-        final medio = medios.firstWhere(
-          (m) => m.grupo == 'efectivo',
-          orElse: () => medios.first,
-        );
-        await PagoService.instance.registrar(
-          pedido: pedido,
-          medio: medio,
-          montoAbonado: 0,
-        );
-      } catch (_) {
-        // El servidor no acepta cobros en cero: la cuenta se quita de la cola
-        // en este dispositivo (el ticket ya quedó registrado).
-        await marcarCuentaCeroCerrada(pedido.id);
-      }
       if (!context.mounted) return;
       if (imprimir) {
         await showBlurDialog<void>(
@@ -3053,18 +3057,96 @@ class DetallePedidoPanel extends StatelessWidget {
           type: ToastType.success,
         );
       }
-      onCambio();
     } catch (e) {
       if (!context.mounted) return;
       showAppToast(
         context,
-        e is ApiException
-            ? e.message
-            : e.toString().replaceFirst('Exception: ', ''),
+        'La cuenta se cerró, pero el ticket no se registró: '
+        '${e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '')}',
         type: ToastType.error,
         titulo: 'Ticket no registrado',
       );
     }
+    onCambio();
+  }
+
+  // El servidor no cerró la cuenta en S/ 0.00: se explica por qué, sin
+  // esconder el pedido.
+  Future<void> _avisoCuentaCeroNoCerrada(BuildContext context, Object e) async {
+    final detalle = e is ApiException
+        ? e.message
+        : e.toString().replaceFirst('Exception: ', '');
+    final texto = detalle.toLowerCase();
+
+    Future<void> aviso(String titulo, String mensaje) => showBlurDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertaApp(
+        title: Text(titulo),
+        content: Text(mensaje),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+
+    // El pedido ya estaba cerrado: se actualiza la pantalla.
+    if (texto.contains('ya se encuentra completamente pagado')) {
+      await aviso(
+        'Esta cuenta ya está cerrada',
+        'El pedido ya figura como pagado. Actualiza la pantalla para verlo.',
+      );
+      onCambio();
+      return;
+    }
+
+    // La cuenta todavía tiene algo por cobrar (por ejemplo, el delivery).
+    if (texto.contains('no puede ser 0')) {
+      try {
+        await PedidoMozoService.instance.obtener(pedido.id);
+      } catch (_) {}
+      final saldo = saldoPendienteDePedido(pedido.id);
+      if (!context.mounted) return;
+      if (saldo > 0.005) {
+        final cobrar = await showBlurDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertaApp(
+            title: const Text('No se pudo cerrar en S/ 0.00'),
+            content: Text(
+              'Esta cuenta todavía tiene S/ ${saldo.toStringAsFixed(2)} por '
+              'cobrar (por ejemplo, el delivery). Cóbrala con un medio de '
+              'pago para cerrarla.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text('Cobrar S/ ${saldo.toStringAsFixed(2)}'),
+              ),
+            ],
+          ),
+        );
+        if (cobrar == true && context.mounted) await _pagar(context);
+        return;
+      }
+      await aviso(
+        'No se pudo cerrar en S/ 0.00',
+        'El servidor no aceptó cerrar esta cuenta en S/ 0.00. Revisa que el '
+            'pedido sea de empleado o de familia y que su total sea 0, o cóbralo '
+            'con un medio de pago.',
+      );
+      return;
+    }
+
+    await aviso(
+      'No se pudo cerrar la cuenta',
+      'Prueba de nuevo. Si sigue igual, avisa al administrador.\n\n$detalle',
+    );
   }
 
   Widget _botonesFijos(

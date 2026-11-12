@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/catalogos_store.dart';
+import '../data/inventario_store.dart';
 import '../models/producto_inventario.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
@@ -12,6 +13,7 @@ import 'app_select.dart';
 import 'app_toast.dart';
 import 'dialogo_app.dart';
 import 'campo_texto.dart';
+import 'seccion_venta_producto.dart';
 
 /// Modal de creación y edición de Producto de Inventario (`producto_inventario`).
 /// Cumple exactamente con la estética oficial y las columnas de BD.txt.
@@ -28,6 +30,7 @@ class ProductoInventarioFormDialog extends StatefulWidget {
 class _ProductoInventarioFormDialogState
     extends State<ProductoInventarioFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _ventaKey = GlobalKey<SeccionVentaProductoState>();
 
   late final TextEditingController _nombreController;
   late final TextEditingController _descripcionController;
@@ -43,6 +46,51 @@ class _ProductoInventarioFormDialogState
   bool _guardando = false;
 
   bool get _esEdicion => widget.producto != null;
+
+  // Cómo se vende un producto nuevo. Si se vende (carta o táper), el formulario
+  // se acorta: solo nombre, stock y mínimo; lo demás toma valores por defecto.
+  ModoVentaProducto _modoVenta = ModoVentaProducto.noSeVende;
+  // Último nombre puesto automáticamente desde la carta (para no pisar lo que
+  // el usuario escribió a mano).
+  String _nombreAuto = '';
+
+  bool get _compacto =>
+      !_esEdicion && _modoVenta != ModoVentaProducto.noSeVende;
+
+  void _alCambiarVenta(ModoVentaProducto modo, String? cartaNombre) {
+    if (_esEdicion) return;
+    setState(() {
+      _modoVenta = modo;
+      if (modo == ModoVentaProducto.noSeVende) return;
+      // Lo que se vende por unidad: pieza o botella, en "Unidad".
+      _seguimiento = 'unidad';
+      final unidad = unidadesProducto
+          .where((u) => u.unidad.trim().toLowerCase() == 'unidad')
+          .firstOrNull;
+      if (unidad != null) _unidadProductoId = unidad.id;
+      // Un tipo de bebida, si existe y todavía no se eligió otro.
+      final porDefecto = tiposProducto.isNotEmpty
+          ? tiposProducto.first.id
+          : null;
+      if (_tipoProductoId == null || _tipoProductoId == porDefecto) {
+        final bebida = tiposProducto.where((t) {
+          final n = t.tipoProducto.toLowerCase();
+          return n.contains('gaseosa') || n.contains('bebida');
+        }).firstOrNull;
+        if (bebida != null) _tipoProductoId = bebida.id;
+      }
+      // El nombre sale de la carta si el usuario no escribió otro.
+      if (cartaNombre != null &&
+          (_nombreController.text.trim().isEmpty ||
+              _nombreController.text == _nombreAuto)) {
+        final n = cartaNombre.length > 20
+            ? cartaNombre.substring(0, 20)
+            : cartaNombre;
+        _nombreController.text = n;
+        _nombreAuto = n;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -169,6 +217,13 @@ class _ProductoInventarioFormDialogState
       }
     }
 
+    // La venta (carta o táper) se revisa antes de guardar nada.
+    final errorVenta = _ventaKey.currentState?.validar();
+    if (errorVenta != null) {
+      showAppToast(context, errorVenta, type: ToastType.error);
+      return;
+    }
+
     setState(() => _guardando = true);
 
     try {
@@ -196,6 +251,30 @@ class _ProductoInventarioFormDialogState
       );
 
       ProductoInventario guardado;
+      final venta = _ventaKey.currentState;
+      if (!_esEdicion && venta != null && venta.esTaperNuevo) {
+        // Un táper se crea con su servicio: el backend crea también su producto
+        // de inventario y los enlaza.
+        final taper = await CatalogService.instance.crearTaper(
+          nombre: producto.nombre,
+          precio: venta.precioTaper ?? 0,
+          sedeId: producto.sedeId,
+          stockInicial: stockAct,
+          stockMinimo: stockMin,
+        );
+        await CatalogService.instance.cargarProductosInventario();
+        final creado = productosInventario
+            .where((p) => p.id == taper.productoInventarioId)
+            .firstOrNull;
+        if (!mounted) return;
+        showAppToast(
+          context,
+          'Táper registrado en inventario',
+          type: ToastType.success,
+        );
+        Navigator.of(context).pop(creado ?? producto);
+        return;
+      }
       if (_esEdicion) {
         guardado = await CatalogService.instance.actualizarProductoInventario(
           producto,
@@ -215,6 +294,20 @@ class _ProductoInventarioFormDialogState
           context,
           'Producto registrado en inventario',
           type: ToastType.success,
+        );
+      }
+
+      // Después del producto, su venta: qué producto de la carta lo descuenta o,
+      // si es un táper, su precio. Si falla, el producto ya quedó guardado.
+      final fallaVenta = await _ventaKey.currentState?.guardar(guardado.id);
+      if (!mounted) return;
+      if (fallaVenta != null) {
+        showAppToast(
+          context,
+          'El producto se guardó, pero no se pudo guardar su venta: '
+          '$fallaVenta',
+          type: ToastType.error,
+          duration: const Duration(seconds: 7),
         );
       }
 
@@ -264,6 +357,13 @@ class _ProductoInventarioFormDialogState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 0. Venta primero: carta (descuenta stock) o táper (precio).
+              SeccionVentaProducto(
+                key: _ventaKey,
+                producto: widget.producto,
+                onCambio: _alCambiarVenta,
+              ),
+
               // 1. Nombre del producto * (max 20 caracteres según BD.txt)
               CampoTexto(
                 controller: _nombreController,
@@ -316,19 +416,21 @@ class _ProductoInventarioFormDialogState
               const SizedBox(height: 14),
 
               // 3. Descripción (textarea)
-              CampoTexto(
-                controller: _descripcionController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Descripción',
-                  hintText: 'Detalles, especificaciones o uso...',
-                  alignLabelWithHint: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+              if (!_compacto) ...[
+                CampoTexto(
+                  controller: _descripcionController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Descripción',
+                    hintText: 'Detalles, especificaciones o uso...',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
+                const SizedBox(height: 14),
+              ],
 
               // 4. Tipo de seguimiento & Unidad de medida: en fila si caben.
               LayoutBuilder(
@@ -418,7 +520,7 @@ class _ProductoInventarioFormDialogState
               LayoutBuilder(
                 builder: (context, c) {
                   final angosto = c.maxWidth < 440;
-                  final w = angosto
+                  final w = (angosto || _compacto)
                       ? (c.maxWidth - 10) / 2
                       : (c.maxWidth - 20) / 3;
                   return Wrap(
@@ -482,34 +584,35 @@ class _ProductoInventarioFormDialogState
                           },
                         ),
                       ),
-                      SizedBox(
-                        width: angosto ? c.maxWidth : w,
-                        child: CampoTexto(
-                          controller: _costoReposicionController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d*\.?\d*'),
+                      if (!_compacto)
+                        SizedBox(
+                          width: angosto ? c.maxWidth : w,
+                          child: CampoTexto(
+                            controller: _costoReposicionController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
                             ),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: 'Costo repos. (S/)',
-                            hintText: '0.00',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d*'),
+                              ),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'Costo repos. (S/)',
+                              hintText: '0.00',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
+                            validator: (v) {
+                              if (v != null && v.trim().isNotEmpty) {
+                                final numVal = double.tryParse(v.trim());
+                                if (numVal == null || numVal < 0) return '>= 0';
+                              }
+                              return null;
+                            },
                           ),
-                          validator: (v) {
-                            if (v != null && v.trim().isNotEmpty) {
-                              final numVal = double.tryParse(v.trim());
-                              if (numVal == null || numVal < 0) return '>= 0';
-                            }
-                            return null;
-                          },
                         ),
-                      ),
                     ],
                   );
                 },
@@ -517,20 +620,22 @@ class _ProductoInventarioFormDialogState
               const SizedBox(height: 14),
 
               // 6. Notas (opcional)
-              CampoTexto(
-                controller: _notasController,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  labelText: 'Notas adicionales (opcional)',
-                  hintText: 'Proveedor habitual, ubicación o lote...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+              if (!_compacto) ...[
+                CampoTexto(
+                  controller: _notasController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: 'Notas adicionales (opcional)',
+                    hintText: 'Proveedor habitual, ubicación o lote...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
-              // 7. Estado del producto (exacto al diseño de la imagen)
+              // 8. Estado del producto (exacto al diseño de la imagen)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

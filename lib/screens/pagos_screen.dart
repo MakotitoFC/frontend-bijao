@@ -17,6 +17,8 @@ import '../services/catalog_service.dart';
 import '../services/caja_service.dart';
 import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
+import '../services/rotura_service.dart';
+import '../services/pedido_service.dart';
 import '../data/pedidos_store.dart';
 import '../models/caja_servidor.dart';
 import '../models/cierre_caja.dart';
@@ -29,9 +31,11 @@ import '../utils/blur_dialog.dart';
 import '../widgets/app_search_field.dart';
 import '../widgets/etiqueta_tipo_pedido.dart';
 import '../widgets/indicador_abajo.dart';
+import '../widgets/inventario/inventario_comun.dart' show EtiquetaFila;
 import '../widgets/filtro_menu.dart';
 import '../widgets/menu_flotante.dart';
 import '../widgets/reportes_otra_fecha_dialog.dart';
+import '../widgets/roturas_por_cobrar.dart';
 import '../widgets/boton_icono_expandible.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/comprobante_en_cobro.dart';
@@ -43,6 +47,7 @@ import '../widgets/alquiler_dialog.dart';
 import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/app_select.dart';
 import '../widgets/selector_rango_fechas.dart';
+import '../widgets/selector_dia.dart';
 import '../widgets/tabla_app.dart';
 import '../widgets/tabs_texto.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
@@ -86,42 +91,61 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
   String _tipoFiltro = 'todos'; // todos | mesa | llevar | delivery
   String _mozoFiltro = 'todos'; // id del mozo, o 'todos'
-  // Fechas de los pedidos mostrados (por defecto, hoy); se cambia con el selector
-  // de fechas.
-  DateTimeRange? _rango = DateTimeRange(
-    start: DateUtils.dateOnly(DateTime.now()),
-    end: DateUtils.dateOnly(DateTime.now()),
-  );
+  // Día de los pedidos mostrados (por defecto, hoy); se cambia con el selector.
+  DateTime _dia = DateUtils.dateOnly(DateTime.now());
+  bool _cargando = false;
 
   @override
   void initState() {
     super.initState();
-    _cargarPagos();
+    _cargarDia();
   }
 
-  // Si no se pudieron leer los pagos del servidor, aquí va el motivo: sin ellos
-  // la tabla no puede mostrar la fecha ni el método de pago.
+  // Si no se pudo leer del servidor, aquí va el motivo: sin los pagos la tabla
+  // no puede mostrar la fecha ni el método de pago.
   String? _errorPagos;
+  String? _errorPedidos;
 
-  // Los pagos viven en el servidor: se traen los del rango elegido.
-  Future<void> _cargarPagos() async {
-    final r = _rango;
-    String? error;
+  String _mensajeDe(Object e) => e is ApiException ? e.message : e.toString();
+
+  // Pagos y pedidos viven en el servidor: se traen los del día elegido. Los
+  // pedidos de hoy ya están en memoria; los de días anteriores se suman a la
+  // lista sin quitar los activos.
+  Future<void> _cargarDia() async {
+    final dia = _dia;
+    setState(() => _cargando = true);
+    String? errorPagos;
+    String? errorPedidos;
     try {
-      if (r == null) {
-        await PagoService.instance.cargarDelDia();
-      } else {
-        await PagoService.instance.cargarDelRango(r.start, r.end);
-      }
+      await PagoService.instance.cargarDelRango(dia, dia);
     } catch (e) {
-      error = e is ApiException ? e.message : e.toString();
+      errorPagos = _mensajeDe(e);
     }
-    if (mounted) setState(() => _errorPagos = error);
+    final esHoy = !dia.isBefore(DateUtils.dateOnly(DateTime.now()));
+    if (!esHoy) {
+      try {
+        final m = dia.month.toString().padLeft(2, '0');
+        final d = dia.day.toString().padLeft(2, '0');
+        await PedidoService.instance.cargarPedidos(
+          fecha: '${dia.year}-$m-$d',
+          fusionar: true,
+        );
+      } catch (e) {
+        errorPedidos = _mensajeDe(e);
+      }
+    }
+    // Si mientras tanto se eligió otro día, esa carga es la que manda.
+    if (!mounted || _dia != dia) return;
+    setState(() {
+      _cargando = false;
+      _errorPagos = errorPagos;
+      _errorPedidos = errorPedidos;
+    });
   }
 
-  void _cambiarRango(DateTimeRange? r) {
-    setState(() => _rango = r);
-    _cargarPagos();
+  void _cambiarDia(DateTime d) {
+    setState(() => _dia = DateUtils.dateOnly(d));
+    _cargarDia();
   }
 
   // Fecha y hora del último pago del pedido (null si aún no se cobró nada).
@@ -137,11 +161,8 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   // El día se filtra por la fecha del pago; un pedido sin cobrar todavía se
   // ubica por la fecha en que se tomó.
   bool _enRango(Pedido p) {
-    final r = _rango;
-    if (r == null) return true;
     final d = DateUtils.dateOnly(_fechaPago(p) ?? p.fechaPedido);
-    return !d.isBefore(DateUtils.dateOnly(r.start)) &&
-        !d.isAfter(DateUtils.dateOnly(r.end));
+    return d == _dia;
   }
 
   @override
@@ -378,20 +399,9 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                     ];
                     final controles = [
                       _grupoEstado(),
-                      // Selector de fechas de la app: accesos rápidos (Hoy, Ayer…) y
-                      // calendario para un día o un rango. Sin fechas = hoy.
-                      SelectorRangoFechas(
-                        valor: _rango,
-                        // El botón ya dice "Hoy" cuando es el día de hoy:
-                        // no lleva otro botón "Hoy" al lado.
-                        conAtajos: false,
-                        onChanged: (r) {
-                          final hoy = DateUtils.dateOnly(DateTime.now());
-                          _cambiarRango(
-                            r ?? DateTimeRange(start: hoy, end: hoy),
-                          );
-                        },
-                      ),
+                      // Un día a la vez: flechas para ir al anterior o al
+                      // siguiente y calendario.
+                      SelectorDia(dia: _dia, onChanged: _cambiarDia),
                       AppSearchField(
                         controller: _busqueda,
                         hint: 'Buscar...',
@@ -448,10 +458,21 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
                 ),
               ),
             ),
+            if (_cargando) ...[
+              const SizedBox(height: 8),
+              const LinearProgressIndicator(minHeight: 2),
+            ],
             if (_errorPagos != null) ...[
               const SizedBox(height: 8),
               Text(
                 'No se pudieron leer los pagos del servidor: $_errorPagos',
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ],
+            if (_errorPedidos != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'No se pudieron leer los pedidos de ese día: $_errorPedidos',
                 style: const TextStyle(fontSize: 12, color: AppColors.error),
               ),
             ],
@@ -1504,9 +1525,21 @@ class _CajaScreenState extends State<CajaScreen> {
     );
     if (motivo == null || !mounted) return;
     try {
-      await MovimientoCajaService.instance.anular(m, motivo: motivo);
+      final r = await RoturaService.instance.anularMovimiento(
+        m,
+        motivo: motivo,
+      );
       if (!mounted) return;
-      showAppToast(context, 'Movimiento anulado.', type: ToastType.success);
+      if (r.completo) {
+        showAppToast(context, 'Movimiento anulado.', type: ToastType.success);
+      } else {
+        showAppToast(
+          context,
+          'Movimiento anulado, pero: ${r.avisos.join(' ')}',
+          type: ToastType.error,
+          duration: const Duration(seconds: 7),
+        );
+      }
       await _refrescarCaja();
     } catch (e) {
       if (mounted) showAppToast(context, e.toString(), type: ToastType.error);
@@ -2212,6 +2245,10 @@ class _CajaScreenState extends State<CajaScreen> {
             },
           ),
           const SizedBox(height: 12),
+          RoturasPorCobrarAviso(
+            cajaCerrada: _cajaCerrada,
+            onCobrado: _refrescarCaja,
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: SelectorRangoFechas(
@@ -2356,7 +2393,7 @@ class _CajaScreenState extends State<CajaScreen> {
         : (esIngreso ? AppColors.primaryGreen : AppColors.error);
     final detalle = [
       _hora(m.fecha),
-      if ((m.nota ?? '').isNotEmpty) m.nota!,
+      if (notaSinCodigo(m.nota).isNotEmpty) notaSinCodigo(m.nota),
       if ((m.registradoPor ?? '').isNotEmpty) 'por ${m.registradoPor}',
     ].join(' · ');
     final puedeCambiar = MovimientoCajaService.edicionDisponible && !m.anulado;
@@ -2410,6 +2447,13 @@ class _CajaScreenState extends State<CajaScreen> {
                                 : null,
                           ),
                         ),
+                        if (codigoDeRotura(m.nota) != null && !m.anulado)
+                          EtiquetaFila(
+                            esAbonoDeRotura(m.nota)
+                                ? 'Abono de rotura'
+                                : 'Afecta inventario',
+                            color: Colors.amber.shade800,
+                          ),
                         if (m.anulado) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(

@@ -4,6 +4,7 @@ import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../models/medio_pago.dart';
 import '../models/movimiento_caja.dart';
+import '../services/rotura_service.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'campo_texto.dart';
@@ -159,6 +160,18 @@ class AnularMovimientoDialog extends StatefulWidget {
 
 class _AnularMovimientoDialogState extends State<AnularMovimientoDialog> {
   final _motivo = TextEditingController();
+  // Si es el ingreso de una rotura o un alquiler: lo que se devuelve al almacén.
+  EfectoAnulacion? _efecto;
+
+  @override
+  void initState() {
+    super.initState();
+    if (codigoDeRotura(widget.movimiento.nota) != null) {
+      RoturaService.instance.efectoDeMovimiento(widget.movimiento).then((e) {
+        if (mounted) setState(() => _efecto = e);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -193,6 +206,23 @@ class _AnularMovimientoDialogState extends State<AnularMovimientoDialog> {
           'lista como anulado y deja de contar en los totales de la caja.',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
+        if (esAbonoDeRotura(m.nota)) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Es el abono de una rotura: anularlo solo quita el ingreso de la '
+            'caja. El abono sigue contado en la rotura; para deshacer la '
+            'rotura completa, anúlala desde Inventario.',
+            style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+          ),
+        ] else if (_efecto != null && _efecto!.stock.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            'También vuelve al almacén:',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+          for (final l in _efecto!.stock)
+            Text('• $l', style: const TextStyle(fontSize: 12.5)),
+        ],
         const SizedBox(height: 14),
         CampoTexto(
           controller: _motivo,
@@ -217,11 +247,14 @@ class ReactivarMovimientoDialog extends StatefulWidget {
   const ReactivarMovimientoDialog({super.key, required this.movimiento});
 
   @override
-  State<ReactivarMovimientoDialog> createState() => _ReactivarMovimientoDialogState();
+  State<ReactivarMovimientoDialog> createState() =>
+      _ReactivarMovimientoDialogState();
 }
 
 class _ReactivarMovimientoDialogState extends State<ReactivarMovimientoDialog> {
-  final _motivo = TextEditingController(text: 'Corrección de anulación involuntaria');
+  final _motivo = TextEditingController(
+    text: 'Corrección de anulación involuntaria',
+  );
 
   @override
   void dispose() {
@@ -246,7 +279,9 @@ class _ReactivarMovimientoDialogState extends State<ReactivarMovimientoDialog> {
           onPressed: _valido
               ? () => Navigator.of(context).pop(_motivo.text.trim())
               : null,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+          ),
           child: const Text('Reactivar'),
         ),
       ],

@@ -5,6 +5,7 @@ import '../../data/catalogos_store.dart';
 import '../../data/inventario_store.dart';
 import '../../models/inventario_movimiento.dart';
 import '../../models/producto_inventario.dart';
+import '../../models/taper.dart';
 import '../../services/catalog_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
@@ -83,9 +84,18 @@ class _PaginaProductosState extends State<PaginaProductos> {
       CatalogService.instance.cargarTiposProducto(),
       CatalogService.instance.cargarUnidadesProducto(),
       CatalogService.instance.cargarProductosInventario(),
+      CatalogService.instance.cargarTapers(),
+      // Quien no puede leer la carta ve la lista sin las etiquetas de venta.
+      CatalogService.instance.cargarVinculosCarta().catchError(
+        (_) => vinculosCarta,
+      ),
     ]);
     if (mounted) setState(() => _cargando = false);
   }
+
+  Taper? _taperDe(ProductoInventario p) => CatalogService.instance.tapers
+      .where((t) => t.productoInventarioId == p.id)
+      .firstOrNull;
 
   List<ProductoInventario> get _visibles {
     final q = _busqueda.trim().toLowerCase();
@@ -142,6 +152,31 @@ class _PaginaProductosState extends State<PaginaProductos> {
     );
   }
 
+  // Cómo se cobra el producto: táper (con su precio) o producto de la carta que
+  // lo descuenta al venderse.
+  List<Widget> _etiquetasDeVenta(ProductoInventario p) {
+    final t = _taperDe(p);
+    if (t != null) {
+      return [
+        EtiquetaFila(
+          'Táper · S/ ${t.precio.toStringAsFixed(2)}'
+          '${t.estado ? '' : ' · inactivo'}',
+          color: Colors.indigo,
+        ),
+      ];
+    }
+    final v = vinculosDeProducto(p.id);
+    if (v.isEmpty) return const [];
+    return [
+      EtiquetaFila(
+        v.length == 1
+            ? 'Carta · ${v.first.cartaNombre}'
+            : 'Carta · ${v.length} productos',
+        color: AppColors.primaryGreen,
+      ),
+    ];
+  }
+
   Widget _fila(ProductoInventario p, bool compacto) {
     final detalle = [
       tipoProductoDe(p.tipoProductoId),
@@ -156,6 +191,7 @@ class _PaginaProductosState extends State<PaginaProductos> {
       onTap: () => _verMovimientos(p),
       titulo: tituloConEtiquetas(p.nombre, [
         if (!p.estado) const EtiquetaFila('Inactivo'),
+        ..._etiquetasDeVenta(p),
         if (p.stockActual <= 0)
           const EtiquetaFila('Sin stock', color: AppColors.error)
         else if (p.stockBajo)
@@ -218,7 +254,8 @@ class _PaginaProductosState extends State<PaginaProductos> {
         titulo: 'Productos',
         descripcion:
             'Todo lo que llevas en stock. Toca un producto para ver sus '
-            'movimientos.',
+            'movimientos. Los tápers y los productos de la carta que '
+            'descuentan stock llevan su etiqueta.',
         accion: BotonNuevo(etiqueta: 'Producto', onPressed: _crear),
       ),
       // Un solo renglón de herramientas: buscador y filtro por tipo.

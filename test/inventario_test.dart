@@ -65,8 +65,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
-  // Productos, Tipos y unidades y Tápers son pestañas dentro de Almacén.
-  const subvistasAlmacen = {'Productos', 'Tipos y unidades', 'Tápers'};
+  // Productos y Tipos y unidades son pestañas dentro de Almacén (los tápers
+  // viven en Productos).
+  const subvistasAlmacen = {'Productos', 'Tipos y unidades'};
 
   Future<void> ir(WidgetTester tester, String etiqueta) async {
     // Celular: se abre desde el índice; si hay una subvista abierta, se vuelve
@@ -102,7 +103,6 @@ void main() {
     for (final p in [
       'Productos',
       'Tipos y unidades',
-      'Tápers',
       'Movimientos',
       'Anulaciones',
       'Resumen',
@@ -198,7 +198,6 @@ void main() {
       for (final p in [
         'Productos',
         'Tipos y unidades',
-        'Tápers',
         'Movimientos',
         'Anulaciones',
         'Resumen',

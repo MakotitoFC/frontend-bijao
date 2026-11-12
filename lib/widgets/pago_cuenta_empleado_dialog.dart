@@ -8,6 +8,7 @@ import '../models/utensilio_roto.dart';
 import '../services/auth_service.dart';
 import '../services/catalog_service.dart';
 import '../services/movimiento_caja_service.dart';
+import '../services/rotura_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/uuid_helper.dart';
 import 'app_select.dart';
@@ -61,6 +62,12 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
     super.dispose();
   }
 
+  // El abono lleva el código de la rotura para poder anularlos juntos.
+  String _conCodigo(String nota) {
+    final codigo = codigoDeRotura(widget.rotura.notas);
+    return codigo == null ? nota : notaConCodigo(nota, codigo);
+  }
+
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -111,10 +118,11 @@ class _PagoCuentaEmpleadoDialogState extends State<PagoCuentaEmpleadoDialog> {
             categoria: cat,
             monto: monto,
             medio: medio,
-            nota:
-                'Rotura · ${widget.rotura.cantidad}x '
-                '${widget.rotura.productoNombre ?? 'Item'} · '
-                'Mozo: ${widget.rotura.empleadoNombre ?? 'Empleado'} · Abono',
+            nota: _conCodigo(
+              'Rotura · ${widget.rotura.cantidad}x '
+              '${widget.rotura.productoNombre ?? 'Item'} · '
+              'Mozo: ${widget.rotura.empleadoNombre ?? 'Empleado'} · Abono',
+            ),
           );
         } catch (_) {
           avisoCaja = true;

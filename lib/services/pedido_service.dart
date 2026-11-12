@@ -243,9 +243,14 @@ class PedidoService {
   Future<List<Pedido>> cargarPedidos({
     bool soloActivos = false,
     String? fecha,
+    // Con true los pedidos traídos se suman a la lista sin quitar los que ya
+    // están (historial de días pasados) y un fallo de red se informa.
+    bool fusionar = false,
   }) async {
     final user = AuthService.instance.currentUser;
-    if (AppConfig.usarApiPedidosMozo && user?.rol == AppRole.mesero) {
+    if (!fusionar &&
+        AppConfig.usarApiPedidosMozo &&
+        user?.rol == AppRole.mesero) {
       try {
         await PedidoMozoService.instance.sincronizar();
       } catch (_) {
@@ -325,6 +330,9 @@ class PedidoService {
                 ),
               );
             }
+            // Los descuentos de toda la cuenta no están en las líneas: sin ellos
+            // el total del pedido se vería a precio completo.
+            lineas.addAll(lineasDeDescuentoDeCuenta(item['descuentos']));
             mapDetalles[p.id] = lineas;
 
             final ceList = item['cargos_extra'];
@@ -348,6 +356,10 @@ class PedidoService {
           }
         }
 
+        if (fusionar) {
+          fusionarPedidosDeOtroDia(listaPedidos, mapDetalles);
+          return pedidos;
+        }
         sincronizarPedidosDesdeServidor(listaPedidos, mapDetalles);
         // El administrador y el cajero leen el detalle completo (número de orden,
         // presentaciones, variantes): el servidor les abre esa lectura.
@@ -364,6 +376,7 @@ class PedidoService {
       }
     } catch (e) {
       // Ignorar error de red puntual para mantener local
+      if (fusionar) rethrow;
     }
     return pedidos;
   }
@@ -402,4 +415,36 @@ class PedidoService {
     await _api.put('/api/mesas/$mesaId/estado', body: body);
     actualizarEstadoMesa(numeroMesa, 'disponible');
   }
+}
+
+// Líneas "Descuento: motivo" (en negativo, solo para que la cuenta se muestre
+// con su total real) de los descuentos que `/api/pedidos` trae para toda la
+// cuenta. Los de una línea ya vienen en el precio de esa línea. Estas líneas
+// son un ajuste de la app: nunca se mandan al servidor como precio.
+List<PedidoLine> lineasDeDescuentoDeCuenta(Object? descuentos) {
+  if (descuentos is! List) return const [];
+  final lineas = <PedidoLine>[];
+  for (final d in descuentos.whereType<Map<String, dynamic>>()) {
+    final detalle = d['detalle_id']?.toString();
+    if (detalle != null && detalle.isNotEmpty) continue;
+    final monto = (d['monto'] as num?)?.toDouble() ?? 0.0;
+    if (monto <= 0) continue;
+    final motivo = d['motivo']?.toString().trim() ?? '';
+    lineas.add(
+      PedidoLine(
+        id: d['id']?.toString() ?? 'descuento-${lineas.length}',
+        cartaId: cartaIdAjuste,
+        nombrePlato: 'Descuento: ${motivo.isEmpty ? 'Descuento' : motivo}',
+        cantidad: 1,
+        modificadores: const [],
+        presentacion: null,
+        promocion: null,
+        comentario: null,
+        precioUnitario: -monto,
+        descuentoAplicado: 0,
+        precioTotalLinea: -monto,
+      ),
+    );
+  }
+  return lineas;
 }

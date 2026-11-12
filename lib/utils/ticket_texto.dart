@@ -157,7 +157,23 @@ List<String> detalleDePrecioManual(PedidoLine l) => [
   if (motivoDePrecio(l.comentario) case final m?) m,
 ];
 
+// Texto de un consumo de familia (cuenta cero) o de empleado, con cómo se entrega
+// entre paréntesis: "CONSUMO FAMILIA (DELIVERY)". Es el mismo que imprime el
+// servidor. null si el pedido no es ninguno de los dos.
+String? etiquetaConsumoEspecial(Pedido p) {
+  final familia = esPedidoDeFamilia(p.id);
+  if (!familia && !p.esEmpleado) return null;
+  final base = familia ? 'CONSUMO FAMILIA' : 'CONSUMO DE EMPLEADO';
+  if (p.tipoPedido == 'delivery' || p.costoDelivery > 0) {
+    return '$base (DELIVERY)';
+  }
+  if (p.tipoPedido == 'llevar') return '$base (PARA LLEVAR)';
+  return base;
+}
+
 String _lugarComanda(Pedido p) {
+  final consumo = etiquetaConsumoEspecial(p);
+  if (consumo != null) return 'TIPO: $consumo';
   switch (p.tipoPedido) {
     case 'delivery':
       return 'TIPO: >> DELIVERY <<';
@@ -370,8 +386,8 @@ List<LineaTicket> ticketBoleta({
       LineaTicket('Cliente: ${cliente.isEmpty ? 'CLIENTES VARIOS' : cliente}'),
     LineaTicket('Atendido por: $mozo'),
     LineaTicket('Atencion: ${pedido.ubicacion}'),
-    if (esPedidoDeFamilia(pedido.id))
-      const LineaTicket('CONSUMO DE FAMILIA - CUENTA CERO', negrita: true),
+    if (etiquetaConsumoEspecial(pedido) case final consumo?)
+      LineaTicket('TIPO: $consumo', negrita: true),
     LineaTicket.separador('='),
     LineaTicket(padLinea('CANT DESCRIPCION', 'TOTAL'), negrita: true),
     LineaTicket.separador('-'),
@@ -541,7 +557,8 @@ List<LineaTicket> ticketComprobante({
       (propinaExtra > 0.001 ? propinaExtra : 0) +
       totalCargosExtra(pedido.id) +
       (recargo > 0.001 ? recargo : 0);
-  final igvPct = FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
+  final igvPct =
+      FacturacionService.instance.cachedConfig?.igvPorcentaje ?? 18.0;
   final igvFactor = 1.0 + (igvPct / 100.0);
   final gravada = total / igvFactor;
   final igv = total - gravada;

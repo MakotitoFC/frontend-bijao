@@ -10,7 +10,6 @@ import '../widgets/inventario/pagina_catalogos.dart';
 import '../widgets/inventario/pagina_movimientos.dart';
 import '../widgets/inventario/pagina_productos.dart';
 import '../widgets/inventario/pagina_resumen.dart';
-import '../widgets/inventario/pagina_tapers.dart';
 import '../widgets/inventario/pagina_anulaciones.dart';
 import '../widgets/submenu_lateral.dart';
 import '../widgets/tabs_texto.dart';
@@ -53,7 +52,8 @@ class _InventarioScreenState extends State<InventarioScreen> {
   // Utensilios rotos son filtros de la página Movimientos.
   void _irA(String clave) => setState(() {
     if (_subvistasAlmacen.contains(clave)) {
-      _subAlmacen = clave;
+      // Los tápers viven ahora en Productos.
+      _subAlmacen = clave == 'tapers' ? 'productos' : clave;
       _clave = 'almacen';
     } else if (clave == 'compras' || clave == 'utensilios') {
       _filtroMovimientos = clave == 'compras' ? 'compras' : 'roturas';
@@ -211,7 +211,6 @@ class _PaginaAlmacen extends StatelessWidget {
     const subvistas = [
       ('catalogos', 'Tipos y unidades'),
       ('productos', 'Productos'),
-      ('tapers', 'Tápers'),
     ];
     final margen = AppBreakpoints.esMobile(context) ? 16.0 : 24.0;
     return Column(
@@ -233,7 +232,6 @@ class _PaginaAlmacen extends StatelessWidget {
         Expanded(
           child: switch (sub) {
             'catalogos' => const PaginaCatalogos(),
-            'tapers' => const PaginaTapers(),
             _ => const PaginaProductos(),
           },
         ),
