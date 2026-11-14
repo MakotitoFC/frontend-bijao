@@ -281,9 +281,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       if (_admiteComprobante) {
         p.comprobante?.dispose();
         final c = ComprobanteEnCobro(monto, tipoInicial: 'ticket_venta');
-        c.itemsOriginales = List<Map<String, dynamic>>.from(items);
-        c.total = monto;
-        c.recalcularItemsInflados(notificar: false);
+        c.inicializarConItems(
+          pedido: widget.pedido,
+          items: items,
+          totalObjetivo: monto,
+        );
         c.addListener(() {
           if (mounted) setState(() {});
         });
@@ -372,19 +374,37 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             );
           }
         }
-        final detallesJson = agrupados.values
-            .map((a) => {
-                  'pedido_detalle_id': a.pedidoDetalleId,
-                  'monto_aplicado': a.monto,
-                  'cantidad_pagada': a.cant,
+        // Cola mutable con el saldo pendiente de cada línea del comensal
+        final pendientes = agrupados.values
+            .map((a) => <String, dynamic>{
+                  'id': a.pedidoDetalleId,
+                  'restante': _r2(a.monto),
+                  'cant': a.cant,
                 })
             .toList();
 
         String? primerPagoId;
         for (var k = 0; k < p.pagos.length; k++) {
           final fila = p.pagos[k];
-          final montoFila = double.tryParse(fila.monto.text.trim()) ?? 0.0;
+          final montoFila = _r2(double.tryParse(fila.monto.text.trim()) ?? 0.0);
           if (montoFila <= 0.005) continue;
+
+          // Asignar exactamente `montoFila` de las líneas pendientes de este comensal
+          final detallesFila = <Map<String, dynamic>>[];
+          var porCubrir = montoFila;
+          for (final item in pendientes) {
+            if (porCubrir <= 0.001) break;
+            final disp = item['restante'] as double;
+            if (disp <= 0.001) continue;
+            final aplicar = disp <= porCubrir ? disp : _r2(porCubrir);
+            item['restante'] = _r2(disp - aplicar);
+            porCubrir = _r2(porCubrir - aplicar);
+            detallesFila.add({
+              'pedido_detalle_id': item['id'],
+              'monto_aplicado': aplicar,
+              'cantidad_pagada': item['cant'],
+            });
+          }
 
           final esEfectivo = fila.medio.grupo == 'efectivo' ||
               fila.medio.medioPago.toLowerCase().contains('efectivo');
@@ -403,7 +423,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             categoriaMovimientoId: _categoriaSeleccionada?.id,
             montoRecibido: rec > 0.005 ? rec : null,
             vuelto: vto > 0.005 ? vto : null,
-            detalles: k == 0 ? detallesJson : null,
+            detalles: detallesFila.isNotEmpty ? detallesFila : null,
           );
           primerPagoId ??= reg.id;
         }

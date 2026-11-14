@@ -196,6 +196,23 @@ class ComprobanteEnCobro extends ChangeNotifier {
     recalcularItemsInflados(notificar: false);
   }
 
+  /// Inicializa el comprobante únicamente con un subconjunto de ítems (usado
+  /// en cuenta dividida por comensal para no jalar todos los platos de la mesa).
+  void inicializarConItems({
+    required Pedido pedido,
+    required List<Map<String, dynamic>> items,
+    required double totalObjetivo,
+    double recargo = 0.0,
+  }) {
+    _pedidoIdInicializado = pedido.id;
+    _inicializado = true;
+    total = totalObjetivo;
+    recargoTarjeta = recargo;
+    costoDelivery = 0.0;
+    itemsOriginales = List<Map<String, dynamic>>.from(items);
+    recalcularItemsInflados(notificar: false);
+  }
+
   void actualizarRecargo(double nuevo) {
     if ((nuevo - recargoTarjeta).abs() > 0.001) {
       recargoTarjeta = nuevo;
