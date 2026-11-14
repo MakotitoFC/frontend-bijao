@@ -172,7 +172,13 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
     CatalogService.instance.cargarMediosPago().then((_) {
       if (!mounted) return;
-      setState(() {});
+      setState(() {
+        for (final p in _pagadores) {
+          for (final f in p.pagos) {
+            f.medio = mediosPagoActivos.where((x) => x.id == f.medio.id).firstOrNull ?? f.medio;
+          }
+        }
+      });
     }).catchError((_) {});
 
     if (categoriasMovimiento.isEmpty) {
@@ -214,6 +220,13 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         _asignUnidad[u.clave] = 0;
       }
     }
+  }
+
+  double _recargoDe(_Pagador p) {
+    return p.pagos.fold(0.0, (s, f) {
+      final monto = double.tryParse(f.monto.text.trim()) ?? 0.0;
+      return s + f.medio.recargoSobre(monto);
+    });
   }
 
   double _montoPagador(int i) {
@@ -715,6 +728,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     final cuadra = diff.abs() <= 0.01;
     final esUltimo = index == _cantPersonas - 1;
     final items = _itemsConsumidos(index);
+    final recargoPersona = _recargoDe(p);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -808,7 +822,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        'TOTAL A COBRAR',
+                        recargoPersona > 0 ? 'TOTAL (+ RECARGO)' : 'TOTAL A COBRAR',
                         style: TextStyle(
                           fontSize: 9,
                           letterSpacing: 0.6,
@@ -817,11 +831,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                         ),
                       ),
                       Text(
-                        'S/ ${montoDebe.toStringAsFixed(2)}',
+                        'S/ ${(montoDebe + recargoPersona).toStringAsFixed(2)}',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
-                          color: _colorDe(index),
+                          color: recargoPersona > 0 ? const Color(0xFFC2410C) : _colorDe(index),
                         ),
                       ),
                     ],
@@ -881,7 +895,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                     compacto: true,
                     items: [
                       for (final m in mediosPagoActivos)
-                        AppSelectItem(value: m.id, label: m.medioPago),
+                        AppSelectItem(
+                          value: m.id,
+                          label: m.aplicaComision
+                              ? '${m.medioPago} (+${m.porcentajeComision.toStringAsFixed(1)}%)'
+                              : m.medioPago,
+                        ),
                     ],
                     onChanged: (v) {
                       if (v != null) {
@@ -923,6 +942,34 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             ),
           ),
         ],
+
+        if (recargoPersona > 0)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFDBA74)),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.info, size: 15, color: Color(0xFFC2410C)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Recargo por método de pago: +S/ ${recargoPersona.toStringAsFixed(2)} '
+                    '· Total a cobrar al cliente: S/ ${(montoDebe + recargoPersona).toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFC2410C),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
         // Si paga en efectivo, campo de recibido y vuelto
         if (p.pagos.any((x) =>
