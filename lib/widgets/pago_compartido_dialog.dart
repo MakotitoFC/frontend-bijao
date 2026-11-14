@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
