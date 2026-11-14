@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/cartas_store.dart';
-import '../data/categorias_store.dart';
-import '../data/configuracion_store.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
@@ -22,6 +19,21 @@ import 'app_toast.dart';
 import 'campo_texto.dart';
 import 'comprobante_en_cobro.dart';
 import 'pago_dialogs.dart';
+
+// Boleta de un pagador: lo que consumió (o su parte) y cómo pagó.
+typedef BoletaPagador = ({
+  String nombre,
+  List<({String descripcion, double monto})> items,
+  double total,
+  List<({MedioPago medio, double monto})> pagos,
+  double recibido,
+  double vuelto,
+});
+
+typedef ResultadoPagoCompartido = ({
+  bool boletasIndividuales,
+  List<BoletaPagador> boletas,
+});
 
 double _r2(double v) => (v * 100).roundToDouble() / 100;
 
@@ -207,10 +219,6 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     return _unidades
         .where((u) => (_asignUnidad[u.clave] ?? 0) == i)
         .fold(0.0, (s, u) => s + u.monto);
-  }
-
-  double get _totalAsignado {
-    return _unidades.fold(0.0, (s, u) => s + u.monto);
   }
 
   List<_Unidad> _unidadesDePagador(int i) {
