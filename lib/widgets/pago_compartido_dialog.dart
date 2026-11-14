@@ -112,7 +112,6 @@ class PagoCompartidoDialog extends StatefulWidget {
 }
 
 class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
-  static const _maxPagadores = 8;
   static const _minPagadores = 2;
 
   int _paso = 0; // 0 = Reparto de platos, 1..N = Cobro a Persona N
@@ -428,7 +427,6 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         final unidadesP = _unidadesDePagador(i);
         final consumoPersona = _r2(_montoPagador(i));
         final propinaPersona = _propinaPagador(i);
-        final totalPersona = _r2(consumoPersona + propinaPersona);
 
         // Agrupar items de este pagador para enviar en pago_detalle
         final Map<String, ({String pedidoDetalleId, double monto, int cant})> agrupados = {};
@@ -466,33 +464,43 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         }
 
         String? primerPagoId;
-        var consumoRestante = consumoPersona;
-        var propinaRestante = propinaPersona;
+        // Asignar propinaPersona entre las filas activas sin afectar filas con comisión
+        // (ej. Tarjeta) mientras existan otros métodos; orden:
+        // 1) no efectivo sin comisión, 2) efectivo sin comisión, 3) con comisión.
+        final propinasPorFila = List<double>.filled(filasActivas.length, 0.0);
+        if (propinaPersona > 0.005 && filasActivas.isNotEmpty) {
+          final orden = List<int>.generate(filasActivas.length, (idx) => idx);
+          int prioridadDe(int idx) {
+            final m = filasActivas[idx].fila.medio;
+            if (m.aplicaComision) return 2;
+            final esEf = m.grupo == 'efectivo' ||
+                m.medioPago.toLowerCase().contains('efectivo');
+            return esEf ? 1 : 0;
+          }
+          orden.sort((a, b) {
+            final pa = prioridadDe(a);
+            final pb = prioridadDe(b);
+            if (pa != pb) return pa.compareTo(pb);
+            return filasActivas[b].monto.compareTo(filasActivas[a].monto);
+          });
+          var propinaPorAsignar = propinaPersona;
+          for (final idx in orden) {
+            if (propinaPorAsignar <= 0.005) break;
+            final maxProp = _r2(filasActivas[idx].monto - 0.01);
+            if (maxProp <= 0.005) continue;
+            final tomar = propinaPorAsignar <= maxProp
+                ? _r2(propinaPorAsignar)
+                : maxProp;
+            propinasPorFila[idx] = tomar;
+            propinaPorAsignar = _r2(propinaPorAsignar - tomar);
+          }
+        }
 
         for (var idx = 0; idx < filasActivas.length; idx++) {
           final fila = filasActivas[idx].fila;
           final montoFila = filasActivas[idx].monto;
-          final esUltima = idx == filasActivas.length - 1;
-
-          late final double abonoConsumo;
-          late final double propinaFila;
-          if (propinaPersona <= 0.005) {
-            abonoConsumo = montoFila;
-            propinaFila = 0.0;
-          } else if (esUltima) {
-            abonoConsumo = _r2(consumoRestante);
-            propinaFila = _r2(propinaRestante);
-          } else {
-            var prop = totalPersona > 0
-                ? _r2(montoFila * (consumoPersona / totalPersona))
-                : montoFila;
-            if (prop < 0.01 && consumoRestante >= 0.01) prop = 0.01;
-            if (prop > consumoRestante) prop = _r2(consumoRestante);
-            abonoConsumo = prop;
-            propinaFila = _r2(montoFila - abonoConsumo);
-            consumoRestante = _r2(consumoRestante - abonoConsumo);
-            propinaRestante = _r2(propinaRestante - propinaFila);
-          }
+          final propinaFila = propinasPorFila[idx];
+          final abonoConsumo = _r2(montoFila - propinaFila);
 
           // Asignar exactamente `abonoConsumo` de las líneas pendientes de este comensal
           final detallesFila = <Map<String, dynamic>>[];
@@ -514,7 +522,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           final esEfectivo = fila.medio.grupo == 'efectivo' ||
               fila.medio.medioPago.toLowerCase().contains('efectivo');
           final rec = esEfectivo ? p.efectivoRecibido : 0.0;
-          final vto = (rec > montoFila) ? (rec - montoFila) : 0.0;
+          final vto = (rec > montoFila) ? _r2(rec - montoFila) : 0.0;
 
           final nombrePagador = p.nombre.text.trim().isNotEmpty
               ? p.nombre.text.trim()
@@ -525,6 +533,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             medio: fila.medio,
             montoAbonado: abonoConsumo,
             propina: propinaFila > 0.005 ? propinaFila : 0.0,
+            usarPropinaPendiente: false,
             pagador: nombrePagador,
             categoriaMovimientoId: _categoriaSeleccionada?.id,
             montoRecibido: rec > 0.005 ? rec : null,
@@ -642,7 +651,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                     Text(
-                      'Entre $_minPagadores y $_maxPagadores comensales',
+                      'Mínimo $_minPagadores comensales',
                       style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                     ),
                   ],
@@ -669,14 +678,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
               ),
               IconButton.filledTonal(
                 visualDensity: VisualDensity.compact,
-                onPressed: _cantPersonas < _maxPagadores
-                    ? () {
-                        setState(() {
-                          _cantPersonas++;
-                          _ajustarPagadores(_cantPersonas);
-                        });
-                      }
-                    : null,
+                onPressed: () {
+                  setState(() {
+                    _cantPersonas++;
+                    _ajustarPagadores(_cantPersonas);
+                  });
+                },
                 icon: const Icon(Icons.add, size: 16),
               ),
             ],
@@ -1201,71 +1208,94 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         ],
 
         if (recargoPersona > 0)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFDBA74)),
-            ),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.info, size: 15, color: Color(0xFFC2410C)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Recargo por método de pago: +S/ ${recargoPersona.toStringAsFixed(2)} '
-                    '· Total a cobrar al cliente: S/ ${(montoDebe + recargoPersona).toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFC2410C),
+          Builder(builder: (context) {
+            final detallesRecargo = <String>[];
+            for (final f in p.pagos) {
+              if (!f.medio.aplicaComision) continue;
+              final base = double.tryParse(f.monto.text.trim()) ?? 0.0;
+              final rec = f.medio.recargoSobre(base);
+              if (rec > 0) {
+                detallesRecargo.add(
+                  '${f.medio.medioPago}: S/ ${base.toStringAsFixed(2)} + S/ ${rec.toStringAsFixed(2)} = S/ ${(base + rec).toStringAsFixed(2)}',
+                );
+              }
+            }
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFDBA74)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.info, size: 15, color: Color(0xFFC2410C)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${detallesRecargo.join(' · ')} '
+                      '· Total a cobrar al cliente: S/ ${(montoDebe + recargoPersona).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFC2410C),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
 
         // Si paga en efectivo, campo de recibido y vuelto
         if (p.pagos.any((x) =>
             x.medio.grupo == 'efectivo' ||
             x.medio.medioPago.toLowerCase().contains('efectivo'))) ...[
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: CampoTexto(
-                  controller: p.recibido,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                  ],
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Efectivo recibido (S/) · para el vuelto',
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          Builder(builder: (context) {
+            final efectivoTotal = p.pagos
+                .where((x) =>
+                    x.medio.grupo == 'efectivo' ||
+                    x.medio.medioPago.toLowerCase().contains('efectivo'))
+                .fold(
+                  0.0,
+                  (s, x) => s + (double.tryParse(x.monto.text.trim()) ?? 0.0),
+                );
+            return Row(
+              children: [
+                Expanded(
+                  child: CampoTexto(
+                    controller: p.recibido,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Efectivo recibido (S/) · para el vuelto',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Vuelto:',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey),
-                  ),
-                  Text(
-                    'S/ ${p.vuelto(montoDebe).toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Vuelto:',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey),
+                    ),
+                    Text(
+                      'S/ ${p.vuelto(efectivoTotal).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }),
         ],
 
         Row(

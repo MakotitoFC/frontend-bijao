@@ -93,6 +93,7 @@ class PagoService {
     required MedioPago medio,
     required double montoAbonado,
     double propina = 0,
+    bool usarPropinaPendiente = true,
     String? pagador,
     String? categoriaMovimientoId,
     double? montoRecibido,
@@ -140,7 +141,7 @@ class PagoService {
     }
     final propinaAEnviar = propina > 0
         ? propina
-        : propinaPendienteDePedido(pedido.id);
+        : (usarPropinaPendiente ? propinaPendienteDePedido(pedido.id) : 0.0);
     final res = await _api.post(
       '/api/pagos',
       body: {
