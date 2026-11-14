@@ -93,11 +93,13 @@ class PagoService {
     required MedioPago medio,
     required double montoAbonado,
     double propina = 0,
+    bool usarPropinaPendiente = true,
     String? pagador,
     String? categoriaMovimientoId,
     double? montoRecibido,
     double? vuelto,
     List<CargoExtra>? cargosExtra,
+    List<Map<String, dynamic>>? detalles,
   }) async {
     // Un pedido del servidor no puede cobrarse con un método que no lo es (p. ej.
     // los de respaldo que se muestran cuando el servidor no tiene ninguno): el
@@ -139,7 +141,7 @@ class PagoService {
     }
     final propinaAEnviar = propina > 0
         ? propina
-        : propinaPendienteDePedido(pedido.id);
+        : (usarPropinaPendiente ? propinaPendienteDePedido(pedido.id) : 0.0);
     final res = await _api.post(
       '/api/pagos',
       body: {
@@ -154,6 +156,7 @@ class PagoService {
         if (montoRecibido != null && montoRecibido > 0)
           'monto_recibido': montoRecibido,
         if (vuelto != null && vuelto > 0) 'vuelto': vuelto,
+        if (detalles != null && detalles.isNotEmpty) 'detalles': detalles,
         if (cargosExtra != null && cargosExtra.isNotEmpty)
           'cargos_extra': cargosExtra
               .map(

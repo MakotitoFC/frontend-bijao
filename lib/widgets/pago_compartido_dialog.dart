@@ -2,27 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../data/cartas_store.dart';
-import '../data/categorias_store.dart';
 import '../data/configuracion_store.dart';
+import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
 import '../data/pedidos_store.dart';
-import '../services/api_client.dart';
-import '../services/pago_service.dart';
-import '../services/catalog_service.dart';
-import '../data/movimientos_caja_store.dart';
+import '../models/comprobante.dart';
 import '../models/medio_pago.dart';
 import '../models/movimiento_caja.dart';
 import '../models/pedido.dart';
-import '../services/movimiento_caja_service.dart';
 import '../models/pedido_line.dart';
+import '../services/catalog_service.dart';
+import '../services/movimiento_caja_service.dart';
+import '../services/pago_service.dart';
 import '../theme/app_theme.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
+import 'campo_texto.dart';
 import 'comprobante_en_cobro.dart';
 import 'pago_dialogs.dart';
-import 'app_switch.dart';
-import 'campo_texto.dart';
 
 // Boleta de un pagador: lo que consumió (o su parte) y cómo pagó.
 typedef BoletaPagador = ({
@@ -30,7 +27,6 @@ typedef BoletaPagador = ({
   List<({String descripcion, double monto})> items,
   double total,
   List<({MedioPago medio, double monto})> pagos,
-  // Efectivo que entregó y vuelto que se le dio (0 si pagó justo).
   double recibido,
   double vuelto,
 });
@@ -40,7 +36,7 @@ typedef ResultadoPagoCompartido = ({
   List<BoletaPagador> boletas,
 });
 
-enum _Modo { iguales, platos, categoria, grupos }
+double _r2(double v) => (v * 100).roundToDouble() / 100;
 
 class _FilaPago {
   MedioPago medio;
@@ -52,34 +48,45 @@ class _FilaPago {
 class _Pagador {
   final TextEditingController nombre;
   final List<_FilaPago> pagos;
-  // Comprobante que pide este pagador (ticket, boleta o factura); null si el
-  // pedido no admite comprobante.
   ComprobanteEnCobro? comprobante;
-  // Efectivo con el que paga (para el vuelto); vacío = pagó justo.
-  final recibido = TextEditingController();
+  final TextEditingController recibido = TextEditingController();
+  final TextEditingController propinaCtrl = TextEditingController();
 
   _Pagador(String nombre, MedioPago medio)
-    : nombre = TextEditingController(text: nombre),
-      pagos = [_FilaPago(medio)];
+      : nombre = TextEditingController(text: nombre),
+        pagos = [_FilaPago(medio)];
+
+  double get propinaAsignada =>
+      double.tryParse(propinaCtrl.text.trim().replaceAll(',', '.')) ?? 0.0;
+
+  double get totalPagos => pagos.fold(
+        0.0,
+        (s, p) => s + (double.tryParse(p.monto.text.trim()) ?? 0.0),
+      );
+
+  double get efectivoRecibido =>
+      double.tryParse(recibido.text.trim()) ?? 0.0;
+
+  double vuelto(double totalEfectivo) {
+    final rec = efectivoRecibido;
+    return rec > totalEfectivo ? _r2(rec - totalEfectivo) : 0.0;
+  }
 
   void liberar() {
     comprobante?.dispose();
     nombre.dispose();
     recibido.dispose();
+    propinaCtrl.dispose();
     for (final p in pagos) {
       p.monto.dispose();
     }
   }
 }
 
-double _r2(double v) => (v * 100).roundToDouble() / 100;
-
-// Una unidad de un producto: si se pidieron 3 iguales son 3 unidades y cada una
-// se puede asignar a un pagador distinto (uno pide 1 de suri y 1 de chancho,
-// otro lo demás). El saldo de la línea se reparte en partes iguales.
+// Representa 1 unidad individual de un producto del pedido
 class _Unidad {
   final PedidoLine linea;
-  final int indice; // desde 0
+  final int indice; // de 0 a cantidad - 1
   final double monto;
 
   const _Unidad(this.linea, this.indice, this.monto);
@@ -87,10 +94,7 @@ class _Unidad {
   String get clave => '${linea.id}#$indice';
 }
 
-// Reparte la cuenta entre varios pagadores. Escenarios: partes iguales, cada
-// uno su plato, por categoría (bebidas / platos / postres...) o por grupo
-// (subcuentas). Cada pagador puede usar uno o varios métodos de pago, y puede
-// pedir su propia boleta. Devuelve las boletas generadas, o null si se cancela.
+/// Asistente paso a paso para dividir cuenta por consumo exacto entre comensales
 class PagoCompartidoDialog extends StatefulWidget {
   final Pedido pedido;
   final String titulo;
@@ -108,26 +112,23 @@ class PagoCompartidoDialog extends StatefulWidget {
 }
 
 class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
-  static const _maxPagadores = 8;
+  static const _minPagadores = 2;
 
-  _Modo _modo = _Modo.iguales;
+  int _paso = 0; // 0 = Reparto de platos, 1..N = Cobro a Persona N
+  int _cantPersonas = 2;
+  bool _guardando = false;
+
   CategoriaMovimiento? _categoriaSeleccionada;
   final List<_Pagador> _pagadores = [];
-  // Pagador de cada unidad de producto (clave de [_Unidad]).
   final Map<String, int> _asignUnidad = {};
-  final Map<String, int> _asignCategoria = {};
-  bool _boletasIndividuales = false;
 
-  // La cuenta que cobra el servidor: la propina y el táper de la app no se
-  // reparten, se cobran aparte.
   late final double _saldo = saldoCuentaDePedido(widget.pedido.id);
-  late final double _propinaApp = propinaPendienteDePedido(widget.pedido.id);
-  late final double _taperApp = taperPendienteDePedido(widget.pedido.id);
-  late final List<PedidoLine> _lineas =
-      (detallesPorPedido[widget.pedido.id] ?? [])
-          .where(esLineaDeProducto)
-          .where((l) => _saldoLinea(l) > 0.001)
-          .toList();
+  late final double _propinaTotal = propinaPendienteDePedido(widget.pedido.id);
+  late final List<PedidoLine> _lineas = (detallesPorPedido[widget.pedido.id] ?? [])
+      .where(esLineaDeProducto)
+      .where((l) => _saldoLinea(l) > 0.001)
+      .toList();
+
   late final List<_Unidad> _unidades = [
     for (final l in _lineas) ..._unidadesDe(l),
   ];
@@ -142,531 +143,12 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     ];
   }
 
-  late final double _extras = (detallesPorPedido[widget.pedido.id] ?? [])
-      .where((l) => !esLineaDeProducto(l) && lineaDeCuenta(widget.pedido.id, l))
-      .fold(0.0, (s, l) => s + _saldoLinea(l));
-
-  MedioPago get _medioInicial => mediosPagoActivos.first;
-
-  // Comprobante a emitir al saldar la cuenta (solo administración y caja).
-  // Cada pagador puede pedir un comprobante distinto si se activa boletas individuales;
-  // de lo contrario, se emite un solo comprobante para la totalidad del pedido.
   late final bool _admiteComprobante = puedeElegirComprobante(widget.pedido);
-  late final ComprobanteEnCobro? _comprobanteGeneral = _nuevoComprobante();
 
-  ComprobanteEnCobro? _nuevoComprobante() {
-    if (!_admiteComprobante) return null;
-    return ComprobanteEnCobro(0)..addListener(() {
-      if (mounted) setState(() {});
-    });
-  }
+  MedioPago get _medioInicial =>
+      mediosPagoActivos.firstWhere((m) => m.grupo == 'efectivo',
+          orElse: () => mediosPagoActivos.first);
 
-  @override
-  void initState() {
-    super.initState();
-    _categoriaSeleccionada =
-        categoriasDeTipo(TipoMovimiento.ingreso)
-            .where((c) => c.nombre.toLowerCase().contains('venta'))
-            .firstOrNull ??
-        categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
-    // Se vuelven a leer los métodos al abrir el cobro, para usar el recargo
-    // vigente de cada uno.
-    CatalogService.instance
-        .cargarMediosPago()
-        .then((_) {
-          if (!mounted) return;
-          setState(() {
-            for (final p in _pagadores) {
-              for (final f in p.pagos) {
-                f.medio =
-                    mediosPagoActivos
-                        .where((x) => x.id == f.medio.id)
-                        .firstOrNull ??
-                    f.medio;
-              }
-            }
-          });
-        })
-        .catchError((_) {});
-    if (categoriasMovimiento.isEmpty) {
-      MovimientoCajaService.instance
-          .cargarCategorias()
-          .then((_) {
-            if (mounted) {
-              setState(() {
-                _categoriaSeleccionada =
-                    categoriasDeTipo(TipoMovimiento.ingreso)
-                        .where((c) => c.nombre.toLowerCase().contains('venta'))
-                        .firstOrNull ??
-                    categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
-              });
-            }
-          })
-          // Sin conexión no se pueden leer las categorías: el cobro sigue.
-          .catchError((_) {});
-    }
-    _reiniciar(_Modo.iguales);
-  }
-
-  @override
-  void dispose() {
-    _comprobanteGeneral?.dispose();
-    for (final p in _pagadores) {
-      p.liberar();
-    }
-    super.dispose();
-  }
-
-  double _saldoLinea(PedidoLine l) =>
-      l.precioTotalLinea - montoPagadoDeLinea(l.id);
-
-  String _categoriaDe(PedidoLine l) {
-    final item = cartaPorId(l.cartaId);
-    if (item == null) return 'Sin categoría';
-    final cat = categorias.where((c) => c.id == item.categoriaId).firstOrNull;
-    return cat?.categoria ?? 'Sin categoría';
-  }
-
-  List<String> get _categorias {
-    final vistas = <String>[];
-    for (final l in _lineas) {
-      final c = _categoriaDe(l);
-      if (!vistas.contains(c)) vistas.add(c);
-    }
-    return vistas;
-  }
-
-  String _nombreDefecto(int i) => _modo == _Modo.grupos
-      ? 'Grupo ${String.fromCharCode(65 + i)}'
-      : 'Persona ${i + 1}';
-
-  void _reiniciar(_Modo modo) {
-    for (final p in _pagadores) {
-      p.liberar();
-    }
-    _pagadores.clear();
-    _modo = modo;
-    _asignUnidad.clear();
-    _asignCategoria.clear();
-    for (var i = 0; i < 2; i++) {
-      _pagadores.add(
-        _Pagador(_nombreDefecto(i), _medioInicial)
-          ..comprobante = _nuevoComprobante(),
-      );
-    }
-    _sincronizar();
-  }
-
-  void _cambiar(VoidCallback fn) => setState(() {
-    fn();
-    _sincronizar();
-  });
-
-  int _destino(_Unidad u) {
-    final n = _pagadores.length;
-    final i = _modo == _Modo.categoria
-        ? (_asignCategoria[_categoriaDe(u.linea)] ?? 0)
-        : (_asignUnidad[u.clave] ?? 0);
-    return i < n ? i : 0;
-  }
-
-  // Lo que debe pagar cada pagador según el modo.
-  List<double> get _montos {
-    final n = _pagadores.length;
-    if (_modo == _Modo.iguales) {
-      final parte = (_saldo / n * 100).floorToDouble() / 100;
-      return [
-        for (var i = 0; i < n; i++)
-          i == n - 1 ? _r2(_saldo - parte * (n - 1)) : parte,
-      ];
-    }
-    final base = List<double>.filled(n, 0);
-    for (final u in _unidades) {
-      base[_destino(u)] += u.monto;
-    }
-    final sumaBase = base.fold(0.0, (a, b) => a + b);
-    final res = <double>[];
-    var acumulado = 0.0;
-    for (var i = 0; i < n; i++) {
-      if (i == n - 1) {
-        res.add(_r2(_saldo - acumulado));
-        break;
-      }
-      final parte = sumaBase.abs() > 0.001 ? base[i] / sumaBase : 1 / n;
-      final m = _r2(base[i] + _extras * parte);
-      res.add(m);
-      acumulado += m;
-    }
-    return res;
-  }
-
-  // Lo que este pagador paga en efectivo (sin recargo).
-  double _efectivoDe(_Pagador p) => p.pagos
-      .where((f) => f.medio.grupo == 'efectivo')
-      .fold(0.0, (s, f) => s + leerMonto(f.monto.text));
-
-  double _vueltoDe(_Pagador p) {
-    final r = leerMonto(p.recibido.text);
-    final e = _efectivoDe(p);
-    return e > 0.005 && r > e + 0.005 ? r - e : 0.0;
-  }
-
-  // Vacío = pagó justo; si se escribe, tiene que alcanzar para su efectivo.
-  bool _recibidoValido(_Pagador p) {
-    final e = _efectivoDe(p);
-    return p.recibido.text.trim().isEmpty ||
-        e <= 0.005 ||
-        leerMonto(p.recibido.text) >= e - 0.005;
-  }
-
-  // Pagadores con un solo método siguen automáticamente a su monto.
-  void _sincronizar() {
-    final montos = _montos;
-    for (var i = 0; i < _pagadores.length; i++) {
-      final p = _pagadores[i];
-      if (p.pagos.length == 1) {
-        p.pagos.first.monto.text = montos[i].toStringAsFixed(2);
-      }
-    }
-  }
-
-  double _sumaPagos(_Pagador p) =>
-      p.pagos.fold(0.0, (s, f) => s + leerMonto(f.monto.text));
-
-  // Recargo que se suma a lo que paga [p] (p. ej. por usar tarjeta): se calcula
-  // sobre cada monto según su método. No cambia lo que se abona a la cuenta.
-  double _recargoDe(_Pagador p) => p.pagos.fold(
-    0.0,
-    (s, f) => s + f.medio.recargoSobre(leerMonto(f.monto.text)),
-  );
-
-  // Recargo de todos los pagadores que tienen algo que pagar.
-  double get _recargoTotal {
-    final montos = _montos;
-    var total = 0.0;
-    for (var i = 0; i < _pagadores.length; i++) {
-      if (montos[i] > 0.005) total += _recargoDe(_pagadores[i]);
-    }
-    return total;
-  }
-
-  bool get _valido {
-    final montos = _montos;
-    var hayAlguno = false;
-    for (var i = 0; i < _pagadores.length; i++) {
-      if (montos[i] <= 0.005) continue;
-      hayAlguno = true;
-      final p = _pagadores[i];
-      if ((_sumaPagos(p) - montos[i]).abs() > 0.01) return false;
-      if (p.pagos.any((f) => leerMonto(f.monto.text) <= 0)) return false;
-      if (!_recibidoValido(p)) return false;
-    }
-    return hayAlguno;
-  }
-
-  void _agregarPagador() {
-    if (_pagadores.length >= _maxPagadores) return;
-    _cambiar(() {
-      _pagadores.add(
-        _Pagador(_nombreDefecto(_pagadores.length), _medioInicial)
-          ..comprobante = _nuevoComprobante(),
-      );
-    });
-  }
-
-  void _quitarPagador(int i) {
-    if (_pagadores.length <= 2) return;
-    _cambiar(() {
-      _pagadores.removeAt(i).liberar();
-      for (final k in _asignUnidad.keys.toList()) {
-        final v = _asignUnidad[k]!;
-        if (v == i) {
-          _asignUnidad[k] = 0;
-        } else if (v > i) {
-          _asignUnidad[k] = v - 1;
-        }
-      }
-      for (final k in _asignCategoria.keys.toList()) {
-        final v = _asignCategoria[k]!;
-        if (v == i) {
-          _asignCategoria[k] = 0;
-        } else if (v > i) {
-          _asignCategoria[k] = v - 1;
-        }
-      }
-    });
-  }
-
-  // Un pagador puede dividir su monto en varios métodos (ej. 50 efectivo + 50 yape).
-  void _agregarMetodo(_Pagador p) {
-    final ultimo = p.pagos.last;
-    final valor = leerMonto(ultimo.monto.text);
-    final mitad = (valor / 2 * 100).floorToDouble() / 100;
-    final otro = mediosPagoActivos.firstWhere(
-      (m) => p.pagos.every((f) => f.medio.id != m.id),
-      orElse: () => _medioInicial,
-    );
-    setState(() {
-      ultimo.monto.text = (valor - mitad).toStringAsFixed(2);
-      final nueva = _FilaPago(otro)..monto.text = mitad.toStringAsFixed(2);
-      p.pagos.add(nueva);
-    });
-  }
-
-  void _quitarMetodo(_Pagador p, int i) {
-    if (p.pagos.length <= 1) return;
-    setState(() {
-      final quitada = p.pagos.removeAt(i);
-      final monto = leerMonto(quitada.monto.text);
-      quitada.monto.dispose();
-      final primera = p.pagos.first;
-      primera.monto.text = (leerMonto(primera.monto.text) + monto)
-          .toStringAsFixed(2);
-    });
-    _cambiar(() {});
-  }
-
-  BoletaPagador _boletaDe(int i, double monto) {
-    final p = _pagadores[i];
-    final items = <({String descripcion, double monto})>[];
-    if (_modo == _Modo.iguales) {
-      items.add((
-        descripcion: 'Parte del consumo (1/${_pagadores.length})',
-        monto: monto,
-      ));
-    } else {
-      // Las unidades del mismo producto se juntan: "2x Suri".
-      final porLinea = <String, ({String nombre, int cant, double monto})>{};
-      for (final u in _unidades.where((u) => _destino(u) == i)) {
-        final previo = porLinea[u.linea.id];
-        porLinea[u.linea.id] = (
-          nombre: u.linea.nombrePlato,
-          cant: (previo?.cant ?? 0) + 1,
-          monto: (previo?.monto ?? 0) + u.monto,
-        );
-      }
-      var suma = 0.0;
-      for (final e in porLinea.values) {
-        suma += e.monto;
-        items.add((descripcion: '${e.cant}x ${e.nombre}', monto: e.monto));
-      }
-      final extra = _r2(monto - suma);
-      if (extra.abs() > 0.004) {
-        items.add((descripcion: 'Cargos y ajustes (prorrata)', monto: extra));
-      }
-    }
-    return (
-      nombre: p.nombre.text.trim().isEmpty
-          ? _nombreDefecto(i)
-          : p.nombre.text.trim(),
-      items: items,
-      total: monto,
-      pagos: [
-        for (final f in p.pagos)
-          (medio: f.medio, monto: leerMonto(f.monto.text)),
-      ],
-      recibido: _vueltoDe(p) > 0.005 ? leerMonto(p.recibido.text) : 0,
-      vuelto: _vueltoDe(p),
-    );
-  }
-
-  bool _guardando = false;
-
-  // Si son boletas individuales, cada pagador con monto debe tener completos sus datos.
-  // De lo contrario, valida el comprobante general del pedido.
-  bool get _comprobantesCompletos {
-    if (_boletasIndividuales) {
-      final montos = _montos;
-      for (var i = 0; i < _pagadores.length; i++) {
-        if (montos[i] <= 0.005) continue;
-        if (!(_pagadores[i].comprobante?.completo ?? true)) return false;
-      }
-      return true;
-    }
-    return _comprobanteGeneral?.completo ?? true;
-  }
-
-  // Selector de comprobante de un pagador, con lo que paga como total (así la
-  // boleta de más de S/ 700 pide el DNI de ese pagador, no del pedido entero).
-  Widget _comprobanteDe(int i, double monto) {
-    final p = _pagadores[i];
-    final control = p.comprobante;
-    if (control == null) return const SizedBox.shrink();
-    control.total = monto + _recargoDe(p);
-    final nombre = p.nombre.text.trim().isEmpty
-        ? _nombreDefecto(i)
-        : p.nombre.text.trim();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '$nombre · S/ ${control.total.toStringAsFixed(2)}',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          SelectorComprobante(control: control, pedido: widget.pedido),
-        ],
-      ),
-    );
-  }
-
-  String _mensajeError(Object e) => e is ApiException
-      ? e.message
-      : e.toString().replaceFirst('Exception: ', '');
-
-  Future<void> _confirmar() async {
-    if (!_valido || _guardando) return;
-    final montos = _montos;
-    final recargoTotal = _recargoTotal;
-    final boletas = <BoletaPagador>[];
-    for (var i = 0; i < _pagadores.length; i++) {
-      if (montos[i] <= 0.005) continue;
-      boletas.add(_boletaDe(i, montos[i]));
-    }
-    setState(() => _guardando = true);
-    // Un pago por cada método de cada pagador. Si uno falla, los anteriores ya
-    // están en el servidor: se vuelve a leer y se avisa.
-    var registrados = 0;
-    final total = boletas.fold<int>(0, (s, b) => s + b.pagos.length);
-    // Id del primer pago de cada pagador (por posición): a él se vincula su
-    // comprobante.
-    final pagoDe = <int, String>{};
-    try {
-      for (var b = 0; b < boletas.length; b++) {
-        final boleta = boletas[b];
-        for (final pago in boleta.pagos) {
-          final esEfectivo =
-              pago.medio.grupo == 'efectivo' ||
-              pago.medio.medioPago.toLowerCase().contains('efectivo');
-          final registrado = await PagoService.instance.registrar(
-            pedido: widget.pedido,
-            medio: pago.medio,
-            montoAbonado: pago.monto,
-            pagador: boleta.nombre,
-            categoriaMovimientoId: _categoriaSeleccionada?.id,
-            montoRecibido: esEfectivo && boleta.recibido > 0.005
-                ? boleta.recibido
-                : null,
-            vuelto: esEfectivo && boleta.vuelto > 0.005 ? boleta.vuelto : null,
-          );
-          pagoDe.putIfAbsent(b, () => registrado.id);
-          registrados++;
-        }
-      }
-    } catch (e) {
-      try {
-        await PagoService.instance.cargarDePedido(widget.pedido);
-      } catch (_) {}
-      if (!mounted) return;
-      showAppToast(
-        context,
-        registrados == 0
-            ? 'No se pudo registrar el pago: ${_mensajeError(e)}'
-            : 'Se registraron $registrados de $total pagos y falló uno: '
-                  '${_mensajeError(e)}. Revisa lo cobrado antes de seguir.',
-        type: ToastType.error,
-        titulo: 'Pago incompleto',
-        duration: const Duration(seconds: 6),
-      );
-      if (registrados > 0) {
-        Navigator.of(context).pop(); // el saldo cambió: se vuelve a abrir
-      } else {
-        setState(() => _guardando = false);
-      }
-      return;
-    }
-    if (!mounted) return;
-    final vueltoTotal = boletas.fold(0.0, (s, b) => s + b.vuelto);
-    if (vueltoTotal > 0.005) {
-      efectivoRecibidoPorPedido[widget.pedido.id] = (
-        recibido: boletas.fold(0.0, (s, b) => s + b.recibido),
-        vuelto: vueltoTotal,
-      );
-    }
-    showAppToast(
-      context,
-      'Pago compartido entre ${boletas.length} · '
-      'S/ ${(_saldo + recargoTotal + _propinaApp + _taperApp).toStringAsFixed(2)}'
-      '${recargoTotal > 0 ? ' (incluye recargo S/ ${recargoTotal.toStringAsFixed(2)})' : ''}',
-      type: ToastType.success,
-      titulo: 'Pago registrado',
-    );
-    final avisoPropina = PagoService.instance.avisoPropina;
-    if (avisoPropina != null) {
-      PagoService.instance.avisoPropina = null;
-      showAppToast(context, avisoPropina, type: ToastType.info);
-    }
-    // Emisión de comprobantes tras el cobro completo:
-    if (_boletasIndividuales) {
-      final conMonto = [
-        for (var i = 0; i < _pagadores.length; i++)
-          if (montos[i] > 0.005) _pagadores[i],
-      ];
-      for (var b = 0; b < conMonto.length; b++) {
-        final eleccion = conMonto[b].comprobante;
-        if (eleccion == null || !eleccion.emite) continue;
-        await emitirComprobanteTrasCobro(
-          context,
-          widget.pedido,
-          eleccion,
-          pagoId: pagoDe[b],
-        );
-        if (!mounted) return;
-      }
-    } else {
-      final eleccion = _comprobanteGeneral;
-      if (eleccion != null && eleccion.emite) {
-        await emitirComprobanteTrasCobro(
-          context,
-          widget.pedido,
-          eleccion,
-          pagoId: null, // Totalidad del pedido: todos los platos y todos los pagos juntos
-        );
-        if (!mounted) return;
-      }
-    }
-    Navigator.of(context)
-        .pop((boletasIndividuales: _boletasIndividuales, boletas: boletas));
-  }
-
-  // ---------- UI ----------
-
-  Widget _boton(IconData icono, VoidCallback? onTap) => InkWell(
-    borderRadius: BorderRadius.circular(AppRadii.tag),
-    onTap: onTap,
-    child: Container(
-      width: AppSizes.control,
-      height: AppSizes.control,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadii.tag),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Icon(
-        icono,
-        size: 16,
-        color: onTap == null ? Colors.grey.shade300 : Colors.black87,
-      ),
-    ),
-  );
-
-  List<AppSelectItem<int>> get _opcionesPagador => [
-    for (var i = 0; i < _pagadores.length; i++)
-      AppSelectItem(
-        value: i,
-        label: _pagadores[i].nombre.text.trim().isEmpty
-            ? _nombreDefecto(i)
-            : _pagadores[i].nombre.text.trim(),
-      ),
-  ];
-
-  // Un color por pagador, para reconocerlo en las asignaciones y en su tarjeta.
   static const _coloresPagador = [
     Color(0xFF0E9F6E),
     Color(0xFF3B82F6),
@@ -680,703 +162,1256 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   Color _colorDe(int i) => _coloresPagador[i % _coloresPagador.length];
 
-  Widget _avatar(int i, {double tam = 28}) => Container(
-    width: tam,
-    height: tam,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(color: _colorDe(i), shape: BoxShape.circle),
-    child: Text(
-      '${i + 1}',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: tam * 0.46,
-        fontWeight: FontWeight.w800,
-      ),
-    ),
-  );
+  double _saldoLinea(PedidoLine l) =>
+      l.precioTotalLinea - montoPagadoDeLinea(l.id);
 
-  Widget _etiquetaSeccion(String texto) => Text(
-    texto,
-    style: TextStyle(
-      fontSize: 11,
-      letterSpacing: 0.8,
-      fontWeight: FontWeight.w700,
-      color: Colors.grey.shade500,
-    ),
-  );
+  String _nombreDefecto(int i) => 'Persona ${i + 1}';
 
-  Widget _seccionAsignacion() {
-    final porCategoria = _modo == _Modo.categoria;
-    final filas = <Widget>[];
-    if (porCategoria) {
-      for (final c in _categorias) {
-        final lineasC = _lineas.where((l) => _categoriaDe(l) == c).toList();
-        final total = lineasC.fold(0.0, (s, l) => s + _saldoLinea(l));
-        filas.add(
-          _filaAsignacion(
-            titulo: c,
-            detalle:
-                '${lineasC.length} producto${lineasC.length == 1 ? '' : 's'}',
-            monto: total,
-            valor: (_asignCategoria[c] ?? 0).clamp(0, _pagadores.length - 1),
-            onChanged: (v) => _cambiar(() => _asignCategoria[c] = v),
-          ),
-        );
+  @override
+  void initState() {
+    super.initState();
+    _categoriaSeleccionada = categoriasDeTipo(TipoMovimiento.ingreso)
+            .where((c) => c.nombre.toLowerCase().contains('venta'))
+            .firstOrNull ??
+        categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
+
+    CatalogService.instance.cargarMediosPago().then((_) {
+      if (!mounted) return;
+      setState(() {
+        for (final p in _pagadores) {
+          for (final f in p.pagos) {
+            f.medio = mediosPagoActivos.where((x) => x.id == f.medio.id).firstOrNull ?? f.medio;
+          }
+        }
+      });
+    }).catchError((_) {});
+
+    if (categoriasMovimiento.isEmpty) {
+      MovimientoCajaService.instance.cargarCategorias().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _categoriaSeleccionada = categoriasDeTipo(TipoMovimiento.ingreso)
+                  .where((c) => c.nombre.toLowerCase().contains('venta'))
+                  .firstOrNull ??
+              categoriasDeTipo(TipoMovimiento.ingreso).firstOrNull;
+        });
+      }).catchError((_) {});
+    }
+
+    _ajustarPagadores(_cantPersonas);
+  }
+
+  @override
+  void dispose() {
+    for (final p in _pagadores) {
+      p.liberar();
+    }
+    super.dispose();
+  }
+
+  void _ajustarPagadores(int nuevaCant) {
+    while (_pagadores.length < nuevaCant) {
+      final i = _pagadores.length;
+      _pagadores.add(_Pagador(_nombreDefecto(i), _medioInicial));
+    }
+    while (_pagadores.length > nuevaCant) {
+      final p = _pagadores.removeLast();
+      p.liberar();
+    }
+    // Si alguna unidad quedó asignada a un índice fuera de rango, reasignar a 0
+    for (final u in _unidades) {
+      final actual = _asignUnidad[u.clave] ?? 0;
+      if (actual >= nuevaCant) {
+        _asignUnidad[u.clave] = 0;
       }
-    } else {
-      // Una fila por unidad: si se pidieron varios iguales, cada uno se asigna
-      // por separado.
-      for (final u in _unidades) {
-        final varios = u.linea.cantidad > 1;
-        filas.add(
-          _filaAsignacion(
-            titulo: u.linea.nombrePlato,
-            detalle: varios
-                ? 'Unidad ${u.indice + 1} de ${u.linea.cantidad}'
-                : 'Cantidad: 1',
-            monto: u.monto,
-            valor: _destino(u),
-            onChanged: (v) => _cambiar(() => _asignUnidad[u.clave] = v),
-          ),
+    }
+  }
+
+  double _recargoDe(_Pagador p) {
+    return p.pagos.fold(0.0, (s, f) {
+      final monto = double.tryParse(f.monto.text.trim()) ?? 0.0;
+      return s + f.medio.recargoSobre(monto);
+    });
+  }
+
+  double _montoPagador(int i) {
+    return _unidades
+        .where((u) => (_asignUnidad[u.clave] ?? 0) == i)
+        .fold(0.0, (s, u) => s + u.monto);
+  }
+
+  double _propinaPagador(int i) =>
+      _propinaTotal <= 0.005 ? 0.0 : _r2(_pagadores[i].propinaAsignada);
+
+  double _totalConPropina(int i) => _r2(_montoPagador(i) + _propinaPagador(i));
+
+  double get _propinaAsignadaTotal => _r2(
+        _pagadores.fold(0.0, (s, p) => s + p.propinaAsignada),
+      );
+
+  void _repartirPropinaEquitativa() {
+    if (_propinaTotal <= 0.005 || _pagadores.isEmpty) return;
+    final n = _pagadores.length;
+    final cada = _r2(_propinaTotal / n);
+    for (var i = 0; i < n; i++) {
+      final val = i == n - 1 ? _r2(_propinaTotal - cada * (n - 1)) : cada;
+      _pagadores[i].propinaCtrl.text = val > 0 ? val.toStringAsFixed(2) : '';
+    }
+    setState(() {});
+  }
+
+  List<_Unidad> _unidadesDePagador(int i) {
+    return _unidades.where((u) => (_asignUnidad[u.clave] ?? 0) == i).toList();
+  }
+
+  List<Map<String, dynamic>> _itemsConsumidos(int i) {
+    final unidadesP = _unidadesDePagador(i);
+    final Map<String, ({String nombre, int cantidad, double pu, double subtotal})> map = {};
+    for (final u in unidadesP) {
+      final nombre = u.linea.nombrePlato;
+      final pu = u.monto;
+      if (map.containsKey(nombre)) {
+        final actual = map[nombre]!;
+        map[nombre] = (
+          nombre: nombre,
+          cantidad: actual.cantidad + 1,
+          pu: actual.pu,
+          subtotal: actual.subtotal + u.monto,
+        );
+      } else {
+        map[nombre] = (
+          nombre: nombre,
+          cantidad: 1,
+          pu: pu,
+          subtotal: u.monto,
         );
       }
     }
+    return map.values
+        .map((x) => {
+              'nombre': x.nombre,
+              'cantidad': x.cantidad,
+              'precio_unitario': x.pu,
+              'subtotal': x.subtotal,
+            })
+        .toList();
+  }
+
+  void _iniciarCobroSecuencial() {
+    // Validar que cada comensal tenga al menos 1 plato asignado
+    for (var i = 0; i < _pagadores.length; i++) {
+      if (_montoPagador(i) <= 0.005) {
+        showAppToast(
+          context,
+          '${_nombreDefecto(i)} no tiene platos asignados. Asígnale al menos un consumo o reduce la cantidad de personas.',
+          type: ToastType.warning,
+        );
+        return;
+      }
+    }
+
+    // Validar que la propina haya sido repartida por completo si existe
+    if (_propinaTotal > 0.005) {
+      if (_pagadores.any((p) => p.propinaAsignada < -0.001)) {
+        showAppToast(
+          context,
+          'La propina asignada no puede ser negativa.',
+          type: ToastType.warning,
+        );
+        return;
+      }
+      final diffPropina = _r2(_propinaTotal - _propinaAsignadaTotal);
+      if (diffPropina.abs() > 0.01) {
+        showAppToast(
+          context,
+          diffPropina > 0
+              ? 'Falta repartir S/ ${diffPropina.toStringAsFixed(2)} de propina entre las personas.'
+              : 'La propina repartida excede en S/ ${(-diffPropina).toStringAsFixed(2)} al total (S/ ${_propinaTotal.toStringAsFixed(2)}).',
+          type: ToastType.warning,
+        );
+        return;
+      }
+    }
+
+    // Inicializar los comprobantes (solo consumo, sin propina) y pagos (consumo + propina)
+    for (var i = 0; i < _pagadores.length; i++) {
+      final p = _pagadores[i];
+      final consumo = _montoPagador(i);
+      final totalCobrar = _totalConPropina(i);
+      final items = _itemsConsumidos(i);
+
+      if (_admiteComprobante) {
+        p.comprobante?.dispose();
+        final c = ComprobanteEnCobro(consumo, tipoInicial: 'ticket_venta');
+        c.inicializarConItems(
+          pedido: widget.pedido,
+          items: items,
+          totalObjetivo: consumo,
+        );
+        c.addListener(() {
+          if (mounted) setState(() {});
+        });
+        p.comprobante = c;
+      }
+
+      // Reiniciar monto del primer pago al total (consumo + propina) de la persona
+      if (p.pagos.isEmpty) {
+        p.pagos.add(_FilaPago(_medioInicial));
+      }
+      p.pagos.first.monto.text = totalCobrar.toStringAsFixed(2);
+      // Eliminar filas adicionales que pudieran haber quedado
+      while (p.pagos.length > 1) {
+        p.pagos.removeLast().monto.dispose();
+      }
+    }
+
+    setState(() => _paso = 1);
+  }
+
+  bool _pagadorValido(int i) {
+    final p = _pagadores[i];
+    final montoDebe = _totalConPropina(i);
+    final diff = (montoDebe - p.totalPagos).abs();
+    if (diff > 0.01) return false;
+
+    // Si tiene pago en efectivo y puso monto recibido, verificar que cubra el efectivo
+    final efectivoPago = p.pagos
+        .where((x) =>
+            x.medio.grupo == 'efectivo' ||
+            x.medio.medioPago.toLowerCase().contains('efectivo'))
+        .fold(0.0, (s, x) => s + (double.tryParse(x.monto.text.trim()) ?? 0.0));
+
+    if (efectivoPago > 0.005 && p.efectivoRecibido > 0.005) {
+      if (p.efectivoRecibido < efectivoPago - 0.01) return false;
+    }
+
+    // Comprobante
+    final c = p.comprobante;
+    if (c != null && !c.completo) {
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _finalizarCobro() async {
+    // Validar a todos los pagadores antes de ejecutar
+    for (var i = 0; i < _pagadores.length; i++) {
+      if (!_pagadorValido(i)) {
+        setState(() => _paso = i + 1);
+        showAppToast(
+          context,
+          'Revisa los datos de pago y comprobante de ${_nombreDefecto(i)} antes de finalizar.',
+          type: ToastType.warning,
+        );
+        return;
+      }
+    }
+
+    setState(() => _guardando = true);
+    final totalPagadores = _pagadores.length;
+    final List<String> errores = [];
+    final List<Comprobante> comprobantesEmitidos = [];
+
+    // Limpiar la propina global pendiente del pedido para que PagoService no la
+    // sume automáticamente al primer pago; cada pago enviará su propina asignada.
+    final propinaPendienteOriginal = propinaPendienteDePedido(widget.pedido.id);
+    if (propinaPendienteOriginal > 0.005) {
+      establecerPropinaPedido(widget.pedido.id, 0);
+    }
+    var pagosRegistrados = 0;
+
+    try {
+      for (var i = 0; i < totalPagadores; i++) {
+        final p = _pagadores[i];
+        final unidadesP = _unidadesDePagador(i);
+        final consumoPersona = _r2(_montoPagador(i));
+        final propinaPersona = _propinaPagador(i);
+
+        // Agrupar items de este pagador para enviar en pago_detalle
+        final Map<String, ({String pedidoDetalleId, double monto, int cant})> agrupados = {};
+        for (final u in unidadesP) {
+          final pid = u.linea.id;
+          if (agrupados.containsKey(pid)) {
+            agrupados[pid] = (
+              pedidoDetalleId: pid,
+              monto: agrupados[pid]!.monto + u.monto,
+              cant: agrupados[pid]!.cant + 1,
+            );
+          } else {
+            agrupados[pid] = (
+              pedidoDetalleId: pid,
+              monto: u.monto,
+              cant: 1,
+            );
+          }
+        }
+        // Cola mutable con el saldo pendiente de cada línea del comensal
+        final pendientes = agrupados.values
+            .map((a) => <String, dynamic>{
+                  'id': a.pedidoDetalleId,
+                  'restante': _r2(a.monto),
+                  'cant': a.cant,
+                })
+            .toList();
+
+        final filasActivas = <({ _FilaPago fila, double monto })>[];
+        for (final f in p.pagos) {
+          final m = _r2(double.tryParse(f.monto.text.trim()) ?? 0.0);
+          if (m > 0.005) {
+            filasActivas.add((fila: f, monto: m));
+          }
+        }
+
+        String? primerPagoId;
+        // Asignar propinaPersona entre las filas activas sin afectar filas con comisión
+        // (ej. Tarjeta) mientras existan otros métodos; orden:
+        // 1) no efectivo sin comisión, 2) efectivo sin comisión, 3) con comisión.
+        final propinasPorFila = List<double>.filled(filasActivas.length, 0.0);
+        if (propinaPersona > 0.005 && filasActivas.isNotEmpty) {
+          final orden = List<int>.generate(filasActivas.length, (idx) => idx);
+          int prioridadDe(int idx) {
+            final m = filasActivas[idx].fila.medio;
+            if (m.aplicaComision) return 2;
+            final esEf = m.grupo == 'efectivo' ||
+                m.medioPago.toLowerCase().contains('efectivo');
+            return esEf ? 1 : 0;
+          }
+          orden.sort((a, b) {
+            final pa = prioridadDe(a);
+            final pb = prioridadDe(b);
+            if (pa != pb) return pa.compareTo(pb);
+            return filasActivas[b].monto.compareTo(filasActivas[a].monto);
+          });
+          var propinaPorAsignar = propinaPersona;
+          for (final idx in orden) {
+            if (propinaPorAsignar <= 0.005) break;
+            final maxProp = _r2(filasActivas[idx].monto - 0.01);
+            if (maxProp <= 0.005) continue;
+            final tomar = propinaPorAsignar <= maxProp
+                ? _r2(propinaPorAsignar)
+                : maxProp;
+            propinasPorFila[idx] = tomar;
+            propinaPorAsignar = _r2(propinaPorAsignar - tomar);
+          }
+        }
+
+        for (var idx = 0; idx < filasActivas.length; idx++) {
+          final fila = filasActivas[idx].fila;
+          final montoFila = filasActivas[idx].monto;
+          final propinaFila = propinasPorFila[idx];
+          final abonoConsumo = _r2(montoFila - propinaFila);
+
+          // Asignar exactamente `abonoConsumo` de las líneas pendientes de este comensal
+          final detallesFila = <Map<String, dynamic>>[];
+          var porCubrir = abonoConsumo;
+          for (final item in pendientes) {
+            if (porCubrir <= 0.001) break;
+            final disp = item['restante'] as double;
+            if (disp <= 0.001) continue;
+            final aplicar = disp <= porCubrir ? disp : _r2(porCubrir);
+            item['restante'] = _r2(disp - aplicar);
+            porCubrir = _r2(porCubrir - aplicar);
+            detallesFila.add({
+              'pedido_detalle_id': item['id'],
+              'monto_aplicado': aplicar,
+              'cantidad_pagada': item['cant'],
+            });
+          }
+
+          final esEfectivo = fila.medio.grupo == 'efectivo' ||
+              fila.medio.medioPago.toLowerCase().contains('efectivo');
+          final rec = esEfectivo ? p.efectivoRecibido : 0.0;
+          final vto = (rec > montoFila) ? _r2(rec - montoFila) : 0.0;
+
+          final nombrePagador = p.nombre.text.trim().isNotEmpty
+              ? p.nombre.text.trim()
+              : _nombreDefecto(i);
+
+          final reg = await PagoService.instance.registrar(
+            pedido: widget.pedido,
+            medio: fila.medio,
+            montoAbonado: abonoConsumo,
+            propina: propinaFila > 0.005 ? propinaFila : 0.0,
+            usarPropinaPendiente: false,
+            pagador: nombrePagador,
+            categoriaMovimientoId: _categoriaSeleccionada?.id,
+            montoRecibido: rec > 0.005 ? rec : null,
+            vuelto: vto > 0.005 ? vto : null,
+            detalles: detallesFila.isNotEmpty ? detallesFila : null,
+          );
+          pagosRegistrados++;
+          primerPagoId ??= reg.id;
+        }
+
+        // Emisión de comprobante electrónico (Boleta / Factura) solo por el consumo
+        if (p.comprobante != null && p.comprobante!.emite && primerPagoId != null) {
+          try {
+            final c = await p.comprobante!.emitir(widget.pedido, pagoId: primerPagoId);
+            comprobantesEmitidos.add(c);
+          } catch (e) {
+            final nom = p.nombre.text.trim().isNotEmpty
+                ? p.nombre.text.trim()
+                : _nombreDefecto(i);
+            errores.add('Fallo comprobante de $nom: $e');
+          }
+        }
+      }
+
+      // Actualizar pagos en la app
+      try {
+        await PagoService.instance.cargarDePedido(widget.pedido);
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      final avisoPropina = PagoService.instance.avisoPropina;
+      if (avisoPropina != null && avisoPropina.isNotEmpty) {
+        errores.add(avisoPropina);
+      }
+
+      if (errores.isNotEmpty) {
+        showAppToast(
+          context,
+          'Pagos registrados con éxito en caja. Observaciones: ${errores.join(' · ')}',
+          type: ToastType.warning,
+          titulo: 'Pagos con avisos',
+          duration: const Duration(seconds: 8),
+        );
+      } else {
+        showAppToast(
+          context,
+          'Cuenta dividida cobrada con éxito entre $totalPagadores personas.',
+          type: ToastType.success,
+          titulo: 'Cobro completado',
+        );
+      }
+
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (pagosRegistrados == 0 && propinaPendienteOriginal > 0.005) {
+        establecerPropinaPedido(widget.pedido.id, propinaPendienteOriginal);
+      }
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      showAppToast(
+        context,
+        'Ocurrió un error registrando los pagos: $e',
+        type: ToastType.error,
+        titulo: 'Error en cobro',
+        duration: const Duration(seconds: 6),
+      );
+    }
+  }
+
+  // ===========================================================================
+  // UI WIDGETS
+  // ===========================================================================
+
+  Widget _avatar(int i, {double tam = 26}) => Container(
+        width: tam,
+        height: tam,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: _colorDe(i), shape: BoxShape.circle),
+        child: Text(
+          '${i + 1}',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: tam * 0.46,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+
+  // ---------------------------------------------------------------------------
+  // PASO 0: REPARTO DE PLATOS
+  // ---------------------------------------------------------------------------
+  Widget _buildPasoReparto() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _etiquetaSeccion(
-          porCategoria
-              ? 'QUIÉN PAGA CADA CATEGORÍA'
-              : 'QUIÉN PAGA CADA PRODUCTO',
-        ),
-        const SizedBox(height: 8),
+        tarjetaSaldo('Total a dividir', _saldo),
+        const SizedBox(height: 12),
+        // Selector de cantidad de personas
         Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: const Color(0xFFF7F8FA),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade200),
           ),
-          child: filas.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    'No hay productos pendientes de pago.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  ),
-                )
-              : Column(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (var i = 0; i < filas.length; i++) ...[
-                      if (i > 0)
-                        Divider(height: 1, color: Colors.grey.shade200),
-                      filas[i],
-                    ],
+                    const Text(
+                      'Cantidad de personas',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      'Mínimo $_minPagadores comensales',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
                   ],
                 ),
+              ),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                onPressed: _cantPersonas > _minPagadores
+                    ? () {
+                        setState(() {
+                          _cantPersonas--;
+                          _ajustarPagadores(_cantPersonas);
+                        });
+                      }
+                    : null,
+                icon: const Icon(Icons.remove, size: 16),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  '$_cantPersonas personas',
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+                ),
+              ),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() {
+                    _cantPersonas++;
+                    _ajustarPagadores(_cantPersonas);
+                  });
+                },
+                icon: const Icon(Icons.add, size: 16),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Resumen rápido de totales por persona
+        Row(
+          children: [
+            for (var i = 0; i < _cantPersonas; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _colorDe(i).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _colorDe(i).withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _avatar(i, tam: 18),
+                          const SizedBox(width: 4),
+                          Text(
+                            'P${i + 1}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: _colorDe(i),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'S/ ${_totalConPropina(i).toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                      ),
+                      if (_propinaPagador(i) > 0.005)
+                        Text(
+                          '+S/ ${_propinaPagador(i).toStringAsFixed(2)} prop.',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (_propinaTotal > 0.005) ...[
+          const SizedBox(height: 14),
+          Builder(builder: (context) {
+            final asignada = _propinaAsignadaTotal;
+            final diff = _r2(_propinaTotal - asignada);
+            final completa = diff.abs() <= 0.01;
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: completa
+                      ? AppColors.primaryGreen.withValues(alpha: 0.5)
+                      : Colors.amber.shade300,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.banknote, size: 16, color: Colors.amber.shade900),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Propina a repartir: S/ ${_propinaTotal.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _repartirPropinaEquitativa,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text(
+                          'Repartir igual',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: completa
+                              ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                              : Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          completa
+                              ? 'Completa'
+                              : (diff > 0
+                                  ? 'Falta S/ ${diff.toStringAsFixed(2)}'
+                                  : 'Excede S/ ${(-diff).toStringAsFixed(2)}'),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: completa
+                                ? AppColors.primaryGreenDark
+                                : Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  for (var i = 0; i < _cantPersonas; i++) ...[
+                    if (i > 0) const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _avatar(i, tam: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 5,
+                          child: Text(
+                            _pagadores[i].nombre.text.trim().isEmpty
+                                ? _nombreDefecto(i)
+                                : _pagadores[i].nombre.text.trim(),
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 120,
+                          height: 36,
+                          child: CampoTexto(
+                            controller: _pagadores[i].propinaCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              prefixText: 'S/ ',
+                              hintText: '0.00',
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+        const SizedBox(height: 16),
+        const Text(
+          'ASIGNAR CADA PLATO A QUIEN LO CONSUMIÓ',
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Column(
+            children: [
+              for (var idx = 0; idx < _unidades.length; idx++) ...[
+                if (idx > 0) Divider(height: 1, color: Colors.grey.shade200),
+                Builder(builder: (context) {
+                  final u = _unidades[idx];
+                  final asignado = _asignUnidad[u.clave] ?? 0;
+                  final varios = u.linea.cantidad > 1;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                u.linea.nombrePlato,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              Text(
+                                varios
+                                    ? 'Unidad ${u.indice + 1} de ${u.linea.cantidad} · S/ ${u.monto.toStringAsFixed(2)}'
+                                    : 'Cantidad: 1 · S/ ${u.monto.toStringAsFixed(2)}',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _avatar(asignado, tam: 22),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          flex: 4,
+                          child: AppSelect<int>(
+                            value: asignado,
+                            compacto: true,
+                            items: [
+                              for (var i = 0; i < _cantPersonas; i++)
+                                AppSelectItem(
+                                  value: i,
+                                  label: _pagadores[i].nombre.text.trim().isEmpty
+                                      ? _nombreDefecto(i)
+                                      : _pagadores[i].nombre.text.trim(),
+                                ),
+                            ],
+                            onChanged: (v) {
+                              if (v != null) {
+                                setState(() => _asignUnidad[u.clave] = v);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: _iniciarCobroSecuencial,
+          icon: const Icon(LucideIcons.arrowRight, size: 16),
+          label: Text('Continuar al cobro (Paso 1 de $_cantPersonas)'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
         ),
       ],
     );
   }
 
-  Widget _filaAsignacion({
-    required String titulo,
-    required String detalle,
-    required double monto,
-    required int valor,
-    required ValueChanged<int> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 5,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  titulo,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  '$detalle · S/ ${monto.toStringAsFixed(2)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          _avatar(valor, tam: 22),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 4,
-            child: AppSelect<int>(
-              value: valor,
-              compacto: true,
-              items: _opcionesPagador,
-              onChanged: (v) => onChanged(v ?? 0),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tarjetaPagador(int i, double monto) {
-    final p = _pagadores[i];
-    final diff = monto - _sumaPagos(p);
+  // ---------------------------------------------------------------------------
+  // PASOS 1 a N: COBRO SECUENCIAL POR PERSONA
+  // ---------------------------------------------------------------------------
+  Widget _buildPasoCobroPersona(int index) {
+    final p = _pagadores[index];
+    final consumoPersona = _montoPagador(index);
+    final propinaPersona = _propinaPagador(index);
+    final montoDebe = _totalConPropina(index);
+    final diff = montoDebe - p.totalPagos;
     final cuadra = diff.abs() <= 0.01;
-    final conMonto = monto > 0.005;
-    final color = _colorDe(i);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: conMonto && cuadra
-              ? AppColors.primaryGreen.withValues(alpha: 0.45)
-              : Colors.grey.shade300,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
-            color: color.withValues(alpha: 0.07),
-            child: Row(
-              children: [
-                _avatar(i),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: AppSizes.boton,
-                    child: CampoTexto(
-                      controller: p.nombre,
-                      expands: true,
-                      maxLines: null,
-                      minLines: null,
-                      textAlignVertical: TextAlignVertical.center,
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                        hintText: 'Nombre',
+    final esUltimo = index == _cantPersonas - 1;
+    final items = _itemsConsumidos(index);
+    final recargoPersona = _recargoDe(p);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Indicador de pasos arriba
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < _cantPersonas; i++) ...[
+                if (i > 0)
+                  Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => setState(() => _paso = i + 1),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _paso == i + 1
+                          ? _colorDe(i).withValues(alpha: 0.15)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _paso == i + 1 ? _colorDe(i) : Colors.transparent,
+                        width: 1.5,
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'DEBE PAGAR',
-                      style: TextStyle(
-                        fontSize: 9,
-                        letterSpacing: 0.6,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    Text(
-                      'S/ ${monto.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryGreenDark,
-                      ),
-                    ),
-                  ],
-                ),
-                if (_pagadores.length > 2)
-                  IconButton(
-                    tooltip: 'Quitar',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _quitarPagador(i),
-                    icon: Icon(
-                      Icons.close,
-                      size: 18,
-                      color: Colors.grey.shade500,
-                    ),
-                  )
-                else
-                  const SizedBox(width: 8),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var k = 0; k < p.pagos.length; k++)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          flex: 5,
-                          child: AppSelect<String>(
-                            value: p.pagos[k].medio.id,
-                            compacto: true,
-                            hint: 'Método',
-                            items: [
-                              for (final m in mediosPagoActivos)
-                                AppSelectItem(
-                                  value: m.id,
-                                  label: m.aplicaComision
-                                      ? '${m.medioPago} (+${m.porcentajeComision.toStringAsFixed(1)}%)'
-                                      : m.medioPago,
-                                ),
-                            ],
-                            onChanged: (v) => setState(() {
-                              if (v != null) {
-                                p.pagos[k].medio = mediosPagoActivos.firstWhere(
-                                  (m) => m.id == v,
-                                );
-                              }
-                            }),
+                        _avatar(i, tam: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          _pagadores[i].nombre.text.trim().isEmpty
+                              ? 'P${i + 1}'
+                              : _pagadores[i].nombre.text.trim(),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: _paso == i + 1 ? FontWeight.w800 : FontWeight.w600,
+                            color: _paso == i + 1 ? _colorDe(i) : Colors.grey.shade700,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 4,
-                          child: SizedBox(
-                            height: AppSizes.boton,
-                            child: CampoTexto(
-                              controller: p.pagos[k].monto,
-                              expands: true,
-                              maxLines: null,
-                              minLines: null,
-                              textAlignVertical: TextAlignVertical.center,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              onChanged: (_) => setState(() {}),
-                              style: const TextStyle(fontSize: 13),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                prefixText: 'S/ ',
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                              ),
-                            ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'S/ ${_totalConPropina(i).toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _paso == i + 1 ? Colors.black87 : Colors.grey.shade500,
                           ),
-                        ),
-                        SizedBox(
-                          width: 36,
-                          child: p.pagos.length > 1
-                              ? IconButton(
-                                  tooltip: 'Quitar método',
-                                  onPressed: () => _quitarMetodo(p, k),
-                                  icon: Icon(
-                                    Icons.remove_circle_outline,
-                                    size: 18,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                )
-                              : null,
                         ),
                       ],
                     ),
                   ),
-                if (conMonto && _recargoDe(p) > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      'Recargo por método de pago: +S/ ${_recargoDe(p).toStringAsFixed(2)} '
-                      '· Total que paga: S/ ${(monto + _recargoDe(p)).toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.naranja,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Tarjeta de Consumo de esta persona
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _colorDe(index).withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _colorDe(index).withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  _avatar(index, tam: 28),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: CampoTexto(
+                      controller: p.nombre,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: 'Nombre del comensal',
+                        hintText: _nombreDefecto(index),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       ),
                     ),
                   ),
-                if (conMonto && _efectivoDe(p) > 0.005) ...[
-                  const SizedBox(height: 8),
-                  CampoTexto(
-                    controller: p.recibido,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      labelText: 'Paga en efectivo con (S/) · opcional, para el vuelto',
-                      errorText: _recibidoValido(p)
-                          ? null
-                          : 'Falta: su efectivo es S/ ${_efectivoDe(p).toStringAsFixed(2)}',
-                    ),
-                  ),
-                  if (_vueltoDe(p) > 0.005)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Vuelto: S/ ${_vueltoDe(p).toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        recargoPersona > 0 ? 'TOTAL (+ RECARGO)' : 'TOTAL A COBRAR',
+                        style: TextStyle(
+                          fontSize: 9,
+                          letterSpacing: 0.6,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade600,
                         ),
                       ),
-                    ),
+                      Text(
+                        'S/ ${(montoDebe + recargoPersona).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: recargoPersona > 0 ? const Color(0xFFC2410C) : _colorDe(index),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Divider(height: 1, color: _colorDe(index).withValues(alpha: 0.2)),
+              const SizedBox(height: 8),
+              Text(
+                'Platos consumidos:',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 4),
+              for (final it in items)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${it['cantidad']}x ${it['nombre']}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'S/ ${(it['subtotal'] as double).toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              if (propinaPersona > 0.005) ...[
+                const SizedBox(height: 4),
+                Divider(height: 1, color: _colorDe(index).withValues(alpha: 0.15)),
+                const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: conMonto ? () => _agregarMetodo(p) : null,
-                          style: TextButton.styleFrom(
-                            minimumSize: const Size(0, AppSizes.control),
-                            maximumSize: const Size(
-                              double.infinity,
-                              AppSizes.control,
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                          ),
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('Dividir en otro método'),
-                        ),
+                    Text(
+                      'Consumo (SUNAT): S/ ${consumoPersona.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '+ Propina: S/ ${propinaPersona.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.amber.shade900,
                       ),
                     ),
-                    if (conMonto) _estadoPagador(cuadra, diff),
                   ],
                 ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // SECCIÓN MÉTODO DE PAGO
+        const Text(
+          'MÉTODO DE PAGO',
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (var k = 0; k < p.pagos.length; k++) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: AppSelect<String>(
+                    value: p.pagos[k].medio.id,
+                    compacto: true,
+                    items: [
+                      for (final m in mediosPagoActivos)
+                        AppSelectItem(
+                          value: m.id,
+                          label: m.aplicaComision
+                              ? '${m.medioPago} (+${m.porcentajeComision.toStringAsFixed(1)}%)'
+                              : m.medioPago,
+                        ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          p.pagos[k].medio = mediosPagoActivos.firstWhere((m) => m.id == v);
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 4,
+                  child: SizedBox(
+                    height: AppSizes.boton,
+                    child: CampoTexto(
+                      controller: p.pagos[k].monto,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        prefixText: 'S/ ',
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                    ),
+                  ),
+                ),
+                if (p.pagos.length > 1)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      setState(() {
+                        p.pagos.removeAt(k).monto.dispose();
+                      });
+                    },
+                    icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.grey),
+                  ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
 
-  // Si lo que pone el pagador cuadra con lo que debe: "Completo" o lo que falta.
-  Widget _estadoPagador(bool cuadra, double diff) {
-    final color = cuadra ? AppColors.primaryGreenDark : AppColors.error;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            cuadra ? Icons.check_circle : Icons.error_outline,
-            size: 14,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            cuadra
-                ? 'Completo'
-                : (diff > 0
-                      ? 'Falta S/ ${diff.toStringAsFixed(2)}'
-                      : 'Sobra S/ ${(-diff).toStringAsFixed(2)}'),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Una de las cuatro formas de repartir la cuenta.
-  Widget _modoTile(_Modo modo, IconData icono, String titulo, String detalle) {
-    final activo = _modo == modo;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => setState(() => _reiniciar(modo)),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: activo
-                ? AppColors.primaryGreen.withValues(alpha: 0.08)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: activo ? AppColors.primaryGreen : Colors.grey.shade300,
-              width: activo ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icono,
-                size: 20,
-                color: activo ? AppColors.primaryGreenDark : Colors.grey,
+        if (recargoPersona > 0)
+          Builder(builder: (context) {
+            final detallesRecargo = <String>[];
+            for (final f in p.pagos) {
+              if (!f.medio.aplicaComision) continue;
+              final base = double.tryParse(f.monto.text.trim()) ?? 0.0;
+              final rec = f.medio.recargoSobre(base);
+              if (rec > 0) {
+                detallesRecargo.add(
+                  '${f.medio.medioPago}: S/ ${base.toStringAsFixed(2)} + S/ ${rec.toStringAsFixed(2)} = S/ ${(base + rec).toStringAsFixed(2)}',
+                );
+              }
+            }
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFDBA74)),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      titulo,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: activo ? AppColors.primaryGreenDark : null,
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.info, size: 15, color: Color(0xFFC2410C)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${detallesRecargo.join(' · ')} '
+                      '· Total a cobrar al cliente: S/ ${(montoDebe + recargoPersona).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFC2410C),
                       ),
                     ),
+                  ),
+                ],
+              ),
+            );
+          }),
+
+        // Si paga en efectivo, campo de recibido y vuelto
+        if (p.pagos.any((x) =>
+            x.medio.grupo == 'efectivo' ||
+            x.medio.medioPago.toLowerCase().contains('efectivo'))) ...[
+          const SizedBox(height: 4),
+          Builder(builder: (context) {
+            final efectivoTotal = p.pagos
+                .where((x) =>
+                    x.medio.grupo == 'efectivo' ||
+                    x.medio.medioPago.toLowerCase().contains('efectivo'))
+                .fold(
+                  0.0,
+                  (s, x) => s + (double.tryParse(x.monto.text.trim()) ?? 0.0),
+                );
+            return Row(
+              children: [
+                Expanded(
+                  child: CampoTexto(
+                    controller: p.recibido,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Efectivo recibido (S/) · para el vuelto',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Vuelto:',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey),
+                    ),
                     Text(
-                      detalle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        height: 1.2,
-                        color: Colors.grey.shade600,
-                      ),
+                      'S/ ${p.vuelto(efectivoTotal).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
+              ],
+            );
+          }),
+        ],
+
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  p.pagos.add(_FilaPago(_medioInicial));
+                });
+              },
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Dividir en otro método'),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: cuadra
+                    ? AppColors.primaryGreen.withValues(alpha: 0.1)
+                    : AppColors.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
-          ),
+              child: Text(
+                cuadra
+                    ? 'Monto exacto'
+                    : (diff > 0
+                        ? 'Falta S/ ${diff.toStringAsFixed(2)}'
+                        : 'Sobra S/ ${(-diff).toStringAsFixed(2)}'),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: cuadra ? AppColors.primaryGreenDark : AppColors.error,
+                ),
+              ),
+            ),
+          ],
         ),
-      ),
+        const SizedBox(height: 16),
+
+        // SECCIÓN COMPROBANTE DE PAGO
+        if (_admiteComprobante && p.comprobante != null) ...[
+          const Text(
+            'COMPROBANTE (BOLETA / FACTURA / NINGUNO)',
+            style: TextStyle(
+              fontSize: 11,
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SelectorComprobante(
+            control: p.comprobante!,
+            pedido: widget.pedido,
+          ),
+        ],
+        const SizedBox(height: 24),
+
+        // Botones de Navegación del Wizard
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _guardando
+                  ? null
+                  : () {
+                      if (index == 0) {
+                        setState(() => _paso = 0);
+                      } else {
+                        setState(() => _paso = index);
+                      }
+                    },
+              icon: const Icon(LucideIcons.arrowLeft, size: 16),
+              label: Text(index == 0 ? 'Reparto de platos' : 'P${index}'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: (_pagadorValido(index) && !_guardando)
+                    ? () {
+                        if (esUltimo) {
+                          _finalizarCobro();
+                        } else {
+                          setState(() => _paso = index + 2);
+                        }
+                      }
+                    : null,
+                icon: Icon(
+                  esUltimo ? LucideIcons.checkCheck : LucideIcons.arrowRight,
+                  size: 16,
+                ),
+                label: Text(
+                  esUltimo
+                      ? (_guardando ? 'Procesando...' : 'Finalizar cobro e imprimir')
+                      : 'Siguiente (P${index + 2})',
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: esUltimo ? const Color(0xFFF07F13) : AppColors.primaryGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final montos = _montos;
-    final esIguales = _modo == _Modo.iguales;
-    final unidad = esIguales
-        ? 'personas'
-        : (_modo == _Modo.grupos ? 'grupos' : 'pagadores');
     return ModalPago(
-      titulo: 'Pago compartido',
+      titulo: 'Dividir cuenta por comensal',
       subtitulo: 'Pedido #${widget.pedido.numeroPedido} · ${widget.titulo}',
-      anchoEscritorio: 640,
-      onVolver: widget.permiteVolver
-          ? () => Navigator.of(context).pop(volverAElegirPago)
-          : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          tarjetaSaldo('Total a repartir', _saldo),
-          const SizedBox(height: 12),
-          AppSelect<CategoriaMovimiento>(
-            label: 'Concepto / Categoría del cobro',
-            flotante: true,
-            buscable: true,
-            value: _categoriaSeleccionada,
-            hint: 'Selecciona concepto de ingreso',
-            items: [
-              for (final c in categoriasDeTipo(TipoMovimiento.ingreso))
-                AppSelectItem(value: c, label: c.nombre),
-            ],
-            onChanged: (c) => setState(() => _categoriaSeleccionada = c),
-          ),
-          if (_propinaApp > 0 || _taperApp > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Además se cobra ${[if (_propinaApp > 0) 'propina S/ ${_propinaApp.toStringAsFixed(2)}', if (_taperApp > 0) 'táper S/ ${_taperApp.toStringAsFixed(2)}'].join(' y ')}, sin recargo. No se reparte: se suma al primer cobro.',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              ),
-            ),
-          const SizedBox(height: 16),
-          _etiquetaSeccion('¿CÓMO SE REPARTE?'),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _modoTile(
-                _Modo.iguales,
-                Icons.pie_chart_outline,
-                'Partes iguales',
-                'Se divide en partes iguales',
-              ),
-              const SizedBox(width: 8),
-              _modoTile(
-                _Modo.platos,
-                Icons.restaurant_menu,
-                'Cada uno su plato',
-                'Eliges quién paga cada plato',
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F8FA),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        esIguales
-                            ? 'Dividir entre'
-                            : (_modo == _Modo.grupos ? 'Grupos' : 'Pagadores'),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        'Entre 2 y $_maxPagadores',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _boton(
-                  Icons.remove,
-                  _pagadores.length > 2
-                      ? () => _quitarPagador(_pagadores.length - 1)
-                      : null,
-                ),
-                SizedBox(
-                  width: 92,
-                  child: Text(
-                    '${_pagadores.length} $unidad',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                _boton(
-                  Icons.add,
-                  _pagadores.length < _maxPagadores ? _agregarPagador : null,
-                ),
-              ],
-            ),
-          ),
-          if (!esIguales) ...[const SizedBox(height: 16), _seccionAsignacion()],
-          const SizedBox(height: 16),
-          _etiquetaSeccion('CÓMO PAGA CADA UNO'),
-          const SizedBox(height: 8),
-          for (var i = 0; i < _pagadores.length; i++)
-            _tarjetaPagador(i, montos[i]),
-          if (_admiteComprobante) ...[
-            const SizedBox(height: 12),
-            if (_boletasIndividuales) ...[
-              _etiquetaSeccion('COMPROBANTE DE CADA UNO'),
-              const SizedBox(height: 8),
-              for (var i = 0; i < _pagadores.length; i++)
-                if (montos[i] > 0.005) _comprobanteDe(i, montos[i]),
-            ] else if (_comprobanteGeneral != null) ...[
-              _etiquetaSeccion('COMPROBANTE DEL PEDIDO'),
-              const SizedBox(height: 8),
-              Builder(
-                builder: (context) {
-                  _comprobanteGeneral.total =
-                      _saldo + _recargoTotal + _propinaApp + _taperApp;
-                  return SelectorComprobante(control: _comprobanteGeneral);
-                },
-              ),
-            ],
-            const SizedBox(height: 8),
-          ],
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F8FA),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.receipt, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cuenta individual por pagador',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      Text(
-                        'Al cobrar, se muestra una cuenta por cada uno.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                AppSwitch(
-                  value: _boletasIndividuales,
-                  onChanged: (v) => setState(() => _boletasIndividuales = v),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              if (widget.permiteVolver) ...[
-                Expanded(
-                  flex: 2,
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        Navigator.of(context).pop(volverAElegirPago),
-                    icon: const Icon(LucideIcons.chevronLeft, size: 16),
-                    label: const Text('Regresar'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                flex: 3,
-                child: FilledButton.icon(
-                  onPressed: _valido && !_guardando && _comprobantesCompletos
-                      ? _confirmar
-                      : null,
-                  icon: const Icon(LucideIcons.users, size: 18),
-                  label: Text(
-                    'Cobrar · S/ ${(_saldo + _recargoTotal + _propinaApp + _taperApp).toStringAsFixed(2)}',
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      anchoEscritorio: 600,
+      onVolver: widget.permiteVolver ? () => Navigator.of(context).pop() : null,
+      child: _paso == 0 ? _buildPasoReparto() : _buildPasoCobroPersona(_paso - 1),
     );
   }
 }

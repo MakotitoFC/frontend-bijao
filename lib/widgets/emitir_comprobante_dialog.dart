@@ -75,14 +75,17 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     }
   }
 
-  Comprobante? get _comprobanteFiscalActivo => _comprobantes
+  List<Comprobante> get _comprobantesFiscalesActivos => _comprobantes
       .where(
         (c) =>
             c.esFiscal &&
             c.estadoSunat != 'ANULADO' &&
             c.estadoSunat != 'RECHAZADO',
       )
-      .firstOrNull;
+      .toList();
+
+  Comprobante? get _comprobanteFiscalActivo =>
+      _comprobantesFiscalesActivos.firstOrNull;
 
   Comprobante? get _comprobanteRechazado => _comprobantes
       .where((c) => c.esFiscal && c.estadoSunat == 'RECHAZADO')
@@ -284,7 +287,8 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final fiscal = _comprobanteFiscalActivo;
+    final fiscales = _comprobantesFiscalesActivos;
+    final fiscal = fiscales.firstOrNull;
     final ticket = _ticketVentaActivo;
     final rechazado = _comprobanteRechazado;
 
@@ -323,17 +327,17 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           const LinearProgressIndicator(minHeight: 2),
           const SizedBox(height: 10),
         ],
-        // 1. Alerta si ya existe un comprobante fiscal emitido
-        if (fiscal != null) ...[
+        // 1. Alerta por cada comprobante fiscal emitido
+        for (final f in fiscales) ...[
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: fiscal.estadoSunat == 'ERROR_CONEXION'
+              color: f.estadoSunat == 'ERROR_CONEXION'
                   ? Colors.red.shade50
                   : Colors.amber.shade50,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                color: f.estadoSunat == 'ERROR_CONEXION'
                     ? Colors.red.shade300
                     : Colors.amber.shade300,
               ),
@@ -344,22 +348,22 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                 Row(
                   children: [
                     Icon(
-                      fiscal.estadoSunat == 'ERROR_CONEXION'
+                      f.estadoSunat == 'ERROR_CONEXION'
                           ? LucideIcons.alertTriangle
                           : LucideIcons.fileCheck2,
                       size: 18,
-                      color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                      color: f.estadoSunat == 'ERROR_CONEXION'
                           ? Colors.red.shade900
                           : Colors.amber.shade900,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Comprobante emitido: ${fiscal.tipoEtiqueta.toUpperCase()} ${fiscal.numeroComprobante}',
+                        'Comprobante emitido: ${f.tipoEtiqueta.toUpperCase()} ${f.numeroComprobante}',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: fiscal.estadoSunat == 'ERROR_CONEXION'
+                          color: f.estadoSunat == 'ERROR_CONEXION'
                               ? Colors.red.shade900
                               : Colors.amber.shade900,
                         ),
@@ -371,21 +375,21 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: fiscal.estadoSunat == 'ACEPTADO'
+                        color: f.estadoSunat == 'ACEPTADO'
                             ? Colors.green.shade100
-                            : (fiscal.estadoSunat == 'ERROR_CONEXION'
+                            : (f.estadoSunat == 'ERROR_CONEXION'
                                   ? Colors.red.shade100
                                   : Colors.orange.shade100),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        fiscal.estadoSunat,
+                        f.estadoSunat,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: fiscal.estadoSunat == 'ACEPTADO'
+                          color: f.estadoSunat == 'ACEPTADO'
                               ? Colors.green.shade800
-                              : (fiscal.estadoSunat == 'ERROR_CONEXION'
+                              : (f.estadoSunat == 'ERROR_CONEXION'
                                     ? Colors.red.shade900
                                     : Colors.orange.shade900),
                         ),
@@ -394,7 +398,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                if (fiscal.estadoSunat == 'ERROR_CONEXION') ...[
+                if (f.estadoSunat == 'ERROR_CONEXION') ...[
                   Text(
                     '⚠️ Hubo un corte de red o timeout esperando respuesta de SUNAT. '
                     'Para evitar saltos de correlativo, consulta el estado o reintenta el envío con el mismo número.',
@@ -407,7 +411,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                   const SizedBox(height: 8),
                 ],
                 Text(
-                  'Cliente: ${fiscal.clienteDenominacion.isEmpty ? "CLIENTES VARIOS" : fiscal.clienteDenominacion} · Total: S/ ${fiscal.total.toStringAsFixed(2)}',
+                  'Cliente: ${f.clienteDenominacion.isEmpty ? "CLIENTES VARIOS" : f.clienteDenominacion} · Total: S/ ${f.total.toStringAsFixed(2)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                 ),
                 const SizedBox(height: 10),
@@ -415,11 +419,11 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if (fiscal.estadoSunat == 'ERROR_CONEXION') ...[
+                    if (f.estadoSunat == 'ERROR_CONEXION') ...[
                       FilledButton.icon(
                         onPressed: _emitiendo
                             ? null
-                            : () => _reintentarEnvio(fiscal),
+                            : () => _reintentarEnvio(f),
                         icon: const Icon(LucideIcons.refreshCw, size: 15),
                         label: const Text('Reintentar Envío a SUNAT'),
                         style: FilledButton.styleFrom(
@@ -433,7 +437,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                       OutlinedButton.icon(
                         onPressed: _emitiendo
                             ? null
-                            : () => _consultarEstado(fiscal),
+                            : () => _consultarEstado(f),
                         icon: const Icon(LucideIcons.search, size: 15),
                         label: const Text('Consultar Estado'),
                         style: OutlinedButton.styleFrom(
@@ -444,9 +448,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     ],
-                    if (fiscal.ticketUrl != null)
+                    if (f.ticketUrl != null)
                       OutlinedButton.icon(
-                        onPressed: () => abrirEnlace(fiscal.ticketUrl!),
+                        onPressed: () => abrirEnlace(f.ticketUrl!),
                         icon: const Icon(LucideIcons.fileText, size: 15),
                         label: const Text('PDF ticket'),
                         style: OutlinedButton.styleFrom(
@@ -456,9 +460,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                           ),
                         ),
                       ),
-                    if (fiscal.a4Url != null)
+                    if (f.a4Url != null)
                       OutlinedButton.icon(
-                        onPressed: () => abrirEnlace(fiscal.a4Url!),
+                        onPressed: () => abrirEnlace(f.a4Url!),
                         icon: const Icon(LucideIcons.fileText, size: 15),
                         label: const Text('PDF A4'),
                         style: OutlinedButton.styleFrom(
@@ -468,9 +472,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                           ),
                         ),
                       ),
-                    if (fiscal.xmlDescargaUrl != null)
+                    if (f.xmlDescargaUrl != null)
                       OutlinedButton.icon(
-                        onPressed: () => abrirEnlace(fiscal.xmlDescargaUrl!),
+                        onPressed: () => abrirEnlace(f.xmlDescargaUrl!),
                         icon: const Icon(LucideIcons.code, size: 15),
                         label: const Text('XML'),
                         style: OutlinedButton.styleFrom(
@@ -481,9 +485,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     FilledButton.icon(
-                      onPressed: () => _reimprimir(fiscal),
+                      onPressed: () => _reimprimir(f),
                       icon: const Icon(LucideIcons.printer, size: 15),
-                      label: Text('Reimprimir ${fiscal.tipoEtiqueta}'),
+                      label: Text('Reimprimir ${f.tipoEtiqueta}'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primaryGreen,
                         padding: const EdgeInsets.symmetric(
@@ -492,11 +496,11 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     ),
-                    if (fiscal.ticketUrl != null ||
-                        fiscal.a4Url != null ||
-                        fiscal.xmlDescargaUrl != null)
+                    if (f.ticketUrl != null ||
+                        f.a4Url != null ||
+                        f.xmlDescargaUrl != null)
                       FilledButton.icon(
-                        onPressed: () => _whatsapp(fiscal),
+                        onPressed: () => _whatsapp(f),
                         icon: const Icon(LucideIcons.messageCircle, size: 15),
                         label: const Text('WhatsApp'),
                         style: estiloBotonWhatsapp.copyWith(
@@ -506,7 +510,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                         ),
                       ),
                     OutlinedButton.icon(
-                      onPressed: () => _abrirDialogoAnulacion(fiscal),
+                      onPressed: () => _abrirDialogoAnulacion(f),
                       icon: const Icon(
                         LucideIcons.ban,
                         size: 15,
@@ -587,7 +591,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
         ],
 
         // 2. Si ya hay un ticket de venta interno emitido
-        if (ticket != null && fiscal == null) ...[
+        if (ticket != null) ...[
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
