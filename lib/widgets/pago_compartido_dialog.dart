@@ -12,6 +12,7 @@ import '../models/movimiento_caja.dart';
 import '../models/pedido.dart';
 import '../models/pedido_line.dart';
 import '../services/catalog_service.dart';
+import '../services/facturacion_service.dart';
 import '../services/movimiento_caja_service.dart';
 import '../services/pago_service.dart';
 import '../theme/app_theme.dart';
@@ -544,11 +545,21 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           primerPagoId ??= reg.id;
         }
 
-        // Emisión de comprobante electrónico (Boleta / Factura) solo por el consumo
+        // Emisión de comprobante electrónico (Boleta / Factura / Ticket) solo por el consumo
         if (p.comprobante != null && p.comprobante!.emite && primerPagoId != null) {
           try {
             final c = await p.comprobante!.emitir(widget.pedido, pagoId: primerPagoId);
             comprobantesEmitidos.add(c);
+            if (p.comprobante!.imprimirDespues) {
+              try {
+                await FacturacionService.instance.reimprimir(c.id);
+              } catch (e) {
+                final nom = p.nombre.text.trim().isNotEmpty
+                    ? p.nombre.text.trim()
+                    : _nombreDefecto(i);
+                errores.add('No se pudo imprimir ${c.tipoEtiqueta} de $nom: $e');
+              }
+            }
           } catch (e) {
             final nom = p.nombre.text.trim().isNotEmpty
                 ? p.nombre.text.trim()
@@ -556,6 +567,17 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             errores.add('Fallo comprobante de $nom: $e');
           }
         }
+      }
+
+      // Emitir e imprimir el ticket general de caja del pedido completo (resumen de pagos, propina y vuelto)
+      try {
+        await FacturacionService.instance.emitir(
+          pedidoId: widget.pedido.id,
+          tipoDocumento: 'ticket_venta',
+          imprimir: true,
+        );
+      } catch (e) {
+        errores.add('No se pudo imprimir el ticket general de caja: $e');
       }
 
       // Actualizar pagos en la app

@@ -91,11 +91,11 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       .where((c) => c.esFiscal && c.estadoSunat == 'RECHAZADO')
       .firstOrNull;
 
-  Comprobante? get _ticketVentaActivo => _comprobantes
+  List<Comprobante> get _ticketsVentaActivos => _comprobantes
       .where(
         (c) => c.tipoDocumento == 'ticket_venta' && c.estadoSunat != 'ANULADO',
       )
-      .firstOrNull;
+      .toList();
 
   @override
   void dispose() {
@@ -289,7 +289,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   Widget build(BuildContext context) {
     final fiscales = _comprobantesFiscalesActivos;
     final fiscal = fiscales.firstOrNull;
-    final ticket = _ticketVentaActivo;
+    final tickets = _ticketsVentaActivos;
     final rechazado = _comprobanteRechazado;
 
     return DialogoApp(
@@ -590,8 +590,8 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           const SizedBox(height: 12),
         ],
 
-        // 2. Si ya hay un ticket de venta interno emitido
-        if (ticket != null) ...[
+        // 2. Tickets de venta internos emitidos (individuales y/o general de caja)
+        for (final t in tickets) ...[
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -609,7 +609,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Ticket emitido: ${ticket.numeroComprobante}',
+                    'Ticket emitido: ${t.numeroComprobante} · S/ ${t.total.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -618,7 +618,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
                   ),
                 ),
                 TextButton.icon(
-                  onPressed: () => _reimprimir(ticket),
+                  onPressed: () => _reimprimir(t),
                   icon: const Icon(LucideIcons.printer, size: 14),
                   label: const Text('Reimprimir Ticket'),
                   style: TextButton.styleFrom(
@@ -628,8 +628,9 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
         ],
+        if (tickets.isNotEmpty) const SizedBox(height: 4),
 
         // Pestañas: Formulario vs Vista Previa Fiscal en Vivo
         SegmentedButton<int>(
