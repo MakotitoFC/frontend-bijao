@@ -50,10 +50,14 @@ class _Pagador {
   final List<_FilaPago> pagos;
   ComprobanteEnCobro? comprobante;
   final TextEditingController recibido = TextEditingController();
+  final TextEditingController propinaCtrl = TextEditingController();
 
   _Pagador(String nombre, MedioPago medio)
       : nombre = TextEditingController(text: nombre),
         pagos = [_FilaPago(medio)];
+
+  double get propinaAsignada =>
+      double.tryParse(propinaCtrl.text.trim().replaceAll(',', '.')) ?? 0.0;
 
   double get totalPagos => pagos.fold(
         0.0,
@@ -72,6 +76,7 @@ class _Pagador {
     comprobante?.dispose();
     nombre.dispose();
     recibido.dispose();
+    propinaCtrl.dispose();
     for (final p in pagos) {
       p.monto.dispose();
     }
@@ -119,6 +124,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   final Map<String, int> _asignUnidad = {};
 
   late final double _saldo = saldoCuentaDePedido(widget.pedido.id);
+  late final double _propinaTotal = propinaPendienteDePedido(widget.pedido.id);
   late final List<PedidoLine> _lineas = (detallesPorPedido[widget.pedido.id] ?? [])
       .where(esLineaDeProducto)
       .where((l) => _saldoLinea(l) > 0.001)
@@ -235,6 +241,26 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         .fold(0.0, (s, u) => s + u.monto);
   }
 
+  double _propinaPagador(int i) =>
+      _propinaTotal <= 0.005 ? 0.0 : _r2(_pagadores[i].propinaAsignada);
+
+  double _totalConPropina(int i) => _r2(_montoPagador(i) + _propinaPagador(i));
+
+  double get _propinaAsignadaTotal => _r2(
+        _pagadores.fold(0.0, (s, p) => s + p.propinaAsignada),
+      );
+
+  void _repartirPropinaEquitativa() {
+    if (_propinaTotal <= 0.005 || _pagadores.isEmpty) return;
+    final n = _pagadores.length;
+    final cada = _r2(_propinaTotal / n);
+    for (var i = 0; i < n; i++) {
+      final val = i == n - 1 ? _r2(_propinaTotal - cada * (n - 1)) : cada;
+      _pagadores[i].propinaCtrl.text = val > 0 ? val.toStringAsFixed(2) : '';
+    }
+    setState(() {});
+  }
+
   List<_Unidad> _unidadesDePagador(int i) {
     return _unidades.where((u) => (_asignUnidad[u.clave] ?? 0) == i).toList();
   }
@@ -285,19 +311,43 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
       }
     }
 
-    // Inicializar los comprobantes y pagos de cada comensal con sus platos
+    // Validar que la propina haya sido repartida por completo si existe
+    if (_propinaTotal > 0.005) {
+      if (_pagadores.any((p) => p.propinaAsignada < -0.001)) {
+        showAppToast(
+          context,
+          'La propina asignada no puede ser negativa.',
+          type: ToastType.warning,
+        );
+        return;
+      }
+      final diffPropina = _r2(_propinaTotal - _propinaAsignadaTotal);
+      if (diffPropina.abs() > 0.01) {
+        showAppToast(
+          context,
+          diffPropina > 0
+              ? 'Falta repartir S/ ${diffPropina.toStringAsFixed(2)} de propina entre las personas.'
+              : 'La propina repartida excede en S/ ${(-diffPropina).toStringAsFixed(2)} al total (S/ ${_propinaTotal.toStringAsFixed(2)}).',
+          type: ToastType.warning,
+        );
+        return;
+      }
+    }
+
+    // Inicializar los comprobantes (solo consumo, sin propina) y pagos (consumo + propina)
     for (var i = 0; i < _pagadores.length; i++) {
       final p = _pagadores[i];
-      final monto = _montoPagador(i);
+      final consumo = _montoPagador(i);
+      final totalCobrar = _totalConPropina(i);
       final items = _itemsConsumidos(i);
 
       if (_admiteComprobante) {
         p.comprobante?.dispose();
-        final c = ComprobanteEnCobro(monto, tipoInicial: 'ticket_venta');
+        final c = ComprobanteEnCobro(consumo, tipoInicial: 'ticket_venta');
         c.inicializarConItems(
           pedido: widget.pedido,
           items: items,
-          totalObjetivo: monto,
+          totalObjetivo: consumo,
         );
         c.addListener(() {
           if (mounted) setState(() {});
@@ -305,11 +355,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
         p.comprobante = c;
       }
 
-      // Reiniciar monto del primer pago al total de la persona
+      // Reiniciar monto del primer pago al total (consumo + propina) de la persona
       if (p.pagos.isEmpty) {
         p.pagos.add(_FilaPago(_medioInicial));
       }
-      p.pagos.first.monto.text = monto.toStringAsFixed(2);
+      p.pagos.first.monto.text = totalCobrar.toStringAsFixed(2);
       // Eliminar filas adicionales que pudieran haber quedado
       while (p.pagos.length > 1) {
         p.pagos.removeLast().monto.dispose();
@@ -321,7 +371,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
   bool _pagadorValido(int i) {
     final p = _pagadores[i];
-    final montoDebe = _montoPagador(i);
+    final montoDebe = _totalConPropina(i);
     final diff = (montoDebe - p.totalPagos).abs();
     if (diff > 0.01) return false;
 
@@ -364,10 +414,21 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
     final List<String> errores = [];
     final List<Comprobante> comprobantesEmitidos = [];
 
+    // Limpiar la propina global pendiente del pedido para que PagoService no la
+    // sume automáticamente al primer pago; cada pago enviará su propina asignada.
+    final propinaPendienteOriginal = propinaPendienteDePedido(widget.pedido.id);
+    if (propinaPendienteOriginal > 0.005) {
+      establecerPropinaPedido(widget.pedido.id, 0);
+    }
+    var pagosRegistrados = 0;
+
     try {
       for (var i = 0; i < totalPagadores; i++) {
         final p = _pagadores[i];
         final unidadesP = _unidadesDePagador(i);
+        final consumoPersona = _r2(_montoPagador(i));
+        final propinaPersona = _propinaPagador(i);
+        final totalPersona = _r2(consumoPersona + propinaPersona);
 
         // Agrupar items de este pagador para enviar en pago_detalle
         final Map<String, ({String pedidoDetalleId, double monto, int cant})> agrupados = {};
@@ -396,15 +457,46 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                 })
             .toList();
 
-        String? primerPagoId;
-        for (var k = 0; k < p.pagos.length; k++) {
-          final fila = p.pagos[k];
-          final montoFila = _r2(double.tryParse(fila.monto.text.trim()) ?? 0.0);
-          if (montoFila <= 0.005) continue;
+        final filasActivas = <({ _FilaPago fila, double monto })>[];
+        for (final f in p.pagos) {
+          final m = _r2(double.tryParse(f.monto.text.trim()) ?? 0.0);
+          if (m > 0.005) {
+            filasActivas.add((fila: f, monto: m));
+          }
+        }
 
-          // Asignar exactamente `montoFila` de las líneas pendientes de este comensal
+        String? primerPagoId;
+        var consumoRestante = consumoPersona;
+        var propinaRestante = propinaPersona;
+
+        for (var idx = 0; idx < filasActivas.length; idx++) {
+          final fila = filasActivas[idx].fila;
+          final montoFila = filasActivas[idx].monto;
+          final esUltima = idx == filasActivas.length - 1;
+
+          late final double abonoConsumo;
+          late final double propinaFila;
+          if (propinaPersona <= 0.005) {
+            abonoConsumo = montoFila;
+            propinaFila = 0.0;
+          } else if (esUltima) {
+            abonoConsumo = _r2(consumoRestante);
+            propinaFila = _r2(propinaRestante);
+          } else {
+            var prop = totalPersona > 0
+                ? _r2(montoFila * (consumoPersona / totalPersona))
+                : montoFila;
+            if (prop < 0.01 && consumoRestante >= 0.01) prop = 0.01;
+            if (prop > consumoRestante) prop = _r2(consumoRestante);
+            abonoConsumo = prop;
+            propinaFila = _r2(montoFila - abonoConsumo);
+            consumoRestante = _r2(consumoRestante - abonoConsumo);
+            propinaRestante = _r2(propinaRestante - propinaFila);
+          }
+
+          // Asignar exactamente `abonoConsumo` de las líneas pendientes de este comensal
           final detallesFila = <Map<String, dynamic>>[];
-          var porCubrir = montoFila;
+          var porCubrir = abonoConsumo;
           for (final item in pendientes) {
             if (porCubrir <= 0.001) break;
             final disp = item['restante'] as double;
@@ -431,17 +523,19 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
           final reg = await PagoService.instance.registrar(
             pedido: widget.pedido,
             medio: fila.medio,
-            montoAbonado: montoFila,
+            montoAbonado: abonoConsumo,
+            propina: propinaFila > 0.005 ? propinaFila : 0.0,
             pagador: nombrePagador,
             categoriaMovimientoId: _categoriaSeleccionada?.id,
             montoRecibido: rec > 0.005 ? rec : null,
             vuelto: vto > 0.005 ? vto : null,
             detalles: detallesFila.isNotEmpty ? detallesFila : null,
           );
+          pagosRegistrados++;
           primerPagoId ??= reg.id;
         }
 
-        // Emisión de comprobante electrónico (Boleta / Factura)
+        // Emisión de comprobante electrónico (Boleta / Factura) solo por el consumo
         if (p.comprobante != null && p.comprobante!.emite && primerPagoId != null) {
           try {
             final c = await p.comprobante!.emitir(widget.pedido, pagoId: primerPagoId);
@@ -462,6 +556,11 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
       if (!mounted) return;
 
+      final avisoPropina = PagoService.instance.avisoPropina;
+      if (avisoPropina != null && avisoPropina.isNotEmpty) {
+        errores.add(avisoPropina);
+      }
+
       if (errores.isNotEmpty) {
         showAppToast(
           context,
@@ -481,6 +580,9 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
 
       Navigator.of(context).pop(true);
     } catch (e) {
+      if (pagosRegistrados == 0 && propinaPendienteOriginal > 0.005) {
+        establecerPropinaPedido(widget.pedido.id, propinaPendienteOriginal);
+      }
       if (!mounted) return;
       setState(() => _guardando = false);
       showAppToast(
@@ -613,9 +715,18 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'S/ ${_montoPagador(i).toStringAsFixed(2)}',
+                        'S/ ${_totalConPropina(i).toStringAsFixed(2)}',
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                       ),
+                      if (_propinaPagador(i) > 0.005)
+                        Text(
+                          '+S/ ${_propinaPagador(i).toStringAsFixed(2)} prop.',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -623,6 +734,128 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
             ],
           ],
         ),
+        if (_propinaTotal > 0.005) ...[
+          const SizedBox(height: 14),
+          Builder(builder: (context) {
+            final asignada = _propinaAsignadaTotal;
+            final diff = _r2(_propinaTotal - asignada);
+            final completa = diff.abs() <= 0.01;
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: completa
+                      ? AppColors.primaryGreen.withValues(alpha: 0.5)
+                      : Colors.amber.shade300,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.banknote, size: 16, color: Colors.amber.shade900),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Propina a repartir: S/ ${_propinaTotal.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _repartirPropinaEquitativa,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text(
+                          'Repartir igual',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: completa
+                              ? AppColors.primaryGreen.withValues(alpha: 0.12)
+                              : Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          completa
+                              ? 'Completa'
+                              : (diff > 0
+                                  ? 'Falta S/ ${diff.toStringAsFixed(2)}'
+                                  : 'Excede S/ ${(-diff).toStringAsFixed(2)}'),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: completa
+                                ? AppColors.primaryGreenDark
+                                : Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  for (var i = 0; i < _cantPersonas; i++) ...[
+                    if (i > 0) const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _avatar(i, tam: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 5,
+                          child: Text(
+                            _pagadores[i].nombre.text.trim().isEmpty
+                                ? _nombreDefecto(i)
+                                : _pagadores[i].nombre.text.trim(),
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 120,
+                          height: 36,
+                          child: CampoTexto(
+                            controller: _pagadores[i].propinaCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              prefixText: 'S/ ',
+                              hintText: '0.00',
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
         const SizedBox(height: 16),
         const Text(
           'ASIGNAR CADA PLATO A QUIEN LO CONSUMIÓ',
@@ -723,7 +956,9 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
   // ---------------------------------------------------------------------------
   Widget _buildPasoCobroPersona(int index) {
     final p = _pagadores[index];
-    final montoDebe = _montoPagador(index);
+    final consumoPersona = _montoPagador(index);
+    final propinaPersona = _propinaPagador(index);
+    final montoDebe = _totalConPropina(index);
     final diff = montoDebe - p.totalPagos;
     final cuadra = diff.abs() <= 0.01;
     final esUltimo = index == _cantPersonas - 1;
@@ -773,7 +1008,7 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'S/ ${_montoPagador(i).toStringAsFixed(2)}',
+                          'S/ ${_totalConPropina(i).toStringAsFixed(2)}',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -867,6 +1102,28 @@ class _PagoCompartidoDialogState extends State<PagoCompartidoDialog> {
                     ],
                   ),
                 ),
+              if (propinaPersona > 0.005) ...[
+                const SizedBox(height: 4),
+                Divider(height: 1, color: _colorDe(index).withValues(alpha: 0.15)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'Consumo (SUNAT): S/ ${consumoPersona.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '+ Propina: S/ ${propinaPersona.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
