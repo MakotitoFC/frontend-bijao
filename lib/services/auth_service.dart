@@ -36,9 +36,10 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     final jsonStr = prefs.getString(_prefUserSession);
     if (jsonStr != null && ApiClient.instance.hasToken) {
+      Usuario? cachedUser;
       try {
         final map = jsonDecode(jsonStr);
-        final user = Usuario.fromJson(map);
+        cachedUser = Usuario.fromJson(map);
 
         // Validar token y verificar si el usuario sigue activo en la base de datos
         final me = await ApiClient.instance.get('/api/auth/me');
@@ -50,8 +51,15 @@ class AuthService {
           return freshUser;
         }
       } catch (e) {
-        debugPrint('[AUTH] Sesión no válida o usuario inactivo: $e');
-        await logout();
+        debugPrint('[AUTH] Error validando sesión en restoreSession: $e');
+        if (e is ApiException && e.statusCode == 401) {
+          await logout();
+        } else if (cachedUser != null) {
+          // Error temporal de red / 500 / timeout: conservar sesión local en caché
+          await cargarBorradorGuardado(cachedUser.id);
+          userNotifier.value = cachedUser;
+          return cachedUser;
+        }
       }
     }
     userNotifier.value = null;

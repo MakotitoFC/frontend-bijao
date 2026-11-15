@@ -304,11 +304,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   Future<void> _cargar() async {
     await PedidoService.instance.cargarPedidos();
-    if (CajaService.instance.enServidor) {
-      try {
-        await CajaService.instance.cargarEstado();
-      } catch (_) {}
-    }
     // Para saber qué mesas siguen ocupadas (notificación "Mesas por liberar").
     if (PedidoMozoService.instance.activo) {
       await TraspasoService.instance.cargar();

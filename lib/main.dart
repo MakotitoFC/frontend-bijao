@@ -41,8 +41,10 @@ void main() async {
 
   await ApiClient.instance.initialize();
   await config.cargar();
-  await cargarDescuentosGuardados();
   await AuthService.instance.restoreSession();
+  if (AuthService.instance.isAuthenticated) {
+    await cargarDescuentosGuardados();
+  }
   runApp(const MyApp());
 }
 

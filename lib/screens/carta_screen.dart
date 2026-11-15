@@ -475,10 +475,7 @@ class _CartaScreenState extends State<CartaScreen> {
                           style: TextStyle(color: Colors.grey.shade500),
                         ),
                       )
-                    : SingleChildScrollView(
-                        padding: EdgeInsets.all(margen),
-                        child: _grilla(items, esMobile),
-                      ),
+                    : _grilla(items, esMobile, margen),
               ),
             ],
           );
@@ -487,42 +484,42 @@ class _CartaScreenState extends State<CartaScreen> {
     );
   }
 
-  // 3 columnas en escritorio, 1 en mobile.
-  Widget _grilla(List<CartaItem> items, bool esMobile) {
+  // 3 columnas en escritorio, 1 en mobile, virtualizado con ListView.builder para 178+ platos.
+  Widget _grilla(List<CartaItem> items, bool esMobile, double margen) {
     const espacio = 20.0;
     final columnas = esMobile ? 1 : 3;
-    final filas = <Widget>[];
-    for (var i = 0; i < items.length; i += columnas) {
-      final fin = (i + columnas > items.length) ? items.length : i + columnas;
-      final grupo = items.sublist(i, fin);
-      filas.add(
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var j = 0; j < columnas; j++) ...[
-                if (j > 0) const SizedBox(width: espacio),
-                Expanded(
-                  child: j < grupo.length
-                      ? KeyedSubtree(
-                          key: ValueKey(grupo[j].id),
-                          child: _tarjetaPlato(grupo[j]),
-                        )
-                      : const SizedBox.shrink(),
-                ),
+    final totalFilas = (items.length + columnas - 1) ~/ columnas;
+    return ListView.builder(
+      padding: EdgeInsets.all(margen),
+      itemCount: totalFilas,
+      itemBuilder: (context, filaIdx) {
+        final inicio = filaIdx * columnas;
+        final fin = (inicio + columnas > items.length)
+            ? items.length
+            : inicio + columnas;
+        final grupo = items.sublist(inicio, fin);
+        return Padding(
+          padding: EdgeInsets.only(top: filaIdx > 0 ? espacio : 0),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var j = 0; j < columnas; j++) ...[
+                  if (j > 0) const SizedBox(width: espacio),
+                  Expanded(
+                    child: j < grupo.length
+                        ? KeyedSubtree(
+                            key: ValueKey(grupo[j].id),
+                            child: _tarjetaPlato(grupo[j]),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        for (var i = 0; i < filas.length; i++) ...[
-          if (i > 0) const SizedBox(height: espacio),
-          filas[i],
-        ],
-      ],
+        );
+      },
     );
   }
 

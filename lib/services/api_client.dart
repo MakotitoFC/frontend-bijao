@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -27,7 +28,7 @@ class ApiClient {
   String? _jwtToken;
   String? _refreshToken;
   late String _baseUrl = _getDefaultBaseUrl();
-  bool _isRefreshing = false;
+  Completer<bool>? _refreshCompleter;
 
   void Function(String message)? onSessionExpired;
 
@@ -126,10 +127,15 @@ class ApiClient {
   }
 
   Future<bool> _tryRefreshToken() async {
-    if (_refreshToken == null || _refreshToken!.isEmpty || _isRefreshing) {
+    if (_refreshToken == null || _refreshToken!.isEmpty) {
       return false;
     }
-    _isRefreshing = true;
+    if (_refreshCompleter != null) {
+      return _refreshCompleter!.future;
+    }
+    final completer = Completer<bool>();
+    _refreshCompleter = completer;
+    var ok = false;
     try {
       final uri = _buildUri('/api/auth/refresh');
       final resp = await http
@@ -148,15 +154,18 @@ class ApiClient {
           final newRefresh =
               decoded['refresh_token']?.toString() ?? _refreshToken;
           await setToken(newAccess, newRefresh);
-          _isRefreshing = false;
-          return true;
+          ok = true;
         }
       }
     } catch (e) {
       debugPrint('[ApiClient] Error refrescando token: $e');
+    } finally {
+      _refreshCompleter = null;
+      if (!completer.isCompleted) {
+        completer.complete(ok);
+      }
     }
-    _isRefreshing = false;
-    return false;
+    return ok;
   }
 
   Future<dynamic> _processResponse(

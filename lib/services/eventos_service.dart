@@ -158,12 +158,12 @@ class EventosService {
     if (evento.nombre == 'conexion_establecida') {
       _intentos = 0;
       conectado.value = true;
-      // Pudo haber cambios mientras no había conexión: se lee todo una vez.
+      // Pudo haber cambios mientras no había conexión: se sincronizan pedidos,
+      // mesas y disponibilidad (la carta completa solo se recarga ante CARTA_ACTUALIZADA).
       _pendientes = const AccionesDeEvento(
         pedidos: true,
         mesas: true,
         stock: true,
-        carta: true,
       );
       _agendar();
       return;

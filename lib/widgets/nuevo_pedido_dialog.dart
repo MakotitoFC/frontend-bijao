@@ -1226,25 +1226,56 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
             : (c.maxWidth >= 520 ? 3 : (c.maxWidth >= 280 ? 2 : 1));
         final util = todoEnScroll ? c.maxWidth : c.maxWidth - 14;
         final ancho = (util - espacio * (columnas - 1)) / columnas;
-        final tarjetas = Wrap(
-          spacing: espacio,
-          runSpacing: espacio,
-          children: [
-            for (final p in productos)
-              SizedBox(
-                width: ancho,
-                child: _tarjetaProducto(p, horizontal: columnas == 1),
-              ),
-          ],
-        );
-        if (todoEnScroll) return tarjetas;
+        if (todoEnScroll) {
+          return Wrap(
+            spacing: espacio,
+            runSpacing: espacio,
+            children: [
+              for (final p in productos)
+                SizedBox(
+                  width: ancho,
+                  child: _tarjetaProducto(p, horizontal: columnas == 1),
+                ),
+            ],
+          );
+        }
+        final totalFilas = (productos.length + columnas - 1) ~/ columnas;
         return IndicadorAbajo(
           controller: _scrollGrilla,
           conFlecha: false,
-          builder: (ctl) => SingleChildScrollView(
+          builder: (ctl) => ListView.builder(
             controller: ctl,
             padding: const EdgeInsets.only(right: 14, bottom: 8),
-            child: tarjetas,
+            itemCount: totalFilas,
+            itemBuilder: (context, filaIdx) {
+              final inicio = filaIdx * columnas;
+              final fin = (inicio + columnas > productos.length)
+                  ? productos.length
+                  : inicio + columnas;
+              return Padding(
+                padding: EdgeInsets.only(top: filaIdx > 0 ? espacio : 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var j = 0; j < columnas; j++) ...[
+                      if (j > 0) const SizedBox(width: espacio),
+                      SizedBox(
+                        width: ancho,
+                        child: (inicio + j < fin)
+                            ? KeyedSubtree(
+                                key: ValueKey(productos[inicio + j].id),
+                                child: _tarjetaProducto(
+                                  productos[inicio + j],
+                                  horizontal: columnas == 1,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
         );
       },

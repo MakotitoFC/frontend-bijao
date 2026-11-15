@@ -22,22 +22,47 @@ class CronometroPedido extends StatefulWidget {
   State<CronometroPedido> createState() => CronometroPedidoState();
 }
 
+class _RelojGlobalCronometro {
+  static final ValueNotifier<int> tick = ValueNotifier<int>(0);
+  static Timer? _timer;
+  static int _suscriptores = 0;
+
+  static void suscribir() {
+    _suscriptores++;
+    _timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      tick.value++;
+    });
+  }
+
+  static void desuscribir() {
+    _suscriptores--;
+    if (_suscriptores <= 0) {
+      _suscriptores = 0;
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+}
+
 class CronometroPedidoState extends State<CronometroPedido> {
-  Timer? _timer;
   // Si el pedido terminó y no sabemos cuándo, se congela al verlo terminado.
   DateTime? _congeladoEn;
+
+  void _alTick() {
+    if (mounted && !widget.pedido.terminado) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && !widget.pedido.terminado) setState(() {});
-    });
+    _RelojGlobalCronometro.suscribir();
+    _RelojGlobalCronometro.tick.addListener(_alTick);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _RelojGlobalCronometro.tick.removeListener(_alTick);
+    _RelojGlobalCronometro.desuscribir();
     super.dispose();
   }
 

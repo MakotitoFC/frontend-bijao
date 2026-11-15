@@ -69,16 +69,20 @@ class CajaService {
       throw Exception('El servidor no devolvió el estado de la caja');
     }
     var estado = EstadoCaja.fromJson(res);
-    final t = await cargarTotales(
-      aperturaId: aperturaId ?? (estado.abierta ? estado.apertura?.id : null),
-      fechaOperativa: fechaOperativa,
-    );
-    if (t != null) {
-      estado = EstadoCaja(
-        abierta: estado.abierta,
-        apertura: estado.apertura,
-        totales: t,
+    if (aperturaId != null ||
+        fechaOperativa != null ||
+        estado.totales == null) {
+      final t = await cargarTotales(
+        aperturaId: aperturaId ?? (estado.abierta ? estado.apertura?.id : null),
+        fechaOperativa: fechaOperativa,
       );
+      if (t != null) {
+        estado = EstadoCaja(
+          abierta: estado.abierta,
+          apertura: estado.apertura,
+          totales: t,
+        );
+      }
     }
     estadoCajaServidor = estado;
     return estado;
