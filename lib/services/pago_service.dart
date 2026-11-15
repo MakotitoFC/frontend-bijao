@@ -93,6 +93,7 @@ class PagoService {
     required MedioPago medio,
     required double montoAbonado,
     double propina = 0,
+    double montoDelivery = 0,
     bool usarPropinaPendiente = true,
     String? pagador,
     String? categoriaMovimientoId,
@@ -149,6 +150,7 @@ class PagoService {
         'medio_pago_id': medio.id,
         'monto_abonado': abono,
         'propina': propinaAEnviar,
+        if (montoDelivery > 0.005) 'monto_delivery': montoDelivery,
         if (pagador != null && pagador.isNotEmpty) 'pagador': pagador,
         if (categoriaMovimientoId != null &&
             UuidHelper.isValid(categoriaMovimientoId))

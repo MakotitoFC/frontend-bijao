@@ -697,7 +697,19 @@ class DetallePedidoPanel extends StatelessWidget {
 
   Future<void> _dividirCuenta(BuildContext context) async {
     if (!await _hayMediosPago(context)) return;
+    try {
+      await PagoService.instance.cargarDePedido(pedido);
+    } catch (_) {}
     if (!context.mounted) return;
+    if (saldoCuentaDePedido(pedido.id) <= 0.01) {
+      showAppToast(
+        context,
+        'Este pedido ya no tiene saldo pendiente por cobrar.',
+        type: ToastType.info,
+      );
+      onCambio();
+      return;
+    }
     final r = await showBlurDialog<Object>(
       context: context,
       builder: (_) => PagoCompartidoDialog(
