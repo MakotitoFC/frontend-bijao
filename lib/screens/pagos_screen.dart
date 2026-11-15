@@ -2037,6 +2037,7 @@ class _CajaScreenState extends State<CajaScreen> {
               numPedidos: numPedidos,
               ingresos: ingresos,
               salidas: salidas,
+              efectivoEsperadoServidor: srv?.efectivoEsperado,
             ),
             const SizedBox(height: 16),
             _panelMedios(filasVistas),
@@ -3106,18 +3107,25 @@ class _CajaScreenState extends State<CajaScreen> {
     required int numPedidos,
     required double ingresos,
     required double salidas,
+    double? efectivoEsperadoServidor,
   }) {
     final montoApertura = apertura?.montoInicial ?? 0.0;
     final totalIngresos = ventas + ingresos;
     final totalEgresos = salidas;
 
-    final totalEfectivo = filas
-        .where(
-          (f) =>
-              f.grupo.toLowerCase() == 'efectivo' ||
-              f.medio.toLowerCase().contains('efectivo'),
-        )
-        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+    final filasEfectivo = filas.where(
+      (f) =>
+          f.grupo.toLowerCase() == 'efectivo' ||
+          f.medio.toLowerCase().contains('efectivo'),
+    );
+    final totalEfectivo = filasEfectivo.fold(
+      0.0,
+      (s, f) => s + f.ventas + f.ingresos,
+    );
+    final salidasEfectivo = filasEfectivo.fold(
+      0.0,
+      (s, f) => s + f.egresos,
+    );
     final totalTarjeta = filas
         .where(
           (f) =>
@@ -3128,12 +3136,12 @@ class _CajaScreenState extends State<CajaScreen> {
                       !f.medio.toLowerCase().contains('plin') &&
                       f.grupo.toLowerCase() != 'digital')),
         )
-        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+        .fold(0.0, (s, f) => s + f.neto);
     // Lo descontado de planilla o cobrado a crédito: se muestra aparte y no
     // cuenta como tarjeta.
     final totalCredito = filas
         .where(_esCredito)
-        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+        .fold(0.0, (s, f) => s + f.neto);
     final totalDigital = filas
         .where(
           (f) =>
@@ -3141,9 +3149,13 @@ class _CajaScreenState extends State<CajaScreen> {
               f.medio.toLowerCase().contains('yape') ||
               f.medio.toLowerCase().contains('plin'),
         )
-        .fold(0.0, (s, f) => s + f.ventas + f.ingresos);
+        .fold(0.0, (s, f) => s + f.neto);
 
-    final neto = montoApertura + totalEfectivo - totalEgresos;
+    final neto = efectivoEsperadoServidor ??
+        (montoApertura + totalEfectivo - salidasEfectivo);
+    final salidasOtros = totalEgresos > salidasEfectivo
+        ? totalEgresos - salidasEfectivo
+        : 0.0;
 
     // Celular: el neto como cifra principal, ingresos y egresos en una fila y los
     // medios de pago juntos en una sola tarjeta (en vez de siete tarjetas
@@ -3152,7 +3164,7 @@ class _CajaScreenState extends State<CajaScreen> {
       return _resumenCajaMovil(
         apertura: montoApertura,
         ingresos: totalIngresos,
-        egresos: totalEgresos,
+        egresos: salidasEfectivo,
         neto: neto,
         efectivo: totalEfectivo,
         tarjeta: totalTarjeta,
@@ -3192,8 +3204,10 @@ class _CajaScreenState extends State<CajaScreen> {
         AppColors.error,
         const Color(0xFFFDECEC),
         'Egresos',
-        totalEgresos,
-        'Salidas de caja',
+        salidasEfectivo,
+        salidasOtros > 0.004
+            ? 'Salidas efec. · Otros: ${_soles(salidasOtros)}'
+            : 'Salidas en efectivo',
       ),
       _tarjetaCaja(
         LucideIcons.wallet,
@@ -3201,7 +3215,7 @@ class _CajaScreenState extends State<CajaScreen> {
         const Color(0xFFF3EEFF),
         'Neto',
         neto,
-        'Apertura + Ingresos - Egresos',
+        'Apertura + ing. efec. − egr. efec.',
       ),
       _tarjetaCaja(
         LucideIcons.dollarSign,
