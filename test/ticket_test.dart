@@ -122,7 +122,7 @@ void main() {
           mozo: 'Joel',
         ),
       );
-      expect(delivery, contains('TIPO: >> DELIVERY <<'));
+      expect(delivery, contains('TIPO: DELIVERY'));
       final llevar = _texto(
         ticketComanda(
           pedido: _pedido(tipo: 'llevar'),
@@ -131,7 +131,7 @@ void main() {
           reimpresion: true,
         ),
       );
-      expect(llevar, contains('TIPO: >> PARA LLEVAR <<'));
+      expect(llevar, contains('TIPO: PARA LLEVAR'));
       expect(llevar, contains('*** REIMPRESION ***'));
     });
 

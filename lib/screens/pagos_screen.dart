@@ -48,6 +48,7 @@ import '../widgets/movimiento_caja_dialog.dart';
 import '../widgets/app_select.dart';
 import '../widgets/selector_rango_fechas.dart';
 import '../widgets/selector_dia.dart';
+import '../widgets/selector_dia_turnos.dart';
 import '../widgets/tabla_app.dart';
 import '../widgets/tabs_texto.dart';
 import '../widgets/categorias_movimiento_dialog.dart';
@@ -1920,123 +1921,15 @@ class _CajaScreenState extends State<CajaScreen> {
     );
   }
 
-  Widget _selectorDiaYTurnos() {
-    final m = _dia.month.toString().padLeft(2, '0');
-    final d = _dia.day.toString().padLeft(2, '0');
-    final fStr = '${_dia.year}-$m-$d';
-
-    return Container(
-      decoration: _panel,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(LucideIcons.calendar, size: 18, color: AppColors.primaryGreen),
-                  const SizedBox(width: 8),
-                  SelectorDia(
-                    dia: _dia,
-                    onChanged: (d) => _cambiarDia(d),
-                  ),
-                  if (!_esHoy) ...[
-                    const SizedBox(width: 8),
-                    ActionChip(
-                      avatar: const Icon(LucideIcons.arrowRight, size: 14),
-                      label: const Text('Volver a Hoy'),
-                      onPressed: () => _cambiarDia(DateTime.now()),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-          if (_aperturasDia.isNotEmpty || _esHoy) ...[
-            const SizedBox(height: 10),
-            Divider(height: 1, color: Colors.grey.shade200),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  'Turnos del día:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                for (int i = 0; i < _aperturasDia.length; i++) ...[
-                  Builder(
-                    builder: (context) {
-                      final ap = _aperturasDia[i];
-                      final esSel = _aperturaSeleccionadaId == ap.id;
-                      final esActiva = ap.abierta;
-                      return ChoiceChip(
-                        avatar: Icon(
-                          esActiva ? LucideIcons.lockOpen : LucideIcons.lock,
-                          size: 13,
-                          color: esSel ? Colors.white : (esActiva ? AppColors.primaryGreen : Colors.grey.shade600),
-                        ),
-                        label: Text(
-                          '${ap.turnoNombre ?? "Turno ${i + 1}"}${esActiva ? " (En curso)" : ""}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: esSel ? FontWeight.w700 : FontWeight.w500,
-                          ),
-                        ),
-                        selected: esSel,
-                        selectedColor: AppColors.primaryGreen,
-                        labelStyle: TextStyle(color: esSel ? Colors.white : Colors.black87),
-                        onSelected: (sel) {
-                          if (sel) _seleccionarApertura(ap.id);
-                        },
-                      );
-                    },
-                  ),
-                ],
-                ChoiceChip(
-                  avatar: Icon(
-                    LucideIcons.calendarCheck,
-                    size: 13,
-                    color: _aperturaSeleccionadaId == null ? Colors.white : Colors.grey.shade600,
-                  ),
-                  label: Text(
-                    'Consolidado del día',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: _aperturaSeleccionadaId == null ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                  selected: _aperturaSeleccionadaId == null,
-                  selectedColor: AppColors.primaryGreen,
-                  labelStyle: TextStyle(
-                    color: _aperturaSeleccionadaId == null ? Colors.white : Colors.black87,
-                  ),
-                  onSelected: (sel) {
-                    if (sel) _seleccionarApertura(null);
-                  },
-                ),
-              ],
-            ),
-          ],
-          if (_cargandoDia) ...[
-            const SizedBox(height: 8),
-            const LinearProgressIndicator(minHeight: 2),
-          ],
-        ],
-      ),
-    );
-  }
+  Widget _selectorDiaYTurnos() => SelectorDiaYTurnos(
+    dia: _dia,
+    esHoy: _esHoy,
+    aperturas: _aperturasDia,
+    aperturaSeleccionadaId: _aperturaSeleccionadaId,
+    cargando: _cargandoDia,
+    onDia: _cambiarDia,
+    onApertura: _seleccionarApertura,
+  );
 
   Widget _vistaCaja(
     List<CierreCaja> cierres,

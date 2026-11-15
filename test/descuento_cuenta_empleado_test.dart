@@ -187,7 +187,7 @@ void main() {
       expect(etiquetaConsumoEspecial(p), isNull);
       expect(
         _texto(ticketComanda(pedido: p, lineas: [_agua], mozo: 'Alexis')),
-        contains('TIPO: >> DELIVERY <<'),
+        contains('TIPO: DELIVERY'),
       );
     });
 

@@ -176,9 +176,9 @@ String _lugarComanda(Pedido p) {
   if (consumo != null) return 'TIPO: $consumo';
   switch (p.tipoPedido) {
     case 'delivery':
-      return 'TIPO: >> DELIVERY <<';
+      return 'TIPO: DELIVERY';
     case 'llevar':
-      return 'TIPO: >> PARA LLEVAR <<';
+      return 'TIPO: PARA LLEVAR';
     default:
       final n = p.todasLasMesas.where((n) => n != 0);
       final numMesa = n.isNotEmpty ? n.first : 0;

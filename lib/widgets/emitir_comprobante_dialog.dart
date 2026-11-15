@@ -883,9 +883,9 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                       pedido.mozoNombre!.trim().isNotEmpty)
                     Text('Mozo:    ${pedido.mozoNombre!.trim()}'),
                   if (pedido.tipoPedido == 'delivery')
-                    const Text('TIPO:    >> DELIVERY <<')
+                    const Text('TIPO:    DELIVERY')
                   else if (pedido.tipoPedido == 'llevar')
-                    const Text('TIPO:    >> PARA LLEVAR (RECOJO EN LOCAL) <<')
+                    const Text('TIPO:    PARA LLEVAR (RECOJO EN LOCAL)')
                   else if (pedido.tipoPedido == 'mesa')
                     const Text('TIPO:    MESA (CONSUMO EN SALON)'),
                   const Divider(thickness: 1, height: 14),

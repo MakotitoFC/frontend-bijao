@@ -11,6 +11,7 @@ import '../models/utensilio_roto.dart';
 import '../services/auth_service.dart';
 import '../data/movimientos_caja_store.dart';
 import '../data/pagos_store.dart';
+import '../utils/desglose_cobro.dart';
 import '../utils/uuid_helper.dart';
 import '../data/pedidos_store.dart' show establecerPropinaPedido;
 import '../models/movimiento_caja.dart';
@@ -1804,7 +1805,15 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
     final propina = _propina;
     final taper = _taper;
     final cargos = _totalCargos;
-    final montoBase = _dividir ? _asignado - _sobraAplicable : _saldo;
+    // Cuenta y roturas tal como se muestran: las filas del resumen suman el
+    // total (por montos, lo cubierto ya incluye las roturas).
+    final desglose = desgloseCuentaYRoturas(
+      porMontos: _dividir,
+      asignado: _asignado,
+      sobraAplicable: _sobraAplicable,
+      saldo: _saldo,
+      cargos: cargos,
+    );
     final total =
         (_dividir ? _asignado - _sobraAplicable : (_saldo + cargos)) +
         _recargo +
@@ -1984,7 +1993,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             const SizedBox(height: 12),
             _filaMonto(
               (_dividir && !_repartoCompleto) ? 'Abono a cuenta' : 'Cuenta',
-              montoBase,
+              desglose.cuenta,
             ),
             if (_recargo > 0) ...[
               const SizedBox(height: 4),
@@ -2007,7 +2016,7 @@ class _PagarPedidoDialogState extends State<PagarPedidoDialog> {
             ],
             if (cargos > 0) ...[
               const SizedBox(height: 4),
-              _filaMonto('Roturas / alquiler', cargos, mas: true),
+              _filaMonto('Roturas / alquiler', desglose.roturas, mas: true),
             ],
             const SizedBox(height: 8),
             _filaMonto('Total a cobrar', total, fuerte: true),
