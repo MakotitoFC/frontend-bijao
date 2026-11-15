@@ -58,6 +58,8 @@ class MovimientoCaja {
   final bool editado;
   final String? pedidosId;
   final String? pagoId;
+  // Número diario del pedido ("0017"): reinicia cada día. Null si no es de un pedido.
+  final String? numeroPedido;
 
   const MovimientoCaja({
     required this.id,
@@ -75,6 +77,7 @@ class MovimientoCaja {
     this.editado = false,
     this.pedidosId,
     this.pagoId,
+    this.numeroPedido,
   });
 
   // Lo que suma (ingreso) o resta (salida) a la caja; 0 si está anulado.
@@ -96,6 +99,7 @@ class MovimientoCaja {
     final motivo = json['motivo_anulacion']?.toString();
     final pedId = json['pedidos_id']?.toString();
     final pId = json['pago_id']?.toString();
+    final numPed = json['numero_pedido']?.toString().replaceFirst('#', '');
     return MovimientoCaja(
       id: json['id']?.toString() ?? '',
       tipo: TipoMovimiento.deCodigo(json['tipo']?.toString()),
@@ -115,6 +119,7 @@ class MovimientoCaja {
       editado: json['editado'] == true || json['update_at'] != null,
       pedidosId: (pedId != null && pedId.isNotEmpty) ? pedId : null,
       pagoId: (pId != null && pId.isNotEmpty) ? pId : null,
+      numeroPedido: (numPed != null && numPed.isNotEmpty) ? numPed : null,
     );
   }
 
@@ -147,5 +152,6 @@ class MovimientoCaja {
     editado: editado ?? this.editado,
     pedidosId: pedidosId ?? this.pedidosId,
     pagoId: pagoId ?? this.pagoId,
+    numeroPedido: numeroPedido,
   );
 }

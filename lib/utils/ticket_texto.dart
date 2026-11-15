@@ -129,6 +129,14 @@ List<String> envolver(String texto, int ancho, {String sangria = ''}) {
   ];
 }
 
+/// " | Pedido #0017": el número diario del pedido, que se añade a la fila del
+/// mozo en los comprobantes. Vacío si el pedido aún no tiene un número válido.
+String sufijoNumeroPedido(Pedido p) {
+  final n = p.numeroPedido.trim();
+  if (n.isEmpty || n.length > 6 || int.tryParse(n) == null) return '';
+  return ' | Pedido #$n';
+}
+
 String _dosDigitos(int n) => n.toString().padLeft(2, '0');
 
 String fechaHoraTicket(DateTime d) =>
@@ -384,7 +392,7 @@ List<LineaTicket> ticketBoleta({
       LineaTicket('Cliente: ${cliente.isEmpty ? 'FAMILIA' : cliente} (Familia)')
     else
       LineaTicket('Cliente: ${cliente.isEmpty ? 'CLIENTES VARIOS' : cliente}'),
-    LineaTicket('Atendido por: $mozo'),
+    LineaTicket('Atendido por: $mozo${sufijoNumeroPedido(pedido)}'),
     LineaTicket('Atencion: ${pedido.ubicacion}'),
     if (etiquetaConsumoEspecial(pedido) case final consumo?)
       LineaTicket('TIPO: $consumo', negrita: true),

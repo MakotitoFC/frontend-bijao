@@ -156,7 +156,19 @@ void main() {
       final textos = t.map((l) => l.texto).toList();
       expect(textos, contains('Cliente: Maria (Mozo)'));
       expect(textos.any((x) => x.contains('SIN NOMBRE')), false);
-      expect(textos, contains('Atendido por: admin'));
+      expect(textos, contains('Atendido por: admin | Pedido #0007'));
+    });
+
+    test('la fila del mozo lleva el número del pedido tras " | "', () {
+      expect(sufijoNumeroPedido(_pedido()), ' | Pedido #0007');
+      expect(
+        sufijoNumeroPedido(_pedido().copyWith(numeroPedido: '')),
+        '',
+      );
+      expect(
+        sufijoNumeroPedido(_pedido().copyWith(numeroPedido: 'ABC-123456')),
+        '',
+      );
     });
 
     test('la cuenta sigue el orden: sede, título, datos, productos, SON, aclaración', () {

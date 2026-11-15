@@ -14,6 +14,7 @@ import '../services/pedido_mozo_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/monto_letras.dart';
+import '../utils/ticket_texto.dart' show sufijoNumeroPedido;
 import '../utils/abrir_enlace.dart';
 import '../utils/whatsapp_cuenta.dart';
 import 'app_toast.dart';
@@ -1159,7 +1160,9 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                     Text('Mesa:    ${pedido.mesaNumero} ($zonaStr)'),
                   if (pedido.mozoNombre != null &&
                       pedido.mozoNombre!.trim().isNotEmpty)
-                    Text('Mozo:    ${pedido.mozoNombre!.trim()}'),
+                    Text(
+                      'Mozo:    ${pedido.mozoNombre!.trim()}${sufijoNumeroPedido(pedido)}',
+                    ),
                   if (pedido.tipoPedido == 'delivery')
                     const Text('TIPO:    DELIVERY')
                   else if (pedido.tipoPedido == 'llevar')

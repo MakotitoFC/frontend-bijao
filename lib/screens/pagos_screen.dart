@@ -2618,6 +2618,13 @@ class _CajaScreenState extends State<CajaScreen> {
                                 : null,
                           ),
                         ),
+                        if (m.numeroPedido != null)
+                          EtiquetaFila(
+                            '#${m.numeroPedido}',
+                            color: m.anulado
+                                ? Colors.grey.shade500
+                                : AppColors.primaryGreen,
+                          ),
                         if (codigoDeRotura(m.nota) != null && !m.anulado)
                           EtiquetaFila(
                             esAbonoDeRotura(m.nota)
