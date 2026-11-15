@@ -5,6 +5,7 @@ import '../utils/json_num.dart';
 class Comprobante {
   final String id;
   final String pedidoId;
+  final String? pagoId;
   final String tipoDocumento; // 'boleta' | 'factura' | 'ticket_venta'
   final String numeroComprobante; // "B001-00000104"
   final String fechaEmision;
@@ -30,6 +31,7 @@ class Comprobante {
   const Comprobante({
     required this.id,
     required this.pedidoId,
+    this.pagoId,
     required this.tipoDocumento,
     required this.numeroComprobante,
     required this.fechaEmision,
@@ -70,6 +72,7 @@ class Comprobante {
     return Comprobante(
       id: j['id']?.toString() ?? '',
       pedidoId: j['pedidos_id']?.toString() ?? '',
+      pagoId: texto('pago_id'),
       tipoDocumento: j['tipo_documento']?.toString() ?? '',
       numeroComprobante: j['numero_comprobante']?.toString() ?? '',
       fechaEmision: j['fecha_emision']?.toString() ?? '',
@@ -108,6 +111,29 @@ class Comprobante {
   bool get rechazado => estadoSunat == 'RECHAZADO';
   // Los comprobantes rechazados no valen: no se anulan ni se imprimen.
   bool get puedeAnularse => !anulado && !rechazado;
+
+  /// Días calendario transcurridos desde la emisión (`fechaEmision`: YYYY-MM-DD).
+  int get diasDesdeEmision {
+    final emision = DateTime.tryParse(fechaEmision);
+    if (emision == null) return 0;
+    final hoy = DateTime.now();
+    final fEm = DateTime(emision.year, emision.month, emision.day);
+    final fHoy = DateTime(hoy.year, hoy.month, hoy.day);
+    final diff = fHoy.difference(fEm).inDays;
+    return diff < 0 ? 0 : diff;
+  }
+
+  /// SUNAT permite Comunicación de Baja / anulación directa hasta 7 días calendario
+  /// después de la emisión (y únicamente si el comprobante no fue entregado al cliente).
+  bool get admiteComunicacionBaja => esInterno || diasDesdeEmision <= 7;
+
+  /// Recomendación tributaria: emitir la Nota de Crédito dentro del mismo mes fiscal.
+  bool get notaCreditoEnMismoMes {
+    final emision = DateTime.tryParse(fechaEmision);
+    if (emision == null) return true;
+    final hoy = DateTime.now();
+    return emision.year == hoy.year && emision.month == hoy.month;
+  }
 
   String get estadoEtiqueta => switch (estadoSunat) {
     'ACEPTADO' => 'Aceptado',
