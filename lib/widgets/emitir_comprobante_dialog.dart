@@ -27,23 +27,42 @@ typedef EmisionHecha = ({Comprobante comprobante, bool imprimirDespues});
 
 class EmitirComprobanteDialog extends StatefulWidget {
   final Pedido pedido;
+  final String? pagoIdInicial;
+  final Comprobante? comprobanteOrigen;
 
-  const EmitirComprobanteDialog({super.key, required this.pedido});
+  const EmitirComprobanteDialog({
+    super.key,
+    required this.pedido,
+    this.pagoIdInicial,
+    this.comprobanteOrigen,
+  });
 
   @override
   State<EmitirComprobanteDialog> createState() =>
       _EmitirComprobanteDialogState();
 }
 
+typedef _CuentaPagador = ({
+  String pagoId,
+  List<String> pagoIds,
+  String nombre,
+  double total,
+});
+
 class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   late final ComprobanteEnCobro _eleccion = ComprobanteEnCobro(
     totalDePedido(widget.pedido.id),
-    tipoInicial: 'ticket_venta',
+    tipoInicial: widget.comprobanteOrigen != null &&
+            widget.comprobanteOrigen!.esFiscal
+        ? widget.comprobanteOrigen!.tipoDocumento
+        : 'ticket_venta',
   );
 
   bool _emitiendo = false;
+  bool _cargandoCuenta = false;
   String? _error;
   int _tabIndex = 0; // 0: Formulario e Ítems, 1: Vista Previa Fiscal en Vivo
+  String? _pagoIdSeleccionado;
 
   List<Comprobante> _comprobantes = [];
   bool _cargandoComprobantes = true;
@@ -51,27 +70,161 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
   @override
   void initState() {
     super.initState();
+    _pagoIdSeleccionado =
+        widget.pagoIdInicial ?? widget.comprobanteOrigen?.pagoId;
     _eleccion.addListener(() {
       if (mounted) setState(() {});
     });
     _cargarComprobantes();
-    _eleccion.asegurarInicializado(widget.pedido);
+    if (widget.comprobanteOrigen != null || _pagoIdSeleccionado != null) {
+      _seleccionarCuenta(
+        _pagoIdSeleccionado,
+        origen: widget.comprobanteOrigen,
+      );
+    } else {
+      _eleccion.asegurarInicializado(widget.pedido);
+    }
   }
 
   Future<void> _cargarComprobantes() async {
     setState(() => _cargandoComprobantes = true);
     try {
-      final lista = await FacturacionService.instance.listar(
-        pedidoId: widget.pedido.id,
-      );
-      if (mounted) {
-        setState(() {
+      await Future.wait([
+        FacturacionService.instance
+            .listar(pedidoId: widget.pedido.id)
+            .then((lista) {
           _comprobantes = lista;
-          _cargandoComprobantes = false;
-        });
+        }),
+        PagoService.instance
+            .cargarDePedido(widget.pedido)
+            .catchError((_) => <dynamic>[]),
+      ]);
+      if (mounted) {
+        setState(() => _cargandoComprobantes = false);
       }
     } catch (_) {
       if (mounted) setState(() => _cargandoComprobantes = false);
+    }
+  }
+
+  List<_CuentaPagador> get _cuentasPagadores {
+    final delPedido = pagos
+        .where((p) => p.pedidoId == widget.pedido.id && !p.esReembolso && !p.anulado)
+        .toList()
+      ..sort((a, b) => a.fechaPago.compareTo(b.fechaPago));
+    if (delPedido.isEmpty) return const [];
+    final Map<String, _CuentaPagador> grupos = {};
+    for (final p in delPedido) {
+      final nom = (p.pagador ?? '').trim();
+      final key = nom.isNotEmpty ? nom.toLowerCase() : p.id;
+      final label = nom.isNotEmpty ? nom : 'Pago ${grupos.length + 1}';
+      final actual = grupos[key];
+      if (actual == null) {
+        grupos[key] = (
+          pagoId: p.id,
+          pagoIds: [p.id],
+          nombre: label,
+          total: p.montoAbonado,
+        );
+      } else {
+        grupos[key] = (
+          pagoId: actual.pagoId,
+          pagoIds: [...actual.pagoIds, p.id],
+          nombre: actual.nombre,
+          total: actual.total + p.montoAbonado,
+        );
+      }
+    }
+    return grupos.values.toList();
+  }
+
+  Future<void> _seleccionarCuenta(String? pagoId, {Comprobante? origen}) async {
+    setState(() {
+      _pagoIdSeleccionado = pagoId;
+      _cargandoCuenta = pagoId != null;
+      _error = null;
+    });
+
+    if (origen != null) {
+      if (origen.esFiscal) {
+        _eleccion.tipo = origen.tipoDocumento;
+      }
+      if (origen.tipoDocumento == 'factura') {
+        _eleccion.ruc.text = origen.clienteNumDoc;
+        _eleccion.razon.text = origen.clienteDenominacion;
+      } else if (origen.tipoDocumento == 'boleta') {
+        final tieneDni =
+            origen.clienteTipoDoc == '1' && origen.clienteNumDoc.length == 8;
+        _eleccion.conDni = tieneDni;
+        _eleccion.dni.text = tieneDni ? origen.clienteNumDoc : '';
+        _eleccion.nombre.text = origen.clienteDenominacion == 'CLIENTES VARIOS'
+            ? ''
+            : origen.clienteDenominacion;
+      }
+    }
+
+    if (pagoId == null) {
+      _eleccion.asegurarInicializado(widget.pedido, forzar: true);
+      if (mounted) setState(() => _cargandoCuenta = false);
+      return;
+    }
+
+    try {
+      final datos = await FacturacionService.instance.obtenerDatosFacturacion(
+        widget.pedido.id,
+        pagoId: pagoId,
+      );
+      if (!mounted) return;
+      final rawItems = (datos['items'] as List?) ?? const [];
+      final items = <Map<String, dynamic>>[
+        for (final it in rawItems)
+          if (it is Map)
+            {
+              'nombre': (it['nombre'] ?? 'Plato').toString(),
+              'cantidad': (it['cantidad'] is num)
+                  ? (it['cantidad'] as num).toInt()
+                  : (int.tryParse(it['cantidad']?.toString() ?? '1') ?? 1),
+              'precio_unitario':
+                  double.tryParse(it['precio_unitario']?.toString() ?? '0') ??
+                      0.0,
+              'subtotal':
+                  double.tryParse(it['subtotal']?.toString() ?? '0') ?? 0.0,
+            },
+      ];
+      final deliv =
+          double.tryParse(datos['costo_delivery']?.toString() ?? '0') ?? 0.0;
+      if (deliv > 0.005) {
+        items.add({
+          'nombre': 'Servicio Delivery',
+          'cantidad': 1,
+          'precio_unitario': deliv,
+          'subtotal': deliv,
+        });
+      }
+      final recargo =
+          double.tryParse(datos['recargo_tarjeta']?.toString() ?? '0') ?? 0.0;
+      final totalItems = items.fold<double>(
+        0.0,
+        (s, x) => s + ((x['subtotal'] as num?)?.toDouble() ?? 0.0),
+      );
+      final totalPagado =
+          double.tryParse(datos['total_pagado']?.toString() ?? '0') ?? 0.0;
+      final totalObj = totalItems > 0 ? totalItems : totalPagado;
+
+      _eleccion.inicializarConItems(
+        pedido: widget.pedido,
+        items: items,
+        totalObjetivo: totalObj,
+        recargo: recargo,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'No se pudo cargar el detalle de la cuenta seleccionada: $e';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _cargandoCuenta = false);
     }
   }
 
@@ -84,8 +237,30 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       )
       .toList();
 
+  List<Comprobante> get _comprobantesFiscalesAnulados => _comprobantes
+      .where((c) => c.esFiscal && c.estadoSunat == 'ANULADO')
+      .toList();
+
+  Comprobante? _fiscalActivoParaCuenta(String? pagoId) {
+    if (pagoId != null) {
+      final cuenta = _cuentasPagadores
+          .where((c) => c.pagoId == pagoId || c.pagoIds.contains(pagoId))
+          .firstOrNull;
+      final ids = cuenta != null ? cuenta.pagoIds : [pagoId];
+      return _comprobantesFiscalesActivos
+          .where((c) => c.pagoId != null && ids.contains(c.pagoId))
+          .firstOrNull;
+    }
+    if (_cuentasPagadores.length > 1) {
+      return _comprobantesFiscalesActivos
+          .where((c) => c.pagoId == null)
+          .firstOrNull;
+    }
+    return _comprobantesFiscalesActivos.firstOrNull;
+  }
+
   Comprobante? get _comprobanteFiscalActivo =>
-      _comprobantesFiscalesActivos.firstOrNull;
+      _fiscalActivoParaCuenta(_pagoIdSeleccionado);
 
   Comprobante? get _comprobanteRechazado => _comprobantes
       .where((c) => c.esFiscal && c.estadoSunat == 'RECHAZADO')
@@ -115,6 +290,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
 
   bool get _puedeEmitir =>
       !_emitiendo &&
+      !_cargandoCuenta &&
       !_bloqueadoPorCobro &&
       !_bloqueadoPorFiscalExistente &&
       _eleccion.completo;
@@ -126,7 +302,10 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       _error = null;
     });
     try {
-      final c = await _eleccion.emitir(widget.pedido);
+      final c = await _eleccion.emitir(
+        widget.pedido,
+        pagoId: _pagoIdSeleccionado,
+      );
       if (mounted) {
         Navigator.of(context).pop<EmisionHecha>((
           comprobante: c,
@@ -282,13 +461,18 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
     );
     if (anulado == true) {
       await _cargarComprobantes();
+      if (mounted && c.esFiscal) {
+        await _seleccionarCuenta(c.pagoId, origen: c);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final fiscales = _comprobantesFiscalesActivos;
-    final fiscal = fiscales.firstOrNull;
+    final fiscalesAnulados = _comprobantesFiscalesAnulados;
+    final fiscal = _comprobanteFiscalActivo;
+    final cuentas = _cuentasPagadores;
     final tickets = _ticketsVentaActivos;
     final rechazado = _comprobanteRechazado;
 
@@ -631,6 +815,100 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
           const SizedBox(height: 8),
         ],
         if (tickets.isNotEmpty) const SizedBox(height: 4),
+
+        // 2.5 Comprobantes anulados: acceso rápido a volver a emitir según su pago/consumo
+        if (fiscalesAnulados.isNotEmpty) ...[
+          for (final a in fiscalesAnulados) ...[
+            if (a.pagoId == null || _fiscalActivoParaCuenta(a.pagoId) == null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.rotateCcw, size: 15, color: Colors.grey.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${a.tipoEtiqueta.toUpperCase()} ${a.numeroComprobante} · S/ ${a.total.toStringAsFixed(2)} (ANULADO)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _cargandoCuenta
+                          ? null
+                          : () => _seleccionarCuenta(a.pagoId, origen: a),
+                      icon: const Icon(LucideIcons.filePlus2, size: 14),
+                      label: const Text('Volver a emitir'),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: 4),
+        ],
+
+        // 2.6 Selector de cuenta / comensal cuando el pedido tiene cuenta dividida
+        if (cuentas.length > 1 || _pagoIdSeleccionado != null) ...[
+          const Text(
+            'CUENTA A FACTURAR',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              ChoiceChip(
+                label: Text(
+                  'Pedido completo (S/ ${(totalDePedido(widget.pedido.id) - propinaDePedido(widget.pedido.id)).toStringAsFixed(2)})',
+                ),
+                selected: _pagoIdSeleccionado == null,
+                onSelected: _cargandoCuenta
+                    ? null
+                    : (_) => _seleccionarCuenta(null),
+              ),
+              for (final c in cuentas)
+                Builder(builder: (context) {
+                  final activo = _fiscalActivoParaCuenta(c.pagoId);
+                  final etiquetaEstado = activo != null
+                      ? ' · ${activo.numeroComprobante}'
+                      : '';
+                  return ChoiceChip(
+                    label: Text(
+                      '${c.nombre} (S/ ${c.total.toStringAsFixed(2)})$etiquetaEstado',
+                    ),
+                    selected: _pagoIdSeleccionado != null &&
+                        c.pagoIds.contains(_pagoIdSeleccionado),
+                    onSelected: _cargandoCuenta
+                        ? null
+                        : (_) => _seleccionarCuenta(c.pagoId),
+                  );
+                }),
+            ],
+          ),
+          if (_cargandoCuenta) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+          const SizedBox(height: 12),
+        ],
 
         // Pestañas: Formulario vs Vista Previa Fiscal en Vivo
         SegmentedButton<int>(
@@ -1117,6 +1395,8 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
     if (widget.comprobante.esInterno) {
       _tipoAccion = 'baja';
       _motivoController.text = 'Ticket interno anulado manualmente';
+    } else if (!widget.comprobante.admiteComunicacionBaja) {
+      _tipoAccion = 'nota_credito';
     }
   }
 
@@ -1273,16 +1553,20 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
             children: [
               Expanded(
                 child: ChoiceChip(
-                  label: const Center(
+                  label: Center(
                     child: Text(
-                      'Comunicación de Baja',
-                      style: TextStyle(fontSize: 12),
+                      c.admiteComunicacionBaja
+                          ? 'Comunicación de Baja'
+                          : 'Baja (vencida >7d)',
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
                   selected: _tipoAccion == 'baja',
-                  onSelected: (sel) {
-                    if (sel) setState(() => _tipoAccion = 'baja');
-                  },
+                  onSelected: c.admiteComunicacionBaja
+                      ? (sel) {
+                          if (sel) setState(() => _tipoAccion = 'baja');
+                        }
+                      : null,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1302,7 +1586,42 @@ class _AnularComprobanteDialogState extends State<_AnularComprobanteDialog> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          if (!c.admiteComunicacionBaja)
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade300),
+              ),
+              child: Text(
+                'Han pasado ${c.diasDesdeEmision} días desde la emisión (${c.fechaEmision}). '
+                'El plazo SUNAT para Comunicación de Baja es de 7 días calendario: debes usar Nota de Crédito (Tipo 07).',
+                style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900),
+              ),
+            )
+          else if (_tipoAccion == 'baja')
+            Text(
+              'Plazo SUNAT Comunicación de Baja: ${7 - c.diasDesdeEmision} día(s) restante(s) '
+              '(solo si el comprobante NO fue entregado al cliente; si ya se entregó, usa Nota de Crédito).',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+            )
+          else if (!c.notaCreditoEnMismoMes)
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade300),
+              ),
+              child: Text(
+                'Nota de Crédito fuera del mes de emisión (${c.fechaEmision}): SUNAT la permite sin límite de días, '
+                'pero tributariamente se recomienda emitirla dentro del mismo mes fiscal.',
+                style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900),
+              ),
+            ),
+          const SizedBox(height: 10),
           if (_tipoAccion == 'nota_credito') ...[
             AppSelect<String>(
               label: 'Código de motivo (Catálogo N° 09 SUNAT)',

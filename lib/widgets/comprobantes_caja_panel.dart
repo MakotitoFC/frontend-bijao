@@ -2,16 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cierres_store.dart';
+import '../data/pedidos_store.dart';
 import '../models/comprobante.dart';
+import '../models/pedido.dart';
 import '../services/api_client.dart';
 import '../services/facturacion_service.dart';
+import '../services/pedido_mozo_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/abrir_enlace.dart';
 import '../utils/blur_dialog.dart';
 import 'app_select.dart';
 import 'app_toast.dart';
 import 'campo_texto.dart';
+import 'comprobante_en_cobro.dart';
 import 'dialogo_app.dart';
+import 'emitir_comprobante_dialog.dart';
 import 'lista_paginada.dart';
 
 String _error(Object e) => e is ApiException
@@ -49,6 +54,8 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
     if (widget.comprobante.esInterno) {
       _tipoAccion = 'baja';
       _motivo.text = 'Ticket interno anulado manualmente';
+    } else if (!widget.comprobante.admiteComunicacionBaja) {
+      _tipoAccion = 'nota_credito';
     }
   }
 
@@ -104,16 +111,20 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
             children: [
               Expanded(
                 child: ChoiceChip(
-                  label: const Center(
+                  label: Center(
                     child: Text(
-                      'Baja / Anulación',
-                      style: TextStyle(fontSize: 12),
+                      c.admiteComunicacionBaja
+                          ? 'Baja / Anulación'
+                          : 'Baja (vencida >7d)',
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
                   selected: _tipoAccion == 'baja',
-                  onSelected: (sel) {
-                    if (sel) setState(() => _tipoAccion = 'baja');
-                  },
+                  onSelected: c.admiteComunicacionBaja
+                      ? (sel) {
+                          if (sel) setState(() => _tipoAccion = 'baja');
+                        }
+                      : null,
                 ),
               ),
               const SizedBox(width: 8),
@@ -133,7 +144,22 @@ class _MotivoAnulacionDialogState extends State<_MotivoAnulacionDialog> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          if (!c.admiteComunicacionBaja)
+            Text(
+              'Pasaron ${c.diasDesdeEmision} días (límite SUNAT: 7 días). Usa Nota de Crédito (07).',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.amber.shade900,
+              ),
+            )
+          else if (_tipoAccion == 'nota_credito' && !c.notaCreditoEnMismoMes)
+            Text(
+              'Emitida en otro mes (${c.fechaEmision}): SUNAT acepta la NC, aunque tributariamente se recomienda en el mismo mes.',
+              style: TextStyle(fontSize: 11, color: Colors.amber.shade900),
+            ),
+          const SizedBox(height: 10),
           if (_tipoAccion == 'nota_credito') ...[
             AppSelect<String>(
               label: 'Motivo SUNAT (Catálogo 09)',
@@ -300,6 +326,56 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
     }
   }
 
+  Future<void> _volverAEmitir(Comprobante c) async {
+    Pedido? pedido = pedidos.where((p) => p.id == c.pedidoId).firstOrNull;
+    if (pedido == null) {
+      try {
+        await PedidoMozoService.instance.obtener(c.pedidoId);
+        pedido = pedidos.where((p) => p.id == c.pedidoId).firstOrNull;
+      } catch (e) {
+        if (mounted) {
+          showAppToast(
+            context,
+            'No se pudo cargar el pedido del comprobante: ${_error(e)}',
+            type: ToastType.error,
+          );
+        }
+        return;
+      }
+    }
+    if (pedido == null) {
+      if (mounted) {
+        showAppToast(
+          context,
+          'No se encontró el pedido asociado a este comprobante.',
+          type: ToastType.warning,
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final hecha = await showBlurDialog<EmisionHecha>(
+      context: context,
+      builder: (_) => EmitirComprobanteDialog(
+        pedido: pedido!,
+        pagoIdInicial: c.pagoId,
+        comprobanteOrigen: c,
+      ),
+    );
+    if (!mounted) return;
+    if (hecha != null) {
+      await showBlurDialog<void>(
+        context: context,
+        builder: (_) => ComprobanteEmitidoDialog(
+          comprobante: hecha.comprobante,
+          pedido: pedido!,
+          imprimirAlConfirmar: hecha.imprimirDespues,
+        ),
+      );
+    }
+    await _cargar();
+  }
+
   Color _color(Comprobante c) {
     if (c.anulado || c.rechazado) return AppColors.error;
     if (c.pendiente) return AppColors.naranja;
@@ -426,6 +502,15 @@ class _ComprobantesCajaPanelState extends State<ComprobantesCajaPanel> {
                     label: const Text('Anular'),
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.error,
+                    ),
+                  ),
+                if (c.esFiscal && (c.anulado || c.rechazado))
+                  TextButton.icon(
+                    onPressed: () => _volverAEmitir(c),
+                    icon: const Icon(LucideIcons.filePlus2, size: 14),
+                    label: const Text('Volver a emitir'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primaryGreenDark,
                     ),
                   ),
               ],

@@ -25,19 +25,14 @@ class PagoService {
   // caja (la pantalla lo muestra una vez y lo limpia).
   String? avisoPropina;
 
-  // La propina pagada con Yape, tarjeta u otro medio que no es efectivo sale
-  // del efectivo de la caja para dársela al mozo: se registra como una salida.
-  // Si se pagó en efectivo, el dinero ya está en la caja y no hay salida.
+  // La propina ingresó a la caja dentro del movimiento de venta (`monto_cobrado`);
+  // se registra su salida en efectivo para entregársela al mozo y que cuadre la caja.
   Future<void> _salidaPorPropina(
     Pedido pedido,
     MedioPago medioDelPago,
     double monto,
   ) async {
     if (monto <= 0.005) return;
-    final esEfectivo =
-        medioDelPago.grupo == 'efectivo' ||
-        medioDelPago.medioPago.toLowerCase().contains('efectivo');
-    if (esEfectivo) return;
     try {
       final efectivo = mediosPagoActivos
           .where((m) => m.grupo == 'efectivo')

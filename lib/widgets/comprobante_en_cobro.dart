@@ -148,18 +148,26 @@ class ComprobanteEnCobro extends ChangeNotifier {
   bool get inicializado => _inicializado;
   String? get pedidoIdInicializado => _pedidoIdInicializado;
 
-  void asegurarInicializado(Pedido pedido, {double? recargoActual}) {
+  void asegurarInicializado(
+    Pedido pedido, {
+    double? recargoActual,
+    bool forzar = false,
+  }) {
     final recargoObjetivo = (recargoActual != null && recargoActual > 0)
         ? recargoActual
         : recargoCobradoDePedido(pedido.id);
 
-    if (_inicializado &&
+    if (!forzar &&
+        _inicializado &&
         _pedidoIdInicializado == pedido.id &&
         (recargoObjetivo - recargoTarjeta).abs() < 0.001) {
       return;
     }
     _pedidoIdInicializado = pedido.id;
     _inicializado = true;
+    if (forzar) {
+      total = totalDePedido(pedido.id);
+    }
 
     final lineas = detallesPorPedido[pedido.id] ?? const [];
     final deliveryLinea = lineas
