@@ -129,6 +129,58 @@ List<String> envolver(String texto, int ancho, {String sangria = ''}) {
   ];
 }
 
+/// Si entre los medios de pago vigentes hay efectivo. El "efectivo recibido" y el
+/// "vuelto" solo se muestran en ese caso: si el pago se cambió a otro medio, lo
+/// que se recibió en efectivo antes no debe salir en el comprobante.
+/// Sin lista de medios se mira [metodoPago]; si tampoco hay, no se sabe y se muestra.
+bool hayPagoEnEfectivo(
+  List<({String medio, double monto})> pagos, {
+  String metodoPago = '',
+}) => pagos.isNotEmpty
+    ? pagos.any((p) => p.medio.toLowerCase().contains('efectivo'))
+    : (metodoPago.isEmpty || metodoPago.toLowerCase().contains('efectivo'));
+
+/// Junta en una sola fila los productos iguales: mismo plato, mismo precio
+/// unitario y mismos detalles (comentario, variante, tamaño, modificadores).
+/// Cada fila lleva la cantidad y el importe sumados; el total no cambia.
+List<({PedidoLine linea, int cantidad, double importe})> agruparIguales(
+  List<PedidoLine> lineas, {
+  double Function(PedidoLine)? importeDe,
+}) {
+  double importe(PedidoLine l) => (importeDe ?? (x) => x.precioTotalLinea)(l);
+  final filas = <({PedidoLine linea, int cantidad, double importe})>[];
+  final posicion = <String, int>{};
+  for (final l in lineas) {
+    if (l.cantidad <= 0) {
+      filas.add((linea: l, cantidad: l.cantidad, importe: importe(l)));
+      continue;
+    }
+    final nombre = l.esLibre ? (l.nombreLibre ?? l.nombrePlato) : l.nombrePlato;
+    final clave = [
+      l.cartaId,
+      nombre,
+      (importe(l) / l.cantidad).toStringAsFixed(2),
+      l.tipoEntrega,
+      (l.comentario ?? '').trim(),
+      ...detalleDeLinea(l),
+      ...detalleDePrecioManual(l),
+    ].join('|');
+    final i = posicion[clave];
+    if (i == null) {
+      posicion[clave] = filas.length;
+      filas.add((linea: l, cantidad: l.cantidad, importe: importe(l)));
+    } else {
+      final f = filas[i];
+      filas[i] = (
+        linea: f.linea,
+        cantidad: f.cantidad + l.cantidad,
+        importe: f.importe + importe(l),
+      );
+    }
+  }
+  return filas;
+}
+
 /// " | Pedido #0017": el número diario del pedido, que se añade a la fila del
 /// mozo en los comprobantes. Vacío si el pedido aún no tiene un número válido.
 String sufijoNumeroPedido(Pedido p) {
@@ -400,10 +452,14 @@ List<LineaTicket> ticketBoleta({
     LineaTicket(padLinea('CANT DESCRIPCION', 'TOTAL'), negrita: true),
     LineaTicket.separador('-'),
   ];
-  for (final l in productos) {
+  for (final fila in agruparIguales(
+    productos,
+    importeDe: (l) => l.precioTotalLinea + l.descuentoAplicado,
+  )) {
+    final l = fila.linea;
     final nombre = l.esLibre ? (l.nombreLibre ?? l.nombrePlato) : l.nombrePlato;
-    final importe = soles(l.precioTotalLinea + l.descuentoAplicado);
-    final cab = '${l.cantidad.toString().padLeft(2)}x ';
+    final importe = soles(fila.importe);
+    final cab = '${fila.cantidad.toString().padLeft(2)}x ';
     final espacio = anchoTicket - cab.length - importe.length - 1;
     final partes = envolver(nombre, espacio, sangria: '    ');
     salida.add(LineaTicket(padLinea('$cab${partes.first}', importe)));
@@ -491,7 +547,7 @@ List<LineaTicket> ticketBoleta({
       salida.add(const LineaTicket('CUENTA SALDADA', negrita: true));
     }
   }
-  if (vuelto > 0.001 && recibido > 0.001) {
+  if (vuelto > 0.001 && recibido > 0.001 && hayPagoEnEfectivo(pagos, metodoPago: metodoPago)) {
     salida
       ..add(LineaTicket(padLinea('EFECTIVO RECIBIDO', soles(recibido))))
       ..add(LineaTicket(padLinea('VUELTO', soles(vuelto)), negrita: true));
@@ -705,7 +761,7 @@ List<LineaTicket> ticketPagador({
       doble: true,
     ),
   );
-  if (vuelto > 0.001 && recibido > 0.001) {
+  if (vuelto > 0.001 && recibido > 0.001 && hayPagoEnEfectivo(pagos)) {
     salida
       ..add(LineaTicket(padLinea('EFECTIVO RECIBIDO', soles(recibido))))
       ..add(LineaTicket(padLinea('VUELTO', soles(vuelto)), negrita: true));
