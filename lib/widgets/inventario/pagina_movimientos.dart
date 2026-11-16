@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../data/catalogos_store.dart';
 import '../../data/compras_store.dart';
+import '../../data/inventario_periodo.dart';
 import '../../data/inventario_store.dart';
 import '../../data/utensilios_store.dart';
+import '../../models/compra.dart';
 import '../../models/inventario_movimiento.dart';
+import '../../models/utensilio_roto.dart';
 import '../../services/catalog_service.dart';
 import '../../theme/app_theme.dart';
 import '../tabs_texto.dart';
@@ -45,12 +48,29 @@ class _PaginaMovimientosState extends State<PaginaMovimientos> {
   @override
   void initState() {
     super.initState();
-    Future.wait([
+    periodoInventarioNotifier.addListener(_cargar);
+    _cargar();
+  }
+
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_cargar);
+    super.dispose();
+  }
+
+  // Del libro de inventario se pide solo el periodo elegido.
+  Future<void> _cargar() async {
+    if (mounted) setState(() => _cargando = true);
+    final p = periodoInventarioNotifier.value;
+    await Future.wait([
       CatalogService.instance.cargarCompras(),
       CatalogService.instance.cargarProductosInventario(),
       CatalogService.instance.cargarUnidadesProducto(),
       CatalogService.instance.cargarUtensiliosRotos(),
-      CatalogService.instance.cargarMovimientosInventario(),
+      CatalogService.instance.cargarMovimientosInventario(
+        desde: p.start,
+        hasta: p.end,
+      ),
     ]).whenComplete(() {
       if (mounted) setState(() => _cargando = false);
     });
@@ -65,123 +85,134 @@ class _PaginaMovimientosState extends State<PaginaMovimientos> {
     return p == null ? '' : unidadDe(p.unidadProductoId);
   }
 
-  // Mermas y ajustes manuales (entrada, salida, merma) del libro.
-  List<InventarioMovimiento> get _ajustes => [
-    for (final lista in movimientosInventario.values)
-      for (final m in lista)
-        if (codigosMovimientoManual.contains(m.tipoMovimiento.codigo) &&
-            m.revierteId == null)
-          m,
-  ];
+  // Mermas y ajustes manuales (entrada, salida, merma) del libro. El servidor ya
+  // trajo solo el periodo; aquí no se arma ninguna lista aparte.
+  Iterable<InventarioMovimiento> get _ajustes => movimientosInventario.values
+      .expand((lista) => lista)
+      .where(
+        (m) =>
+            codigosMovimientoManual.contains(m.tipoMovimiento.codigo) &&
+            m.revierteId == null,
+      );
 
-  // Filas del "Todos" y de "Mermas y ajustes", de la más reciente a la más
-  // antigua. Tocar una fila lleva al filtro donde se gestiona.
-  List<Widget> _filas(String filtro) {
-    final items = <({DateTime fecha, Widget fila})>[];
-
+  // Lo que entra en la lista del periodo, de lo más reciente a lo más antiguo:
+  // solo referencias (compra, rotura o movimiento) con su fecha. Las filas se
+  // construyen después, solo las de la página que se ve.
+  List<({DateTime fecha, Object dato})> _items(String filtro) {
+    final periodo = periodoInventarioNotifier.value;
+    final items = <({DateTime fecha, Object dato})>[];
     if (filtro == 'todos') {
-      for (final c in compras.where((c) => c.guardada)) {
-        final n = (detallesPorCompra[c.id] ?? const []).length;
-        items.add((
-          fecha: c.fechaCompra,
-          fila: FilaInventario(
-            onTap: () => widget.onFiltro('compras'),
-            titulo: tituloConEtiquetas('Compra', [
-              if (c.anulada)
-                const EtiquetaFila('Anulada', color: AppColors.error),
-            ]),
-            detalle:
-                '${fechaCorta(c.fechaCompra)} · $n producto(s)'
-                '${c.anulada ? ' · ${c.motivoAnulacion ?? ''}' : ''}',
-            controles: [
-              Text(
-                'S/ ${c.total.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  color: c.anulada ? Colors.grey.shade500 : null,
-                  decoration: c.anulada ? TextDecoration.lineThrough : null,
-                ),
-              ),
-            ],
-          ),
-        ));
+      for (final c in compras) {
+        if (c.guardada && enPeriodo(periodo, c.fechaCompra)) {
+          items.add((fecha: c.fechaCompra, dato: c));
+        }
       }
       for (final u in utensiliosRotos) {
-        final estado = u.done
-            ? const EtiquetaFila('Resuelto', color: AppColors.primaryGreen)
-            : u.isPagado
-            ? EtiquetaFila('A cuenta de sueldo', color: Colors.amber.shade800)
-            : u.isRepuesto
-            ? EtiquetaFila('Por reponer', color: Colors.blue.shade700)
-            : const SizedBox.shrink();
-        items.add((
-          fecha: u.fecha,
-          fila: FilaInventario(
-            onTap: () => widget.onFiltro('roturas'),
-            titulo: tituloConEtiquetas(
-              'Rotura · ${u.cantidad}x ${u.productoNombre ?? _producto(u.productoInventarioId)}',
-              [estado],
-            ),
-            detalle:
-                '${fechaCorta(u.fecha)}'
-                '${(u.empleadoNombre ?? '').isEmpty ? '' : ' · ${u.empleadoNombre}'}',
-            controles: [
-              Text(
-                'S/ ${u.costoTotal.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ));
+        if (enPeriodo(periodo, u.fecha)) items.add((fecha: u.fecha, dato: u));
       }
     }
-
     for (final m in _ajustes) {
-      final signo = m.tipoMovimiento.signo >= 0 ? '+' : '−';
-      items.add((
-        fecha: m.fecha,
-        fila: FilaInventario(
-          titulo: nombreFila(
-            '${m.tipoMovimiento.tipoMovimiento} · ${m.productoNombre ?? _producto(m.productoInventarioId)}',
-          ),
-          detalle:
-              '${fechaCorta(m.fecha)}'
-              '${(m.notas ?? '').isEmpty ? '' : ' · ${m.notas}'}',
-          controles: [
-            Text(
-              '$signo${cantidadTexto(m.cantidad)} ${_unidad(m.productoInventarioId)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-            ),
-          ],
-        ),
-      ));
+      if (enPeriodo(periodo, m.fecha)) items.add((fecha: m.fecha, dato: m));
     }
-
     items.sort((a, b) => b.fecha.compareTo(a.fecha));
-    return [for (final i in items) i.fila];
+    return items;
+  }
+
+  Widget _filaDe(Object dato) {
+    if (dato is Compra) return _filaCompra(dato);
+    if (dato is UtensilioRoto) return _filaRotura(dato);
+    return _filaAjuste(dato as InventarioMovimiento);
+  }
+
+  Widget _filaCompra(Compra c) {
+    final n = (detallesPorCompra[c.id] ?? const []).length;
+    return FilaInventario(
+      onTap: () => widget.onFiltro('compras'),
+      titulo: tituloConEtiquetas('Compra', [
+        if (c.anulada) const EtiquetaFila('Anulada', color: AppColors.error),
+      ]),
+      detalle:
+          '${fechaCorta(c.fechaCompra)} · $n producto(s)'
+          '${c.anulada ? ' · ${c.motivoAnulacion ?? ''}' : ''}',
+      controles: [
+        Text(
+          'S/ ${c.total.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
+            color: c.anulada ? Colors.grey.shade500 : null,
+            decoration: c.anulada ? TextDecoration.lineThrough : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _filaRotura(UtensilioRoto u) {
+    final estado = u.done
+        ? const EtiquetaFila('Resuelto', color: AppColors.primaryGreen)
+        : u.isPagado
+        ? EtiquetaFila('A cuenta de sueldo', color: Colors.amber.shade800)
+        : u.isRepuesto
+        ? EtiquetaFila('Por reponer', color: Colors.blue.shade700)
+        : const SizedBox.shrink();
+    return FilaInventario(
+      onTap: () => widget.onFiltro('roturas'),
+      titulo: tituloConEtiquetas(
+        'Rotura · ${u.cantidad}x ${u.productoNombre ?? _producto(u.productoInventarioId)}',
+        [estado],
+      ),
+      detalle:
+          '${fechaCorta(u.fecha)}'
+          '${(u.empleadoNombre ?? '').isEmpty ? '' : ' · ${u.empleadoNombre}'}',
+      controles: [
+        Text(
+          'S/ ${u.costoTotal.toStringAsFixed(2)}',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _filaAjuste(InventarioMovimiento m) {
+    final signo = m.tipoMovimiento.signo >= 0 ? '+' : '−';
+    return FilaInventario(
+      titulo: nombreFila(
+        '${m.tipoMovimiento.tipoMovimiento} · ${m.productoNombre ?? _producto(m.productoInventarioId)}',
+      ),
+      detalle:
+          '${fechaCorta(m.fecha)}'
+          '${(m.notas ?? '').isEmpty ? '' : ' · ${m.notas}'}',
+      controles: [
+        Text(
+          '$signo${cantidadTexto(m.cantidad)} ${_unidad(m.productoInventarioId)}',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+        ),
+      ],
+    );
   }
 
   Widget _lista(String filtro) {
-    final filas = _filas(filtro);
+    final periodo = periodoInventarioNotifier.value;
+    final items = _items(filtro);
     return PaginaListaFija(
+      reiniciarCon: '$filtro|${periodo.start}|${periodo.end}',
       cabecera: CabeceraSeccion(
         titulo: filtro == 'todos'
             ? 'Todos los movimientos'
             : 'Mermas y ajustes',
         descripcion: filtro == 'todos'
-            ? 'Compras, mermas, ajustes y roturas, de lo más reciente a lo '
-                  'más antiguo. Toca una fila para gestionarla.'
-            : 'Entradas, salidas y mermas manuales. Se registran desde '
-                  'Almacén > Productos > Ajustar stock.',
+            ? 'Compras, mermas, ajustes y roturas de las fechas elegidas, de '
+                  'lo más reciente a lo más antiguo. Toca una fila para '
+                  'gestionarla.'
+            : 'Entradas, salidas y mermas manuales de las fechas elegidas. Se '
+                  'registran desde Almacén > Productos > Ajustar stock.',
       ),
       mensajeVacio: _cargando
           ? 'Cargando…'
-          : 'Aún no hay movimientos registrados.',
-      filas: filas,
+          : 'No hay movimientos en las fechas elegidas.',
+      cantidad: items.length,
+      filaEn: (i) => _filaDe(items[i].dato),
     );
   }
 

@@ -69,6 +69,7 @@ class DisponibilidadService {
     bool? requiereAperturaDiaria,
     bool? permiteSobreventa,
     bool? autoAgotar,
+    bool? bloquearAgotadoInventario,
   }) async {
     final sedeId = _sedeId;
     if (sedeId == null) {
@@ -80,6 +81,7 @@ class DisponibilidadService {
         'requiere_apertura_diaria': ?requiereAperturaDiaria,
         'permite_sobreventa': ?permiteSobreventa,
         'auto_agotar': ?autoAgotar,
+        'bloquear_agotado_inventario': ?bloquearAgotadoInventario,
       },
     );
     if (res is! Map<String, dynamic>) {

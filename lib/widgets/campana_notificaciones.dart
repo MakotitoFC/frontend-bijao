@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../data/cartas_store.dart';
 import '../data/inventario_store.dart';
 import '../data/mesas_por_liberar_store.dart';
+import '../models/carta_item.dart';
 import '../models/mesa.dart';
 import '../models/producto_inventario.dart';
 import '../services/auth_service.dart';
@@ -26,6 +28,16 @@ bool _veInventario() =>
 // Productos con el stock por agotarse que este usuario debe ver.
 List<ProductoInventario> _stockPorAgotarse() =>
     _veInventario() ? stockBajoNotifier.value : const [];
+
+// Platos agotados en inventario. Quien no puede entrar a Inventario (por ejemplo,
+// el mozo) no ve el stock de los productos, pero sí qué platos se agotaron: el
+// servidor lo calcula y llega con la carta.
+List<CartaItem> _platosAgotados() => _veInventario()
+    ? const []
+    : [
+        for (final c in cartasNotifier.value)
+          if (c.agotadoInventario && !c.inhabilitado && !c.eliminado) c,
+      ];
 
 // Una notificación: lo que se muestra en el aviso de pantalla.
 class _ItemAviso {
@@ -85,6 +97,21 @@ _ItemAviso _avisoDeStock(List<ProductoInventario> nuevos) {
   );
 }
 
+// Aviso de platos nuevos agotados en inventario.
+_ItemAviso _avisoDePlatos(List<CartaItem> nuevos) {
+  final uno = nuevos.length == 1;
+  final primeros = nuevos.take(4).map((c) => c.nombrePlato).join(', ');
+  return _ItemAviso(
+    icono: LucideIcons.utensilsCrossed,
+    color: AppColors.error,
+    titulo: uno ? '${nuevos.first.nombrePlato}: agotado' : 'Platos agotados',
+    texto: uno
+        ? 'Se agotó en inventario. Avisa al administrador.'
+        : '${nuevos.length > 4 ? '$primeros y ${nuevos.length - 4} más' : primeros}: '
+              'agotados en inventario.',
+  );
+}
+
 // Campana del header: cuenta lo que hay por atender y, al tocarla, abre el
 // modal de notificaciones. Avisa de las mesas por liberar (ya pagaron y la mesa
 // sigue ocupada; la lista la da el servidor y llega en vivo) y del stock de
@@ -104,11 +131,13 @@ class _CampanaNotificacionesState extends State<CampanaNotificaciones> {
   // campana hasta que se atienda.
   Set<String> _avisadas = {};
   Set<String> _avisadasStock = {};
+  Set<String> _avisadasPlatos = {};
   // Aviso en pantalla (tarjeta con una "x" gris); se queda hasta cerrarlo.
   OverlayEntry? _aviso;
   late final Listenable _fuentes = Listenable.merge([
     mesasPorLiberarNotifier,
     stockBajoNotifier,
+    cartasNotifier,
   ]);
 
   @override
@@ -151,14 +180,20 @@ class _CampanaNotificacionesState extends State<CampanaNotificaciones> {
       for (final p in stock)
         if (!_avisadasStock.contains(p.id)) p,
     ];
+    final platos = _platosAgotados();
+    final nuevosPlatos = [
+      for (final c in platos)
+        if (!_avisadasPlatos.contains(c.id)) c,
+    ];
     _avisadas = {for (final m in lista) m.id};
     _avisadasStock = {for (final p in stock) p.id};
+    _avisadasPlatos = {for (final c in platos) c.id};
     // Ya no queda nada por atender: el aviso sobra.
-    if (lista.isEmpty && stock.isEmpty) {
+    if (lista.isEmpty && stock.isEmpty && platos.isEmpty) {
       _cerrarAviso();
       return;
     }
-    if (nuevas.isEmpty && nuevosStock.isEmpty) return;
+    if (nuevas.isEmpty && nuevosStock.isEmpty && nuevosPlatos.isEmpty) return;
     _cerrarAviso();
     final overlay = Overlay.of(context, rootOverlay: true);
     _aviso = OverlayEntry(
@@ -166,6 +201,7 @@ class _CampanaNotificacionesState extends State<CampanaNotificaciones> {
         items: [
           if (nuevas.isNotEmpty) _avisoDeMesas(nuevas),
           if (nuevosStock.isNotEmpty) _avisoDeStock(nuevosStock),
+          if (nuevosPlatos.isNotEmpty) _avisoDePlatos(nuevosPlatos),
         ],
         onAbrir: () {
           _cerrarAviso();
@@ -205,8 +241,10 @@ class _CampanaNotificacionesState extends State<CampanaNotificaciones> {
       builder: (context, _) {
         final mesas = mesasPorLiberarNotifier.value.length;
         final stock = _stockPorAgotarse().length;
-        final n = mesas + stock;
-        final agotado = _stockPorAgotarse().any((p) => p.stockActual <= 0);
+        final platos = _platosAgotados().length;
+        final n = mesas + stock + platos;
+        final agotado =
+            platos > 0 || _stockPorAgotarse().any((p) => p.stockActual <= 0);
         final color = n == 0
             ? Colors.grey.shade600
             : (mesas == 0 ? (agotado ? AppColors.error : _ambar) : _azul);
@@ -216,6 +254,7 @@ class _CampanaNotificacionesState extends State<CampanaNotificaciones> {
               : [
                   if (mesas > 0) '$mesas por liberar',
                   if (stock > 0) '$stock con stock bajo',
+                  if (platos > 0) '$platos agotado${platos == 1 ? '' : 's'}',
                 ].join(' · '),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -374,6 +413,13 @@ class PanelNotificaciones extends StatelessWidget {
     boton: _boton('Liberar', _azul, () => _liberar(context, m)),
   );
 
+  Widget _tarjetaPlato(CartaItem c) => _tarjetaBase(
+    icono: LucideIcons.utensilsCrossed,
+    color: AppColors.error,
+    titulo: '${c.nombrePlato}: agotado',
+    texto: 'Agotado en inventario. Avisa al administrador.',
+  );
+
   Widget _tarjetaStock(ProductoInventario p) {
     final agotado = p.stockActual <= 0;
     final color = agotado ? AppColors.error : _ambar;
@@ -394,11 +440,13 @@ class PanelNotificaciones extends StatelessWidget {
       listenable: Listenable.merge([
         mesasPorLiberarNotifier,
         stockBajoNotifier,
+        cartasNotifier,
       ]),
       builder: (context, _) {
         final mesas = mesasPorLiberarNotifier.value;
         final stock = _stockPorAgotarse();
-        final total = mesas.length + stock.length;
+        final platos = _platosAgotados();
+        final total = mesas.length + stock.length + platos.length;
         final resumen = [
           if (mesas.isNotEmpty)
             mesas.length == 1
@@ -408,10 +456,15 @@ class PanelNotificaciones extends StatelessWidget {
             stock.length == 1
                 ? '1 producto con stock bajo'
                 : '${stock.length} productos con stock bajo',
+          if (platos.isNotEmpty)
+            platos.length == 1
+                ? '1 plato agotado'
+                : '${platos.length} platos agotados',
         ].join(' · ');
         final tarjetas = <Widget>[
           for (final m in mesas) _tarjetaMesa(context, m),
           for (final p in stock) _tarjetaStock(p),
+          for (final c in platos) _tarjetaPlato(c),
         ];
         return ModalPago(
           titulo: 'Notificaciones',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../../data/inventario_periodo.dart';
 import '../../services/pedido_mozo_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/blur_dialog.dart';
@@ -25,13 +26,25 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
   @override
   void initState() {
     super.initState();
+    periodoInventarioNotifier.addListener(_cargar);
     _cargar();
   }
 
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_cargar);
+    super.dispose();
+  }
+
+  // Pide al servidor solo las anulaciones del periodo elegido.
   Future<void> _cargar() async {
     setState(() => _cargando = true);
+    final periodo = periodoInventarioNotifier.value;
     try {
-      final list = await PedidoMozoService.instance.obtenerAnulaciones();
+      final list = await PedidoMozoService.instance.obtenerAnulaciones(
+        desde: periodo.start,
+        hasta: periodo.end,
+      );
       if (mounted) {
         setState(() {
           _anulaciones = list;
@@ -126,8 +139,9 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
     }).toList();
 
     final hayFiltros = _busqueda.isNotEmpty || _filtro != 'todas';
+    final periodo = periodoInventarioNotifier.value;
     return PaginaListaFija(
-      reiniciarCon: '$_busqueda|$_filtro',
+      reiniciarCon: '$_busqueda|$_filtro|${periodo.start}|${periodo.end}',
       cabecera: const CabeceraSeccion(
         titulo: 'Anulaciones',
         descripcion:
@@ -176,8 +190,9 @@ class _PaginaAnulacionesState extends State<PaginaAnulaciones> {
           ? 'Cargando…'
           : (hayFiltros
                 ? 'No se encontraron anulaciones con los filtros aplicados.'
-                : 'No se registran anulaciones de pedidos o platos.'),
-      filas: [for (final a in filtradas) _fila(a)],
+                : 'No hay anulaciones en las fechas elegidas.'),
+      cantidad: filtradas.length,
+      filaEn: (i) => _fila(filtradas[i]),
     );
   }
 

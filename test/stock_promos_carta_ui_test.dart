@@ -95,10 +95,15 @@ void main() {
       testWidgets('Stock diario — $nombre', (tester) async {
         await abrir(tester, const StockDiarioConfig(), t.value, letra);
         expect(tester.takeException(), isNull);
-        expect(find.text('Cantidades diarias de platos'), findsOneWidget);
-        expect(find.text('Exigir apertura diaria'), findsOneWidget);
-        expect(find.text('Permitir sobreventa'), findsOneWidget);
-        expect(find.text('Marcar agotado automáticamente'), findsOneWidget);
+        expect(find.text('Inventario agotado'), findsOneWidget);
+        expect(
+          find.text('Seguir vendiendo cuando el inventario se agote'),
+          findsOneWidget,
+        );
+        // Las cantidades diarias ya no están en Configuración.
+        expect(find.text('Cantidades diarias de platos'), findsNothing);
+        expect(find.text('Exigir apertura diaria'), findsNothing);
+        expect(find.text('Permitir sobreventa'), findsNothing);
         // La apertura del día está oculta (AppConfig.mostrarAperturaDia).
         expect(find.text('Apertura del día'), findsNothing);
         expect(find.text('1. Definir cantidades base'), findsNothing);

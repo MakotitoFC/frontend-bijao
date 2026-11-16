@@ -68,6 +68,10 @@ class PaginaListaFija extends StatefulWidget {
   final Widget? cabecera;
   final Widget? barra;
   final List<Widget> filas;
+  // Modo perezoso: en vez de armar todas las filas, se da la cantidad y cómo
+  // construir la fila `i`; solo se construyen las de la página que se ve.
+  final int? cantidad;
+  final Widget Function(int i)? filaEn;
   final String mensajeVacio;
   final int porPagina;
   // Vuelve a la primera página cuando cambia (por ejemplo, al filtrar).
@@ -79,7 +83,9 @@ class PaginaListaFija extends StatefulWidget {
     super.key,
     this.cabecera,
     this.barra,
-    required this.filas,
+    this.filas = const [],
+    this.cantidad,
+    this.filaEn,
     this.mensajeVacio = 'No hay registros.',
     this.porPagina = 8,
     this.reiniciarCon,
@@ -102,12 +108,15 @@ class _PaginaListaFijaState extends State<PaginaListaFija> {
   @override
   Widget build(BuildContext context) {
     final margen = AppBreakpoints.esMobile(context) ? 16.0 : 24.0;
-    final total = widget.filas.length;
+    final perezoso = widget.filaEn != null && widget.cantidad != null;
+    final total = perezoso ? widget.cantidad! : widget.filas.length;
     final paginas = total == 0 ? 1 : (total / widget.porPagina).ceil();
     final pagina = _pagina.clamp(0, paginas - 1);
     final desde = pagina * widget.porPagina;
     final hasta = (desde + widget.porPagina).clamp(0, total);
-    final filas = widget.filas.sublist(desde, hasta);
+    final cantidadVisible = hasta - desde;
+    Widget filaVisible(int i) =>
+        perezoso ? widget.filaEn!(desde + i) : widget.filas[desde + i];
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -124,7 +133,7 @@ class _PaginaListaFijaState extends State<PaginaListaFija> {
               ],
               const SizedBox(height: 14),
               Expanded(
-                child: filas.isEmpty
+                child: cantidadVisible == 0
                     ? Align(
                         alignment: Alignment.topLeft,
                         child: Padding(
@@ -145,11 +154,11 @@ class _PaginaListaFijaState extends State<PaginaListaFija> {
                           right: AppBreakpoints.esMobile(context) ? 0 : 12,
                           bottom: 16,
                         ),
-                        itemCount: filas.length,
+                        itemCount: cantidadVisible,
                         separatorBuilder: (_, _) => widget.tarjetas
                             ? const SizedBox(height: 10)
                             : Divider(height: 1, color: Colors.grey.shade200),
-                        itemBuilder: (_, i) => filas[i],
+                        itemBuilder: (_, i) => filaVisible(i),
                       ),
               ),
               const SizedBox(height: 10),

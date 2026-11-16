@@ -38,6 +38,12 @@ class CartaItem {
   final Uint8List? imagenBytes;
   // Foto del plato: dirección guardada en el backend (`carta.url_imagen`).
   final String? urlImagen;
+  // El plato depende de insumos de inventario y ya no queda stock de ellos.
+  final bool agotadoInventario;
+  // El stock de un insumo del plato llegó a su mínimo (sin agotarse).
+  final bool stockBajoInventario;
+  // Porciones que quedan; solo viene cuando el stock está en su mínimo.
+  final int? quedanInventario;
 
   const CartaItem({
     required this.id,
@@ -61,6 +67,9 @@ class CartaItem {
     this.creadoEn,
     this.imagenBytes,
     this.urlImagen,
+    this.agotadoInventario = false,
+    this.stockBajoInventario = false,
+    this.quedanInventario,
   });
 
   String? get subcategoriaId =>
@@ -93,6 +102,9 @@ class CartaItem {
     DateTime? creadoEn,
     Uint8List? imagenBytes,
     String? urlImagen,
+    bool? agotadoInventario,
+    bool? stockBajoInventario,
+    int? quedanInventario,
     bool limpiarPrecio = false,
     bool limpiarImagen = false,
   }) => CartaItem(
@@ -105,6 +117,9 @@ class CartaItem {
     taperId: taperId ?? this.taperId,
     taperIds: taperIds ?? this.taperIds,
     taperNombre: taperNombre ?? this.taperNombre,
+    agotadoInventario: agotadoInventario ?? this.agotadoInventario,
+    stockBajoInventario: stockBajoInventario ?? this.stockBajoInventario,
+    quedanInventario: quedanInventario ?? this.quedanInventario,
     precioCliente: limpiarPrecio ? null : (precioCliente ?? this.precioCliente),
     precioPersonal: limpiarPrecio
         ? null
@@ -168,6 +183,9 @@ class CartaItem {
       agregados: rawMods.isNotEmpty ? rawMods : const [],
       costo: jsonDouble(json['costo']),
       sku: json['sku'] as String?,
+      agotadoInventario: json['agotado_inventario'] == true,
+      stockBajoInventario: json['stock_bajo_inventario'] == true,
+      quedanInventario: (json['quedan_inventario'] as num?)?.toInt(),
       stock: (json['stock'] is int)
           ? json['stock'] as int
           : (json['disponibilidad']?['cantidad_disponible'] is int

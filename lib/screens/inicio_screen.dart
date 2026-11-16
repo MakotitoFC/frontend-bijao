@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../data/cartas_store.dart';
-import '../data/disponibilidad_store.dart';
 import '../data/mesas_por_liberar_store.dart';
 import '../data/mesas_store.dart';
 import '../data/pagos_store.dart';
@@ -581,15 +580,6 @@ class _InicioScreenState extends State<InicioScreen> {
           AppColors.error,
           'Agotados hoy: ${_resumenNombres(r.platosAgotados)}.',
           null,
-        ),
-      if (!_esCocina &&
-          r.platosSinAbrir > 0 &&
-          (configStockNotifier.value?.requiereAperturaDiaria ?? false))
-        _Alerta(
-          LucideIcons.calendarClock,
-          AppColors.accentGold,
-          '${r.platosSinAbrir} plato${r.platosSinAbrir == 1 ? '' : 's'} sin abrir hoy: no se pueden vender.',
-          () => widget.onIrA('productos'),
         ),
       if (_veMesas && r.tapersBajos.isNotEmpty)
         _Alerta(

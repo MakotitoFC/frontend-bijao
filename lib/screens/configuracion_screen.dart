@@ -267,7 +267,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         widget.usuario.tienePermiso('UPDATE.SEDE_CONFIG_STOCK'))
       (
         clave: 'stock',
-        etiqueta: 'Stock diario',
+        etiqueta: 'Stock',
         seccion: 'Carta y stock',
         contenido: () => const StockDiarioConfig(),
       ),
@@ -458,12 +458,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             valor: pagos.isEmpty ? 'Ninguno' : pagos.join(', '),
           ),
           FilaDato(
-            etiqueta: 'Apertura diaria obligatoria',
-            valor: _siNo(stock?.requiereAperturaDiaria ?? false),
-          ),
-          FilaDato(
-            etiqueta: 'Venta con stock en cero',
-            valor: _siNo(stock?.permiteSobreventa ?? false),
+            etiqueta: 'Seguir vendiendo con inventario agotado',
+            valor: _siNo(!(stock?.bloquearAgotadoInventario ?? false)),
           ),
         ],
       ),

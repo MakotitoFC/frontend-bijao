@@ -1,3 +1,5 @@
+import '../utils/sin_receta.dart';
+
 // Refleja la tabla `tipo_movimiento`: el `signo` dice si suma (+1) o resta (-1)
 // del stock. Los ids son UUID fijos del backend.
 class TipoMovimiento {
@@ -28,7 +30,7 @@ class TipoMovimiento {
   factory TipoMovimiento.fromJson(Map<String, dynamic> json) => TipoMovimiento(
     id: json['id']?.toString() ?? '',
     codigo: json['codigo']?.toString() ?? '',
-    tipoMovimiento: json['tipo_movimiento']?.toString() ?? '',
+    tipoMovimiento: sinReceta(json['tipo_movimiento']?.toString() ?? ''),
     signo: (json['signo'] as num?)?.toInt() ?? 1,
     estado: json['estado'] as bool? ?? true,
   );

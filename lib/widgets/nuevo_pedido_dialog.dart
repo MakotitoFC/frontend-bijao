@@ -44,6 +44,7 @@ import 'app_tag.dart';
 import 'tabs_texto.dart';
 import '../utils/nota_pedido.dart';
 import 'app_toast.dart';
+import 'aviso_agotado.dart';
 import 'dotted_divider.dart';
 import 'imagen_plato.dart';
 import 'plato_libre_dialog.dart';
@@ -307,6 +308,7 @@ class _NuevoPedidoDialogState extends State<NuevoPedidoDialog>
     Color? acento,
     int? indice,
   }) async {
+    if (indice == null) avisarSiAgotadoInventario(context, item);
     final previa = indice == null ? null : _carrito[indice];
     final resultado = await showBlurDialog<ProductoConfigurado>(
       context: context,

@@ -5,6 +5,7 @@ import '../data/catalogos_store.dart';
 import '../data/configuracion_store.dart';
 import '../data/compras_store.dart';
 import '../data/categorias_store.dart';
+import '../data/inventario_periodo.dart' show fechaApi;
 import '../data/inventario_store.dart';
 import '../data/mesas_store.dart';
 import '../data/presentaciones_store.dart';
@@ -1643,14 +1644,22 @@ class CatalogService {
   }
 
   // Movimientos del libro de inventario, del más reciente al más antiguo. Con
-  // [productoId] solo los de ese producto.
+  // [productoId] solo los de ese producto. Con [desde] y/o [hasta] (días, ambos
+  // incluidos) el servidor devuelve solo ese periodo, no todo el historial.
   Future<List<InventarioMovimiento>> cargarMovimientosInventario({
     String? productoId,
+    DateTime? desde,
+    DateTime? hasta,
   }) async {
     try {
       final filtro = (productoId != null && productoId.isNotEmpty);
+      final params = <String>[
+        if (filtro) 'producto_inventario_id=$productoId',
+        if (desde != null) 'desde=${fechaApi(desde)}',
+        if (hasta != null) 'hasta=${fechaApi(hasta)}',
+      ];
       final res = await _api.get(
-        '/api/inventario-movimientos${filtro ? '?producto_inventario_id=$productoId' : ''}',
+        '/api/inventario-movimientos${params.isEmpty ? '' : '?${params.join('&')}'}',
       );
       if (res is List) {
         final lista = [

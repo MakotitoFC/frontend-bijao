@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/inventario_periodo.dart';
 import '../theme/app_theme.dart';
 
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../widgets/config_widgets.dart';
+import '../widgets/filtro_periodo.dart';
 import '../widgets/indice_subvistas.dart';
 import '../widgets/inventario/pagina_catalogos.dart';
 import '../widgets/inventario/pagina_movimientos.dart';
@@ -132,6 +134,40 @@ class _InventarioScreenState extends State<InventarioScreen> {
     ),
   ];
 
+  // Las páginas que dependen de fechas (Resumen, Movimientos, Anulaciones y
+  // Reportes) llevan arriba el mismo filtro de periodo; Almacén son catálogos y
+  // no lo necesita.
+  static const _clavesConFecha = {
+    'resumen',
+    'movimientos',
+    'anulaciones',
+    'reportes',
+  };
+
+  Widget _conFiltro(String clave, Widget pagina) {
+    if (!_clavesConFecha.contains(clave)) return pagina;
+    final margen = AppBreakpoints.esMobile(context) ? 16.0 : 24.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(margen, 8, margen, 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ValueListenableBuilder<DateTimeRange>(
+              valueListenable: periodoInventarioNotifier,
+              builder: (_, periodo, _) => FiltroPeriodo(
+                valor: periodo,
+                onChanged: (r) => periodoInventarioNotifier.value = r,
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: pagina),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final paginas = _paginas;
@@ -139,7 +175,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
         paginas.where((p) => p.clave == _clave).firstOrNull ?? paginas.first;
     final contenido = KeyedSubtree(
       key: ValueKey('${actual.clave}-$_recarga'),
-      child: actual.contenido(),
+      child: _conFiltro(actual.clave, actual.contenido()),
     );
 
     final entradas = <SubmenuEntrada>[];
@@ -171,7 +207,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 grupo: p.seccion ?? 'Stock',
                 contenido: (_) => KeyedSubtree(
                   key: ValueKey('${p.clave}-$_recarga'),
-                  child: p.contenido(),
+                  child: _conFiltro(p.clave, p.contenido()),
                 ),
               ),
           ],

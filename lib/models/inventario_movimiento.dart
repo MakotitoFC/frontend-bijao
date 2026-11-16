@@ -1,4 +1,5 @@
 import '../data/catalogos_store.dart';
+import '../utils/sin_receta.dart';
 import 'tipo_movimiento.dart';
 
 // Refleja la tabla `inventario_movimiento` (libro o kardex del inventario). La
@@ -38,7 +39,9 @@ class InventarioMovimiento {
 
   factory InventarioMovimiento.fromJson(Map<String, dynamic> json) {
     final tipoId = json['tipo_movimiento_id']?.toString() ?? '';
-    final nombre = json['tipo_movimiento_nombre']?.toString() ?? 'Movimiento';
+    final nombre = sinReceta(
+      json['tipo_movimiento_nombre']?.toString() ?? 'Movimiento',
+    );
     final cantidad = (json['cantidad'] as num?)?.toDouble() ?? 0;
     final conocido = tiposMovimiento.where((t) => t.id == tipoId).firstOrNull;
     final tipo =
@@ -61,7 +64,7 @@ class InventarioMovimiento {
       costoUnitario: (json['costo_unitario'] as num?)?.toDouble() ?? 0,
       costoTotal: (json['costo_total'] as num?)?.toDouble() ?? 0,
       usuarioNombre: json['usuario_nombre']?.toString(),
-      notas: json['notas']?.toString(),
+      notas: json['notas'] == null ? null : sinReceta(json['notas'].toString()),
       fecha: fecha?.toLocal() ?? DateTime.now(),
       compraDetalleId: json['compra_detalle_id']?.toString(),
       revierteId: json['revierte_id']?.toString(),

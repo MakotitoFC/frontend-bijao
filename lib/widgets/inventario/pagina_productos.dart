@@ -12,6 +12,7 @@ import '../../utils/blur_dialog.dart';
 import '../ajustar_stock_dialog.dart';
 import '../app_search_field.dart';
 import '../filtro_menu.dart';
+import '../filtro_periodo.dart';
 import '../app_toast.dart';
 import '../dialogo_app.dart';
 import '../menu_flotante.dart';
@@ -209,13 +210,26 @@ class _PaginaProductosState extends State<PaginaProductos> {
           anchoMinimo: 190,
           opciones: [
             if (compacto)
-              const OpcionMenu(valor: 'ajustar', etiqueta: 'Ajustar stock'),
-            const OpcionMenu(valor: 'movimientos', etiqueta: 'Ver movimientos'),
-            const OpcionMenu(valor: 'editar', etiqueta: 'Editar'),
+              const OpcionMenu(
+                valor: 'ajustar',
+                etiqueta: 'Ajustar stock',
+                icono: LucideIcons.slidersHorizontal,
+              ),
+            const OpcionMenu(
+              valor: 'movimientos',
+              etiqueta: 'Ver movimientos',
+              icono: LucideIcons.history,
+            ),
+            const OpcionMenu(
+              valor: 'editar',
+              etiqueta: 'Editar',
+              icono: LucideIcons.pencil,
+            ),
             const OpcionMenu(
               valor: 'eliminar',
               etiqueta: 'Eliminar',
               color: AppColors.error,
+              icono: LucideIcons.trash2,
             ),
           ],
           onSeleccionar: (v) {
@@ -313,39 +327,68 @@ class _MovimientosDialog extends StatefulWidget {
 
 class _MovimientosDialogState extends State<_MovimientosDialog> {
   bool _cargando = true;
+  // El modal tiene su propio periodo (por defecto, los últimos 7 días): el
+  // historial de un producto puede ser enorme y no se muestra completo.
+  DateTimeRange _periodo = periodoAtajo('7')!;
 
   @override
   void initState() {
     super.initState();
-    CatalogService.instance
-        .cargarMovimientosInventario(productoId: widget.producto.id)
-        .whenComplete(() {
-          if (mounted) setState(() => _cargando = false);
-        });
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() => _cargando = true);
+    await CatalogService.instance.cargarMovimientosInventario(
+      productoId: widget.producto.id,
+      desde: _periodo.start,
+      hasta: _periodo.end,
+    );
+    if (mounted) setState(() => _cargando = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final historial = movimientosInventario[widget.producto.id] ?? [];
+    final historial = movimientosInventario[widget.producto.id] ?? const [];
     return DialogoApp(
       titulo: 'Movimientos · ${widget.producto.nombre}',
       ancho: 480,
       children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FiltroPeriodo(
+            valor: _periodo,
+            onChanged: (r) {
+              setState(() => _periodo = r);
+              _cargar();
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
         if (historial.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Text(
-                _cargando ? 'Cargando…' : 'Sin movimientos registrados aún',
+                _cargando
+                    ? 'Cargando…'
+                    : 'Sin movimientos en las fechas elegidas.',
                 style: TextStyle(color: Colors.grey.shade500),
               ),
             ),
           )
         else
-          for (var i = 0; i < historial.length; i++) ...[
-            if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
-            _filaMovimiento(historial[i]),
-          ],
+          // Alto acotado y filas construidas a medida que se desplaza: nunca se
+          // arma toda la lista.
+          SizedBox(
+            height: 380,
+            child: ListView.separated(
+              itemCount: historial.length,
+              separatorBuilder: (_, _) =>
+                  Divider(height: 1, color: Colors.grey.shade200),
+              itemBuilder: (_, i) => _filaMovimiento(historial[i]),
+            ),
+          ),
         const SizedBox(height: 16),
       ],
     );

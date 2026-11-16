@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../../data/inventario_periodo.dart';
 import '../../data/inventario_store.dart';
 import '../../services/alquiler_service.dart';
 import '../../services/catalog_service.dart';
@@ -33,8 +34,20 @@ class _PaginaAlquileresState extends State<PaginaAlquileres> {
   @override
   void initState() {
     super.initState();
+    periodoInventarioNotifier.addListener(_alCambiarPeriodo);
     _cargar();
   }
+
+  void _alCambiarPeriodo() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_alCambiarPeriodo);
+    super.dispose();
+  }
+
 
   Future<void> _cargar() async {
     if (mounted) setState(() => _cargando = true);
@@ -129,10 +142,16 @@ class _PaginaAlquileresState extends State<PaginaAlquileres> {
     }
   }
 
+  // Los alquileres del periodo elegido (por la fecha de su cobro en Caja).
+  Iterable<Alquiler> get _delPeriodo {
+    final periodo = periodoInventarioNotifier.value;
+    return _lista.where((a) => enPeriodo(periodo, a.movimiento.fecha));
+  }
+
   List<Alquiler> get _filtrados {
     final q = _busqueda.trim().toLowerCase();
     return [
-      for (final a in _lista)
+      for (final a in _delPeriodo)
         if ((q.isEmpty ||
                 _producto(a).toLowerCase().contains(q) ||
                 a.cliente.toLowerCase().contains(q) ||
@@ -204,7 +223,8 @@ class _PaginaAlquileresState extends State<PaginaAlquileres> {
   Widget build(BuildContext context) {
     final lista = _filtrados;
     return PaginaListaFija(
-      reiniciarCon: '$_busqueda|$_filtro',
+      reiniciarCon:
+          '$_busqueda|$_filtro|${periodoInventarioNotifier.value.start}|${periodoInventarioNotifier.value.end}',
       cabecera: CabeceraSeccion(
         titulo: 'Alquileres',
         descripcion:
@@ -225,17 +245,21 @@ class _PaginaAlquileresState extends State<PaginaAlquileres> {
           const SizedBox(height: 12),
           TabsTexto(
             tabs: [
-              _tab('Todos', 'todos', _lista.length),
-              _tab('Afuera', 'afuera', _lista.where((a) => a.afuera).length),
+              _tab('Todos', 'todos', _delPeriodo.length),
+              _tab(
+                'Afuera',
+                'afuera',
+                _delPeriodo.where((a) => a.afuera).length,
+              ),
               _tab(
                 'Devueltos',
                 'devueltos',
-                _lista.where((a) => a.devuelto && !a.anulado).length,
+                _delPeriodo.where((a) => a.devuelto && !a.anulado).length,
               ),
               _tab(
                 'Anulados',
                 'anulados',
-                _lista.where((a) => a.anulado).length,
+                _delPeriodo.where((a) => a.anulado).length,
               ),
             ],
           ),
@@ -243,10 +267,9 @@ class _PaginaAlquileresState extends State<PaginaAlquileres> {
       ),
       mensajeVacio: _cargando && _lista.isEmpty
           ? 'Cargando…'
-          : (_lista.isEmpty
-                ? 'Aún no hay alquileres. Registra el primero con "Alquiler".'
-                : 'Ningún alquiler coincide con los filtros.'),
-      filas: [for (final a in lista) _fila(a)],
+          : 'No hay alquileres en las fechas elegidas con esos filtros.',
+      cantidad: lista.length,
+      filaEn: (i) => _fila(lista[i]),
     );
   }
 }

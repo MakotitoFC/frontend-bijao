@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../../data/inventario_periodo.dart';
 import '../../data/inventario_store.dart';
 import '../../data/utensilios_store.dart';
 import '../../models/rbac.dart';
@@ -35,7 +36,18 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
   @override
   void initState() {
     super.initState();
+    periodoInventarioNotifier.addListener(_alCambiarPeriodo);
     _cargar();
+  }
+
+  void _alCambiarPeriodo() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_alCambiarPeriodo);
+    super.dispose();
   }
 
   Future<void> _cargar() async {
@@ -136,7 +148,9 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
 
   List<UtensilioRoto> get _filtrados {
     final q = _busqueda.trim().toLowerCase();
+    final periodo = periodoInventarioNotifier.value;
     return utensiliosRotos.where((u) {
+      if (!enPeriodo(periodo, u.fecha)) return false;
       if (_filtro != 'anuladas' && u.anulada) return false;
       if (_filtro == 'anuladas' && !u.anulada) return false;
       if (q.isNotEmpty) {
@@ -265,13 +279,16 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
 
   @override
   Widget build(BuildContext context) {
-    final vigentes = utensiliosRotos.where((u) => !u.anulada).toList();
+    final periodo = periodoInventarioNotifier.value;
+    final vigentes = utensiliosRotos
+        .where((u) => !u.anulada && enPeriodo(periodo, u.fecha))
+        .toList();
     final costo = vigentes.fold(0.0, (s, u) => s + u.costoTotal);
     final pendientes = vigentes.where((u) => !u.done).length;
     final resueltos = vigentes.where((u) => u.done).length;
     final lista = _filtrados;
     return PaginaListaFija(
-      reiniciarCon: '$_busqueda|$_filtro',
+      reiniciarCon: '$_busqueda|$_filtro|${periodo.start}|${periodo.end}',
       cabecera: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -331,10 +348,9 @@ class _PaginaUtensiliosState extends State<PaginaUtensilios> {
       ),
       mensajeVacio: _cargando && utensiliosRotos.isEmpty
           ? 'Cargando…'
-          : (utensiliosRotos.isEmpty
-                ? 'Aún no hay roturas registradas.'
-                : 'Ningún registro coincide con los filtros.'),
-      filas: [for (final u in lista) _fila(u)],
+          : 'No hay roturas en las fechas elegidas con esos filtros.',
+      cantidad: lista.length,
+      filaEn: (i) => _fila(lista[i]),
     );
   }
 }

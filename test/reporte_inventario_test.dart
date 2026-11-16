@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend_bijao/data/catalogos_store.dart';
+import 'package:frontend_bijao/data/inventario_periodo.dart';
 import 'package:frontend_bijao/data/inventario_store.dart';
 import 'package:frontend_bijao/models/inventario_movimiento.dart';
 import 'package:frontend_bijao/models/producto_inventario.dart';
@@ -10,6 +11,7 @@ import 'package:frontend_bijao/services/api_client.dart';
 import 'package:frontend_bijao/theme/app_theme.dart';
 import 'package:frontend_bijao/utils/reporte_inventario.dart';
 import 'package:frontend_bijao/utils/reporte_inventario_pdf.dart';
+import 'package:frontend_bijao/widgets/filtro_periodo.dart';
 import 'package:frontend_bijao/widgets/inventario/pagina_reportes.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -131,6 +133,69 @@ void main() {
     });
   });
 
+  group('periodo de varios días', () {
+    test('suma lo de todos los días y el stock final es el de hoy', () {
+      // Arroz: stock actual 20. Entró 30 el 10, entró 10 y salió 4 el 11, salió 6
+      // el 12.
+      final movs = [
+        _m(_compra, 30, dia10.add(const Duration(hours: 9)), costo: 90),
+        _m(_compra, 10, dia11.add(const Duration(hours: 10)), costo: 35),
+        _m(_consumo, 4, dia11.add(const Duration(hours: 12))),
+        _m(_consumo, 6, dia12.add(const Duration(hours: 13))),
+      ];
+      final r = calcularReporteInventario(
+        desde: dia10,
+        hasta: dia12,
+        movimientos: movs,
+        productos: [_p('p1', 'Arroz', 20)],
+      );
+      expect(r.esUnDia, false);
+      expect(r.movimientos.length, 4);
+      expect(r.cantidadEntradas, 2);
+      expect(r.cantidadSalidas, 2);
+      expect(r.costoEntradas, 125);
+      final arroz = r.productos.single;
+      // Inicio = final (20) menos lo que se movió en el periodo (+40 −10).
+      expect(arroz.inicio, -10);
+      expect(arroz.entradas, 40);
+      expect(arroz.salidas, 10);
+      expect(arroz.fin, 20);
+    });
+
+    test('una reversa y lo que revierte no cuentan como entradas ni salidas', () {
+      final consumo = InventarioMovimiento(
+        id: 'c1',
+        productoInventarioId: 'p1',
+        productoNombre: 'Arroz',
+        tipoMovimiento: _consumo,
+        cantidad: 1,
+        fecha: dia11.add(const Duration(hours: 9)),
+      );
+      final reversa = InventarioMovimiento(
+        id: 'r1',
+        productoInventarioId: 'p1',
+        productoNombre: 'Arroz',
+        tipoMovimiento: _compra,
+        cantidad: 1,
+        costoTotal: 5,
+        revierteId: 'c1',
+        fecha: dia11.add(const Duration(hours: 10)),
+      );
+      final r = calcularReporteInventario(
+        dia: dia11,
+        movimientos: [consumo, reversa],
+        productos: [_p('p1', 'Arroz', 20)],
+      );
+      expect(r.movimientos.length, 2);
+      expect(r.cantidadEntradas, 0);
+      expect(r.cantidadSalidas, 0);
+      // La reversa no es una compra: no suma al costo.
+      expect(r.costoEntradas, 0);
+      // El stock sí las cuenta (se anulan entre sí).
+      expect(r.productos.single.neto, 0);
+    });
+  });
+
   group('PDF', () {
     final r = calcularReporteInventario(
       dia: dia11,
@@ -222,6 +287,7 @@ void main() {
         ..add(_p('p1', 'Arroz', 20));
       final hoy = soloDia(DateTime.now());
       final ayer = hoy.subtract(const Duration(days: 1));
+      periodoInventarioNotifier.value = periodoDeUnDia(hoy);
       movimientosInventario
         ..clear()
         ..['p1'] = [
@@ -251,10 +317,9 @@ void main() {
     }
 
     for (final tam in const [Size(1200, 900), Size(375, 812)]) {
-      testWidgets('muestra el día de hoy y se mueve con las flechas '
+      testWidgets('muestra el periodo elegido y se mueve con él '
           '(${tam.width.round()} px)', (tester) async {
         await abrir(tester, tam);
-        expect(find.text('Hoy'), findsOneWidget);
         // Hoy: 2 movimientos (1 entrada, 1 salida) y el costo de la compra.
         expect(find.text('2'), findsOneWidget);
         expect(find.text('S/ 35.00'), findsOneWidget);
@@ -267,9 +332,10 @@ void main() {
         expect(find.text('Consumo'), findsOneWidget);
 
         // Ayer: un solo movimiento (la salida de 1).
-        await tester.tap(find.byTooltip('Día anterior'));
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Ayer'), findsOneWidget);
+        periodoInventarioNotifier.value = periodoDeUnDia(
+          soloDia(DateTime.now()).subtract(const Duration(days: 1)),
+        );
+        await tester.pump(const Duration(seconds: 10));
         expect(find.text('Compra'), findsNothing);
         expect(find.text('Consumo'), findsOneWidget);
         expect(find.text('-1'), findsOneWidget);
@@ -277,17 +343,17 @@ void main() {
       });
     }
 
-    testWidgets('un día sin movimientos lo dice y no deja descargar', (
+    testWidgets('un periodo sin movimientos lo dice y no deja descargar', (
       tester,
     ) async {
       await abrir(tester, const Size(1200, 900));
-      await tester.tap(find.byTooltip('Día anterior'));
-      await tester.pump();
-      await tester.tap(find.byTooltip('Día anterior'));
+      periodoInventarioNotifier.value = periodoDeUnDia(
+        soloDia(DateTime.now()).subtract(const Duration(days: 5)),
+      );
       // La lectura del servidor falla en la prueba: se espera a que termine.
       await tester.pump(const Duration(seconds: 10));
       expect(
-        find.text('No hubo movimientos de inventario ese día.'),
+        find.text('No hubo movimientos de inventario en esas fechas.'),
         findsOneWidget,
       );
       final boton = tester.widget<OutlinedButton>(
