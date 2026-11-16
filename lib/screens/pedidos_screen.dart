@@ -283,9 +283,19 @@ class _PedidosScreenState extends State<PedidosScreen> {
     if (mounted) _cargar();
   }
 
+  void _refrescarEstadoCajaLigero() {
+    if (!CajaService.instance.enServidor) return;
+    CajaService.instance.consultarCajaAbierta().then((abierta) {
+      if (mounted && _cajaAbierta != abierta) {
+        setState(() => _cajaAbierta = abierta);
+      }
+    }).catchError((_) {});
+  }
+
   void _alCambiarEnVivo() {
     if (!mounted) return;
     setState(() {});
+    _refrescarEstadoCajaLigero();
     // Un traspaso nuevo o rechazado avisa al momento, sin esperar la consulta
     // periódica.
     _avisarTraspasos();
@@ -303,6 +313,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   }
 
   Future<void> _cargar() async {
+    _refrescarEstadoCajaLigero();
     await PedidoService.instance.cargarPedidos();
     // Para saber qué mesas siguen ocupadas (notificación "Mesas por liberar").
     if (PedidoMozoService.instance.activo) {
@@ -625,9 +636,14 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
+  bool? _cajaAbierta;
+
   Widget _bannerCajaCerrada() {
     if (!CajaService.instance.enServidor) return const SizedBox.shrink();
-    if (estadoCajaServidor?.abierta == true) return const SizedBox.shrink();
+    final abierta = _cajaAbierta ?? estadoCajaServidor?.abierta;
+    // Mientras aún no se confirma que está cerrada (abierta == false), no
+    // mostrar un falso aviso de "Caja cerrada".
+    if (abierta != false) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
