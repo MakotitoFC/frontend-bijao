@@ -29,9 +29,10 @@ PedidoLine _linea({
   String? comentario,
   String tipoEntrega = 'mesa',
   CartaVariante? variante,
+  String? cartaId,
 }) => PedidoLine(
   id: id,
-  cartaId: 'c-$id',
+  cartaId: cartaId ?? 'c-$id',
   nombrePlato: nombre,
   cantidad: cantidad,
   modificadores: const [],
@@ -157,6 +158,28 @@ void main() {
       expect(textos, contains('Cliente: Maria (Mozo)'));
       expect(textos.any((x) => x.contains('SIN NOMBRE')), false);
       expect(textos, contains('Atendido por: admin | Pedido #0007'));
+    });
+
+    test('los productos iguales salen en una sola línea y el total no cambia', () {
+      final filas = agruparIguales([
+        _linea(id: 'a', nombre: 'Agua', cantidad: 1, precio: 4),
+        _linea(id: 'b', nombre: 'Cecina', precio: 35),
+        _linea(id: 'a', nombre: 'Agua', cantidad: 2, precio: 4),
+        _linea(id: 'a', nombre: 'Agua', cantidad: 1, precio: 5),
+        _linea(id: 'c', nombre: 'Agua', cantidad: 1, precio: 4, comentario: 'sin hielo'),
+      ]);
+      // Agua 1+2 al mismo precio; otro precio y otro comentario quedan aparte.
+      expect(filas.length, 4);
+      expect(filas[0].cantidad, 3);
+      expect(filas[0].importe, 12);
+      expect(filas.fold(0.0, (s, f) => s + f.importe), 4 + 35 + 8 + 5 + 4);
+    });
+
+    test('efectivo recibido solo si el medio vigente es efectivo', () {
+      expect(hayPagoEnEfectivo([(medio: 'Efectivo', monto: 10)]), true);
+      expect(hayPagoEnEfectivo([(medio: 'Servicios Multiples', monto: 10)]), false);
+      expect(hayPagoEnEfectivo(const []), true);
+      expect(hayPagoEnEfectivo(const [], metodoPago: 'Yape'), false);
     });
 
     test('la fila del mozo lleva el número del pedido tras " | "', () {

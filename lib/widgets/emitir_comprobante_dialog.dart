@@ -14,7 +14,8 @@ import '../services/pedido_mozo_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/blur_dialog.dart';
 import '../utils/monto_letras.dart';
-import '../utils/ticket_texto.dart' show sufijoNumeroPedido;
+import '../utils/ticket_texto.dart'
+    show agruparIguales, hayPagoEnEfectivo, sufijoNumeroPedido;
 import '../utils/abrir_enlace.dart';
 import '../utils/whatsapp_cuenta.dart';
 import 'app_toast.dart';
@@ -1223,13 +1224,13 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                   ] else if (control.soloConsumo) ...[
                     _filaItem('1 NIU', 'Por consumo', totalCalc),
                   ] else ...[
-                    for (final l in productos)
+                    for (final fila in agruparIguales(productos))
                       _filaItem(
-                        '${l.cantidad} NIU',
-                        l.esLibre
-                            ? (l.nombreLibre ?? l.nombrePlato)
-                            : l.nombrePlato,
-                        l.precioTotalLinea,
+                        '${fila.cantidad} NIU',
+                        fila.linea.esLibre
+                            ? (fila.linea.nombreLibre ?? fila.linea.nombrePlato)
+                            : fila.linea.nombrePlato,
+                        fila.importe,
                       ),
                     if (conDelivery)
                       _filaItem('1 NIU', 'Servicio Delivery', cargoDelivery),
@@ -1292,7 +1293,7 @@ class _VistaPreviaComprobanteFiscal extends StatelessWidget {
                         ],
                       ),
                     if (efectivoRecibidoPorPedido[pedido.id] case final e?
-                        when e.recibido > 0) ...[
+                        when e.recibido > 0 && hayPagoEnEfectivo(pagosLista)) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [

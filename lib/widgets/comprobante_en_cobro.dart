@@ -45,6 +45,49 @@ bool puedeElegirComprobante(Pedido pedido) {
 }
 
 // Ítem editable para reportar a SUNAT (permite modificar nombre, cantidad y precio)
+/// Junta las filas iguales del comprobante (mismo producto y precio unitario) en
+/// una sola, sumando cantidad e importe. Roturas, alquiler, delivery, recargo,
+/// propina y descuentos van siempre sueltos. El total no cambia.
+List<Map<String, dynamic>> agruparItemsIguales(
+  List<Map<String, dynamic>> items,
+) {
+  double num_(dynamic v) => v is num ? v.toDouble() : 0.0;
+  bool suelto(String nombre) {
+    final n = nombre.toUpperCase();
+    return const [
+      'ROTURA',
+      'ALQUILER',
+      'DELIVERY',
+      'RECARGO',
+      'PROPINA',
+      'DESCUENTO',
+    ].any(n.contains);
+  }
+
+  final salida = <Map<String, dynamic>>[];
+  final posicion = <String, int>{};
+  for (final it in items) {
+    final nombre = it['nombre']?.toString() ?? '';
+    final cant = (it['cantidad'] is num) ? (it['cantidad'] as num).toInt() : 1;
+    if (suelto(nombre) || cant <= 0) {
+      salida.add(Map<String, dynamic>.from(it));
+      continue;
+    }
+    final clave =
+        '${nombre.trim()}|${num_(it['precio_unitario']).toStringAsFixed(2)}';
+    final i = posicion[clave];
+    if (i == null) {
+      posicion[clave] = salida.length;
+      salida.add(Map<String, dynamic>.from(it));
+    } else {
+      final f = salida[i];
+      f['cantidad'] = ((f['cantidad'] as num?)?.toInt() ?? 1) + cant;
+      f['subtotal'] = num_(f['subtotal']) + num_(it['subtotal']);
+    }
+  }
+  return salida;
+}
+
 class ItemFacturacionEditable {
   final TextEditingController nombre;
   final TextEditingController cantidad;
@@ -200,6 +243,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
           },
         )
         .toList();
+    itemsOriginales = agruparItemsIguales(itemsOriginales);
 
     recalcularItemsInflados(notificar: false);
   }
@@ -217,7 +261,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
     total = totalObjetivo;
     recargoTarjeta = recargo;
     costoDelivery = 0.0;
-    itemsOriginales = List<Map<String, dynamic>>.from(items);
+    itemsOriginales = agruparItemsIguales(items);
     recalcularItemsInflados(notificar: false);
   }
 
