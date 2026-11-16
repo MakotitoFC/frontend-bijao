@@ -11,8 +11,8 @@ import 'dialogo_app.dart';
 Future<bool> cajaCerrada() async {
   if (!CajaService.instance.enServidor) return false;
   try {
-    final estado = await CajaService.instance.cargarEstado();
-    return !estado.abierta;
+    final abierta = await CajaService.instance.consultarCajaAbierta();
+    return !abierta;
   } catch (_) {
     final e = estadoCajaServidor;
     return e != null && !e.abierta;

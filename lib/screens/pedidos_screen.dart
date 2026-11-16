@@ -428,29 +428,41 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   // ---------- acciones ----------
 
+  bool _abriendoNuevoPedido = false;
+
   // "Nuevo Pedido" abre el modal de elegir tipo; luego arma el pedido inline.
   Future<void> _nuevoPedido() async {
-    // Sin caja abierta no se registran pedidos.
-    if (await cajaCerrada()) {
+    if (_abriendoNuevoPedido) return;
+    setState(() => _abriendoNuevoPedido = true);
+    try {
+      // Sin caja abierta no se registran pedidos.
+      if (await cajaCerrada()) {
+        if (!mounted) return;
+        setState(() => _abriendoNuevoPedido = false);
+        await mostrarAvisoCajaCerrada(context, irAAbrir: widget.onIrACaja);
+        return;
+      }
       if (!mounted) return;
-      await mostrarAvisoCajaCerrada(context, irAAbrir: widget.onIrACaja);
-      return;
+      setState(() => _abriendoNuevoPedido = false);
+      // Un solo modal con dos pasos (para quién es y el tipo): cualquier usuario,
+      // también el mozo, puede registrar pedidos de clientes, empleados o familia.
+      final eleccion = await showBlurDialog<EleccionNuevoPedido>(
+        context: context,
+        builder: (_) => const ElegirNuevoPedidoDialog(conDestinatario: true),
+      );
+      if (eleccion == null || !mounted) return;
+      final destinatario = eleccion.destinatario;
+      final tipo = eleccion.tipo;
+      setState(() {
+        _destinatarioNuevo = destinatario;
+        _tipoNuevoPedido = tipo;
+        _armandoPedido = true;
+      });
+    } finally {
+      if (mounted && _abriendoNuevoPedido) {
+        setState(() => _abriendoNuevoPedido = false);
+      }
     }
-    if (!mounted) return;
-    // Un solo modal con dos pasos (para quién es y el tipo): cualquier usuario,
-    // también el mozo, puede registrar pedidos de clientes, empleados o familia.
-    final eleccion = await showBlurDialog<EleccionNuevoPedido>(
-      context: context,
-      builder: (_) => const ElegirNuevoPedidoDialog(conDestinatario: true),
-    );
-    if (eleccion == null || !mounted) return;
-    final destinatario = eleccion.destinatario;
-    final tipo = eleccion.tipo;
-    setState(() {
-      _destinatarioNuevo = destinatario;
-      _tipoNuevoPedido = tipo;
-      _armandoPedido = true;
-    });
   }
 
   // "Volver" desde el primer paso: regresa a elegir el tipo de pedido.
@@ -1031,9 +1043,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
   Widget _botonNuevoPedido() {
     final estrecho = MediaQuery.sizeOf(context).width < 400;
     return FilledButton.icon(
-      onPressed: _nuevoPedido,
+      onPressed: _abriendoNuevoPedido ? null : _nuevoPedido,
       style: FilledButton.styleFrom(backgroundColor: AppColors.primaryGreen),
-      icon: const Icon(Icons.add, size: 18),
+      icon: _abriendoNuevoPedido
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.add, size: 18),
       label: Text(
         estrecho ? 'Nuevo' : 'Nuevo Pedido',
         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),

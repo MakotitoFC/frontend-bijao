@@ -191,33 +191,45 @@ class _CocinaScreenState extends State<CocinaScreen> {
     return 'Insumo';
   }
 
+  bool _abriendoDelivery = false;
+
   // El cajero registra los pedidos de delivery: se abre el armado del pedido a
   // pantalla completa, ya como delivery. No hay pedidos sin caja abierta.
   Future<void> _nuevoDelivery() async {
+    if (_abriendoDelivery) return;
     final usuario = AuthService.instance.currentUser;
     if (usuario == null) return;
-    if (await cajaCerrada()) {
+    setState(() => _abriendoDelivery = true);
+    try {
+      if (await cajaCerrada()) {
+        if (!mounted) return;
+        setState(() => _abriendoDelivery = false);
+        await mostrarAvisoCajaCerrada(context);
+        return;
+      }
       if (!mounted) return;
-      await mostrarAvisoCajaCerrada(context);
-      return;
-    }
-    if (!mounted) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (rutaContext) => Scaffold(
-          backgroundColor: Colors.white,
-          body: SafeArea(
-            child: NuevoPedidoDialog(
-              usuario: usuario,
-              tipo: 'delivery',
-              onTerminar: (_) => Navigator.of(rutaContext).pop(),
-              onVolver: () => Navigator.of(rutaContext).pop(),
+      setState(() => _abriendoDelivery = false);
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (rutaContext) => Scaffold(
+            backgroundColor: Colors.white,
+            body: SafeArea(
+              child: NuevoPedidoDialog(
+                usuario: usuario,
+                tipo: 'delivery',
+                onTerminar: (_) => Navigator.of(rutaContext).pop(),
+                onVolver: () => Navigator.of(rutaContext).pop(),
+              ),
             ),
           ),
         ),
-      ),
-    );
-    if (mounted) setState(() {});
+      );
+      if (mounted) setState(() {});
+    } finally {
+      if (mounted && _abriendoDelivery) {
+        setState(() => _abriendoDelivery = false);
+      }
+    }
   }
 
   @override
@@ -245,8 +257,17 @@ class _CocinaScreenState extends State<CocinaScreen> {
                 if (widget.modoCaja) ...[
                   const SizedBox(width: 12),
                   FilledButton.icon(
-                    onPressed: _nuevoDelivery,
-                    icon: const Icon(LucideIcons.bike, size: 16),
+                    onPressed: _abriendoDelivery ? null : _nuevoDelivery,
+                    icon: _abriendoDelivery
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(LucideIcons.bike, size: 16),
                     label: Text(
                       AppBreakpoints.esMobile(context)
                           ? 'Delivery'

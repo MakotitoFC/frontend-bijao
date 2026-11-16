@@ -58,6 +58,15 @@ class CajaService {
     return null;
   }
 
+  // Consulta ligera para saber solo si la caja está abierta (sin calcular totales).
+  Future<bool> consultarCajaAbierta() async {
+    final res = await _api.get('/api/v1/caja/abierta');
+    if (res is! Map<String, dynamic>) {
+      throw Exception('El servidor no devolvió el estado de la caja');
+    }
+    return res['abierta'] == true;
+  }
+
   // Lee el estado de la caja (abierta o cerrada) con sus totales y deja todo en
   // memoria. Si el estado no trae los totales, los pide aparte.
   Future<EstadoCaja> cargarEstado({
