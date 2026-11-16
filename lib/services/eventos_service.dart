@@ -201,6 +201,10 @@ class EventosService {
     _agrupar = Timer(const Duration(milliseconds: 300), _aplicar);
   }
 
+  bool get _veInventario =>
+      AuthService.instance.currentUser?.tienePermiso('VER.VISTA_INVENTARIO') ??
+      false;
+
   Future<void> _aplicar() async {
     final acciones = _pendientes;
     _pendientes = const AccionesDeEvento();
@@ -210,13 +214,12 @@ class EventosService {
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
         // El aviso de stock bajo de la campana: solo para quien ve Inventario.
-        if (acciones.stock &&
-            (AuthService.instance.currentUser?.tienePermiso(
-                  'VER.VISTA_INVENTARIO',
-                ) ??
-                false))
+        if (acciones.stock && _veInventario)
           CatalogService.instance.cargarProductosInventario(),
-        if (acciones.carta) CatalogService.instance.recargarCarta(),
+        // Quien no ve Inventario (el mozo) se entera de los platos agotados por la
+        // carta, que trae esa marca desde el servidor.
+        if (acciones.carta || (acciones.stock && !_veInventario))
+          CatalogService.instance.recargarCarta(),
         if (acciones.traspasos && PedidoMozoService.instance.activo)
           TraspasoService.instance.cargar(),
         if (acciones.porLiberar && PedidoMozoService.instance.activo)

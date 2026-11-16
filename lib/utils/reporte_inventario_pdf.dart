@@ -39,6 +39,11 @@ String fechaLarga(DateTime d) =>
 
 String _dos(int n) => n.toString().padLeft(2, '0');
 
+// "domingo 15 de noviembre de 2026" o, si es un periodo, "del ... al ...".
+String periodoLargo(ReporteInventarioDia r) => r.esUnDia
+    ? fechaLarga(r.dia)
+    : 'Del ${fechaLarga(r.dia)} al ${fechaLarga(r.hasta)}';
+
 String _numero(double v) =>
     v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
@@ -74,7 +79,7 @@ Future<Uint8List> reporteInventarioPdf(
 }) async {
   final ahora = generado ?? DateTime.now();
   final doc = pw.Document(
-    title: 'Reporte de inventario ${fechaIso(r.dia)}',
+    title: 'Reporte de inventario ${fechaIso(r.dia)}${r.esUnDia ? '' : ' al ${fechaIso(r.hasta)}'}',
     author: negocio,
   );
 
@@ -179,7 +184,7 @@ Future<Uint8List> reporteInventarioPdf(
         ),
         pw.SizedBox(height: 2),
         pw.Text(
-          _limpio(fechaLarga(r.dia)),
+          _limpio(periodoLargo(r)),
           style: const pw.TextStyle(fontSize: 11, color: _gris),
         ),
         pw.SizedBox(height: 14),
@@ -192,7 +197,7 @@ Future<Uint8List> reporteInventarioPdf(
             cifra('Salidas', '${r.cantidadSalidas}'),
             pw.SizedBox(width: 8),
             cifra(
-              'Costo de entradas',
+              'Costo de compras',
               'S/ ${r.costoEntradas.toStringAsFixed(2)}',
             ),
           ],

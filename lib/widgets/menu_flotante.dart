@@ -8,8 +8,16 @@ class OpcionMenu<T> {
   final T valor;
   final String etiqueta;
   final Color? color;
+  // Con icono, el menú se dibuja con icono a la izquierda; una opción con
+  // `color` (por ejemplo, Eliminar) sale en ese color y separada de las demás.
+  final IconData? icono;
 
-  const OpcionMenu({required this.valor, required this.etiqueta, this.color});
+  const OpcionMenu({
+    required this.valor,
+    required this.etiqueta,
+    this.color,
+    this.icono,
+  });
 }
 
 // Menú de opciones con el mismo diseño que los selectores (AppSelect): panel
@@ -83,7 +91,7 @@ class _MenuFlotanteState<T> extends State<MenuFlotante<T>> {
     final espacioAbajo =
         limite.bottom - (origen.dy + alto) - separacion - margen;
     final espacioArriba = origen.dy - limite.top - separacion - margen;
-    final necesario = (widget.opciones.length * _altoOpcion + 2).clamp(
+    final necesario = (widget.opciones.length * _altoOpcion + 14).clamp(
       0.0,
       _altoMaximo,
     );
@@ -126,7 +134,100 @@ class _MenuFlotanteState<T> extends State<MenuFlotante<T>> {
     if (mounted) setState(() => _abierto = false);
   }
 
+  // Panel con icono en cada opción: filas redondeadas con su propio hover, y las
+  // opciones con color (Eliminar) al final, separadas y en ese color.
+  Widget _panelRico(double altoMaximo) {
+    final normales = [
+      for (final o in widget.opciones)
+        if (o.color == null) o,
+    ];
+    final destacadas = [
+      for (final o in widget.opciones)
+        if (o.color != null) o,
+    ];
+    Widget fila(OpcionMenu<T> o) {
+      final sel = o.valor == widget.seleccionada;
+      final color = o.color ?? (sel ? AppColors.primaryGreen : Colors.black87);
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.tag),
+          hoverColor: (o.color ?? AppColors.primaryGreen).withValues(
+            alpha: 0.08,
+          ),
+          onTap: () {
+            _cerrar();
+            widget.onSeleccionar(o.valor);
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: sel
+                  ? AppColors.primaryGreen.withValues(alpha: 0.08)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadii.tag),
+            ),
+            child: Row(
+              children: [
+                if (o.icono != null) ...[
+                  Icon(o.icono, size: 17, color: color),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Text(
+                    o.etiqueta,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: sel || o.color != null
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: altoMaximo),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        children: [
+          for (final o in normales) fila(o),
+          if (normales.isNotEmpty && destacadas.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Divider(height: 1, color: Colors.grey.shade200),
+            ),
+          for (final o in destacadas) fila(o),
+        ],
+      ),
+    );
+  }
+
   Widget _panel(double altoMaximo) {
+    if (widget.opciones.any((o) => o.icono != null)) {
+      return _panelRico(altoMaximo);
+    }
     return Container(
       constraints: BoxConstraints(maxHeight: altoMaximo),
       decoration: BoxDecoration(

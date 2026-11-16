@@ -193,7 +193,7 @@ void main() {
                   'Métodos de pago',
                   'Usuarios y roles',
                   'Promociones',
-                  'Stock diario',
+                  'Stock',
                   'Impresoras',
                   'Impresión en cocina',
                   'Sede y Facturación',
@@ -234,7 +234,7 @@ void main() {
 const _grupoDe = {
   'Usuarios y roles': 'Equipo',
   'Promociones': 'Carta y stock',
-  'Stock diario': 'Carta y stock',
+  'Stock': 'Carta y stock',
   'Impresoras': 'Negocio',
   'Impresión en cocina': 'Negocio',
   'Sede y Facturación': 'Negocio',

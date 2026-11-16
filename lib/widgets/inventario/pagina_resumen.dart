@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/catalogos_store.dart';
+import '../../data/inventario_periodo.dart';
 import '../../data/inventario_store.dart';
 import '../../models/inventario_movimiento.dart';
 import '../../models/producto_inventario.dart';
@@ -27,15 +28,30 @@ class _PaginaResumenState extends State<PaginaResumen> {
   @override
   void initState() {
     super.initState();
-    Future.wait([
+    periodoInventarioNotifier.addListener(_cargar);
+    _cargar();
+  }
+
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_cargar);
+    super.dispose();
+  }
+
+  // Del libro solo se pide el periodo elegido: la actividad reciente sale de ahí.
+  Future<void> _cargar() async {
+    final p = periodoInventarioNotifier.value;
+    await Future.wait([
       CatalogService.instance.cargarTiposProducto(),
       CatalogService.instance.cargarUnidadesProducto(),
       CatalogService.instance.cargarProductosInventario(),
       CatalogService.instance.cargarTiposMovimiento(),
-      CatalogService.instance.cargarMovimientosInventario(),
-    ]).then((_) {
-      if (mounted) setState(() {});
-    });
+      CatalogService.instance.cargarMovimientosInventario(
+        desde: p.start,
+        hasta: p.end,
+      ),
+    ]);
+    if (mounted) setState(() {});
   }
 
   List<ProductoInventario> get _porReponer {
@@ -161,9 +177,9 @@ class _PaginaResumenState extends State<PaginaResumen> {
         ),
         _stockPorTipoSeccion(),
         SeccionInventario(
-          titulo: 'Actividad reciente',
-          descripcion: 'Últimas entradas, salidas y mermas.',
-          mensajeVacio: 'Sin movimientos registrados aún.',
+          titulo: 'Actividad del periodo',
+          descripcion: 'Últimas entradas, salidas y mermas de las fechas elegidas.',
+          mensajeVacio: 'Sin movimientos en las fechas elegidas.',
           filas: [
             for (final a in _actividadReciente)
               _filaActividad(a.producto, a.movimiento),

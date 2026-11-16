@@ -562,8 +562,9 @@ class PedidoMozoService {
     DateTime? hasta,
   }) async {
     final params = <String, String>{};
-    if (desde != null) params['fecha_desde'] = desde.toIso8601String();
-    if (hasta != null) params['fecha_hasta'] = hasta.toIso8601String();
+    // Solo el día (YYYY-MM-DD): el servidor toma el día completo en "hasta".
+    if (desde != null) params['fecha_desde'] = desde.toIso8601String().substring(0, 10);
+    if (hasta != null) params['fecha_hasta'] = hasta.toIso8601String().substring(0, 10);
     final res = await _api.get(
       '/api/inventario/anulaciones',
       queryParams: params.isEmpty ? null : params,

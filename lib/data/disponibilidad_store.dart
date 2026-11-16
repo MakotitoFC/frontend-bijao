@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/disponibilidad.dart';
+import 'cartas_store.dart';
 
 // Configuración de stock de la sede y disponibilidad de platos de hoy. Se
 // cargan desde el backend (`DisponibilidadService`).
@@ -18,6 +19,12 @@ enum TipoDisponibilidad {
   agotado,
   // Sin registro de hoy y la sede exige apertura diaria: no se vende.
   sinApertura,
+  // El producto de inventario del que depende el plato está en 0. Se puede pedir
+  // salvo que la sede lo bloquee (Configuración > Stock).
+  agotadoInventario,
+  // El producto de inventario del que depende el plato está por agotarse. Se vende
+  // normal: solo se avisa.
+  stockBajoInventario,
 }
 
 class EstadoDisponibilidad {
@@ -28,12 +35,17 @@ class EstadoDisponibilidad {
 
   bool get vendible =>
       tipo != TipoDisponibilidad.agotado &&
-      tipo != TipoDisponibilidad.sinApertura;
+      tipo != TipoDisponibilidad.sinApertura &&
+      !(tipo == TipoDisponibilidad.agotadoInventario &&
+          (configStockNotifier.value?.bloquearAgotadoInventario ?? false));
 
   // Texto corto para mostrar junto al plato; null cuando no hay nada que decir.
   String? get etiqueta => switch (tipo) {
     TipoDisponibilidad.agotado => 'Agotado hoy',
     TipoDisponibilidad.sinApertura => 'Sin abrir hoy',
+    TipoDisponibilidad.agotadoInventario => 'Agotado',
+    TipoDisponibilidad.stockBajoInventario =>
+      quedan != null ? 'Quedan $quedan' : 'Por agotarse',
     TipoDisponibilidad.conCantidad => 'Quedan $quedan',
     _ => null,
   };
@@ -49,7 +61,6 @@ EstadoDisponibilidad estadoDisponibilidadDe(
   SedeConfigStock? config,
   List<CartaDisponibilidad>? filas,
 }) {
-  final cfg = config ?? configStockNotifier.value;
   final lista = filas ?? disponibilidadHoyNotifier.value;
 
   CartaDisponibilidad? fila;
@@ -70,24 +81,25 @@ EstadoDisponibilidad estadoDisponibilidadDe(
     }
   }
 
-  if (fila == null) {
-    return (cfg?.requiereAperturaDiaria ?? false)
-        ? const EstadoDisponibilidad(TipoDisponibilidad.sinApertura)
-        : const EstadoDisponibilidad(TipoDisponibilidad.libre);
-  }
-  if (fila.agotado)
+  // "Agotado hoy" marcado a mano.
+  if (fila != null && fila.agotado) {
     return const EstadoDisponibilidad(TipoDisponibilidad.agotado);
-
-  final disponible = fila.cantidadDisponible;
-  if (fila.cantidadInicial != null && disponible != null) {
-    if (disponible <= 0 && !(cfg?.permiteSobreventa ?? false)) {
-      return const EstadoDisponibilidad(TipoDisponibilidad.agotado);
-    }
+  }
+  // Agotado en inventario (el servidor lo calcula con el stock de los insumos).
+  if (cartaPorId(cartaId)?.agotadoInventario ?? false) {
+    return const EstadoDisponibilidad(TipoDisponibilidad.agotadoInventario);
+  }
+  final bajo = cartaPorId(cartaId);
+  if (bajo?.stockBajoInventario ?? false) {
     return EstadoDisponibilidad(
-      TipoDisponibilidad.conCantidad,
-      quedan: disponible < 0 ? 0 : disponible,
+      TipoDisponibilidad.stockBajoInventario,
+      quedan: bajo!.quedanInventario,
     );
   }
+  // La apertura diaria y la cantidad diaria ya no limitan las ventas: sin fila de
+  // hoy, el plato se vende libre.
+  if (fila == null) return const EstadoDisponibilidad(TipoDisponibilidad.libre);
+
   return const EstadoDisponibilidad(TipoDisponibilidad.sinLimite);
 }
 
@@ -99,13 +111,8 @@ int? topeDeUnidades(
   String? presentacionId,
   String? varianteId,
 }) {
-  if (configStockNotifier.value?.permiteSobreventa ?? false) return null;
-  final e = estadoDisponibilidadDe(
-    cartaId,
-    presentacionId: presentacionId,
-    varianteId: varianteId,
-  );
-  return e.tipo == TipoDisponibilidad.conCantidad ? (e.quedan ?? 0) : null;
+  // Sin tope por cantidad diaria: el stock de inventario no limita los pedidos.
+  return null;
 }
 
 // Fila general (sin presentación ni variante) de un plato hoy, si existe.

@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../../data/inventario_periodo.dart';
 import '../../data/inventario_store.dart';
 import '../../models/inventario_movimiento.dart';
 import '../../services/catalog_service.dart';
@@ -9,7 +10,6 @@ import '../../theme/app_theme.dart';
 import '../../utils/reporte_inventario.dart';
 import '../../utils/reporte_inventario_pdf.dart';
 import '../app_toast.dart';
-import '../selector_dia.dart';
 import '../tabs_texto.dart';
 import 'inventario_comun.dart';
 
@@ -24,19 +24,28 @@ class PaginaReportes extends StatefulWidget {
 }
 
 class _PaginaReportesState extends State<PaginaReportes> {
-  DateTime _dia = soloDia(DateTime.now());
   String _vista = 'productos'; // productos | movimientos
   bool _cargando = true;
   String? _error;
 
+  DateTimeRange get _periodo => periodoInventarioNotifier.value;
+
   @override
   void initState() {
     super.initState();
+    periodoInventarioNotifier.addListener(_cargar);
     _cargar();
   }
 
-  // El libro de inventario completo y el stock actual: el reporte de cualquier
-  // día sale de ahí, sin volver a pedir nada al cambiar de día.
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_cargar);
+    super.dispose();
+  }
+
+  // Del libro de inventario se pide solo desde el inicio del periodo hasta hoy
+  // (lo posterior hace falta para llegar al stock final de cada producto) y el
+  // stock actual. Al cambiar el periodo se vuelve a pedir.
   Future<void> _cargar() async {
     setState(() {
       _cargando = true;
@@ -45,7 +54,9 @@ class _PaginaReportesState extends State<PaginaReportes> {
     String? error;
     try {
       await Future.wait([
-        CatalogService.instance.cargarMovimientosInventario(),
+        CatalogService.instance.cargarMovimientosInventario(
+          desde: _periodo.start,
+        ),
         CatalogService.instance.cargarProductosInventario(),
       ]);
     } catch (e) {
@@ -59,12 +70,13 @@ class _PaginaReportesState extends State<PaginaReportes> {
     }
   }
 
-  List<InventarioMovimiento> get _todos => [
-    for (final lista in movimientosInventario.values) ...lista,
-  ];
+  // Sin armar una lista aparte: se recorre lo que ya está cargado.
+  Iterable<InventarioMovimiento> get _todos =>
+      movimientosInventario.values.expand((lista) => lista);
 
   ReporteInventarioDia get _reporte => calcularReporteInventario(
-    dia: _dia,
+    desde: _periodo.start,
+    hasta: _periodo.end,
     movimientos: _todos,
     productos: productosInventario,
   );
@@ -79,14 +91,17 @@ class _PaginaReportesState extends State<PaginaReportes> {
     try {
       final bytes = await reporteInventarioPdf(r, unidadDe: unidadDe);
       await FilePicker.saveFile(
-        fileName: 'inventario-${fechaIso(r.dia)}.pdf',
+        fileName:
+            'inventario-${fechaIso(r.dia)}${r.esUnDia ? '' : '-al-${fechaIso(r.hasta)}'}.pdf',
         bytes: bytes,
         mimeType: 'application/pdf',
       );
       if (!mounted) return;
       showAppToast(
         context,
-        'Reporte del ${fechaCorta(r.dia)} descargado.',
+        r.esUnDia
+            ? 'Reporte del ${fechaCorta(r.dia)} descargado.'
+            : 'Reporte del ${fechaCorta(r.dia)} al ${fechaCorta(r.hasta)} descargado.',
         type: ToastType.success,
       );
     } catch (e) {
@@ -159,19 +174,21 @@ class _PaginaReportesState extends State<PaginaReportes> {
   Widget build(BuildContext context) {
     final r = _reporte;
     final porProducto = _vista == 'productos';
-    final filas = porProducto
-        ? [for (final p in r.productos) _filaProducto(p)]
-        : [for (final m in r.movimientos.reversed) _filaMovimiento(m)];
+    final cantidad = porProducto ? r.productos.length : r.movimientos.length;
     return PaginaListaFija(
-      reiniciarCon: '$_vista|${fechaIso(_dia)}',
+      reiniciarCon: '$_vista|${fechaIso(_periodo.start)}|${fechaIso(_periodo.end)}',
+      cantidad: cantidad,
+      filaEn: (i) => porProducto
+          ? _filaProducto(r.productos[i])
+          : _filaMovimiento(r.movimientos[r.movimientos.length - 1 - i]),
       cabecera: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const CabeceraSeccion(
             titulo: 'Reportes',
             descripcion:
-                'Qué entró, qué salió y cómo quedó el stock en el día que '
-                'elijas.',
+                'Qué entró, qué salió y cómo quedó el stock en las fechas que '
+                'elijas arriba.',
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -179,10 +196,6 @@ class _PaginaReportesState extends State<PaginaReportes> {
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SelectorDia(
-                dia: _dia,
-                onChanged: (d) => setState(() => _dia = soloDia(d)),
-              ),
               OutlinedButton.icon(
                 onPressed: _cargando || _generando || r.vacio
                     ? null
@@ -221,7 +234,7 @@ class _PaginaReportesState extends State<PaginaReportes> {
               TarjetaKpi(
                 icono: LucideIcons.wallet,
                 color: Colors.orange.shade700,
-                titulo: 'Costo de entradas',
+                titulo: 'Costo de compras',
                 valor: 'S/ ${r.costoEntradas.toStringAsFixed(2)}',
               ),
             ],
@@ -246,8 +259,7 @@ class _PaginaReportesState extends State<PaginaReportes> {
           ? 'Cargando…'
           : (_error != null
                 ? 'No se pudo leer el inventario: $_error'
-                : 'No hubo movimientos de inventario ese día.'),
-      filas: filas,
+                : 'No hubo movimientos de inventario en esas fechas.'),
     );
   }
 }

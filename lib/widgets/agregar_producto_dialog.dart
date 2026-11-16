@@ -18,6 +18,7 @@ import '../utils/blur_dialog.dart';
 import 'app_search_field.dart';
 import 'app_tag.dart';
 import 'app_toast.dart';
+import 'aviso_agotado.dart';
 import 'imagen_plato.dart';
 import 'producto_opciones_dialog.dart';
 import 'taper_catalogo_dialog.dart';
@@ -87,6 +88,7 @@ class _AgregarProductoDialogState extends State<AgregarProductoDialog> {
   }
 
   Future<void> _elegir(CartaItem item) async {
+    avisarSiAgotadoInventario(context, item);
     final r = await showBlurDialog<ProductoConfigurado>(
       context: context,
       builder: (_) => ProductoOpcionesDialog(

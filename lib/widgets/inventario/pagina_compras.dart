@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../data/compras_store.dart';
+import '../../data/inventario_periodo.dart';
 import '../../data/inventario_store.dart';
 import '../../models/compra.dart';
 import '../../models/compra_detalle.dart';
@@ -33,6 +34,7 @@ class _PaginaComprasState extends State<PaginaCompras> {
   @override
   void initState() {
     super.initState();
+    periodoInventarioNotifier.addListener(_alCambiarPeriodo);
     Future.wait([
       CatalogService.instance.cargarCompras(),
       CatalogService.instance.cargarProductosInventario(),
@@ -49,11 +51,25 @@ class _PaginaComprasState extends State<PaginaCompras> {
           .firstOrNull ??
       'Producto eliminado';
 
-  // Compras guardadas (los borradores viven solo dentro del modal).
-  List<Compra> get _guardadas => [
-    for (final c in compras)
-      if (c.guardada) c,
-  ];
+  void _alCambiarPeriodo() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    periodoInventarioNotifier.removeListener(_alCambiarPeriodo);
+    super.dispose();
+  }
+
+  // Compras guardadas (los borradores viven solo dentro del modal) del periodo
+  // elegido.
+  List<Compra> get _guardadas {
+    final periodo = periodoInventarioNotifier.value;
+    return [
+      for (final c in compras)
+        if (c.guardada && enPeriodo(periodo, c.fechaCompra)) c,
+    ];
+  }
 
   // Abre el modal de una compra nueva: fecha, notas y productos juntos.
   Future<void> _nuevaCompra() async {
@@ -275,15 +291,17 @@ class _PaginaComprasState extends State<PaginaCompras> {
     return PaginaListaFija(
       tarjetas: true,
       porPagina: _porPagina,
-      reiniciarCon: lista.length,
+      reiniciarCon:
+          '${lista.length}|${periodoInventarioNotifier.value.start}|${periodoInventarioNotifier.value.end}',
       cabecera: CabeceraSeccion(
         titulo: 'Compras',
         descripcion:
             'Cada compra guardada suma al stock los productos que trae.',
         accion: BotonNuevo(etiqueta: 'Compra', onPressed: _nuevaCompra),
       ),
-      mensajeVacio: 'Aún no hay compras. Registra la primera con "Compra".',
-      filas: [for (final c in lista) _tarjetaCompra(c)],
+      mensajeVacio: 'No hay compras en las fechas elegidas.',
+      cantidad: lista.length,
+      filaEn: (i) => _tarjetaCompra(lista[i]),
     );
   }
 }

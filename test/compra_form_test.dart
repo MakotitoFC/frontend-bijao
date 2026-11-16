@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_bijao/data/inventario_periodo.dart';
 import 'package:frontend_bijao/data/compras_store.dart';
 import 'package:frontend_bijao/models/compra.dart';
 import 'package:frontend_bijao/services/api_client.dart';
@@ -92,6 +93,15 @@ void main() {
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    // Las compras de la prueba son de noviembre de 2026: el periodo las cubre.
+    periodoInventarioNotifier.value = DateTimeRange(
+      start: DateTime(2026, 11, 1),
+      end: DateTime(2026, 11, 30),
+    );
+    addTearDown(() {
+      final hoy = DateUtils.dateOnly(DateTime.now());
+      periodoInventarioNotifier.value = DateTimeRange(start: hoy, end: hoy);
+    });
     for (var i = 0; i < 8; i++) {
       compras.add(
         Compra(id: 'c$i', fechaCompra: DateTime(2026, 11, 1 + i), total: 10),

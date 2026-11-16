@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend_bijao/data/cartas_store.dart';
 import 'package:frontend_bijao/data/catalogos_store.dart';
 import 'package:frontend_bijao/data/inventario_store.dart';
 import 'package:frontend_bijao/data/mesas_por_liberar_store.dart';
 import 'package:frontend_bijao/models/app_role.dart';
+import 'package:frontend_bijao/models/carta_item.dart';
 import 'package:frontend_bijao/models/producto_inventario.dart';
 import 'package:frontend_bijao/models/unidad_producto.dart';
 import 'package:frontend_bijao/models/usuario.dart';
@@ -57,6 +59,7 @@ void main() {
     productosInventario.clear();
     stockBajoNotifier.value = [];
     unidadesProducto.clear();
+    cartasNotifier.value = [];
   });
 
   Future<void> montar(WidgetTester tester) async {
@@ -120,5 +123,35 @@ void main() {
     await montar(tester);
     expect(find.text('1'), findsNothing);
     expect(find.text('Arroz: stock bajo'), findsNothing);
+  });
+
+  testWidgets('quien no ve Inventario sí se entera de los platos agotados', (
+    tester,
+  ) async {
+    AuthService.instance.userNotifier.value = _usuario(veInventario: false);
+    cartasNotifier.value = [
+      const CartaItem(
+        id: 'agua',
+        nombrePlato: 'Agua San Luis',
+        descripcion: '',
+        categoriaId: 'c',
+        agotadoInventario: true,
+      ),
+      const CartaItem(
+        id: 'cecina',
+        nombrePlato: 'Cecina',
+        descripcion: '',
+        categoriaId: 'c',
+      ),
+    ];
+    await montar(tester);
+    // Contador y tarjeta solo del plato agotado.
+    expect(find.text('1'), findsOneWidget);
+    await tester.tap(find.byType(CampanaNotificaciones));
+    await tester.pumpAndSettle();
+    expect(find.text('1 plato agotado'), findsOneWidget);
+    expect(find.text('Agua San Luis: agotado'), findsWidgets);
+    expect(find.text('Cecina: agotado'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

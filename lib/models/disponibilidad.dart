@@ -10,12 +10,16 @@ class SedeConfigStock {
   final bool permiteSobreventa;
   // true: al llegar a 0 el plato queda agotado automáticamente.
   final bool autoAgotar;
+  // true: un plato cuyo insumo de inventario está en 0 no se puede pedir. false
+  // (lo habitual): se sigue vendiendo y solo se avisa.
+  final bool bloquearAgotadoInventario;
 
   const SedeConfigStock({
     required this.sedeId,
     this.requiereAperturaDiaria = false,
     this.permiteSobreventa = false,
     this.autoAgotar = true,
+    this.bloquearAgotadoInventario = false,
   });
 
   factory SedeConfigStock.fromJson(Map<String, dynamic> json) =>
@@ -24,18 +28,22 @@ class SedeConfigStock {
         requiereAperturaDiaria: json['requiere_apertura_diaria'] == true,
         permiteSobreventa: json['permite_sobreventa'] == true,
         autoAgotar: json['auto_agotar'] != false,
+        bloquearAgotadoInventario: json['bloquear_agotado_inventario'] == true,
       );
 
   SedeConfigStock copyWith({
     bool? requiereAperturaDiaria,
     bool? permiteSobreventa,
     bool? autoAgotar,
+    bool? bloquearAgotadoInventario,
   }) => SedeConfigStock(
     sedeId: sedeId,
     requiereAperturaDiaria:
         requiereAperturaDiaria ?? this.requiereAperturaDiaria,
     permiteSobreventa: permiteSobreventa ?? this.permiteSobreventa,
     autoAgotar: autoAgotar ?? this.autoAgotar,
+    bloquearAgotadoInventario:
+        bloquearAgotadoInventario ?? this.bloquearAgotadoInventario,
   );
 }
 
