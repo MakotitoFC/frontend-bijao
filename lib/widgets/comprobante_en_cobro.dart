@@ -36,6 +36,19 @@ String _mensajeError(Object e) => e is ApiException
     ? e.message
     : e.toString().replaceFirst('Exception: ', '');
 
+bool esErrorSinInternet(String mensaje) {
+  final m = mensaje.toLowerCase();
+  return m.contains('sin conexión a internet') ||
+      m.contains('sin conexion a internet') ||
+      m.contains('falla de internet') ||
+      m.contains('falla de conexión') ||
+      m.contains('falla de conexion') ||
+      m.contains('no se pudo conectar') ||
+      m.contains('socketexception') ||
+      m.contains('failed host lookup') ||
+      m.contains('clientexception');
+}
+
 // Solo administración y caja eligen el comprobante al cobrar.
 bool puedeElegirComprobante(Pedido pedido) {
   final u = AuthService.instance.currentUser;
@@ -461,8 +474,8 @@ class ComprobanteEnCobro extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> buscarDni() async {
-    if (!dniValido || buscando) return;
+  Future<String?> buscarDni() async {
+    if (!dniValido || buscando) return null;
     buscando = true;
     error = null;
     notifyListeners();
@@ -476,10 +489,11 @@ class ComprobanteEnCobro extends ChangeNotifier {
       buscando = false;
       notifyListeners();
     }
+    return error;
   }
 
-  Future<void> buscarRuc() async {
-    if (!rucValido || buscando) return;
+  Future<String?> buscarRuc() async {
+    if (!rucValido || buscando) return null;
     buscando = true;
     error = null;
     notifyListeners();
@@ -499,6 +513,7 @@ class ComprobanteEnCobro extends ChangeNotifier {
       buscando = false;
       notifyListeners();
     }
+    return error;
   }
 
   // Emite el comprobante elegido para [pedido].
@@ -639,7 +654,24 @@ class SelectorComprobante extends StatelessWidget {
     ),
   );
 
-  Widget _formulario() {
+  Future<void> _consultarDocumento(
+    BuildContext context,
+    Future<String?> Function() accion,
+  ) async {
+    final err = await accion();
+    if (!context.mounted || err == null) return;
+    if (esErrorSinInternet(err)) {
+      showAppToast(
+        context,
+        err,
+        titulo: 'Sin conexión a internet',
+        type: ToastType.warning,
+        duration: const Duration(seconds: 5),
+      );
+    }
+  }
+
+  Widget _formulario(BuildContext context) {
     final solo = <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly];
     switch (control.tipo) {
       case 'factura':
@@ -659,7 +691,7 @@ class SelectorComprobante extends StatelessWidget {
                     onChanged: (v) {
                       control.cambio();
                       if (v.trim().length == 11 && !control.buscando) {
-                        control.buscarRuc();
+                        _consultarDocumento(context, control.buscarRuc);
                       }
                     },
                     decoration: const InputDecoration(
@@ -675,7 +707,7 @@ class SelectorComprobante extends StatelessWidget {
                   child: IconButton.filled(
                     tooltip: 'Buscar en SUNAT',
                     onPressed: control.rucValido && !control.buscando
-                        ? control.buscarRuc
+                        ? () => _consultarDocumento(context, control.buscarRuc)
                         : null,
                     icon: control.buscando
                         ? const SizedBox(
@@ -725,7 +757,7 @@ class SelectorComprobante extends StatelessWidget {
                       onChanged: (v) {
                         control.cambio();
                         if (v.trim().length == 8 && !control.buscando) {
-                          control.buscarDni();
+                          _consultarDocumento(context, control.buscarDni);
                         }
                       },
                       decoration: const InputDecoration(
@@ -741,7 +773,8 @@ class SelectorComprobante extends StatelessWidget {
                     child: IconButton.filled(
                       tooltip: 'Buscar en RENIEC / SUNAT',
                       onPressed: control.dniValido && !control.buscando
-                          ? control.buscarDni
+                          ? () =>
+                              _consultarDocumento(context, control.buscarDni)
                           : null,
                       icon: control.buscando
                           ? const SizedBox(
@@ -1224,7 +1257,7 @@ class SelectorComprobante extends StatelessWidget {
           ],
           if (control.emite && parte != ParteComprobante.tipo) ...[
             if (parte == ParteComprobante.todo) const SizedBox(height: 14),
-            _formulario(),
+            _formulario(context),
             if (control.tipo != 'ticket_venta') ...[
               Row(
                 children: [
@@ -1370,6 +1403,16 @@ Future<void> emitirComprobanteTrasCobro(
       return;
     } catch (e) {
       if (!context.mounted) return;
+      final errMsg = _mensajeError(e);
+      if (esErrorSinInternet(errMsg)) {
+        showAppToast(
+          context,
+          errMsg,
+          titulo: 'Sin conexión a internet',
+          type: ToastType.warning,
+          duration: const Duration(seconds: 5),
+        );
+      }
       final accion = await showBlurDialog<String>(
         context: context,
         builder: (dialogContext) => AlertaApp(
@@ -1380,7 +1423,7 @@ Future<void> emitirComprobanteTrasCobro(
             children: [
               Text(
                 'El cobro quedó registrado, pero no se pudo emitir el comprobante:\n'
-                '${_mensajeError(e)}',
+                '$errMsg',
               ),
               const SizedBox(height: 12),
               const Text(

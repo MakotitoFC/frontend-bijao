@@ -312,19 +312,27 @@ class _PedidosScreenState extends State<PedidosScreen> {
     super.dispose();
   }
 
+  bool _cargandoPedidos = false;
+
   Future<void> _cargar() async {
-    _refrescarEstadoCajaLigero();
-    await PedidoService.instance.cargarPedidos();
-    // Para saber qué mesas siguen ocupadas (notificación "Mesas por liberar").
-    if (PedidoMozoService.instance.activo) {
-      await TraspasoService.instance.cargar();
-      await CatalogService.instance.cargarMesas();
-      // Cobrar no dispara un evento: se consulta también en cada lectura.
-      await recargarMesasPorLiberar();
+    if (_cargandoPedidos) return;
+    _cargandoPedidos = true;
+    try {
+      _refrescarEstadoCajaLigero();
+      await PedidoService.instance.cargarPedidos();
+      // Para saber qué mesas siguen ocupadas (notificación "Mesas por liberar").
+      if (PedidoMozoService.instance.activo) {
+        await TraspasoService.instance.cargar();
+        await CatalogService.instance.cargarMesas();
+        // Cobrar no dispara un evento: se consulta también en cada lectura.
+        await recargarMesasPorLiberar();
+      }
+      if (mounted) setState(() {});
+      _avisarTraspasos();
+      _avisarRechazos();
+    } finally {
+      _cargandoPedidos = false;
     }
-    if (mounted) setState(() {});
-    _avisarTraspasos();
-    _avisarRechazos();
   }
 
   // ---------- datos ----------

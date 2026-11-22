@@ -19,16 +19,19 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+enum _RefreshResult { ok, rejected, networkError }
+
 class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
 
   static const String _prefToken = 'auth_jwt_token';
   static const String _prefRefreshToken = 'auth_refresh_token';
+  final http.Client _http = http.Client();
   String? _jwtToken;
   String? _refreshToken;
   late String _baseUrl = _getDefaultBaseUrl();
-  Completer<bool>? _refreshCompleter;
+  Completer<_RefreshResult>? _refreshCompleter;
 
   void Function(String message)? onSessionExpired;
 
@@ -126,19 +129,19 @@ class ApiClient {
     return Uri.parse(fullUrl).replace(queryParameters: queryParams);
   }
 
-  Future<bool> _tryRefreshToken() async {
+  Future<_RefreshResult> _tryRefreshToken() async {
     if (_refreshToken == null || _refreshToken!.isEmpty) {
-      return false;
+      return _RefreshResult.rejected;
     }
     if (_refreshCompleter != null) {
       return _refreshCompleter!.future;
     }
-    final completer = Completer<bool>();
+    final completer = Completer<_RefreshResult>();
     _refreshCompleter = completer;
-    var ok = false;
+    var resultado = _RefreshResult.networkError;
     try {
       final uri = _buildUri('/api/auth/refresh');
-      final resp = await http
+      final resp = await _http
           .post(
             uri,
             headers: {'Content-Type': 'application/json'},
@@ -154,18 +157,25 @@ class ApiClient {
           final newRefresh =
               decoded['refresh_token']?.toString() ?? _refreshToken;
           await setToken(newAccess, newRefresh);
-          ok = true;
+          resultado = _RefreshResult.ok;
+        } else {
+          resultado = _RefreshResult.rejected;
         }
+      } else if (resp.statusCode == 401 || resp.statusCode == 403) {
+        resultado = _RefreshResult.rejected;
+      } else {
+        resultado = _RefreshResult.networkError;
       }
     } catch (e) {
-      debugPrint('[ApiClient] Error refrescando token: $e');
+      debugPrint('[ApiClient] Error refrescando token (red/timeout): $e');
+      resultado = _RefreshResult.networkError;
     } finally {
       _refreshCompleter = null;
       if (!completer.isCompleted) {
-        completer.complete(ok);
+        completer.complete(resultado);
       }
     }
-    return ok;
+    return resultado;
   }
 
   Future<dynamic> _processResponse(
@@ -197,8 +207,19 @@ class ApiClient {
         path != '/api/auth/login' &&
         path != '/api/auth/refresh' &&
         path != '/api/auth/validar-pin-supervisor') {
-      if (retryCall != null && await _tryRefreshToken()) {
-        return retryCall();
+      final refresh = retryCall != null
+          ? await _tryRefreshToken()
+          : _RefreshResult.rejected;
+      if (refresh == _RefreshResult.ok) {
+        return retryCall!();
+      }
+      if (refresh == _RefreshResult.networkError) {
+        throw ApiException(
+          statusCode: 0,
+          message:
+              'Sin conexión estable con el servidor al renovar sesión. Intenta de nuevo.',
+          details: decoded,
+        );
       }
       await setToken(null);
       onSessionExpired?.call(message);
@@ -219,7 +240,7 @@ class ApiClient {
   }) async {
     if (!hasToken) return null;
     try {
-      final resp = await http
+      final resp = await _http
           .get(_buildUri(path, null), headers: _headers())
           .timeout(timeout);
       if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) return null;
@@ -236,7 +257,7 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path, queryParams);
-      final resp = await http.get(uri, headers: _headers()).timeout(timeout);
+      final resp = await _http.get(uri, headers: _headers()).timeout(timeout);
       return await _processResponse(
         resp,
         path: path,
@@ -258,7 +279,7 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path);
-      final resp = await http
+      final resp = await _http
           .post(
             uri,
             headers: _headers(),
@@ -286,7 +307,7 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path);
-      final resp = await http
+      final resp = await _http
           .put(
             uri,
             headers: _headers(),
@@ -314,7 +335,7 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path);
-      final resp = await http
+      final resp = await _http
           .patch(
             uri,
             headers: _headers(),
@@ -350,7 +371,7 @@ class ApiClient {
         http.MultipartFile.fromBytes(campo, bytes, filename: nombreArchivo),
       );
       final respuesta = await http.Response.fromStream(
-        await peticion.send().timeout(timeout),
+        await _http.send(peticion).timeout(timeout),
       );
       return await _processResponse(respuesta, path: path);
     } catch (e) {
@@ -368,7 +389,9 @@ class ApiClient {
   }) async {
     try {
       final uri = _buildUri(path);
-      final resp = await http.delete(uri, headers: _headers()).timeout(timeout);
+      final resp = await _http
+          .delete(uri, headers: _headers())
+          .timeout(timeout);
       return await _processResponse(
         resp,
         path: path,
@@ -402,7 +425,7 @@ class ApiClient {
         'usuario': usuario ?? 'desconocido',
         'user_agent': kIsWeb ? 'Flutter Web' : defaultTargetPlatform.name,
       });
-      await http
+      await ApiClient.instance._http
           .post(
             uri,
             headers: {'Content-Type': 'application/json'},

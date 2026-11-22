@@ -91,12 +91,11 @@ class PedidoMozoService {
       // Un pedido que cambió de mesa llega una vez por cada mesa: su detalle se
       // pide una sola vez.
       if (!vigentes.add(id)) continue;
-      final marca = '${raw['version']}|${raw['updated_at']}|${raw['total']}';
+      final marca =
+          '${raw['version']}|${raw['estado']}|${raw['updated_at']}|${raw['total']}';
       final previo = pedidos.where((p) => p.id == id).firstOrNull;
       final total = (raw['total'] as num?)?.toDouble();
-      final activo = raw['estado'] == 'pendiente' || raw['estado'] == 'servido';
       final igual =
-          !(sobreLegacy && activo) &&
           previo != null &&
           detallesPorPedido[id] != null &&
           _marcas[id] == marca &&

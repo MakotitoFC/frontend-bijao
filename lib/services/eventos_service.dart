@@ -115,6 +115,7 @@ class EventosService {
   Timer? _agrupar;
   int _intentos = 0;
   AccionesDeEvento _pendientes = const AccionesDeEvento();
+  DateTime? _ultimaRecargaCartaPorStock;
 
   void iniciar() {
     if (_activo) return;
@@ -205,6 +206,17 @@ class EventosService {
       AuthService.instance.currentUser?.tienePermiso('VER.VISTA_INVENTARIO') ??
       false;
 
+  bool _debeRecargarCartaPorStock() {
+    final ahora = DateTime.now();
+    if (_ultimaRecargaCartaPorStock == null ||
+        ahora.difference(_ultimaRecargaCartaPorStock!) >=
+            const Duration(seconds: 6)) {
+      _ultimaRecargaCartaPorStock = ahora;
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _aplicar() async {
     final acciones = _pendientes;
     _pendientes = const AccionesDeEvento();
@@ -216,9 +228,12 @@ class EventosService {
         // El aviso de stock bajo de la campana: solo para quien ve Inventario.
         if (acciones.stock && _veInventario)
           CatalogService.instance.cargarProductosInventario(),
-        // Quien no ve Inventario (el mozo) se entera de los platos agotados por la
-        // carta, que trae esa marca desde el servidor.
-        if (acciones.carta || (acciones.stock && !_veInventario))
+        // Cualquier cambio directo en la carta (nombre, precio o datos del plato)
+        // se recarga de inmediato en todos los dispositivos. Solo se limita la
+        // recarga secundaria provocada por ráfagas de ventas/stock.
+        if (acciones.carta)
+          CatalogService.instance.recargarCarta()
+        else if (acciones.stock && !_veInventario && _debeRecargarCartaPorStock())
           CatalogService.instance.recargarCarta(),
         if (acciones.traspasos && PedidoMozoService.instance.activo)
           TraspasoService.instance.cargar(),

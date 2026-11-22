@@ -297,6 +297,26 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
       !_bloqueadoPorFiscalExistente &&
       _eleccion.completo;
 
+  void _mostrarError(Object e, {bool finEmision = false}) {
+    if (!mounted) return;
+    final msg = e is ApiException
+        ? e.message
+        : e.toString().replaceFirst('Exception: ', '');
+    setState(() {
+      if (finEmision) _emitiendo = false;
+      _error = msg;
+    });
+    if (esErrorSinInternet(msg)) {
+      showAppToast(
+        context,
+        msg,
+        titulo: 'Sin conexión a internet',
+        type: ToastType.warning,
+        duration: const Duration(seconds: 5),
+      );
+    }
+  }
+
   Future<void> _emitir() async {
     if (!_puedeEmitir) return;
     setState(() {
@@ -315,13 +335,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
         ));
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _emitiendo = false;
-        _error = e is ApiException
-            ? e.message
-            : e.toString().replaceFirst('Exception: ', '');
-      });
+      _mostrarError(e, finEmision: true);
     }
   }
 
@@ -341,12 +355,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
         await _cargarComprobantes();
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e is ApiException
-            ? e.message
-            : e.toString().replaceFirst('Exception: ', '');
-      });
+      _mostrarError(e);
     } finally {
       if (mounted) setState(() => _emitiendo = false);
     }
@@ -376,12 +385,7 @@ class _EmitirComprobanteDialogState extends State<EmitirComprobanteDialog> {
         await _cargarComprobantes();
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e is ApiException
-            ? e.message
-            : e.toString().replaceFirst('Exception: ', '');
-      });
+      _mostrarError(e);
     } finally {
       if (mounted) setState(() => _emitiendo = false);
     }
