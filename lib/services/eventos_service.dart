@@ -116,12 +116,29 @@ class EventosService {
   int _intentos = 0;
   AccionesDeEvento _pendientes = const AccionesDeEvento();
   DateTime? _ultimaRecargaCartaPorStock;
+  DateTime? _ultimoRefreshAuth;
 
   void iniciar() {
     if (_activo) return;
     _activo = true;
     _intentos = 0;
     _conectar();
+  }
+
+  // Fuerza reconexión SSE y refresco de pedidos al volver del segundo plano (PWA / móvil).
+  void reconectarAlVolver() {
+    if (!_activo) return;
+    _reintento?.cancel();
+    _reintento = null;
+    _intentos = 0;
+    _suscripcion?.cancel();
+    _suscripcion = null;
+    conectado.value = false;
+    _conectar();
+    _pendientes = _pendientes.unir(
+      const AccionesDeEvento(pedidos: true, mesas: true),
+    );
+    _agendar();
   }
 
   void detener() {
@@ -222,7 +239,10 @@ class EventosService {
     _pendientes = const AccionesDeEvento();
     try {
       await Future.wait([
-        if (acciones.pedidos) PedidoService.instance.cargarPedidos(),
+        if (acciones.pedidos)
+          PedidoService.instance.cargarPedidos(
+            soloActivos: !PedidoService.instance.requiereHistorialHoy,
+          ),
         if (acciones.mesas) CatalogService.instance.cargarMesas(),
         if (acciones.stock) DisponibilidadService.instance.cargarHoy(),
         // El aviso de stock bajo de la campana: solo para quien ve Inventario.
@@ -251,8 +271,18 @@ class EventosService {
     await _suscripcion?.cancel();
     _suscripcion = null;
     if (!_activo) return;
-    // Sesión vencida: una consulta común renueva el token antes de reintentar.
-    if (error is ErrorFlujoEventos && error.codigo == 401) {
+    // Sesión vencida o EventSource web sin código HTTP: una consulta común
+    // renueva el token antes de reintentar si hace más de 15 s del último intento.
+    final es401 = error is ErrorFlujoEventos && error.codigo == 401;
+    final ahora = DateTime.now();
+    final puedeRefrescarWeb =
+        kIsWeb &&
+        ApiClient.instance.hasToken &&
+        (_ultimoRefreshAuth == null ||
+            ahora.difference(_ultimoRefreshAuth!) >=
+                const Duration(seconds: 15));
+    if (es401 || puedeRefrescarWeb) {
+      _ultimoRefreshAuth = ahora;
       try {
         await ApiClient.instance.get('/api/auth/me');
       } catch (_) {}

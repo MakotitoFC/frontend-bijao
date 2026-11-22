@@ -113,6 +113,7 @@ class ApiClient {
     final headers = <String, String>{
       'Content-Type': 'application/json; charset=utf-8',
       'Accept': 'application/json',
+      'Cache-Control': 'no-cache',
     };
     if (_jwtToken != null && _jwtToken!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_jwtToken';

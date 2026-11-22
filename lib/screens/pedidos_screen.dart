@@ -70,34 +70,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
   _VistaCola get _vistaActual =>
       _vistas.firstWhere((v) => v.id == _vistaId, orElse: () => _vistas.first);
 
-  bool _enVista(Pedido p) => _enVistaDe(_vistaActual, p);
-
-  // Pedidos viejos fuera de esta vista: Pedidos solo muestra lo de hoy o de la
-  // caja actual (lo anterior vive en Ventas y Caja).
-  bool _esDelPeriodo(Pedido p) {
-    final h = DateTime.now();
-    final hoy = DateTime(h.year, h.month, h.day);
-    final caja = inicioCajaActual;
-    final desde = caja.isBefore(hoy) ? caja : hoy;
-    return !p.fechaPedido.isBefore(desde);
-  }
-
-  bool _enVistaDe(_VistaCola v, Pedido p) =>
-      _esDelPeriodo(p) &&
-      switch (v.filtro) {
-        'clientes' => !esPedidoDeEmpleado(p) && !esPedidoDeFamilia(p.id),
-        'empleados' => esPedidoDeEmpleado(p),
-        'familia' => esPedidoDeFamilia(p.id),
-        _ => true,
-      };
-
-  // Pedidos abiertos que tiene cada vista.
-  int _cantidadDeVista(_VistaCola v) =>
-      pedidos.where((p) => _esActivo(p) && _enVistaDe(v, p)).length;
-
   // Subheader con las vistas (Clientes, Empleados, Familia): rectangulares y
   // solo la elegida va en verde, con la cantidad de pedidos de cada una.
-  Widget _pestanasVistas() {
+  Widget _pestanasVistas(Map<String, int> conteoVistas) {
     Widget pestana(_VistaCola v) {
       final activa = v.id == _vistaId;
       return InkWell(
@@ -133,7 +108,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  '${_cantidadDeVista(v)}',
+                  '${conteoVistas[v.id] ?? 0}',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
@@ -319,7 +294,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
     _cargandoPedidos = true;
     try {
       _refrescarEstadoCajaLigero();
-      await PedidoService.instance.cargarPedidos();
+      await PedidoService.instance.cargarPedidos(soloActivos: true);
       // Para saber qué mesas siguen ocupadas (notificación "Mesas por liberar").
       if (PedidoMozoService.instance.activo) {
         await TraspasoService.instance.cargar();
@@ -339,52 +314,106 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   bool get _esAdmin => widget.usuario.administraPedidos;
 
-  // En la cola quedan los pedidos abiertos: pendientes y servidos sin cobrar.
-  // Un pedido ya cobrado por completo sale de la vista de pedidos: queda en
-  // Ventas y en Caja.
-  bool _esCobrado(Pedido p) {
+  bool _esCobradoConIdx(Pedido p, _ResumenPagos idx) {
     if (p.estado == 'anulado' || p.estado == 'devuelto') return false;
-    // Si está en 'pagado', pero por anulación de pagos/movimientos en caja ahora tiene saldo pendiente:
+    final total = totalDePedido(p.id);
+    final abonado = idx.abonadoPorPedido[p.id] ?? 0.0;
+    final saldo = p.estado == 'anulado' || p.estado == 'cancelado'
+        ? 0.0
+        : (total - abonado <= 0.005 ? 0.0 : total - abonado);
     if (p.estado == 'pagado') {
-      return saldoPendienteDePedido(p.id) <= 0.005;
+      return saldo <= 0.005;
     }
-    // Cuenta en cero a propósito (familia, empleado o cumpleaños): al "pagarse"
-    // queda con un pago en cero y sale de la vista. Solo si su total es cero: un
-    // pedido de empleado con abonos y saldo sigue en la cola.
-    if (motivoCuentaCero(p) != null &&
-        totalDePedido(p.id).abs() < 0.005 &&
-        pagos.any(
-          (x) =>
-              x.pedidoId == p.id &&
-              !x.esReembolso &&
-              !x.anulado &&
-              x.estado != 'anulado',
-        )) {
+    final tienePago = idx.pedidosConPagoSinReembolso.contains(p.id);
+    if (motivoCuentaCero(p) != null && total.abs() < 0.005 && tienePago) {
       return true;
     }
-    // Si su estado es 'pendiente', 'pedido' o 'servido', pero ya está 100% saldado con pagos activos:
-    final total = totalDePedido(p.id);
-    if (total > 0.005 && saldoPendienteDePedido(p.id) <= 0.005) {
-      final tienePagos = pagos.any(
-        (x) =>
-            x.pedidoId == p.id &&
-            !x.esReembolso &&
-            !x.anulado &&
-            x.estado != 'anulado',
-      );
-      if (tienePagos) return true;
+    if (total > 0.005 && saldo <= 0.005 && tienePago) {
+      return true;
     }
-    return pagadoSinServir(p);
+    return (p.estado == 'pendiente' || p.estado == 'pedido') &&
+        tienePago &&
+        total > 0.005 &&
+        saldo <= 0.005;
   }
 
-  // En la cola solo salen pedidos abiertos, no cobrados y con sus productos ya
-  // cargados: sin ellos el total se ve en cero y la tarjeta aparecía unos
-  // segundos hasta que llegaba el detalle y desaparecía.
-  bool _esActivo(Pedido p) =>
-      p.abierto &&
-      !cuentasCeroCerradas.contains(p.id) &&
-      !_esCobrado(p) &&
-      (detallesPorPedido[p.id] ?? const <PedidoLine>[]).isNotEmpty;
+  String _claveVistaPedido(Pedido p) {
+    if (esPedidoDeEmpleado(p)) return 'empleados';
+    if (esPedidoDeFamilia(p.id)) return 'familia';
+    return 'clientes';
+  }
+
+  // Calcula cola, contadores y pedido seleccionado en una sola pasada O(N + M).
+  _SnapshotCola _calcularSnapshotCola() {
+    final idx = _ResumenPagos.desdePagos();
+    final conteoVistas = <String, int>{for (final v in _vistas) v.id: 0};
+    final conteoTipos = <String?, int>{
+      null: 0,
+      'mesa': 0,
+      'delivery': 0,
+      'llevar': 0,
+    };
+    final cola = <Pedido>[];
+    final cobradosIds = <String>{};
+    final pagadoSinServirIds = <String>{};
+    Pedido? seleccionado;
+
+    final h = DateTime.now();
+    final hoy = DateTime(h.year, h.month, h.day);
+    final caja = inicioCajaActual;
+    final desde = caja.isBefore(hoy) ? caja : hoy;
+
+    for (final p in pedidos) {
+      if (p.fechaPedido.isBefore(desde)) continue;
+      if (!p.abierto || cuentasCeroCerradas.contains(p.id)) continue;
+      if ((detallesPorPedido[p.id] ?? const <PedidoLine>[]).isEmpty) continue;
+
+      final cobrado = _esCobradoConIdx(p, idx);
+      if (cobrado) {
+        cobradosIds.add(p.id);
+        continue;
+      }
+      if ((p.estado == 'pendiente' || p.estado == 'pedido') &&
+          idx.pedidosConPagoSinReembolso.contains(p.id)) {
+        final total = totalDePedido(p.id);
+        final abonado = idx.abonadoPorPedido[p.id] ?? 0.0;
+        if (total > 0.005 && total - abonado <= 0.005) {
+          pagadoSinServirIds.add(p.id);
+        }
+      }
+
+      if (p.id == _seleccionId) {
+        seleccionado = p;
+      }
+
+      final vistaKey = _claveVistaPedido(p);
+      conteoVistas[vistaKey] = (conteoVistas[vistaKey] ?? 0) + 1;
+
+      if (vistaKey == _vistaId) {
+        conteoTipos[null] = (conteoTipos[null] ?? 0) + 1;
+        conteoTipos[p.tipoPedido] = (conteoTipos[p.tipoPedido] ?? 0) + 1;
+
+        final pasaMedio =
+            _medioFiltro == 'todos' ||
+            (idx.mediosPorPedido[p.id]?.contains(_medioFiltro) ?? false);
+        if (pasaMedio &&
+            (_tipoFiltro == null || p.tipoPedido == _tipoFiltro) &&
+            _coincide(p)) {
+          cola.add(p);
+        }
+      }
+    }
+
+    return _SnapshotCola(
+      pagosIdx: idx,
+      conteoVistas: conteoVistas,
+      conteoTipos: conteoTipos,
+      cola: cola,
+      cobradosIds: cobradosIds,
+      pagadoSinServirIds: pagadoSinServirIds,
+      seleccionado: seleccionado,
+    );
+  }
 
   // Texto del buscador: coincide con la mesa, el mozo, el número del pedido o
   // el cliente (sin distinguir mayúsculas ni tildes).
@@ -418,31 +447,6 @@ class _PedidosScreenState extends State<PedidosScreen> {
       b.write(i >= 0 ? a[i] : c);
     }
     return b.toString();
-  }
-
-  List<Pedido> get _cola {
-    // Solo los pedidos abiertos: lo ya cobrado no se muestra.
-    final base = pedidos.where(
-      (p) => _esActivo(p) && _enVista(p) && _coincide(p) && _conMedio(p),
-    );
-    if (_tipoFiltro == null) return base.toList();
-    return base.where((p) => p.tipoPedido == _tipoFiltro).toList();
-  }
-
-  // Pedido elegido, o null si ya no está activo (pagado/cancelado/devuelto).
-  Pedido? get _seleccionado {
-    for (final p in pedidos) {
-      if (p.id == _seleccionId && _esDelPeriodo(p) && _esActivo(p)) {
-        return p;
-      }
-    }
-    return null;
-  }
-
-  int _contarTipo(String? tipo) {
-    final base = pedidos.where((p) => _esActivo(p) && _enVista(p));
-    if (tipo == null) return base.length;
-    return base.where((p) => p.tipoPedido == tipo).length;
   }
 
   // ---------- acciones ----------
@@ -544,12 +548,13 @@ class _PedidosScreenState extends State<PedidosScreen> {
   }
 
   Widget _seccionesPedidos(BoxConstraints c) {
-    final seleccionado = _seleccionado;
+    final snap = _calcularSnapshotCola();
+    final seleccionado = snap.seleccionado;
     if (c.maxWidth >= _anchoMinDosSecciones) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: _colaPedidos()),
+          Expanded(child: _colaPedidos(snap)),
           const SizedBox(width: 12),
           VerticalDivider(width: 1, color: Colors.grey.shade200),
           const SizedBox(width: 12),
@@ -576,7 +581,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         esAdmin: _esAdmin,
       );
     }
-    return _colaPedidos();
+    return _colaPedidos(snap);
   }
 
   Widget _detalleVacio() {
@@ -813,8 +818,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   // --- cola de pedidos ---
 
-  Widget _colaPedidos() {
-    final cola = _cola;
+  Widget _colaPedidos(_SnapshotCola snap) {
+    final cola = snap.cola;
     // Celular: filtros más livianos y tarjetas compactas.
     final movil = AppBreakpoints.esMobile(context);
     final lista = Container(
@@ -826,11 +831,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
           _bannerCajaCerrada(),
           _bannerTraspasos(),
           if (movil)
-            _filtrosMovil()
+            _filtrosMovil(snap)
           else ...[
-            _pestanasVistas(),
+            _pestanasVistas(snap.conteoVistas),
             const SizedBox(height: 8),
-            _barraFiltros(),
+            _barraFiltros(snap.conteoTipos),
           ],
           const SizedBox(height: 10),
           Expanded(
@@ -870,8 +875,30 @@ class _PedidosScreenState extends State<PedidosScreen> {
                                 SizedBox(
                                   width: ancho,
                                   child: movil
-                                      ? _tarjetaPedidoMovil(p)
-                                      : _tarjetaPedido(p),
+                                      ? _tarjetaPedidoMovil(
+                                          p,
+                                          cobrado:
+                                              p.estado == 'pagado' ||
+                                              snap.cobradosIds.contains(p.id),
+                                          esPagadoSinServir: snap
+                                              .pagadoSinServirIds
+                                              .contains(p.id),
+                                          mediosPago: snap
+                                              .pagosIdx
+                                              .mediosPorPedido[p.id],
+                                        )
+                                      : _tarjetaPedido(
+                                          p,
+                                          cobrado:
+                                              p.estado == 'pagado' ||
+                                              snap.cobradosIds.contains(p.id),
+                                          esPagadoSinServir: snap
+                                              .pagadoSinServirIds
+                                              .contains(p.id),
+                                          mediosPago: snap
+                                              .pagosIdx
+                                              .mediosPorPedido[p.id],
+                                        ),
                                 ),
                             ],
                           ),
@@ -890,7 +917,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   // pedido (con su cantidad) y dos selectores lado a lado, "Para quién" y "Medio de pago",
   // que abren su lista de opciones. Un selector con algo elegido se pinta de
   // verde y su "x" lo quita.
-  Widget _filtrosMovil() {
+  Widget _filtrosMovil(_SnapshotCola snap) {
     final nombres = <String>{
       for (final m in mediosPagoActivos) m.medioPago,
       for (final p in pagos) p.medioPago.medioPago,
@@ -1012,7 +1039,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
               ])
                 TabTexto(
                   etiqueta: o.$2,
-                  cantidad: _contarTipo(o.$1),
+                  cantidad: snap.conteoTipos[o.$1] ?? 0,
                   activa: _tipoFiltro == o.$1,
                   onTap: () => setState(() => _tipoFiltro = o.$1),
                 ),
@@ -1032,7 +1059,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   for (final v in _vistas)
                     OpcionMenu(
                       valor: v.id,
-                      etiqueta: '${v.nombre} (${_cantidadDeVista(v)})',
+                      etiqueta:
+                          '${v.nombre} (${snap.conteoVistas[v.id] ?? 0})',
                     ),
                 ],
                 onSeleccionar: (v) => setState(() => _vistaId = v),
@@ -1088,14 +1116,10 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   String _medioFiltro = 'todos'; // nombre del medio de pago, o 'todos'
 
-  // Pedidos con algún cobro (por ejemplo, abonos) con el medio elegido.
-  bool _conMedio(Pedido p) =>
-      _medioFiltro == 'todos' || mediosDePagoDe(p.id).contains(_medioFiltro);
-
   // Buscador, filtros por medio de pago y por tipo de pedido, y "Nuevo Pedido"
   // junto a los filtros. En pantallas angostas los filtros pasan debajo del
   // buscador.
-  Widget _barraFiltros() {
+  Widget _barraFiltros(Map<String?, int> conteoTipos) {
     final nombres = <String>{
       for (final m in mediosPagoActivos) m.medioPago,
       for (final p in pagos) p.medioPago.medioPago,
@@ -1173,7 +1197,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
             AppTag(
               etiqueta: o.$2,
               activo: _tipoFiltro == o.$1,
-              cantidad: _contarTipo(o.$1),
+              cantidad: conteoTipos[o.$1] ?? 0,
               color: AppColors.naranja,
               colorBorde: Colors.grey.shade300,
               colorTextoInactivo: Colors.grey.shade800,
@@ -1244,16 +1268,22 @@ class _PedidosScreenState extends State<PedidosScreen> {
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   // Texto de la línea de pago de la tarjeta (null si aún no se cobró).
-  String? _lineaDePago(Pedido p) {
-    final cobrados = mediosDePagoDe(p.id);
-    if (cobrados.isNotEmpty) return 'Pagó con ${cobrados.join(' · ')}';
+  String? _lineaDePago(List<String>? cobrados) {
+    if (cobrados != null && cobrados.isNotEmpty) {
+      return 'Pagó con ${cobrados.join(' · ')}';
+    }
     return null;
   }
 
   // Tarjeta de celular: compacta (número, tipo y hora; mozo; total y
   // cronómetro), neutra: el estado se ve en su etiqueta de color, no en la
   // tarjeta.
-  Widget _tarjetaPedidoMovil(Pedido p) {
+  Widget _tarjetaPedidoMovil(
+    Pedido p, {
+    required bool cobrado,
+    required bool esPagadoSinServir,
+    List<String>? mediosPago,
+  }) {
     final nombreEtiqueta = (nombreClienteDe(p) ?? '').trim();
     final cliente = esPedidoDeEmpleado(p)
         ? (nombreEtiqueta.isEmpty ? 'Empleado' : 'Empleado: $nombreEtiqueta')
@@ -1313,10 +1343,10 @@ class _PedidosScreenState extends State<PedidosScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (p.estado == 'pagado' || _esCobrado(p))
+                      if (cobrado)
                         const _TagPagado(cobrado: true)
                       else ...[
-                        if (pagadoSinServir(p)) ...[
+                        if (esPagadoSinServir) ...[
                           const _TagPagado(),
                           const SizedBox(width: 6),
                         ],
@@ -1386,7 +1416,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                       CronometroPedido(pedido: p),
                     ],
                   ),
-                  if (_lineaDePago(p) case final linea?) ...[
+                  if (_lineaDePago(mediosPago) case final linea?) ...[
                     const SizedBox(height: 4),
                     Text(
                       linea,
@@ -1426,9 +1456,14 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
-  Widget _tarjetaPedido(Pedido p) {
+  Widget _tarjetaPedido(
+    Pedido p, {
+    required bool cobrado,
+    required bool esPagadoSinServir,
+    List<String>? mediosPago,
+  }) {
     final tenue = Colors.grey.shade600;
-    final colorEstado = _esCobrado(p)
+    final colorEstado = cobrado
         ? paletaEstadoPedido('pagado').color
         : paletaEstadoPedido(p.estado).color;
     // Cliente, empleado o familia: va en una franja de color fuerte bajo la
@@ -1501,12 +1536,12 @@ class _PedidosScreenState extends State<PedidosScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (p.estado == 'pagado' || _esCobrado(p))
+                              if (cobrado)
                                 // Ya cobrado: "Pagado" en rojo con letras blancas.
                                 const _TagPagado(cobrado: true)
                               else ...[
                                 // Cobrado antes de servir: "Pagado" en naranja.
-                                if (pagadoSinServir(p)) ...[
+                                if (esPagadoSinServir) ...[
                                   const _TagPagado(),
                                   const SizedBox(width: 6),
                                 ],
@@ -1686,7 +1721,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
                     ],
                   ),
                   // Con qué medios se cobró, si ya hay cobros.
-                  if (_lineaDePago(p) case final linea?) ...[
+                  if (_lineaDePago(mediosPago) case final linea?) ...[
                     const SizedBox(height: 8),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1762,5 +1797,45 @@ class _VistaCola {
     required this.id,
     required this.nombre,
     required this.filtro,
+  });
+}
+
+class _ResumenPagos {
+  final Map<String, double> abonadoPorPedido = {};
+  final Map<String, List<String>> mediosPorPedido = {};
+  final Set<String> pedidosConPagoSinReembolso = {};
+
+  _ResumenPagos.desdePagos() {
+    for (final x in pagos) {
+      if (x.anulado) continue;
+      final pid = x.pedidoId;
+      abonadoPorPedido[pid] = (abonadoPorPedido[pid] ?? 0.0) + x.montoAbonado;
+      if (!x.esReembolso && x.estado != 'anulado') {
+        pedidosConPagoSinReembolso.add(pid);
+        final lista = mediosPorPedido.putIfAbsent(pid, () => <String>[]);
+        final nombre = x.medioPago.medioPago;
+        if (!lista.contains(nombre)) lista.add(nombre);
+      }
+    }
+  }
+}
+
+class _SnapshotCola {
+  final _ResumenPagos pagosIdx;
+  final Map<String, int> conteoVistas;
+  final Map<String?, int> conteoTipos;
+  final List<Pedido> cola;
+  final Set<String> cobradosIds;
+  final Set<String> pagadoSinServirIds;
+  final Pedido? seleccionado;
+
+  const _SnapshotCola({
+    required this.pagosIdx,
+    required this.conteoVistas,
+    required this.conteoTipos,
+    required this.cola,
+    required this.cobradosIds,
+    required this.pagadoSinServirIds,
+    required this.seleccionado,
   });
 }

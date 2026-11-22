@@ -52,9 +52,14 @@ class PedidoMozoService {
 
   // Marca de cambio por pedido para no pedir el detalle en cada consulta.
   final Map<String, String> _marcas = {};
+  int _epochMutacion = 0;
+  final Map<String, DateTime> _recienCreados = {};
 
   // Al cerrar sesión: las marcas eran de los pedidos del usuario anterior.
-  void limpiarMarcas() => _marcas.clear();
+  void limpiarMarcas() {
+    _marcas.clear();
+    _recienCreados.clear();
+  }
 
   // ¿Los pedidos de esta sesión se manejan con la API del mozo?
   bool get activo {
@@ -81,6 +86,11 @@ class PedidoMozoService {
   // memoria, traída del servicio anterior: se reemplazan los pedidos propios
   // por los del servidor nuevo (con sus versiones) y no se quita ninguno.
   Future<void> sincronizar({bool sobreLegacy = false}) async {
+    final epochInicio = _epochMutacion;
+    final ahora = DateTime.now();
+    _recienCreados.removeWhere(
+      (_, t) => ahora.difference(t) > const Duration(seconds: 12),
+    );
     final res = await _api.get(_base);
     if (res is! List) return;
     final vigentes = <String>{};
@@ -112,10 +122,16 @@ class PedidoMozoService {
     // por usuario); no se deduce nada por los pedidos que dejan de venir.
     // Las mesas por liberar son del mozo y del administrador; el cajero solo lee.
     if (activo) await recargarMesasPorLiberar();
-    if (sobreLegacy) return;
-    pedidos.removeWhere((p) => !vigentes.contains(p.id));
-    detallesPorPedido.removeWhere((id, _) => !vigentes.contains(id));
-    _marcas.removeWhere((id, _) => !vigentes.contains(id));
+    if (sobreLegacy || _epochMutacion != epochInicio) return;
+    pedidos.removeWhere(
+      (p) => !vigentes.contains(p.id) && !_recienCreados.containsKey(p.id),
+    );
+    detallesPorPedido.removeWhere(
+      (id, _) => !vigentes.contains(id) && !_recienCreados.containsKey(id),
+    );
+    _marcas.removeWhere(
+      (id, _) => !vigentes.contains(id) && !_recienCreados.containsKey(id),
+    );
   }
 
   // Detalle completo de un pedido.
@@ -149,7 +165,10 @@ class PedidoMozoService {
     if (res is! Map<String, dynamic>) {
       throw Exception('Error inesperado al crear el pedido en el servidor');
     }
-    return _aplicar(res, base: base);
+    final creado = _aplicar(res, base: base);
+    _epochMutacion++;
+    _recienCreados[creado.id] = DateTime.now();
+    return creado;
   }
 
   // Agrega un producto (y su táper, en fila aparte) a un pedido existente.
@@ -470,10 +489,11 @@ class PedidoMozoService {
   ) async {
     try {
       final res = await llamada();
-      if (res is Map<String, dynamic> && res['items'] is List) {
-        return _aplicar(res);
-      }
-      return await obtener(pedidoId);
+      final detalle = (res is Map<String, dynamic> && res['items'] is List)
+          ? _aplicar(res)
+          : await obtener(pedidoId);
+      _epochMutacion++;
+      return detalle;
     } on ApiException catch (e) {
       return _traducir(e, pedidoId);
     }

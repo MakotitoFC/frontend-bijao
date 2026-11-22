@@ -119,7 +119,7 @@ class _InicioScreenState extends State<InicioScreen> {
     }
 
     await Future.wait([
-      seguro(() => PedidoService.instance.cargarPedidos()),
+      seguro(() => PedidoService.instance.cargarPedidos(soloActivos: true)),
       seguro(() => FacturacionService.instance.obtenerSedeConfig()),
       if (!_esCocina) seguro(() => CatalogService.instance.cargarMesas()),
       if (!_esCocina) seguro(() => DisponibilidadService.instance.cargarHoy()),

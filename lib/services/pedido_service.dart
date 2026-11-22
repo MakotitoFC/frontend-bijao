@@ -36,6 +36,13 @@ class PedidoService {
 
   final ApiClient _api = ApiClient.instance;
 
+  int _vistasHistorial = 0;
+  bool get requiereHistorialHoy => _vistasHistorial > 0;
+  void registrarVistaHistorial() => _vistasHistorial++;
+  void liberarVistaHistorial() {
+    if (_vistasHistorial > 0) _vistasHistorial--;
+  }
+
   /// Registra un pedido completo en PostgreSQL vía `POST /api/pedidos`
   Future<Pedido> crearPedido({
     required Pedido pedido,
@@ -360,6 +367,7 @@ class PedidoService {
           fusionarPedidosDeOtroDia(listaPedidos, mapDetalles);
           return pedidos;
         }
+        if (soloActivos) idsDeOtrosDias.clear();
         sincronizarPedidosDesdeServidor(listaPedidos, mapDetalles);
         // El administrador y el cajero leen el detalle completo (número de orden,
         // presentaciones, variantes): el servidor les abre esa lectura.

@@ -86,7 +86,7 @@ class _CocinaScreenState extends State<CocinaScreen> {
   }
 
   Future<void> _cargar() async {
-    await PedidoService.instance.cargarPedidos();
+    await PedidoService.instance.cargarPedidos(soloActivos: true);
     if (mounted) setState(() {});
   }
 

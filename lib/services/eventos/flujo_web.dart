@@ -13,6 +13,22 @@ Stream<EventoSse> abrirFlujoDeEventos({
 }) {
   late final StreamController<EventoSse> control;
   web.EventSource? fuente;
+  Timer? watchdog;
+
+  void reiniciarWatchdog() {
+    watchdog?.cancel();
+    watchdog = Timer(const Duration(seconds: 60), () {
+      fuente?.close();
+      fuente = null;
+      if (!control.isClosed) {
+        control.addError(
+          const ErrorFlujoEventos('Sin respuesta del servidor (timeout SSE).'),
+        );
+        control.close();
+      }
+    });
+  }
+
   control = StreamController<EventoSse>(
     onListen: () {
       final direccion = url.replace(
@@ -20,10 +36,12 @@ Stream<EventoSse> abrirFlujoDeEventos({
       );
       final f = web.EventSource(direccion.toString());
       fuente = f;
+      reiniciarWatchdog();
       for (final nombre in nombresDeEventos) {
         f.addEventListener(
           nombre,
           ((web.Event e) {
+            reiniciarWatchdog();
             final dato = (e as web.MessageEvent).data;
             control.add(
               EventoSse(
@@ -37,6 +55,8 @@ Stream<EventoSse> abrirFlujoDeEventos({
       // EventSource reintenta solo con el mismo token (que puede haber
       // vencido): se cierra y el servicio vuelve a conectar con el vigente.
       f.onerror = ((web.Event _) {
+        watchdog?.cancel();
+        watchdog = null;
         f.close();
         if (!control.isClosed) {
           control.addError(
@@ -47,6 +67,8 @@ Stream<EventoSse> abrirFlujoDeEventos({
       }).toJS;
     },
     onCancel: () {
+      watchdog?.cancel();
+      watchdog = null;
       fuente?.close();
     },
   );

@@ -624,44 +624,52 @@ class DetallePedidoPanel extends StatelessWidget {
 
   // "Pagar": abre el modal de pago (pago único; con "Por montos" se reparte entre
   // varios medios).
+  static final Set<String> _pagosAbriendo = {};
+
   Future<void> _elegirPago(BuildContext context) async {
-    // Se lee lo ya cobrado en el servidor: así no se cobra dos veces algo que
-    // otro equipo ya cobró. Sin conexión se sigue con lo que hay en pantalla.
+    if (!_pagosAbriendo.add(pedido.id)) return;
     try {
-      await PagoService.instance.cargarDePedido(pedido);
-    } catch (_) {}
-    if (!context.mounted) return;
-    // Si el servidor ya tiene la cuenta cobrada, no se abre un cobro en cero:
-    // se avisa con lo que ya está registrado y se actualiza el estado (el
-    // pedido pasa a Pagados).
-    final cobrado = abonadoDePedido(pedido.id);
-    final yaPagado =
-        pedidos.where((x) => x.id == pedido.id).firstOrNull?.estado == 'pagado';
-    if (yaPagado ||
-        (saldoCuentaDePedido(pedido.id) <= 0.01 && cobrado > 0.01)) {
-      final detalle = abonosDePedido(pedido.id)
-          .map(
-            (a) =>
-                '${a.medio} S/ ${a.monto.toStringAsFixed(2)} '
-                '(${a.fecha.day.toString().padLeft(2, '0')}/'
-                '${a.fecha.month.toString().padLeft(2, '0')} '
-                '${a.fecha.hour.toString().padLeft(2, '0')}:'
-                '${a.fecha.minute.toString().padLeft(2, '0')})',
-          )
-          .join(' · ');
-      showAppToast(
-        context,
-        detalle.isEmpty
-            ? 'El servidor ya tiene este pedido como pagado.'
-            : 'Este pedido ya tiene su cuenta cobrada: $detalle.',
-        type: ToastType.info,
-        titulo: 'Pedido ya pagado',
-        duration: const Duration(seconds: 6),
-      );
-      onCambio();
-      return;
+      // Se lee lo ya cobrado en el servidor: así no se cobra dos veces algo que
+      // otro equipo ya cobró. Sin conexión se sigue con lo que hay en pantalla.
+      try {
+        await PagoService.instance.cargarDePedido(pedido);
+      } catch (_) {}
+      if (!context.mounted) return;
+      // Si el servidor ya tiene la cuenta cobrada, no se abre un cobro en cero:
+      // se avisa con lo que ya está registrado y se actualiza el estado (el
+      // pedido pasa a Pagados).
+      final cobrado = abonadoDePedido(pedido.id);
+      final yaPagado =
+          pedidos.where((x) => x.id == pedido.id).firstOrNull?.estado ==
+          'pagado';
+      if (yaPagado ||
+          (saldoCuentaDePedido(pedido.id) <= 0.01 && cobrado > 0.01)) {
+        final detalle = abonosDePedido(pedido.id)
+            .map(
+              (a) =>
+                  '${a.medio} S/ ${a.monto.toStringAsFixed(2)} '
+                  '(${a.fecha.day.toString().padLeft(2, '0')}/'
+                  '${a.fecha.month.toString().padLeft(2, '0')} '
+                  '${a.fecha.hour.toString().padLeft(2, '0')}:'
+                  '${a.fecha.minute.toString().padLeft(2, '0')})',
+            )
+            .join(' · ');
+        showAppToast(
+          context,
+          detalle.isEmpty
+              ? 'El servidor ya tiene este pedido como pagado.'
+              : 'Este pedido ya tiene su cuenta cobrada: $detalle.',
+          type: ToastType.info,
+          titulo: 'Pedido ya pagado',
+          duration: const Duration(seconds: 6),
+        );
+        onCambio();
+        return;
+      }
+      await _pagar(context);
+    } finally {
+      _pagosAbriendo.remove(pedido.id);
     }
-    await _pagar(context);
   }
 
   // Los métodos de pago vienen del servidor: sin ninguno no se puede cobrar.
@@ -3233,17 +3241,18 @@ class DetallePedidoPanel extends StatelessWidget {
             if (_veCaja) ...[
               if (!_esCajero) const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
+                child: _BotonPagar(
                   // La cuenta de familia (toda en cero) se cierra al terminar de
                   // servir: sale de Pedidos y queda el registro en Ventas.
                   // Empleado y cumpleaños solo llegan aquí si su total quedó en
                   // cero; ahí el botón sigue siendo Pagar. Ambos preguntan si
                   // se imprime el ticket.
+                  enabled: _esCuentaCero
+                      ? (!_esFamilia || pedido.estado == 'servido')
+                      : puedePagar,
                   onPressed: _esCuentaCero
-                      ? (_esFamilia && pedido.estado != 'servido'
-                            ? null
-                            : () => _pagarCuentaCero(context))
-                      : (puedePagar ? () => _elegirPago(context) : null),
+                      ? () => _pagarCuentaCero(context)
+                      : () => _elegirPago(context),
                   icon: Icon(
                     _esCuentaCero && _esFamilia
                         ? LucideIcons.circleCheck
@@ -3692,6 +3701,58 @@ class _TotalCompactoState extends State<_TotalCompacto> {
             child: SingleChildScrollView(child: widget.detalle),
           ),
       ],
+    );
+  }
+}
+
+class _BotonPagar extends StatefulWidget {
+  final bool enabled;
+  final Future<void> Function() onPressed;
+  final Widget icon;
+  final Widget label;
+  final ButtonStyle style;
+
+  const _BotonPagar({
+    required this.enabled,
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    required this.style,
+  });
+
+  @override
+  State<_BotonPagar> createState() => _BotonPagarState();
+}
+
+class _BotonPagarState extends State<_BotonPagar> {
+  bool _cargando = false;
+
+  Future<void> _ejecutarClick() async {
+    if (_cargando || !widget.enabled) return;
+    setState(() => _cargando = true);
+    try {
+      await widget.onPressed();
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: (widget.enabled && !_cargando) ? _ejecutarClick : null,
+      icon: _cargando
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : widget.icon,
+      label: widget.label,
+      style: widget.style,
     );
   }
 }

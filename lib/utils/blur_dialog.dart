@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -47,7 +48,7 @@ Future<T?> showBlurDialog<T>({
     context: context,
     barrierDismissible: barrierDismissible,
     barrierLabel: 'Cerrar',
-    barrierColor: Colors.black.withValues(alpha: 0.35),
+    barrierColor: Colors.black.withValues(alpha: kIsWeb ? 0.45 : 0.35),
     transitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (dialogContext, animation, secondaryAnimation) =>
         builder(dialogContext),
@@ -57,22 +58,24 @@ Future<T?> showBlurDialog<T>({
         curve: Curves.easeOutCubic,
         reverseCurve: Curves.easeInCubic,
       );
+      final dialogo = FadeTransition(
+        opacity: curva,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curva),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(24),
+            child: Center(child: child),
+          ),
+        ),
+      );
+      if (kIsWeb) return dialogo;
       return BackdropFilter(
         filter: ImageFilter.blur(
           sigmaX: 6 * curva.value,
           sigmaY: 6 * curva.value,
         ),
-        child: FadeTransition(
-          opacity: curva,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1).animate(curva),
-            child: Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: const EdgeInsets.all(24),
-              child: Center(child: child),
-            ),
-          ),
-        ),
+        child: dialogo,
       );
     },
   );

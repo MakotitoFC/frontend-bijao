@@ -34,6 +34,7 @@ class ErrorFlujoEventos implements Exception {
 // entrega los eventos que se piden por nombre.
 const nombresDeEventos = <String>[
   'conexion_establecida',
+  'keepalive',
   'PEDIDO_NUEVO',
   'PRODUCTO_AGREGADO',
   'PEDIDO_ACTUALIZADO',
@@ -42,9 +43,13 @@ const nombresDeEventos = <String>[
   'PEDIDO_ANULADO',
   'CAMBIO_MESA',
   'MESA_LIBERADA',
+  'CARTA_ACTUALIZADA',
   'PLATO_AGOTADO',
   'STOCK_ACTUALIZADO',
   'APERTURA_DIARIA_COMPLETA',
+  'TRASPASO_SOLICITADO',
+  'TRASPASO_RESUELTO',
+  'CAJA_TRASPASADA',
 ];
 
 // Convierte los bytes del flujo en eventos. Formato: líneas `event: nombre` y

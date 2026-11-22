@@ -105,7 +105,7 @@ class _MesasPlanoState extends State<MesasPlano> {
     CatalogService.instance.cargarMesas().then((_) {
       if (mounted) setState(() {});
     });
-    PedidoService.instance.cargarPedidos().then((_) {
+    PedidoService.instance.cargarPedidos(soloActivos: true).then((_) {
       if (mounted) setState(() {});
     });
     EventosService.instance.revision.addListener(_alCambiarEnVivo);
@@ -115,7 +115,7 @@ class _MesasPlanoState extends State<MesasPlano> {
         CatalogService.instance.cargarMesas().then((_) {
           if (mounted) setState(() {});
         });
-        PedidoService.instance.cargarPedidos().then((_) {
+        PedidoService.instance.cargarPedidos(soloActivos: true).then((_) {
           if (mounted) setState(() {});
         });
       }

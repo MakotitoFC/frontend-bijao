@@ -99,6 +99,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
   @override
   void initState() {
     super.initState();
+    PedidoService.instance.registrarVistaHistorial();
     _cargarDia();
   }
 
@@ -123,7 +124,13 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
       errorPagos = _mensajeDe(e);
     }
     final esHoy = !dia.isBefore(DateUtils.dateOnly(DateTime.now()));
-    if (!esHoy) {
+    if (esHoy) {
+      try {
+        await PedidoService.instance.cargarPedidos(soloActivos: false);
+      } catch (e) {
+        errorPedidos = _mensajeDe(e);
+      }
+    } else {
       try {
         final m = dia.month.toString().padLeft(2, '0');
         final d = dia.day.toString().padLeft(2, '0');
@@ -168,6 +175,7 @@ class _HistorialPedidosScreenState extends State<HistorialPedidosScreen> {
 
   @override
   void dispose() {
+    PedidoService.instance.liberarVistaHistorial();
     _busqueda.dispose();
     super.dispose();
   }

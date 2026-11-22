@@ -52,7 +52,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Navbar lateral: se contrae sola al achicarse la pantalla; si el usuario la
   // abre o cierra a mano, se respeta hasta que cambie el tamaño de pantalla.
   static const double _anchoParaContraer = 1100;
@@ -68,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Se abre la primera vista a la que el rol tiene acceso (el cajero no tiene
     // Inicio).
     final primera = navItems
@@ -161,7 +162,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      EventosService.instance.reconectarAlVolver();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _traspasoCajaSub?.cancel();
     EventosService.instance.detener();
     _categoriaProductos.dispose();
